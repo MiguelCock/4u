@@ -1,5 +1,8 @@
 # Front_Collection
 
+flutter pub outdated
+flutter pub upgrade --major-versions
+
 Permisions are added to android/app/src/main/AndroidManifest.xml
 
 ## How to connect the cellphone to the pc with adb

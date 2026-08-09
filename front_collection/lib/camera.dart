@@ -55,11 +55,8 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
     try {
       final image = await _controller!.takePicture();
 
-      // print('📸 Photo taken: ${image.path}');
-
       final position = _service.lastPosition;
       if (position == null) {
-        // print('❌ No location available');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Location not available')),
@@ -67,19 +64,15 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
         }
         return;
       }
-      // print('📍 Location: ${position.latitude}, ${position.longitude}');
-
       await _sendPhotoToServer(image, position);
     } catch (e) {
-      //print('Photo capture error: $e');
+      return;
     }
   }
 
   Future<void> _sendPhotoToServer(XFile image, Position position) async {
-    print('⬆️ Starting upload...');
     try {
       final bytes = await image.readAsBytes();
-      print('📦 Image size: ${bytes.length} bytes');
 
       final uri = Uri.parse('http://10.10.79.249:3000/upload');
       final request = http.MultipartRequest('POST', uri)
@@ -92,23 +85,19 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
           ),
         )
         ..fields['latitude'] = position.latitude.toString()
-        ..fields['longitude'] = position.longitude.toString();
+        ..fields['longitude'] = position.longitude.toString()
+        ..fields['accuracy'] = position.accuracy.toString();
 
-      print('📤 Sending request to ${uri.toString()}');
       final response = await request.send();
       final responseBody = await response.stream.bytesToString();
-      print('📨 Response status: ${response.statusCode}');
-      print('📨 Response body: $responseBody');
 
       if (response.statusCode == 200) {
-        print('✅ Upload successful');
         if (mounted) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(const SnackBar(content: Text('Photo uploaded!')));
         }
       } else {
-        print('❌ Upload failed with status ${response.statusCode}');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Upload failed: ${response.statusCode}')),
@@ -116,8 +105,6 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
         }
       }
     } catch (e, stack) {
-      print('❌ Upload error: $e');
-      print(stack);
       if (mounted) {
         ScaffoldMessenger.of(
           context,

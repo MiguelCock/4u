@@ -24,8 +24,8 @@ class MainApp extends StatelessWidget {
         body: Column(
           children: [
             const LocationInfo(),
-            Expanded(child: const SimpleMapWidget()),
             Expanded(child: const SimpleCameraWidget()),
+            Expanded(child: const SimpleMapWidget()),
           ],
         ),
       ),
