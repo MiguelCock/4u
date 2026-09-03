@@ -30,3 +30,20 @@ class SupaBase():
         resp2 = (self.client.storage
         .from_("Photo")
         .remove([name]))
+
+    def sing_up(self, email: str, password: str):
+        response = self.client.auth.sign_up({
+            "email": email,
+            "password": password,
+        })
+
+    def log_in(self, email: str, password: str):
+        response = self.client.auth.sign_in_with_password({
+            "email": email,
+            "password": password,
+        })
+    
+    def is_logged_in(self, token) -> bool:
+        response = ""
+
+        return True

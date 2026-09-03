@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:front_collection/camera.dart';
+import 'package:application/camera.dart';
 import 'services/location_service.dart';
 import 'map.dart';
 import 'location.dart';
@@ -21,12 +21,20 @@ class MainApp extends StatelessWidget {
           title: const Text('Flutter Map Test'),
           backgroundColor: Colors.blue,
         ),
-        body: Column(
-          children: [
-            const LocationInfo(),
-            Expanded(child: const SimpleCameraWidget()),
-            Expanded(child: const SimpleMapWidget()),
-          ],
+        body: SingleChildScrollView(
+          child: Column(
+            children: [
+              const LocationInfo(),
+              SizedBox(
+                height: 300,
+                child: const SimpleCameraWidget(),
+              ),
+              SizedBox(
+                height: 400,
+                child: const SimpleMapWidget(),
+              ),
+            ],
+          ),
         ),
       ),
     );

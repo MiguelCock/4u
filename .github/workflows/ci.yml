@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ----------------------------------------------------------------------
+  # 1. Detect changes and build a dynamic matrix
+  # ----------------------------------------------------------------------
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      packages: ${{ steps.filter.outputs.packages }}
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            app:
+              - 'application/**'
+            packages:
+              - 'packages/**'
+            backend-data-collection:
+              - 'backend-data-collection/**'
+            # Add more services here
+
+      - name: Build matrix
+        id: set-matrix
+        run: |
+          components=(
+            '{"name":"app","path":"application","language":"flutter","test_cmd":"flutter test"}'
+            '{"name":"packages","path":"packages","language":"python","test_cmd":"pytest"}'
+            '{"name":"backend-data-collection","path":"backend-data-collection","language":"python","test_cmd":"pytest"}'
+          )
+          matrix='[]'
+          for comp in "${components[@]}"; do
+            name=$(echo "$comp" | jq -r '.name')
+            if [ "${{ steps.filter.outputs[format('{0}', name)] }}" == "true" ]; then
+              matrix=$(echo "$matrix" | jq --argjson c "$comp" '. += [$c]')
+            fi
+          done
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+
+  # ----------------------------------------------------------------------
+  # 2. Run tests for changed components
+  # ----------------------------------------------------------------------
+  test:
+    needs: changes
+    if: fromJSON(needs.changes.outputs.matrix) | length > 0
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Setup Flutter
+      - name: Setup Flutter
+        if: matrix.language == 'flutter'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: 'stable'
+
+      # Setup Python
+      - name: Setup Python
+        if: matrix.language == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # --- Python dependencies with uv ---
+      - name: Install uv
+        if: matrix.language == 'python'
+        run: pip install uv
+
+      - name: Install Python dependencies with uv
+        if: matrix.language == 'python'
+        run: |
+          cd ${{ matrix.path }}
+          # If pyproject.toml exists, use uv sync (creates .venv)
+          if [ -f "pyproject.toml" ]; then
+            uv sync
+          else
+            # Otherwise install from requirements.txt (if it exists)
+            if [ -f "requirements.txt" ]; then
+              uv pip install -r requirements.txt
+            fi
+            # Ensure pytest is installed
+            uv pip install pytest
+          fi
+        env:
+          UV_SYSTEM_PYTHON: true  # Use the Python from setup-python
+
+      # Flutter dependencies
+      - name: Install Flutter dependencies
+        if: matrix.language == 'flutter'
+        run: |
+          cd ${{ matrix.path }}
+          flutter pub get
+
+      # --- Run tests ---
+      - name: Run tests
+        run: |
+          cd ${{ matrix.path }}
+          if [ "${{ matrix.language }}" == "python" ]; then
+            # Use uv run to ensure we use the virtual environment
+            uv run ${{ matrix.test_cmd }}
+          else
+            ${{ matrix.test_cmd }}
+          fi

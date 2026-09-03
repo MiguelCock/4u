@@ -47,7 +47,7 @@ class _SimpleMapWidgetState extends State<SimpleMapWidget> {
       children: [
         TileLayer(
           urlTemplate: 'https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.example.front_collection',
+          userAgentPackageName: 'com.example.application',
         ),
         MarkerLayer(
           markers: [

@@ -104,7 +104,7 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
           );
         }
       }
-    } catch (e, stack) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
