@@ -45,6 +45,8 @@ jobs:
 
       - name: Build matrix
         id: set-matrix
+        env:
+          FILTER_OUTPUTS: ${{ toJSON(steps.filter.outputs) }}
         run: |
           components=(
             '{"name":"app","path":"application","language":"flutter","test_cmd":"flutter test"}'
@@ -57,7 +59,8 @@ jobs:
           matrix='[]'
           for comp in "${components[@]}"; do
             name=$(echo "$comp" | jq -r '.name')
-            if [ "${{ steps.filter.outputs[format('{0}', name)] }}" == "true" ]; then
+            changed=$(echo "$FILTER_OUTPUTS" | jq -r --arg n "$name" '.[$n] // "false"')
+            if [ "$changed" == "true" ]; then
               matrix=$(echo "$matrix" | jq --argjson c "$comp" '. += [$c]')
             fi
           done
@@ -68,7 +71,7 @@ jobs:
   # ----------------------------------------------------------------------
   test:
     needs: changes
-    if: fromJSON(needs.changes.outputs.matrix) | length > 0
+    if: needs.changes.outputs.matrix != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
