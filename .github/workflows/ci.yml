@@ -21,11 +21,11 @@ jobs:
       packages: ${{ steps.filter.outputs.packages }}
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -41,6 +41,8 @@ jobs:
               - 'backend-route-management/**'
             backend-ai-training:
               - 'backend-ai-training/**'
+            workflows:
+              - '.github/workflows/**'
             # Add more services here
 
       - name: Build matrix
@@ -56,11 +58,12 @@ jobs:
             '{"name":"backend-route-management","path":"backend-route-management","language":"python","test_cmd":"pytest"}'
             '{"name":"backend-ai-training","path":"backend-ai-training","language":"python","test_cmd":"pytest"}'
           )
+          workflows_changed=$(echo "$FILTER_OUTPUTS" | jq -r '.workflows // "false"')
           matrix='[]'
           for comp in "${components[@]}"; do
             name=$(echo "$comp" | jq -r '.name')
             changed=$(echo "$FILTER_OUTPUTS" | jq -r --arg n "$name" '.[$n] // "false"')
-            if [ "$changed" == "true" ]; then
+            if [ "$changed" == "true" ] || [ "$workflows_changed" == "true" ]; then
               matrix=$(echo "$matrix" | jq --argjson c "$comp" '. += [$c]')
             fi
           done
@@ -78,7 +81,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Setup Flutter
       - name: Setup Flutter
@@ -91,7 +94,7 @@ jobs:
       # Setup Python
       - name: Setup Python
         if: matrix.language == 'python'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
