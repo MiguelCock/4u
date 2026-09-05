@@ -64,7 +64,7 @@ jobs:
             name=$(echo "$comp" | jq -r '.name')
             changed=$(echo "$FILTER_OUTPUTS" | jq -r --arg n "$name" '.[$n] // "false"')
             if [ "$changed" == "true" ] || [ "$workflows_changed" == "true" ]; then
-              matrix=$(echo "$matrix" | jq --argjson c "$comp" '. += [$c]')
+              matrix=$(echo "$matrix" | jq -c --argjson c "$comp" '. += [$c]')
             fi
           done
           echo "matrix=$matrix" >> $GITHUB_OUTPUT

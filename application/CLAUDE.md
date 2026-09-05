@@ -24,4 +24,4 @@ See `README.md` for ADB device-pairing steps (wired and wireless).
 ## Known gaps
 
 - `lib/camera.dart`'s `_sendPhotoToServer` POSTs directly to a hardcoded URL (`http://10.10.79.249:3000/upload`) instead of using the `BACKEND_URL` env var declared in `.env.example`. Check whether this still needs wiring up before treating networking code as done.
-- No `flutter_test` widget/unit tests exist yet under `test/` — add them alongside new widgets/services rather than leaving them uncovered (see root CLAUDE.md's testing expectations).
+- `test/widget_test.dart` is currently just a sanity smoke test (no real widget/unit coverage yet) — add real tests alongside new widgets/services rather than leaving them uncovered (see root CLAUDE.md's testing expectations).

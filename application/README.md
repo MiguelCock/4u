@@ -61,7 +61,7 @@ flutter test
 flutter analyze
 ```
 
-No widget/unit tests exist under `test/` yet — add them alongside new widgets/services.
+`test/widget_test.dart` is currently just a sanity smoke test so CI has something to run — add real widget/unit tests alongside new widgets/services.
 
 ## Known gaps
 
