@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "opencv-python-headless>=5.0.0.93",
     "torch>=2.13.0",
     "torchvision>=0.28.0",
 ]
@@ -31,3 +32,8 @@ dev = "backend_ai_training.main:main"
 [build-system]
 requires = ["uv_build>=0.12.2,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

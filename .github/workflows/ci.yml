@@ -35,6 +35,12 @@ jobs:
               - 'packages/**'
             backend-data-collection:
               - 'backend-data-collection/**'
+            backend-map-management:
+              - 'backend-map-management/**'
+            backend-route-management:
+              - 'backend-route-management/**'
+            backend-ai-training:
+              - 'backend-ai-training/**'
             # Add more services here
 
       - name: Build matrix
@@ -44,6 +50,9 @@ jobs:
             '{"name":"app","path":"application","language":"flutter","test_cmd":"flutter test"}'
             '{"name":"packages","path":"packages","language":"python","test_cmd":"pytest"}'
             '{"name":"backend-data-collection","path":"backend-data-collection","language":"python","test_cmd":"pytest"}'
+            '{"name":"backend-map-management","path":"backend-map-management","language":"python","test_cmd":"pytest"}'
+            '{"name":"backend-route-management","path":"backend-route-management","language":"python","test_cmd":"pytest"}'
+            '{"name":"backend-ai-training","path":"backend-ai-training","language":"python","test_cmd":"pytest"}'
           )
           matrix='[]'
           for comp in "${components[@]}"; do

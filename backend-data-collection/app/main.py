@@ -11,6 +11,11 @@ app = FastAPI()
 db = SupaBase(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_PUBLISHABLE_KEY"))
 
 
+@app.get("/")
+async def root():
+    return {"service": "backend-data-collection", "status": "ok"}
+
+
 @app.post("/upload")
 async def process_image_json(request: ImageMetaData, image: UploadFile = File(...)):
     img = image.file
