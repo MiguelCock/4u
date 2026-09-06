@@ -31,6 +31,5 @@ There's no service-to-service HTTP call here — only shared-table relationships
 ## Complete workflow
 
 1. **`POST /anchor-points`** — caller (intended: the app's admin capture screen) sends `AnchorPointCreate` (`building_id`, `location_type_id`, `floor`, `heading`, `image_url`, `latitude`, `longitude`, `altitude`, `location_description`, `captured_by`) → inserted as-is into `anchor_points`. The image itself must already be hosted somewhere before this call — there's no upload step here.
-2. **`GET /anchor-points`** / **`GET /anchor-points/{id}`** — plain `select("*")` (optionally `.eq("id", id)`), returned as `AnchorPointResponse` (adds `id`/`status` on top of the create fields).
+2. **`GET /anchor-points`** / **`GET /anchor-points/{id}`** — plain `select("*")` (list) / `.eq("id", id)` (single row, 404 if not found), returned as `AnchorPointResponse` (adds `id`/`status` on top of the create fields). Note the by-id lookup pulls `result.data[0]`, not `result.data` — Supabase's client always returns a list from `.execute().data` even filtered to one row; returning the list directly against a single-object response model would raise a `ResponseValidationError`.
 3. **`GET /buildings`** / **`GET /buildings/{id}`** — same pattern over the `buildings` table; there's no `POST /buildings` here, so buildings (and by extension `places`) currently have to be created by hand in Supabase before any anchor point can reference them.
-

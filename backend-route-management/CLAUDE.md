@@ -29,6 +29,6 @@ No service-to-service HTTP calls — only shared-table relationships:
 ## Complete workflow
 
 1. **`POST /routes`** — caller sends `RouteCreate` (`building_id`, `name`, `start_anchor_id`, `end_anchor_id`, `waypoint_anchor_ids`, defaulting to `[]`) → inserted as-is. No check that the referenced building/anchor point ids exist before insert (Postgres FK constraints reject a bad id at the DB level instead).
-2. **`GET /routes`** / **`GET /routes/{id}`** — plain `select("*")` (optionally `.eq("id", id)`).
+2. **`GET /routes`** / **`GET /routes/{id}`** — plain `select("*")` (list) / `.eq("id", id)` (single row via `result.data[0]`, 404 if not found — returning Supabase's list result directly against the single-object response model would raise a `ResponseValidationError`).
 3. **`DELETE /routes/{id}`** — deletes the row; nothing here checks whether a `navigation_sessions` row references this route first, so deleting a route out from under an in-progress session is possible (and would just leave a dangling `route_id` once real data exists, or fail on the DB's FK constraint, depending on how `ON DELETE` is eventually defined for that column — `db_schema/navigation_sessions.sql` doesn't specify one).
 
