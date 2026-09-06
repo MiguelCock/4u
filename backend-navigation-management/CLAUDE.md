@@ -31,7 +31,7 @@ There is no service-to-service HTTP call anywhere in this codebase — every bac
 
 ## Complete workflow
 
-1. **Start a session** — `POST /sessions` with `user_id`, `building_id`, and optionally `route_id`/`start_position`/`device_info`. Inserts a row into `navigation_sessions` with `status` defaulting to `active` (the DB default from `db_schema/navigation_sessions.sql`; this service doesn't set it explicitly). Nothing in the app currently calls this — there's no navigation UI in `application/` yet (see `application/CLAUDE.md`).
+1. **Start a session** — `POST /sessions` with `user_id`, `building_id`, and optionally `route_id`/`start_position`/`device_info`. Inserts a row into `navigation_sessions` with `status` defaulting to `active` (the DB default from `db_schema/navigation_sessions.sql`; this service doesn't set it explicitly). Called by the app's `NavigationScreen` when a user starts a route (see `application/CLAUDE.md`).
 2. **Log a tick** — `POST /logs` with `session_id` and raw `gps_lat`/`gps_long`/`gps_accuracy`/`heading`. The `corrected_*`/`anchor_match_id`/`confidence_score`/`raw_image_url` fields exist on the model so a future inference pipeline can fill them in on the same call, but today every caller has to either omit them or pass raw GPS as both the raw and "corrected" value — there's no other component that computes a correction to pass in.
 3. **End a session** — `PATCH /sessions/{id}` with `status` (`completed`/`abandoned`/`failed`) and optionally `end_time`/`end_position`.
 4. **Leave feedback** — `POST /feedback` with `user_id` and a `comment`, optionally tied to a `session_id`.
