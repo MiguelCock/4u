@@ -41,6 +41,8 @@ jobs:
               - 'backend-route-management/**'
             backend-user-management:
               - 'backend-user-management/**'
+            backend-navigation-management:
+              - 'backend-navigation-management/**'
             backend-ai-training:
               - 'backend-ai-training/**'
             workflows:
@@ -59,6 +61,7 @@ jobs:
             '{"name":"backend-map-management","path":"backend-map-management","language":"python","test_cmd":"pytest"}'
             '{"name":"backend-route-management","path":"backend-route-management","language":"python","test_cmd":"pytest"}'
             '{"name":"backend-user-management","path":"backend-user-management","language":"python","test_cmd":"pytest"}'
+            '{"name":"backend-navigation-management","path":"backend-navigation-management","language":"python","test_cmd":"pytest"}'
             '{"name":"backend-ai-training","path":"backend-ai-training","language":"python","test_cmd":"pytest"}'
           )
           workflows_changed=$(echo "$FILTER_OUTPUTS" | jq -r '.workflows // "false"')
