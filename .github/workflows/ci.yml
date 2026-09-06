@@ -132,6 +132,10 @@ jobs:
         if: matrix.language == 'flutter'
         run: |
           cd ${{ matrix.path }}
+          # pubspec.yaml declares .env as an asset (flutter_dotenv); a dummy
+          # copy of .env.example satisfies asset bundling for CI/tests, no
+          # real credentials needed since nothing here calls a live backend.
+          cp .env.example .env
           flutter pub get
 
       # --- Run tests ---
