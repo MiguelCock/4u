@@ -67,3 +67,16 @@ def test_get_building_404_when_missing():
     with patch("app.main.db.client", _mock_select_eq_result([])):
         response = client.get("/buildings/missing")
     assert response.status_code == 404
+
+
+def test_upload_anchor_point_image_returns_public_url():
+    with patch("app.main.db.upload_image", return_value="https://example.com/anchor-points/a.jpg") as mock:
+        response = client.post(
+            "/anchor-points/upload-image",
+            files={"file": ("a.jpg", b"fake-bytes", "image/jpeg")},
+        )
+    assert response.status_code == 200
+    assert response.json() == {"url": "https://example.com/anchor-points/a.jpg"}
+    args = mock.call_args.args
+    assert args[0] == "anchor-points"
+    assert args[2] == "a.jpg"

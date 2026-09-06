@@ -23,6 +23,10 @@ class SupaBase():
             "accuracy": accuracy,
         }).execute()
 
+    def upload_image(self, bucket: str, file: BinaryIO, filename: str) -> str:
+        self.client.storage.from_(bucket).upload(file=file, path=filename)
+        return self.client.storage.from_(bucket).get_public_url(filename)
+
     def get_photos(self):
         return self.client.table("Photo").select("*").execute().data
 

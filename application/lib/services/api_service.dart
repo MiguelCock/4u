@@ -51,6 +51,20 @@ class ApiService {
     return _handle(response);
   }
 
+  /// Uploads [bytes] as a multipart file field named [fieldName] to [path].
+  Future<dynamic> postMultipart(
+    String path, {
+    required String fieldName,
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    final request = http.MultipartRequest('POST', _uri(path))
+      ..files.add(http.MultipartFile.fromBytes(fieldName, bytes, filename: filename));
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    return _handle(response);
+  }
+
   dynamic _handle(http.Response response) {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       if (response.body.isEmpty) return null;
