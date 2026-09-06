@@ -37,7 +37,8 @@ On start, the app loads `.env`, initializes the Supabase Auth client, then shows
 3. The top panel shows the live GPS fix (lat/lng/accuracy), updating as `LocationService` streams new positions.
 4. The map panel re-centers on each position update.
 5. Tap the camera button to take a photo; it's uploaded (multipart: file field `image`, plus `latitude`/`longitude`/`accuracy` form fields) to `BACKEND_URL` — see the **Known gaps** note below, this URL is still hardcoded in `lib/camera.dart` rather than actually reading `.env` yet.
-6. Signing in as `admin` (a profile with `role_id: 2`, set by hand in Supabase for now — there's no admin-invite flow) shows a placeholder admin screen; the real anchor-point capture flow is a separate follow-up.
+6. Tap **Navigate** to see the route list (`ROUTE_MANAGEMENT_URL`) and start one — this creates a navigation session (`NAVIGATION_MANAGEMENT_URL`), logs your raw GPS position every 5 seconds while the screen is open, and lets you end the session and leave optional feedback.
+7. Signing in as `admin` (a profile with `role_id: 2`, set by hand in Supabase for now — there's no admin-invite flow) shows a placeholder admin screen; the real anchor-point capture flow is a separate follow-up.
 
 ### Running on a physical device (ADB)
 
@@ -79,8 +80,9 @@ flutter analyze
 
 - `lib/camera.dart`'s upload call is still hardcoded to `http://10.10.79.249:3000/upload` instead of reading `BACKEND_URL` from `.env` — the app now loads `.env` at startup (for Supabase Auth and the other services' base URLs), but this one call hasn't been switched over yet.
 - The admin home screen is a placeholder — the real anchor-point capture flow (camera + building/location-type pickers + image upload) isn't built yet.
-- No route list / navigation-session flow yet on the `user` side beyond the original photo/location/map prototype.
 - `AuthGate` falls back to the `user` home screen if the `profiles` fetch fails for any reason (backend down, profile row missing) rather than showing an explicit error state.
+- Navigation logs only raw GPS — there's no visual-correction pipeline anywhere in the repo yet (see `backend-ai-training/CLAUDE.md`), so `corrected_lat`/`corrected_long`/`anchor_match_id`/`confidence_score` are never populated.
+- A route needs `building_id`/`start_anchor_id`/`end_anchor_id` already pointing at real rows for navigation to make sense — nothing in the app validates this before starting a session.
 
 ## Keeping dependencies up to date
 
