@@ -15,10 +15,11 @@ This is a Python/Dart monorepo, not a single deployable app — each top-level d
 - `backend-ai-training/` — PyTorch/torchvision service for training/running the visual feature extractor (embedding model) offline.
 - `backend-map-management/` — FastAPI service for the admin view: creating/listing anchor points and reading building/map info (`anchor_points`, `buildings` tables).
 - `backend-route-management/` — FastAPI service for creating and managing user-facing navigation routes (`routes` table).
+- `backend-user-management/` — FastAPI service for managing user information and configuration: profile data and preferences (`profiles` table) plus the static `roles` reference table.
 - `packages/` — Shared Python library (`uv` workspace package, importable as `packages`) wrapping Supabase and Qdrant clients. Consumed by the backend services via `[tool.uv.sources]` path dependencies (see `backend-data-collection/pyproject.toml`), not published. Its purpose is to hold logic shared across backend services (DB/vector-store clients, auth helpers, etc.) so each new service depends on it instead of re-implementing that logic — put cross-service logic here, not in an individual service.
 - `db_schema/` — Hand-maintained Postgres/Supabase table definitions (not a migration tool — apply manually). Core entities: `places` → `buildings` → `anchor_points`, plus `profiles`/`roles`, `navigation_sessions` → `navigation_logs`, `routes`, `user_feedback`, `location_type`. Note: `db_schema/routes.sql` currently contains a copy-paste of `anchor_points.sql` rather than an actual `routes` table definition — fix this before relying on it for `backend-route-management`.
 
-Each Python component (`backend-data-collection`, `backend-ai-training`, `backend-map-management`, `backend-route-management`, `packages`) is a separate `uv` project with its own lockfile — run `uv` commands from inside that directory, not the repo root.
+Each Python component (`backend-data-collection`, `backend-ai-training`, `backend-map-management`, `backend-route-management`, `backend-user-management`, `packages`) is a separate `uv` project with its own lockfile — run `uv` commands from inside that directory, not the repo root.
 
 The backend is split into independent microservices by responsibility (per `README.md`) rather than one monolith. New services should follow the same pattern used by `backend-map-management`/`backend-route-management`: scaffolded with `uv init --app --no-package`, an `app/` package (`main.py`, `models.py`), a `tests/` suite, an editable path dependency on `../packages` (`[tool.uv.sources]`), and registration in the CI workflow's `filters` and `components` (see CI below).
 
@@ -26,7 +27,7 @@ The backend is split into independent microservices by responsibility (per `READ
 
 ### Python backends (uv)
 
-Run from within the specific component directory (`backend-data-collection/`, `backend-ai-training/`, `backend-map-management/`, `backend-route-management/`, or `packages/`):
+Run from within the specific component directory (`backend-data-collection/`, `backend-ai-training/`, `backend-map-management/`, `backend-route-management/`, `backend-user-management/`, or `packages/`):
 
 ```bash
 uv sync                    # install dependencies (creates .venv)
@@ -65,11 +66,11 @@ Every component is expected to carry its own test suite: the Flutter app is test
 
 ## CI
 
-`.github/workflows/ci.yml` uses `dorny/paths-filter` to detect which of `application/`, `packages/`, `backend-data-collection/`, `backend-map-management/`, `backend-route-management/`, `backend-ai-training/` changed, then runs only the matching test job (`flutter test` or `uv run pytest`) for each. New Python components must be added to both the `filters` and `components` arrays in that workflow to get CI coverage. Note the path filter only triggers a service's tests when that service's own files change — editing `packages/` does not currently re-run the consuming services' test jobs.
+`.github/workflows/ci.yml` uses `dorny/paths-filter` to detect which of `application/`, `packages/`, `backend-data-collection/`, `backend-map-management/`, `backend-route-management/`, `backend-user-management/`, `backend-ai-training/` changed, then runs only the matching test job (`flutter test` or `uv run pytest`) for each. New Python components must be added to both the `filters` and `components` arrays in that workflow to get CI coverage. Note the path filter only triggers a service's tests when that service's own files change — editing `packages/` does not currently re-run the consuming services' test jobs.
 
 ## Environment configuration
 
-Each service loads secrets from its own `.env` (see each component's `.env.example`, all gitignored). `backend-data-collection` needs `SUPABASE_URL`/`SUPABASE_KEY` and `QDRANT_URL`/`QDRANT_KEY`; `backend-map-management` and `backend-route-management` need `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY`; the Flutter app needs `BACKEND_URL`. Env vars are loaded via `python-dotenv` (`load_dotenv()`) in Python services.
+Each service loads secrets from its own `.env` (see each component's `.env.example`, all gitignored). `backend-data-collection` needs `SUPABASE_URL`/`SUPABASE_KEY` and `QDRANT_URL`/`QDRANT_KEY`; `backend-map-management`, `backend-route-management`, and `backend-user-management` need `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY`; the Flutter app needs `BACKEND_URL`. Env vars are loaded via `python-dotenv` (`load_dotenv()`) in Python services.
 
 ## Architecture notes
 
