@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -39,6 +39,10 @@ jobs:
               - 'backend-map-management/**'
             backend-route-management:
               - 'backend-route-management/**'
+            backend-user-management:
+              - 'backend-user-management/**'
+            backend-navigation-management:
+              - 'backend-navigation-management/**'
             backend-ai-training:
               - 'backend-ai-training/**'
             workflows:
@@ -56,6 +60,8 @@ jobs:
             '{"name":"backend-data-collection","path":"backend-data-collection","language":"python","test_cmd":"pytest"}'
             '{"name":"backend-map-management","path":"backend-map-management","language":"python","test_cmd":"pytest"}'
             '{"name":"backend-route-management","path":"backend-route-management","language":"python","test_cmd":"pytest"}'
+            '{"name":"backend-user-management","path":"backend-user-management","language":"python","test_cmd":"pytest"}'
+            '{"name":"backend-navigation-management","path":"backend-navigation-management","language":"python","test_cmd":"pytest"}'
             '{"name":"backend-ai-training","path":"backend-ai-training","language":"python","test_cmd":"pytest"}'
           )
           workflows_changed=$(echo "$FILTER_OUTPUTS" | jq -r '.workflows // "false"')
@@ -64,7 +70,7 @@ jobs:
             name=$(echo "$comp" | jq -r '.name')
             changed=$(echo "$FILTER_OUTPUTS" | jq -r --arg n "$name" '.[$n] // "false"')
             if [ "$changed" == "true" ] || [ "$workflows_changed" == "true" ]; then
-              matrix=$(echo "$matrix" | jq --argjson c "$comp" '. += [$c]')
+              matrix=$(echo "$matrix" | jq -c --argjson c "$comp" '. += [$c]')
             fi
           done
           echo "matrix=$matrix" >> $GITHUB_OUTPUT
