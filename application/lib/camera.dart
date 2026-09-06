@@ -78,7 +78,7 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
       final request = http.MultipartRequest('POST', uri)
         ..files.add(
           http.MultipartFile.fromBytes(
-            'photo',
+            'image',
             bytes,
             filename: path.basename(image.path),
             contentType: MediaType('image', 'jpeg'),

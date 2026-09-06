@@ -63,6 +63,3 @@ uv run pytest
 
 `tests/conftest.py` sets dummy Supabase env vars so the test suite doesn't need real credentials or network access. Only `GET /` is currently exercised for real — the other endpoints hit Supabase at request time.
 
-## Known issue
-
-`db_schema/routes.sql` (repo root) currently contains a copy-paste of `anchor_points.sql` rather than an actual `routes` table definition, and the `RouteCreate`/`RouteResponse` models here are a best-guess shape, not derived from a real schema. Fix the schema and reconcile it with these models before pointing this service at a real database.

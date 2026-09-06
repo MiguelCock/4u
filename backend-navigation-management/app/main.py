@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from packages.supabase import SupaBase
 
 from .models import (
@@ -41,7 +41,9 @@ async def list_sessions() -> list[NavigationSessionResponse]:
 @app.get("/sessions/{id}")
 async def get_session(id: str) -> NavigationSessionResponse:
     result = db.client.table("navigation_sessions").select("*").eq("id", id).execute()
-    return result.data
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return result.data[0]
 
 
 @app.patch("/sessions/{id}")
@@ -70,7 +72,9 @@ async def list_logs() -> list[NavigationLogResponse]:
 @app.get("/logs/{id}")
 async def get_log(id: str) -> NavigationLogResponse:
     result = db.client.table("navigation_logs").select("*").eq("id", id).execute()
-    return result.data
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Log not found")
+    return result.data[0]
 
 
 @app.post("/feedback")
@@ -88,4 +92,6 @@ async def list_feedback() -> list[UserFeedbackResponse]:
 @app.get("/feedback/{id}")
 async def get_feedback(id: str) -> UserFeedbackResponse:
     result = db.client.table("user_feedback").select("*").eq("id", id).execute()
-    return result.data
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    return result.data[0]

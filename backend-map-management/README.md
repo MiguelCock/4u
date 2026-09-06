@@ -37,7 +37,7 @@ Once running, the interactive Swagger UI at `http://localhost:8000/docs` is the 
 | GET    | `/buildings`           | —                    | List all buildings                     |
 | GET    | `/buildings/{id}`      | —                    | Get one building by id                 |
 
-`AnchorPointCreate` fields (see `app/models.py`): `building_id`, `location_type_id` (optional), `floor` (default `0`), `heading` (optional), `image_url`, `latitude`, `longitude`, `altitude` (optional), `location_description` (optional).
+`AnchorPointCreate` fields (see `app/models.py`): `building_id`, `location_type_id` (optional), `floor` (default `0`), `heading` (optional), `image_url`, `latitude`, `longitude`, `altitude` (optional), `location_description` (optional), `captured_by` (the Supabase Auth user id of the admin who captured the point — required, matches `anchor_points.captured_by NOT NULL REFERENCES profiles(id)`).
 
 Example:
 
@@ -51,7 +51,8 @@ curl -X POST http://localhost:8000/anchor-points \
     "image_url": "https://example.com/anchor.jpg",
     "latitude": 6.2442,
     "longitude": -75.5812,
-    "location_description": "Main entrance"
+    "location_description": "Main entrance",
+    "captured_by": "11111111-1111-1111-1111-111111111111"
   }'
 
 curl http://localhost:8000/anchor-points
