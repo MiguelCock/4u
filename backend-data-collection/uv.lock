@@ -958,6 +958,9 @@ requires-dist = [
     { name = "supabase", specifier = ">=2.31.0" },
 ]
 
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+
 [[package]]
 name = "packaging"
 version = "26.3"

@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from packages.supabase import SupaBase
 
 from .models import AnchorPointCreate, AnchorPointResponse, BuildingResponse
@@ -33,7 +33,9 @@ async def list_anchor_points() -> list[AnchorPointResponse]:
 @app.get("/anchor-points/{id}")
 async def get_anchor_point(id: str) -> AnchorPointResponse:
     result = db.client.table("anchor_points").select("*").eq("id", id).execute()
-    return result.data
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Anchor point not found")
+    return result.data[0]
 
 
 @app.get("/buildings")
@@ -45,4 +47,6 @@ async def list_buildings() -> list[BuildingResponse]:
 @app.get("/buildings/{id}")
 async def get_building(id: str) -> BuildingResponse:
     result = db.client.table("buildings").select("*").eq("id", id).execute()
-    return result.data
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Building not found")
+    return result.data[0]

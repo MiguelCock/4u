@@ -25,7 +25,7 @@ Currently `lib/main.dart` shows all functionality on a single screen — live lo
 2. Grant location and camera permissions when prompted.
 3. The top panel shows the live GPS fix (lat/lng/accuracy), updating as `LocationService` streams new positions.
 4. The map panel re-centers on each position update.
-5. Tap the camera button to take a photo; it's uploaded (multipart: file field `photo`, plus `latitude`/`longitude`/`accuracy` form fields) to the backend URL hardcoded in `lib/camera.dart` — see the **Known gaps** note below before expecting this to reach your local backend.
+5. Tap the camera button to take a photo; it's uploaded (multipart: file field `image`, plus `latitude`/`longitude`/`accuracy` form fields) to the backend URL hardcoded in `lib/camera.dart` — see the **Known gaps** note below before expecting this to reach your local backend.
 
 ### Running on a physical device (ADB)
 

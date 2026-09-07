@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from packages.supabase import SupaBase
 
 from .models import ProfileCreate, ProfileResponse, ProfileUpdate, RoleResponse
@@ -33,7 +33,9 @@ async def list_profiles() -> list[ProfileResponse]:
 @app.get("/profiles/{id}")
 async def get_profile(id: str) -> ProfileResponse:
     result = db.client.table("profiles").select("*").eq("id", id).execute()
-    return result.data
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return result.data[0]
 
 
 @app.patch("/profiles/{id}")
@@ -62,4 +64,6 @@ async def list_roles() -> list[RoleResponse]:
 @app.get("/roles/{id}")
 async def get_role(id: int) -> RoleResponse:
     result = db.client.table("roles").select("*").eq("id", id).execute()
-    return result.data
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Role not found")
+    return result.data[0]

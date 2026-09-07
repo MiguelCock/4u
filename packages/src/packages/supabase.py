@@ -8,13 +8,20 @@ class SupaBase():
     def __init__(self, url: String, key: String):
         self.client = create_client(url, key)
 
-    def post_photos(self, img: BinaryIO):
+    def post_photos(self, img: BinaryIO, latitude: float, longitude: float, accuracy: float):
         response = (self.client.storage
             .from_("Photo")
             .upload(
                 file=img,
                 path=img.name
             ))
+
+        self.client.table("Photo").insert({
+            "name": img.name,
+            "latitude": latitude,
+            "longitude": longitude,
+            "accuracy": accuracy,
+        }).execute()
 
     def get_photos(self):
         return self.client.table("Photo").select("*").execute().data

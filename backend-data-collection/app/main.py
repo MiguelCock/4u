@@ -1,8 +1,9 @@
-from fastapi import FastAPI, UploadFile, File
-from .models import ImageMetaData, ImageMetaDataResponse
-from dotenv import load_dotenv
-from packages.supabase import SupaBase
 import os
+from typing import Annotated
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, Form, UploadFile
+from packages.supabase import SupaBase
 
 load_dotenv()
 
@@ -17,27 +18,27 @@ async def root():
 
 
 @app.post("/upload")
-async def process_image_json(request: ImageMetaData, image: UploadFile = File(...)):
-    img = image.file
-    db.post_photos(img)
+async def upload_photo(
+    latitude: Annotated[float, Form()],
+    longitude: Annotated[float, Form()],
+    accuracy: Annotated[float, Form()],
+    image: UploadFile = File(...),
+):
+    db.post_photos(image.file, latitude, longitude, accuracy)
     return "ok"
 
 
 @app.get("/upload")
-async def process_image_json():
-    result: list[ImageMetaDataResponse] = []
-    a = db.get_photos()
-    return result
+async def list_photos():
+    return db.get_photos()
 
 
-@app.get("/upload:id")
-async def process_image_json(id: int):
-    result: ImageMetaDataResponse = []
-    a = db.get_photo(id)
-    return result
+@app.get("/upload/{id}")
+async def get_photo(id: int):
+    return db.get_photo(id)
 
 
-@app.delete("/upload:id")
-async def process_image_json(id: int):
-    a = db.dele_photo(id)
+@app.delete("/upload/{id}")
+async def delete_photo(id: int):
+    db.dele_photo(id)
     return "ok"

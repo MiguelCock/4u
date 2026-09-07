@@ -35,7 +35,7 @@ There is no service-to-service HTTP call anywhere in this codebase — every bac
 2. **Log a tick** — `POST /logs` with `session_id` and raw `gps_lat`/`gps_long`/`gps_accuracy`/`heading`. The `corrected_*`/`anchor_match_id`/`confidence_score`/`raw_image_url` fields exist on the model so a future inference pipeline can fill them in on the same call, but today every caller has to either omit them or pass raw GPS as both the raw and "corrected" value — there's no other component that computes a correction to pass in.
 3. **End a session** — `PATCH /sessions/{id}` with `status` (`completed`/`abandoned`/`failed`) and optionally `end_time`/`end_position`.
 4. **Leave feedback** — `POST /feedback` with `user_id` and a `comment`, optionally tied to a `session_id`.
-5. **Read back** — `GET /sessions`, `/sessions/{id}`, `/logs`, `/logs/{id}`, `/feedback`, `/feedback/{id}` all do a plain `select("*")` (optionally `.eq("id", id)`) with no filtering by user/session — there's no "give me this user's sessions" or "give me this session's logs" endpoint; a caller has to fetch everything and filter client-side.
+5. **Read back** — `GET /sessions`, `/logs`, `/feedback` do a plain `select("*")`; the `/{id}` variants add `.eq("id", id)` and return `result.data[0]` (404 if empty — Supabase's client always returns a list from `.execute().data`, even filtered to one row). No filtering by user/session otherwise — there's no "give me this user's sessions" or "give me this session's logs" endpoint; a caller has to fetch everything and filter client-side.
 
 ## Known issues
 

@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from packages.supabase import SupaBase
 
 from .models import RouteCreate, RouteResponse
@@ -33,7 +33,9 @@ async def list_routes() -> list[RouteResponse]:
 @app.get("/routes/{id}")
 async def get_route(id: str) -> RouteResponse:
     result = db.client.table("routes").select("*").eq("id", id).execute()
-    return result.data
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Route not found")
+    return result.data[0]
 
 
 @app.delete("/routes/{id}")

@@ -11,6 +11,7 @@ class AnchorPointCreate(BaseModel):
     longitude: float
     altitude: float | None = None
     location_description: str | None = None
+    captured_by: str
 
 
 class AnchorPointResponse(AnchorPointCreate):
