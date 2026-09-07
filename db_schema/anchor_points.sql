@@ -1,4 +1,4 @@
-anchor_points (
+CREATE TABLE anchor_points (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     building_id UUID NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
     location_type_id SMALLINT REFERENCES location_type(id),
@@ -15,7 +15,7 @@ anchor_points (
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
-)
+);
 
 -- Indexes
 CREATE INDEX idx_anchor_points_location ON anchor_points USING GiST (latitude, longitude);
