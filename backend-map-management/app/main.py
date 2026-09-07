@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from packages.supabase import SupaBase
 
 from .models import AnchorPointCreate, AnchorPointResponse, BuildingResponse
@@ -16,6 +16,12 @@ db = SupaBase(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_PUBLISHAB
 @app.get("/")
 async def root():
     return {"service": "backend-map-management", "status": "ok"}
+
+
+@app.post("/anchor-points/upload-image")
+async def upload_anchor_point_image(file: UploadFile = File(...)):
+    url = db.upload_image("anchor-points", file.file, file.filename)
+    return {"url": url}
 
 
 @app.post("/anchor-points")
