@@ -4,10 +4,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../camera.dart';
 import '../location.dart';
 import '../map.dart';
+import 'route_list_screen.dart';
 
 /// The `user`-role home screen: the original single-screen prototype
-/// (live location, camera capture, map). Route list / navigation-session
-/// entry points are a separate follow-up.
+/// (live location, camera capture, map), plus an entry point into the
+/// route list / navigation-session flow.
 class UserHomeScreen extends StatelessWidget {
   const UserHomeScreen({super.key});
 
@@ -23,6 +24,15 @@ class UserHomeScreen extends StatelessWidget {
             onPressed: () => Supabase.instance.client.auth.signOut(),
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const RouteListScreen()),
+          );
+        },
+        icon: const Icon(Icons.alt_route),
+        label: const Text('Navigate'),
       ),
       body: SingleChildScrollView(
         child: Column(
