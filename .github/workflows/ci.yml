@@ -140,6 +140,14 @@ jobs:
 
       # --- Run tests ---
       - name: Run tests
+        env:
+          # Only packages/tests/test_supabase.py and test_qdrant.py read these -
+          # live connectivity checks against the real services, skipped if unset.
+          # Harmless no-op for every other component.
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_KEY: ${{ secrets.QDRANT_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
         run: |
           cd ${{ matrix.path }}
           if [ "${{ matrix.language }}" == "python" ]; then
