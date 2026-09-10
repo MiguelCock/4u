@@ -10,8 +10,9 @@ See the repo root `CLAUDE.md` for overall project context.
 uv sync
 uv run fastapi dev     # local dev server with reload
 uv run pytest
-docker build -t fastapi-app .
-docker run -p 8000:80 fastapi-app
+# Docker build context must be the repo root (Dockerfile also copies sibling packages/):
+(cd .. && docker build -f backend-data-collection/Dockerfile -t fastapi-app .)
+docker run -p 8000:80 --env-file .env fastapi-app
 ```
 
 ## What this service does

@@ -20,8 +20,9 @@ uv run fastapi dev             # http://localhost:8000, auto-reload
 Or with Docker:
 
 ```bash
-docker build -t backend-navigation-management .
-docker run -p 8000:80 --env-file .env backend-navigation-management
+cd ..
+docker build -f backend-navigation-management/Dockerfile -t backend-navigation-management .
+docker run -p 8000:80 --env-file backend-navigation-management/.env backend-navigation-management
 ```
 
 ## API / manual usage

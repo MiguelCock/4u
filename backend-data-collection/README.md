@@ -17,12 +17,15 @@ uv sync
 uv run fastapi dev             # http://localhost:8000, auto-reload
 ```
 
-Or with Docker:
+Or with Docker (build from the **repo root**, since the Dockerfile also copies the sibling `packages/` dependency):
 
 ```bash
-docker build -t fastapi-app .
-docker run -p 8000:80 --env-file .env fastapi-app
+cd ..
+docker build -f backend-data-collection/Dockerfile -t fastapi-app .
+docker run -p 8000:80 --env-file backend-data-collection/.env fastapi-app
 ```
+
+Or run this alongside the other 4 backend services with `docker compose up --build` from the repo root (see the root `README.md`'s Local Setup section).
 
 ## API / manual usage
 

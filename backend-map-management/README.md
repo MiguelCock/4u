@@ -20,8 +20,9 @@ uv run fastapi dev             # http://localhost:8000, auto-reload
 Or with Docker:
 
 ```bash
-docker build -t backend-map-management .
-docker run -p 8000:80 --env-file .env backend-map-management
+cd ..
+docker build -f backend-map-management/Dockerfile -t backend-map-management .
+docker run -p 8000:80 --env-file backend-map-management/.env backend-map-management
 ```
 
 ## API / manual usage

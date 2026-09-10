@@ -10,8 +10,9 @@ See the repo root `CLAUDE.md` for overall project context.
 uv sync
 uv run fastapi dev
 uv run pytest
-docker build -t backend-user-management .
-docker run -p 8000:80 backend-user-management
+# Docker build context must be the repo root (Dockerfile also copies sibling packages/):
+(cd .. && docker build -f backend-user-management/Dockerfile -t backend-user-management .)
+docker run -p 8000:80 --env-file .env backend-user-management
 ```
 
 ## What this service does

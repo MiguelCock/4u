@@ -38,10 +38,14 @@ uv run fastapi dev         # run backend-data-collection locally with reload
 
 `backend-data-collection` depends on the local `packages` project via an editable path source, so changes in `packages/` are picked up immediately without reinstalling.
 
-Docker (backend-data-collection):
+Docker: each backend service's `Dockerfile` `COPY`s both its own directory and the sibling `packages/` (for the editable path dependency), so it must be built with the **repo root** as context, not the service directory:
 ```bash
-docker build -t fastapi-app .
-docker run -p 8000:80 fastapi-app
+docker build -f backend-data-collection/Dockerfile -t fastapi-app .   # from repo root
+docker run -p 8000:80 --env-file backend-data-collection/.env fastapi-app
+```
+Or run all 5 backend services together (see `docker-compose.yml` at the repo root):
+```bash
+docker compose up --build
 ```
 
 ### Flutter app (`application/`)

@@ -175,6 +175,14 @@ uv run fastapi dev --port <port>
 
 (`backend-data-collection`'s `.env.example` also declares `QDRANT_URL`/`QDRANT_KEY` — nothing in the service currently reads them, so any placeholder value there is fine.)
 
+**Or run all 5 at once with Docker Compose** instead of 5 separate terminals — fill in each service's `.env` first (same `cp .env.example .env` step above), then from the repo root:
+
+```bash
+docker compose up --build
+```
+
+This starts all 5 services on the same ports (8001–8005), each still reading its own `.env`. `docker-compose.yml`'s ports are published on `0.0.0.0`, so — same as the `uv run fastapi dev` option — they're reachable from another device on the same WiFi network at `http://<your-LAN-IP>:<port>`, not just from `localhost`. This matters because the app is normally tested on a physical phone (see step 5), which can't reach the dev machine's `localhost`.
+
 ### 5. Configure and run the app
 
 ```bash
@@ -196,7 +204,15 @@ USER_MANAGEMENT_URL=http://localhost:8004
 NAVIGATION_MANAGEMENT_URL=http://localhost:8005
 ```
 
-If running on a physical device rather than an emulator, use your machine's LAN IP instead of `localhost` (see `application/README.md` for ADB pairing steps).
+**If running on a physical phone rather than an emulator — the usual way this app is tested — you must use your machine's LAN IP instead of `localhost`** for all 5 URLs above, since the phone can't resolve the dev machine's `localhost`:
+
+```bash
+# find your LAN IP
+ip addr show | grep 'inet ' | grep -v 127.0.0.1   # Linux
+ipconfig getifaddr en0                              # macOS (Wi-Fi)
+```
+
+e.g. `BACKEND_URL=http://192.168.1.23:8001`. Also confirm the phone and dev machine are on the same WiFi network, and that the dev machine's firewall allows inbound connections on 8001–8005 (e.g. on Linux with `ufw` active: `sudo ufw allow 8001:8005/tcp`). See `application/README.md` for ADB pairing steps.
 
 ### 6. Run every automated test suite
 
