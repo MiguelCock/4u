@@ -116,7 +116,7 @@ Each component's own README documents testing it in isolation (`uv run pytest` p
 
 ### 1. Create a Supabase project
 
-Create one at [supabase.com](https://supabase.com) (or use an existing project). From **Project Settings → API**, note down the **Project URL** and the **anon / publishable** API key — every `SUPABASE_URL` / `SUPABASE_KEY` / `SUPABASE_PUBLISHABLE_KEY` value below is this same URL and key.
+Create one at [supabase.com](https://supabase.com) (or use an existing project). From **Project Settings → API**, note down the **Project URL** and the **anon / publishable** API key — every `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` value below is this same URL and key.
 
 ### 2. Apply the schema
 
