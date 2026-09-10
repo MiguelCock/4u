@@ -27,9 +27,9 @@ class UserHomeScreen extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const RouteListScreen()),
-          );
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const RouteListScreen()));
         },
         icon: const Icon(Icons.alt_route),
         label: const Text('Navigate'),
@@ -38,14 +38,8 @@ class UserHomeScreen extends StatelessWidget {
         child: Column(
           children: [
             const LocationInfo(),
-            const SizedBox(
-              height: 300,
-              child: SimpleCameraWidget(),
-            ),
-            const SizedBox(
-              height: 400,
-              child: SimpleMapWidget(),
-            ),
+            const SizedBox(height: 300, child: SimpleCameraWidget()),
+            const SizedBox(height: 400, child: SimpleMapWidget()),
           ],
         ),
       ),

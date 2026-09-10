@@ -45,9 +45,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          await Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CaptureScreen()),
-          );
+          await Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const CaptureScreen()));
           _refresh();
         },
         child: const Icon(Icons.add_a_photo),
@@ -59,7 +59,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text('Failed to load anchor points: ${snapshot.error}'));
+            return Center(
+              child: Text('Failed to load anchor points: ${snapshot.error}'),
+            );
           }
           final anchorPoints = snapshot.data ?? [];
           if (anchorPoints.isEmpty) {
@@ -71,7 +73,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               final point = anchorPoints[index];
               return ListTile(
                 leading: const Icon(Icons.location_pin),
-                title: Text(point['location_description'] as String? ?? point['id'] as String),
+                title: Text(
+                  point['location_description'] as String? ??
+                      point['id'] as String,
+                ),
                 subtitle: Text('Status: ${point['status'] ?? 'unknown'}'),
               );
             },

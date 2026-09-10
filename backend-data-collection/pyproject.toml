@@ -18,3 +18,8 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.16.6",
 ]
+
+[tool.ruff.lint.flake8-bugbear]
+# `File(...)` as a default is FastAPI's standard DI pattern, not a real
+# mutable-default bug (B008) - ruff only exempts `fastapi.Depends` by default.
+extend-immutable-calls = ["fastapi.File"]

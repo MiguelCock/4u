@@ -97,7 +97,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
         'status': 'completed',
         'end_time': DateTime.now().toUtc().toIso8601String(),
         if (position != null)
-          'end_position': {'latitude': position.latitude, 'longitude': position.longitude},
+          'end_position': {
+            'latitude': position.latitude,
+            'longitude': position.longitude,
+          },
       });
     } on ApiException catch (_) {
       // Session end best-effort too - still let the user leave the screen.
@@ -164,7 +167,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
                 if (_error != null)
                   Padding(
                     padding: const EdgeInsets.all(16.0),
-                    child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
                   ),
                 const LocationInfo(),
                 const Expanded(child: SimpleMapWidget()),

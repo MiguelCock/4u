@@ -56,7 +56,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (await Permission.camera.request() != PermissionStatus.granted) return;
     try {
       final cameras = await availableCameras();
-      _controller = CameraController(cameras.first, ResolutionPreset.medium, enableAudio: false);
+      _controller = CameraController(
+        cameras.first,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
       await _controller!.initialize();
       if (mounted) setState(() {});
     } catch (_) {
@@ -175,20 +179,22 @@ class _CaptureScreenState extends State<CaptureScreen> {
               child: _capturedImage != null
                   ? Image.file(File(_capturedImage!.path), fit: BoxFit.cover)
                   : (_controller != null && _controller!.value.isInitialized)
-                      ? CameraPreview(_controller!)
-                      : const Center(child: CircularProgressIndicator()),
+                  ? CameraPreview(_controller!)
+                  : const Center(child: CircularProgressIndicator()),
             ),
             const SizedBox(height: 8),
             ElevatedButton(
               onPressed: _takePhoto,
-              child: Text(_capturedImage == null ? 'Take photo' : 'Retake photo'),
+              child: Text(
+                _capturedImage == null ? 'Take photo' : 'Retake photo',
+              ),
             ),
             const SizedBox(height: 16),
             if (_loadingBuildings)
               const Center(child: CircularProgressIndicator())
             else
               DropdownButtonFormField<String>(
-                value: _selectedBuildingId,
+                initialValue: _selectedBuildingId,
                 decoration: const InputDecoration(labelText: 'Building'),
                 items: _buildings
                     .map(
@@ -198,21 +204,27 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       ),
                     )
                     .toList(),
-                onChanged: (value) => setState(() => _selectedBuildingId = value),
+                onChanged: (value) =>
+                    setState(() => _selectedBuildingId = value),
               ),
             const SizedBox(height: 12),
             DropdownButtonFormField<int>(
-              value: _selectedLocationTypeId,
+              initialValue: _selectedLocationTypeId,
               decoration: const InputDecoration(labelText: 'Location type'),
               items: kLocationTypes.entries
-                  .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                  .map(
+                    (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
+                  )
                   .toList(),
-              onChanged: (value) => setState(() => _selectedLocationTypeId = value!),
+              onChanged: (value) =>
+                  setState(() => _selectedLocationTypeId = value!),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _descriptionController,
-              decoration: const InputDecoration(labelText: 'Description (optional)'),
+              decoration: const InputDecoration(
+                labelText: 'Description (optional)',
+              ),
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
@@ -220,7 +232,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
             ],
             if (_successMessage != null) ...[
               const SizedBox(height: 12),
-              Text(_successMessage!, style: const TextStyle(color: Colors.green)),
+              Text(
+                _successMessage!,
+                style: const TextStyle(color: Colors.green),
+              ),
             ],
             const SizedBox(height: 16),
             ElevatedButton(

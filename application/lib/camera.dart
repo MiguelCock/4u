@@ -89,7 +89,6 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
         ..fields['accuracy'] = position.accuracy.toString();
 
       final response = await request.send();
-      final responseBody = await response.stream.bytesToString();
 
       if (response.statusCode == 200) {
         if (mounted) {

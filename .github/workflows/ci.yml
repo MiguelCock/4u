@@ -148,3 +148,14 @@ jobs:
           else
             ${{ matrix.test_cmd }}
           fi
+
+      # --- Run lint ---
+      - name: Run lint
+        run: |
+          cd ${{ matrix.path }}
+          if [ "${{ matrix.language }}" == "python" ]; then
+            uv run ruff check .
+          else
+            dart format --output=none --set-exit-if-changed .
+            flutter analyze
+          fi

@@ -1,7 +1,8 @@
-from qdrant_client import QdrantClient
 from pygments.token import String
+from qdrant_client import QdrantClient
 
-class SupaBase():
+
+class SupaBase:
     client: QdrantClient
 
     def __init__(self, url: String, key: String):

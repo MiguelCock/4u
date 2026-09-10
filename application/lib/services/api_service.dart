@@ -59,7 +59,9 @@ class ApiService {
     required String filename,
   }) async {
     final request = http.MultipartRequest('POST', _uri(path))
-      ..files.add(http.MultipartFile.fromBytes(fieldName, bytes, filename: filename));
+      ..files.add(
+        http.MultipartFile.fromBytes(fieldName, bytes, filename: filename),
+      );
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
     return _handle(response);
@@ -87,5 +89,6 @@ class RouteManagementApi extends ApiService {
 }
 
 class NavigationManagementApi extends ApiService {
-  NavigationManagementApi() : super(dotenv.env['NAVIGATION_MANAGEMENT_URL'] ?? '');
+  NavigationManagementApi()
+    : super(dotenv.env['NAVIGATION_MANAGEMENT_URL'] ?? '');
 }

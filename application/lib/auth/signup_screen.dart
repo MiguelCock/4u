@@ -52,7 +52,9 @@ class _SignupScreenState extends State<SignupScreen> {
       } on ApiException catch (e) {
         // Auth account was created even if profile creation failed; surface
         // it but don't block the auth flow itself on the backend being up.
-        setState(() => _error = 'Account created, but profile setup failed: $e');
+        setState(
+          () => _error = 'Account created, but profile setup failed: $e',
+        );
         return;
       }
       // On success, AuthGate's onAuthStateChange listener takes over.
@@ -84,7 +86,9 @@ class _SignupScreenState extends State<SignupScreen> {
           children: [
             TextField(
               controller: _fullNameController,
-              decoration: const InputDecoration(labelText: 'Full name (optional)'),
+              decoration: const InputDecoration(
+                labelText: 'Full name (optional)',
+              ),
             ),
             const SizedBox(height: 12),
             TextField(

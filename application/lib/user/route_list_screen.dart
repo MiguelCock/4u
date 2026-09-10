@@ -37,7 +37,9 @@ class _RouteListScreenState extends State<RouteListScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text('Failed to load routes: ${snapshot.error}'));
+            return Center(
+              child: Text('Failed to load routes: ${snapshot.error}'),
+            );
           }
           final routes = snapshot.data ?? [];
           if (routes.isEmpty) {
@@ -53,7 +55,9 @@ class _RouteListScreenState extends State<RouteListScreen> {
                 trailing: ElevatedButton(
                   onPressed: () {
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => NavigationScreen(route: route)),
+                      MaterialPageRoute(
+                        builder: (_) => NavigationScreen(route: route),
+                      ),
                     );
                   },
                   child: const Text('Start'),

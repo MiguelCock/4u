@@ -21,7 +21,7 @@ void main() async {
 
   await Supabase.initialize(
     url: dotenv.env['SUPABASE_URL'] ?? 'https://placeholder.supabase.co',
-    anonKey: dotenv.env['SUPABASE_PUBLISHABLE_KEY'] ?? 'placeholder-key',
+    publishableKey: dotenv.env['SUPABASE_PUBLISHABLE_KEY'] ?? 'placeholder-key',
   );
 
   await LocationService().initialize();
@@ -33,9 +33,6 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      title: '4u',
-      home: AuthGate(),
-    );
+    return const MaterialApp(title: '4u', home: AuthGate());
   }
 }

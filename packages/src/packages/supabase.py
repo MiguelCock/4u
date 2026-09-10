@@ -1,27 +1,28 @@
 from typing import BinaryIO
-from pygments.token import String
-from supabase import create_client, Client
 
-class SupaBase():
+from pygments.token import String
+from supabase import Client, create_client
+
+
+class SupaBase:
     client: Client
 
     def __init__(self, url: String, key: String):
         self.client = create_client(url, key)
 
-    def post_photos(self, img: BinaryIO, latitude: float, longitude: float, accuracy: float):
-        response = (self.client.storage
-            .from_("Photo")
-            .upload(
-                file=img,
-                path=img.name
-            ))
+    def post_photos(
+        self, img: BinaryIO, latitude: float, longitude: float, accuracy: float
+    ):
+        self.client.storage.from_("Photo").upload(file=img, path=img.name)
 
-        self.client.table("Photo").insert({
-            "name": img.name,
-            "latitude": latitude,
-            "longitude": longitude,
-            "accuracy": accuracy,
-        }).execute()
+        self.client.table("Photo").insert(
+            {
+                "name": img.name,
+                "latitude": latitude,
+                "longitude": longitude,
+                "accuracy": accuracy,
+            }
+        ).execute()
 
     def upload_image(self, bucket: str, file: BinaryIO, filename: str) -> str:
         self.client.storage.from_(bucket).upload(file=file, path=filename)
@@ -36,25 +37,25 @@ class SupaBase():
     def dele_photo(self, id: int):
         name = self.client.table("Photo").select("name").eq("id", id).execute().data
 
-        resp1 = self.client.table("Photo").delete().eq("id", id).execute()
+        self.client.table("Photo").delete().eq("id", id).execute()
 
-        resp2 = (self.client.storage
-        .from_("Photo")
-        .remove([name]))
+        self.client.storage.from_("Photo").remove([name])
 
     def sing_up(self, email: str, password: str):
-        response = self.client.auth.sign_up({
-            "email": email,
-            "password": password,
-        })
+        self.client.auth.sign_up(
+            {
+                "email": email,
+                "password": password,
+            }
+        )
 
     def log_in(self, email: str, password: str):
-        response = self.client.auth.sign_in_with_password({
-            "email": email,
-            "password": password,
-        })
-    
-    def is_logged_in(self, token) -> bool:
-        response = ""
+        self.client.auth.sign_in_with_password(
+            {
+                "email": email,
+                "password": password,
+            }
+        )
 
+    def is_logged_in(self, token) -> bool:
         return True
