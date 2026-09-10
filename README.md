@@ -110,6 +110,125 @@ Independent microservices for:
 
 ---
 
+## Local Setup & End-to-End Testing
+
+Each component's own README documents testing it in isolation (`uv run pytest` per backend service, `flutter test` for the app). This section is for testing them *together* — standing up every component against one Supabase project and exercising the real signup → admin capture → route → navigation flow.
+
+### 1. Create a Supabase project
+
+Create one at [supabase.com](https://supabase.com) (or use an existing project). From **Project Settings → API**, note down the **Project URL** and the **anon / publishable** API key — every `SUPABASE_URL` / `SUPABASE_KEY` / `SUPABASE_PUBLISHABLE_KEY` value below is this same URL and key.
+
+### 2. Apply the schema
+
+In the Supabase SQL editor, run the files in `db_schema/` **in this order** (later tables reference earlier ones by foreign key):
+
+```
+places.sql
+roles.sql            -- self-seeds 'user'/'admin'
+location_type.sql    -- self-seeds 9 location types
+profiles.sql
+buildings.sql
+anchor_points.sql    -- run `CREATE EXTENSION IF NOT EXISTS btree_gist;` first -
+                      -- its GiST index needs it
+routes.sql
+navigation_sessions.sql
+navigation_logs.sql
+user_feedback.sql
+```
+
+`places` and `buildings` have no seed data and no CRUD endpoint anywhere in the repo — insert one of each by hand before testing anchor points or routes:
+
+```sql
+INSERT INTO places (id, code, name, latitude, longitude)
+VALUES ('11111111-1111-1111-1111-111111111111', 'CAMPUS', 'Main Campus', 6.2442, -75.5812);
+
+INSERT INTO buildings (id, place_id, code, name, latitude, longitude)
+VALUES ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'B1', 'Building 1', 6.2442, -75.5812);
+```
+
+### 3. Create Storage buckets
+
+In Supabase Storage, create two **public** buckets — neither service creates its bucket automatically:
+- `Photo` (used by `backend-data-collection`)
+- `anchor-points` (used by `backend-map-management`)
+
+### 4. Run the backend services
+
+`backend-ai-training` has no HTTP server (it's an offline stub — see its own `CLAUDE.md`), so it's not in this list; verify it separately with `uv run pytest` / `uv run dev` inside that directory.
+
+For each of the other 5, in its own terminal:
+
+```bash
+cd <service>
+cp .env.example .env   # fill in SUPABASE_URL / SUPABASE_(PUBLISHABLE_)KEY from step 1
+uv sync
+uv run fastapi dev --port <port>
+```
+
+| Service | Port |
+|---|---|
+| `backend-data-collection` | 8001 |
+| `backend-map-management` | 8002 |
+| `backend-route-management` | 8003 |
+| `backend-user-management` | 8004 |
+| `backend-navigation-management` | 8005 |
+
+(`backend-data-collection`'s `.env.example` also declares `QDRANT_URL`/`QDRANT_KEY` — nothing in the service currently reads them, so any placeholder value there is fine.)
+
+### 5. Configure and run the app
+
+```bash
+cd application
+cp .env.example .env
+flutter pub get
+flutter run
+```
+
+Fill in `application/.env` with the same Supabase URL/key plus each backend's local URL from the port table above:
+
+```
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_PUBLISHABLE_KEY=<anon key>
+BACKEND_URL=http://localhost:8001
+MAP_MANAGEMENT_URL=http://localhost:8002
+ROUTE_MANAGEMENT_URL=http://localhost:8003
+USER_MANAGEMENT_URL=http://localhost:8004
+NAVIGATION_MANAGEMENT_URL=http://localhost:8005
+```
+
+If running on a physical device rather than an emulator, use your machine's LAN IP instead of `localhost` (see `application/README.md` for ADB pairing steps).
+
+### 6. Run every automated test suite
+
+```bash
+for d in packages backend-data-collection backend-ai-training backend-map-management backend-route-management backend-user-management backend-navigation-management; do
+  (cd "$d" && uv sync && uv run pytest)
+done
+
+cd application && flutter test && flutter analyze
+```
+
+### 7. Manual end-to-end walkthrough
+
+1. **Sign up** in the app (creates a Supabase Auth user, then a `profiles` row via `backend-user-management`'s `POST /profiles` with `role_id: 1`).
+2. **Promote to admin**: in Supabase, `UPDATE profiles SET role_id = 2 WHERE id = '<the new user's auth id>';` — there's no in-app admin-invite flow yet. Log out and back in.
+3. **Capture two anchor points** from the admin screen (needs the `buildings` row from step 2 above) — take a photo, pick the building, submit. Do this twice; note their ids (`GET /anchor-points` on port 8002, or the Supabase table editor).
+4. **Create a route** referencing both anchor points — no in-app route-creation UI exists yet, so do it via curl:
+   ```bash
+   curl -X POST http://localhost:8003/routes \
+     -H "Content-Type: application/json" \
+     -d '{"building_id": "<building id>", "name": "Test route", "start_anchor_id": "<anchor 1 id>", "end_anchor_id": "<anchor 2 id>"}'
+   ```
+5. **Sign up a second, regular user** and log in as them.
+6. Tap **Navigate**, start the route, and confirm `navigation_logs` rows accumulate in Supabase roughly every 5 seconds while the screen stays open.
+7. Tap **End navigation** and optionally leave feedback — confirm the session's `status` becomes `completed` and (if entered) a `user_feedback` row appears.
+
+Throughout this, `navigation_logs.corrected_lat`/`corrected_long`/`anchor_match_id`/`confidence_score` stay `NULL` — there's no visual-correction pipeline anywhere in the repo yet (see `backend-ai-training/CLAUDE.md`), so only raw GPS is ever logged.
+
+A `docker-compose.yml` to start all 5 backend services with one command would make this smoother — not built yet, worth considering as a future improvement.
+
+---
+
 ## Current Development Status
 
 - **Completed:** App with basic authentication and roles, Supabase connection, photo + metadata upload, structured Git repository, validated conceptual research, initial CI/CD setup (GitHub Actions).
