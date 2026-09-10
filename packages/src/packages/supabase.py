@@ -1,14 +1,22 @@
 from typing import BinaryIO
 
-from pygments.token import String
 from supabase import Client, create_client
 
 
 class SupaBase:
     client: Client
 
-    def __init__(self, url: String, key: String):
+    def __init__(self, url: str, key: str):
         self.client = create_client(url, key)
+
+    def health_check(self) -> bool:
+        # `roles` is a small, always-seeded reference table (db_schema/roles.sql) -
+        # a lightweight, RLS-safe way to prove the URL/key are valid and the
+        # project is reachable, without touching real user data. The PostgREST
+        # OpenAPI root (`/rest/v1/`) can't be used for this - newer Supabase
+        # projects restrict that introspection endpoint to secret keys only.
+        self.client.table("roles").select("id").limit(1).execute()
+        return True
 
     def post_photos(
         self, img: BinaryIO, latitude: float, longitude: float, accuracy: float

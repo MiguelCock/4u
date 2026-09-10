@@ -7,4 +7,4 @@ def test_supabase_module_imports():
 
 
 def test_qdrant_module_imports():
-    assert hasattr(packages.qdrant, "SupaBase")
+    assert hasattr(packages.qdrant, "Qdrant")
