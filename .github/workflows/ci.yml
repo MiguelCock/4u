@@ -170,8 +170,11 @@ jobs:
 
   # ----------------------------------------------------------------------
   # 3. Boot the full docker-compose stack and prove the gateway routes to
-  #    every service. Placeholder .env values are fine - each service's
-  #    root `GET /` handler never touches Supabase/Qdrant.
+  #    every service. Fake-but-valid-looking .env values are enough - each
+  #    service's root `GET /` handler never touches Supabase/Qdrant, but
+  #    supabase-py's create_client() validates the URL *format* eagerly at
+  #    import time (raises on anything not matching http(s)://...), so the
+  #    literal `.env.example` placeholder text isn't enough on its own.
   # ----------------------------------------------------------------------
   gateway-integration:
     runs-on: ubuntu-latest
@@ -180,8 +183,18 @@ jobs:
 
       - name: Create placeholder .env files
         run: |
+          # supabase-py's create_client validates SUPABASE_URL is a real
+          # http(s) URL at construction time (raises otherwise) - every
+          # service builds its client eagerly at import, so a literal
+          # `.env.example` placeholder like `<SUBSTITUTE_SUPABASE_URL>`
+          # crashes the whole app before it can start listening.
           for d in backend-data-collection backend-map-management backend-route-management backend-user-management backend-navigation-management; do
-            cp "$d/.env.example" "$d/.env"
+            {
+              echo "SUPABASE_URL=https://example.supabase.co"
+              echo "SUPABASE_PUBLISHABLE_KEY=placeholder-key"
+              echo "QDRANT_URL=https://example.qdrant.io"
+              echo "QDRANT_KEY=placeholder-key"
+            } > "$d/.env"
           done
 
       - name: docker compose up
