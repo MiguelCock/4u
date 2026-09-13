@@ -13,7 +13,7 @@ This is a Python/Dart monorepo, not a single deployable app — each top-level d
 - `application/` — Flutter mobile app (Dart). Single codebase for both `user` (sends photo+GPS+IMU, receives corrected position) and `admin` (captures anchor points) roles.
 - `backend-data-collection/` — FastAPI service that receives images + GPS metadata from the app and persists them via Supabase (Postgres + Storage).
 - `backend-ai-training/` — PyTorch/torchvision service for training/running the visual feature extractor (embedding model) offline.
-- `backend-map-management/` — FastAPI service for the admin view: creating/listing anchor points and reading building/map info (`anchor_points`, `buildings` tables).
+- `backend-map-management/` — FastAPI service for the admin view: creating/listing anchor points, buildings, and places (`anchor_points`, `buildings`, `places` tables).
 - `backend-route-management/` — FastAPI service for creating and managing user-facing navigation routes (`routes` table).
 - `backend-user-management/` — FastAPI service for managing user information and configuration: profile data and preferences (`profiles` table) plus the static `roles` reference table.
 - `backend-navigation-management/` — FastAPI service tracking navigation sessions, per-tick GPS/correction logs, and user feedback (`navigation_sessions`, `navigation_logs`, `user_feedback` tables).

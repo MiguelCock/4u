@@ -30,3 +30,27 @@ class BuildingResponse(BaseModel):
     floors: int
     has_elevator: bool
     has_stairs: bool
+
+
+class BuildingCreate(BaseModel):
+    place_id: str
+    code: str
+    name: str
+    latitude: float
+    longitude: float
+    address: str | None = None
+    floors: int = 1
+    has_elevator: bool = False
+    has_stairs: bool = True
+
+
+class PlaceCreate(BaseModel):
+    code: str
+    name: str
+    latitude: float
+    longitude: float
+    address: str | None = None
+
+
+class PlaceResponse(PlaceCreate):
+    id: str

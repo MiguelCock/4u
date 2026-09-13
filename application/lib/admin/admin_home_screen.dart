@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/api_service.dart';
+import 'add_building_screen.dart';
+import 'add_place_screen.dart';
 import 'capture_screen.dart';
 
 /// `admin`-role home screen: a read-only list of captured anchor points plus
@@ -37,6 +39,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       appBar: AppBar(
         title: const Text('Admin'),
         actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              final screen = value == 'place'
+                  ? const AddPlaceScreen()
+                  : const AddBuildingScreen();
+              await Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => screen));
+              _refresh();
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'place', child: Text('Add place')),
+              PopupMenuItem(value: 'building', child: Text('Add building')),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => Supabase.instance.client.auth.signOut(),

@@ -36,7 +36,7 @@ On start, the app loads `.env`, initializes the Supabase Auth client, then shows
 4. The map panel re-centers on each position update.
 5. Tap the camera button to take a photo; it's uploaded (multipart: file field `image`, plus `latitude`/`longitude`/`accuracy` form fields) via `DataCollectionApi` to the gateway's `/data-collection/upload`.
 6. Tap **Navigate** to see the route list (via the gateway's `/route`) and start one — this creates a navigation session (`/navigation`), logs your raw GPS position every 5 seconds while the screen is open, and lets you end the session and leave optional feedback.
-7. Signing in as `admin` (a profile with `role_id: 2`, set by hand in Supabase for now — there's no admin-invite flow) shows a list of captured anchor points and a button to capture a new one: take a photo, pick a building and location type, optionally describe it, and save — this uploads the photo to `backend-map-management` and creates the `anchor_points` row with your account as `captured_by`.
+7. Signing in as `admin` (a profile with `role_id: 2`, set by hand in Supabase for now — there's no admin-invite flow) shows a list of captured anchor points and a button to capture a new one: take a photo, pick a building and location type, optionally describe it, and save — this uploads the photo to `backend-map-management` and creates the `anchor_points` row with your account as `captured_by`. The app bar's menu also has **Add place** / **Add building**, so a place and building can be created from the app first if none exist yet.
 
 ### Running on a physical device (ADB)
 
@@ -76,7 +76,7 @@ flutter analyze
 
 ## Known gaps
 
-- The building dropdown in the admin capture screen is empty until at least one `buildings` row exists — there's no in-app way to create a building yet, it has to be seeded in Supabase by hand.
+- The building dropdown in the admin capture screen is empty until at least one `buildings` row exists — use the app bar's **Add building** (and **Add place** first, if needed) rather than seeding it in Supabase by hand.
 - `AuthGate` falls back to the `user` home screen if the `profiles` fetch fails for any reason (backend down, profile row missing) rather than showing an explicit error state.
 - Navigation logs only raw GPS — there's no visual-correction pipeline anywhere in the repo yet (see `backend-ai-training/CLAUDE.md`), so `corrected_lat`/`corrected_long`/`anchor_match_id`/`confidence_score` are never populated.
 - A route needs `building_id`/`start_anchor_id`/`end_anchor_id` already pointing at real rows for navigation to make sense — nothing in the app validates this before starting a session.
