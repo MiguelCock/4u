@@ -10,7 +10,10 @@ client = TestClient(app)
 def test_root():
     response = client.get("/")
     assert response.status_code == 200
-    assert response.json() == {"service": "backend-navigation-management", "status": "ok"}
+    assert response.json() == {
+        "service": "backend-navigation-management",
+        "status": "ok",
+    }
 
 
 def _mock_select_eq_result(rows):
