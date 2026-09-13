@@ -10,7 +10,9 @@ load_dotenv()
 
 app = FastAPI()
 
-db = SupaBase(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_PUBLISHABLE_KEY"))
+db = SupaBase(
+    os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+)
 
 
 @app.get("/")
@@ -26,7 +28,9 @@ async def upload_anchor_point_image(file: UploadFile = File(...)):
 
 @app.post("/anchor-points")
 async def create_anchor_point(anchor_point: AnchorPointCreate):
-    result = db.client.table("anchor_points").insert(anchor_point.model_dump()).execute()
+    result = (
+        db.client.table("anchor_points").insert(anchor_point.model_dump()).execute()
+    )
     return result.data
 
 

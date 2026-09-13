@@ -42,7 +42,9 @@ def test_get_profile_404_when_missing():
 
 
 def test_get_role_returns_single_object():
-    with patch("app.main.db.client", _mock_select_eq_result([{"id": 1, "name": "user"}])):
+    with patch(
+        "app.main.db.client", _mock_select_eq_result([{"id": 1, "name": "user"}])
+    ):
         response = client.get("/roles/1")
     assert response.status_code == 200
     assert response.json()["id"] == 1

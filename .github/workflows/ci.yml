@@ -191,7 +191,7 @@ jobs:
           for d in backend-data-collection backend-map-management backend-route-management backend-user-management backend-navigation-management; do
             {
               echo "SUPABASE_URL=https://example.supabase.co"
-              echo "SUPABASE_PUBLISHABLE_KEY=placeholder-key"
+              echo "SUPABASE_SERVICE_ROLE_KEY=placeholder-key"
               echo "QDRANT_URL=https://example.qdrant.io"
               echo "QDRANT_KEY=placeholder-key"
             } > "$d/.env"

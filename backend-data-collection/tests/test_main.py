@@ -14,7 +14,9 @@ def test_root():
 
 
 def test_list_photos_returns_db_result():
-    with patch("app.main.db.get_photos", return_value=[{"id": 1, "name": "a.jpg"}]) as mock:
+    with patch(
+        "app.main.db.get_photos", return_value=[{"id": 1, "name": "a.jpg"}]
+    ) as mock:
         response = client.get("/upload")
     assert response.status_code == 200
     assert response.json() == [{"id": 1, "name": "a.jpg"}]
@@ -22,7 +24,9 @@ def test_list_photos_returns_db_result():
 
 
 def test_get_photo_by_id_binds_path_param():
-    with patch("app.main.db.get_photo", return_value={"id": 5, "name": "b.jpg"}) as mock:
+    with patch(
+        "app.main.db.get_photo", return_value={"id": 5, "name": "b.jpg"}
+    ) as mock:
         response = client.get("/upload/5")
     assert response.status_code == 200
     assert response.json() == {"id": 5, "name": "b.jpg"}

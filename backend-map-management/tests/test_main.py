@@ -70,7 +70,10 @@ def test_get_building_404_when_missing():
 
 
 def test_upload_anchor_point_image_returns_public_url():
-    with patch("app.main.db.upload_image", return_value="https://example.com/anchor-points/a.jpg") as mock:
+    with patch(
+        "app.main.db.upload_image",
+        return_value="https://example.com/anchor-points/a.jpg",
+    ) as mock:
         response = client.post(
             "/anchor-points/upload-image",
             files={"file": ("a.jpg", b"fake-bytes", "image/jpeg")},

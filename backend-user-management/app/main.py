@@ -10,7 +10,9 @@ load_dotenv()
 
 app = FastAPI()
 
-db = SupaBase(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_PUBLISHABLE_KEY"))
+db = SupaBase(
+    os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+)
 
 
 @app.get("/")
