@@ -187,25 +187,28 @@ jobs:
       - name: docker compose up
         run: docker compose up --build -d
 
-      - name: Wait for the gateway
+      - name: Curl every service through the gateway (with retries)
         run: |
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8000/ > /dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Gateway never became ready"
-          docker compose logs
-          exit 1
-
-      - name: Curl every service through the gateway
-        run: |
-          set -e
+          # The gateway itself (nginx) is ready almost instantly, but the
+          # FastAPI containers behind it take a few seconds to start
+          # accepting connections - retry the real per-service routes,
+          # not just the gateway's own static root.
           for prefix in data-collection map route user navigation; do
             echo "== /$prefix/ =="
-            curl -sf "http://localhost:8000/$prefix/" | tee /dev/stderr | grep -q '"status":"ok"' \
-              || (echo "FAILED: /$prefix/ did not return status ok"; exit 1)
+            ok=""
+            for i in $(seq 1 30); do
+              if curl -sf "http://localhost:8000/$prefix/" | tee /tmp/resp | grep -q '"status":"ok"'; then
+                cat /tmp/resp
+                ok=1
+                break
+              fi
+              sleep 1
+            done
+            if [ -z "$ok" ]; then
+              echo "FAILED: /$prefix/ never returned status ok"
+              docker compose logs
+              exit 1
+            fi
           done
 
       - name: docker compose logs (always, for debugging)
