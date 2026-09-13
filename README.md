@@ -116,7 +116,7 @@ Each component's own README documents testing it in isolation (`uv run pytest` p
 
 ### 1. Create a Supabase project
 
-Create one at [supabase.com](https://supabase.com) (or use an existing project). From **Project Settings → API**, note down the **Project URL** and the **anon / publishable** API key — every `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` value below is this same URL and key.
+Create one at [supabase.com](https://supabase.com) (or use an existing project). From **Project Settings → API**, note down the **Project URL**, the **anon / publishable** API key, and the **service_role secret** — every `SUPABASE_URL` value below is the same URL; the app's own `.env` (step 5) uses the publishable key, while all 5 backend services (step 4) use the service_role key. **The service_role key bypasses Row Level Security and has full database access — never put it in the app's `.env` or anywhere client-facing, only in the backend services' gitignored `.env` files.**
 
 ### 2. Apply the schema
 
@@ -161,7 +161,7 @@ The app talks to all 5 services through a single **API gateway** (`gateway/nginx
 ```bash
 # fill in each service's .env first
 for d in backend-data-collection backend-map-management backend-route-management backend-user-management backend-navigation-management; do
-  (cd "$d" && cp .env.example .env)   # fill in SUPABASE_URL / SUPABASE_(PUBLISHABLE_)KEY from step 1
+  (cd "$d" && cp .env.example .env)   # fill in SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY from step 1
 done
 
 docker compose up --build

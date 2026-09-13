@@ -7,7 +7,7 @@ Built following the [uv + FastAPI guide](https://docs.astral.sh/uv/guides/integr
 ## Setup
 
 ```bash
-cp .env.example .env   # fill in SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY
+cp .env.example .env   # fill in SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
 uv sync
 ```
 
