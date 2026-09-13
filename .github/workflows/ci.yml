@@ -167,3 +167,51 @@ jobs:
             dart format --output=none --set-exit-if-changed .
             flutter analyze
           fi
+
+  # ----------------------------------------------------------------------
+  # 3. Boot the full docker-compose stack and prove the gateway routes to
+  #    every service. Placeholder .env values are fine - each service's
+  #    root `GET /` handler never touches Supabase/Qdrant.
+  # ----------------------------------------------------------------------
+  gateway-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Create placeholder .env files
+        run: |
+          for d in backend-data-collection backend-map-management backend-route-management backend-user-management backend-navigation-management; do
+            cp "$d/.env.example" "$d/.env"
+          done
+
+      - name: docker compose up
+        run: docker compose up --build -d
+
+      - name: Wait for the gateway
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Gateway never became ready"
+          docker compose logs
+          exit 1
+
+      - name: Curl every service through the gateway
+        run: |
+          set -e
+          for prefix in data-collection map route user navigation; do
+            echo "== /$prefix/ =="
+            curl -sf "http://localhost:8000/$prefix/" | tee /dev/stderr | grep -q '"status":"ok"' \
+              || (echo "FAILED: /$prefix/ did not return status ok"; exit 1)
+          done
+
+      - name: docker compose logs (always, for debugging)
+        if: always()
+        run: docker compose logs
+
+      - name: docker compose down
+        if: always()
+        run: docker compose down -v

@@ -51,17 +51,20 @@ class ApiService {
     return _handle(response);
   }
 
-  /// Uploads [bytes] as a multipart file field named [fieldName] to [path].
+  /// Uploads [bytes] as a multipart file field named [fieldName] to [path],
+  /// plus any extra form [fields] sent alongside the file.
   Future<dynamic> postMultipart(
     String path, {
     required String fieldName,
     required List<int> bytes,
     required String filename,
+    Map<String, String>? fields,
   }) async {
     final request = http.MultipartRequest('POST', _uri(path))
       ..files.add(
         http.MultipartFile.fromBytes(fieldName, bytes, filename: filename),
       );
+    if (fields != null) request.fields.addAll(fields);
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
     return _handle(response);
@@ -76,19 +79,26 @@ class ApiService {
   }
 }
 
+/// Every service is reached through the single API gateway (`API_GATEWAY_URL`),
+/// each at its own path prefix - see `gateway/nginx.conf` for the routing.
+String get _gatewayUrl => dotenv.env['API_GATEWAY_URL'] ?? '';
+
 class UserManagementApi extends ApiService {
-  UserManagementApi() : super(dotenv.env['USER_MANAGEMENT_URL'] ?? '');
+  UserManagementApi() : super('$_gatewayUrl/user');
 }
 
 class MapManagementApi extends ApiService {
-  MapManagementApi() : super(dotenv.env['MAP_MANAGEMENT_URL'] ?? '');
+  MapManagementApi() : super('$_gatewayUrl/map');
 }
 
 class RouteManagementApi extends ApiService {
-  RouteManagementApi() : super(dotenv.env['ROUTE_MANAGEMENT_URL'] ?? '');
+  RouteManagementApi() : super('$_gatewayUrl/route');
 }
 
 class NavigationManagementApi extends ApiService {
-  NavigationManagementApi()
-    : super(dotenv.env['NAVIGATION_MANAGEMENT_URL'] ?? '');
+  NavigationManagementApi() : super('$_gatewayUrl/navigation');
+}
+
+class DataCollectionApi extends ApiService {
+  DataCollectionApi() : super('$_gatewayUrl/data-collection');
 }

@@ -156,32 +156,32 @@ In Supabase Storage, create two **public** buckets — neither service creates i
 
 `backend-ai-training` has no HTTP server (it's an offline stub — see its own `CLAUDE.md`), so it's not in this list; verify it separately with `uv run pytest` / `uv run dev` inside that directory.
 
-For each of the other 5, in its own terminal:
+The app talks to all 5 services through a single **API gateway** (`gateway/nginx.conf`, path-prefix reverse proxy) rather than 5 separate ports — see it running via Docker Compose:
 
 ```bash
-cd <service>
-cp .env.example .env   # fill in SUPABASE_URL / SUPABASE_(PUBLISHABLE_)KEY from step 1
-uv sync
-uv run fastapi dev --port <port>
-```
+# fill in each service's .env first
+for d in backend-data-collection backend-map-management backend-route-management backend-user-management backend-navigation-management; do
+  (cd "$d" && cp .env.example .env)   # fill in SUPABASE_URL / SUPABASE_(PUBLISHABLE_)KEY from step 1
+done
 
-| Service | Port |
-|---|---|
-| `backend-data-collection` | 8001 |
-| `backend-map-management` | 8002 |
-| `backend-route-management` | 8003 |
-| `backend-user-management` | 8004 |
-| `backend-navigation-management` | 8005 |
-
-(`backend-data-collection`'s `.env.example` also declares `QDRANT_URL`/`QDRANT_KEY` — nothing in the service currently reads them, so any placeholder value there is fine.)
-
-**Or run all 5 at once with Docker Compose** instead of 5 separate terminals — fill in each service's `.env` first (same `cp .env.example .env` step above), then from the repo root:
-
-```bash
 docker compose up --build
 ```
 
-This starts all 5 services on the same ports (8001–8005), each still reading its own `.env`. `docker-compose.yml`'s ports are published on `0.0.0.0`, so — same as the `uv run fastapi dev` option — they're reachable from another device on the same WiFi network at `http://<your-LAN-IP>:<port>`, not just from `localhost`. This matters because the app is normally tested on a physical phone (see step 5), which can't reach the dev machine's `localhost`.
+This starts all 5 services (no longer individually host-exposed) plus the `gateway` service on port **8000**, which is what the app actually talks to:
+
+| Gateway path prefix | Routes to |
+|---|---|
+| `/data-collection/*` | `backend-data-collection` |
+| `/map/*` | `backend-map-management` |
+| `/route/*` | `backend-route-management` |
+| `/user/*` | `backend-user-management` |
+| `/navigation/*` | `backend-navigation-management` |
+
+e.g. `POST http://localhost:8000/route/routes` reaches `backend-route-management`'s `POST /routes`. The gateway's port is published on `0.0.0.0`, so it's reachable from another device on the same WiFi network at `http://<your-LAN-IP>:8000`, not just from `localhost` — this matters because the app is normally tested on a physical phone (see step 5), which can't reach the dev machine's `localhost`.
+
+(`backend-data-collection`'s `.env.example` also declares `QDRANT_URL`/`QDRANT_KEY` — nothing in the service currently reads them, so any placeholder value there is fine.)
+
+**To iterate on a single service in isolation** (its own Swagger UI, curl, pytest) rather than through the app, you can still run it standalone with `uv run fastapi dev --port <port>` from within that service's directory — that bypasses the gateway entirely and talks to the service directly, which is fine for isolated debugging but won't be reachable by the app (which only ever calls the gateway's one URL).
 
 ### 5. Configure and run the app
 
@@ -192,19 +192,15 @@ flutter pub get
 flutter run
 ```
 
-Fill in `application/.env` with the same Supabase URL/key plus each backend's local URL from the port table above:
+Fill in `application/.env` with the same Supabase URL/key plus the gateway's URL:
 
 ```
 SUPABASE_URL=https://<project>.supabase.co
 SUPABASE_PUBLISHABLE_KEY=<anon key>
-BACKEND_URL=http://localhost:8001
-MAP_MANAGEMENT_URL=http://localhost:8002
-ROUTE_MANAGEMENT_URL=http://localhost:8003
-USER_MANAGEMENT_URL=http://localhost:8004
-NAVIGATION_MANAGEMENT_URL=http://localhost:8005
+API_GATEWAY_URL=http://localhost:8000
 ```
 
-**If running on a physical phone rather than an emulator — the usual way this app is tested — you must use your machine's LAN IP instead of `localhost`** for all 5 URLs above, since the phone can't resolve the dev machine's `localhost`:
+**If running on a physical phone rather than an emulator — the usual way this app is tested — you must use your machine's LAN IP instead of `localhost`** for `API_GATEWAY_URL`, since the phone can't resolve the dev machine's `localhost`:
 
 ```bash
 # find your LAN IP
@@ -212,7 +208,7 @@ ip addr show | grep 'inet ' | grep -v 127.0.0.1   # Linux
 ipconfig getifaddr en0                              # macOS (Wi-Fi)
 ```
 
-e.g. `BACKEND_URL=http://192.168.1.23:8001`. Also confirm the phone and dev machine are on the same WiFi network, and that the dev machine's firewall allows inbound connections on 8001–8005 (e.g. on Linux with `ufw` active: `sudo ufw allow 8001:8005/tcp`). See `application/README.md` for ADB pairing steps.
+e.g. `API_GATEWAY_URL=http://192.168.1.23:8000`. Also confirm the phone and dev machine are on the same WiFi network, and that the dev machine's firewall allows inbound connections on port 8000 (e.g. on Linux with `ufw` active: `sudo ufw allow 8000/tcp`). See `application/README.md` for ADB pairing steps.
 
 ### 6. Run every automated test suite
 
@@ -228,10 +224,10 @@ cd application && flutter test && flutter analyze
 
 1. **Sign up** in the app (creates a Supabase Auth user, then a `profiles` row via `backend-user-management`'s `POST /profiles` with `role_id: 1`).
 2. **Promote to admin**: in Supabase, `UPDATE profiles SET role_id = 2 WHERE id = '<the new user's auth id>';` — there's no in-app admin-invite flow yet. Log out and back in.
-3. **Capture two anchor points** from the admin screen (needs the `buildings` row from step 2 above) — take a photo, pick the building, submit. Do this twice; note their ids (`GET /anchor-points` on port 8002, or the Supabase table editor).
-4. **Create a route** referencing both anchor points — no in-app route-creation UI exists yet, so do it via curl:
+3. **Capture two anchor points** from the admin screen (needs the `buildings` row from step 2 above) — take a photo, pick the building, submit. Do this twice; note their ids (`GET http://localhost:8000/map/anchor-points`, or the Supabase table editor).
+4. **Create a route** referencing both anchor points — no in-app route-creation UI exists yet, so do it via curl, through the gateway:
    ```bash
-   curl -X POST http://localhost:8003/routes \
+   curl -X POST http://localhost:8000/route/routes \
      -H "Content-Type: application/json" \
      -d '{"building_id": "<building id>", "name": "Test route", "start_anchor_id": "<anchor 1 id>", "end_anchor_id": "<anchor 2 id>"}'
    ```
@@ -240,8 +236,6 @@ cd application && flutter test && flutter analyze
 7. Tap **End navigation** and optionally leave feedback — confirm the session's `status` becomes `completed` and (if entered) a `user_feedback` row appears.
 
 Throughout this, `navigation_logs.corrected_lat`/`corrected_long`/`anchor_match_id`/`confidence_score` stay `NULL` — there's no visual-correction pipeline anywhere in the repo yet (see `backend-ai-training/CLAUDE.md`), so only raw GPS is ever logged.
-
-A `docker-compose.yml` to start all 5 backend services with one command would make this smoother — not built yet, worth considering as a future improvement.
 
 ---
 

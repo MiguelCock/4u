@@ -5,28 +5,28 @@ import 'package:application/services/api_service.dart';
 
 void main() {
   setUp(() {
-    dotenv.testLoad(
-      fileInput: '''
-USER_MANAGEMENT_URL=http://user.example
-MAP_MANAGEMENT_URL=http://map.example
-ROUTE_MANAGEMENT_URL=http://route.example
-NAVIGATION_MANAGEMENT_URL=http://nav.example
-''',
+    dotenv.testLoad(fileInput: 'API_GATEWAY_URL=http://gateway.example');
+  });
+
+  test('each API client appends its own path prefix to the gateway URL', () {
+    expect(UserManagementApi().baseUrl, 'http://gateway.example/user');
+    expect(MapManagementApi().baseUrl, 'http://gateway.example/map');
+    expect(RouteManagementApi().baseUrl, 'http://gateway.example/route');
+    expect(
+      NavigationManagementApi().baseUrl,
+      'http://gateway.example/navigation',
+    );
+    expect(
+      DataCollectionApi().baseUrl,
+      'http://gateway.example/data-collection',
     );
   });
 
-  test('each API client reads its own base URL from the environment', () {
-    expect(UserManagementApi().baseUrl, 'http://user.example');
-    expect(MapManagementApi().baseUrl, 'http://map.example');
-    expect(RouteManagementApi().baseUrl, 'http://route.example');
-    expect(NavigationManagementApi().baseUrl, 'http://nav.example');
-  });
-
   test(
-    'missing env var falls back to an empty base URL rather than throwing',
+    'missing env var falls back to just the path prefix rather than throwing',
     () {
       dotenv.testLoad(fileInput: '');
-      expect(UserManagementApi().baseUrl, '');
+      expect(UserManagementApi().baseUrl, '/user');
     },
   );
 
