@@ -3,8 +3,6 @@ services:
     build:
       context: .
       dockerfile: backend-data-collection/Dockerfile
-    ports:
-      - "0.0.0.0:8001:80"
     env_file:
       - backend-data-collection/.env
 
@@ -12,8 +10,6 @@ services:
     build:
       context: .
       dockerfile: backend-map-management/Dockerfile
-    ports:
-      - "0.0.0.0:8002:80"
     env_file:
       - backend-map-management/.env
 
@@ -21,8 +17,6 @@ services:
     build:
       context: .
       dockerfile: backend-route-management/Dockerfile
-    ports:
-      - "0.0.0.0:8003:80"
     env_file:
       - backend-route-management/.env
 
@@ -30,8 +24,6 @@ services:
     build:
       context: .
       dockerfile: backend-user-management/Dockerfile
-    ports:
-      - "0.0.0.0:8004:80"
     env_file:
       - backend-user-management/.env
 
@@ -39,7 +31,18 @@ services:
     build:
       context: .
       dockerfile: backend-navigation-management/Dockerfile
-    ports:
-      - "0.0.0.0:8005:80"
     env_file:
       - backend-navigation-management/.env
+
+  gateway:
+    image: nginx:1.27-alpine
+    ports:
+      - "0.0.0.0:8000:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - data-collection
+      - map-management
+      - route-management
+      - user-management
+      - navigation-management

@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:http_parser/http_parser.dart'; // for MediaType
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
+import 'services/api_service.dart';
 import 'services/location_service.dart';
 
 class SimpleCameraWidget extends StatefulWidget {
@@ -74,34 +73,28 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
     try {
       final bytes = await image.readAsBytes();
 
-      final uri = Uri.parse('http://10.10.79.249:3000/upload');
-      final request = http.MultipartRequest('POST', uri)
-        ..files.add(
-          http.MultipartFile.fromBytes(
-            'image',
-            bytes,
-            filename: path.basename(image.path),
-            contentType: MediaType('image', 'jpeg'),
-          ),
-        )
-        ..fields['latitude'] = position.latitude.toString()
-        ..fields['longitude'] = position.longitude.toString()
-        ..fields['accuracy'] = position.accuracy.toString();
+      await DataCollectionApi().postMultipart(
+        '/upload',
+        fieldName: 'image',
+        bytes: bytes,
+        filename: path.basename(image.path),
+        fields: {
+          'latitude': position.latitude.toString(),
+          'longitude': position.longitude.toString(),
+          'accuracy': position.accuracy.toString(),
+        },
+      );
 
-      final response = await request.send();
-
-      if (response.statusCode == 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Photo uploaded!')));
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Upload failed: ${response.statusCode}')),
-          );
-        }
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Photo uploaded!')));
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload failed: ${e.statusCode}')),
+        );
       }
     } catch (e) {
       if (mounted) {

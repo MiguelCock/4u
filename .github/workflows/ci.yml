@@ -167,3 +167,67 @@ jobs:
             dart format --output=none --set-exit-if-changed .
             flutter analyze
           fi
+
+  # ----------------------------------------------------------------------
+  # 3. Boot the full docker-compose stack and prove the gateway routes to
+  #    every service. Fake-but-valid-looking .env values are enough - each
+  #    service's root `GET /` handler never touches Supabase/Qdrant, but
+  #    supabase-py's create_client() validates the URL *format* eagerly at
+  #    import time (raises on anything not matching http(s)://...), so the
+  #    literal `.env.example` placeholder text isn't enough on its own.
+  # ----------------------------------------------------------------------
+  gateway-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Create placeholder .env files
+        run: |
+          # supabase-py's create_client validates SUPABASE_URL is a real
+          # http(s) URL at construction time (raises otherwise) - every
+          # service builds its client eagerly at import, so a literal
+          # `.env.example` placeholder like `<SUBSTITUTE_SUPABASE_URL>`
+          # crashes the whole app before it can start listening.
+          for d in backend-data-collection backend-map-management backend-route-management backend-user-management backend-navigation-management; do
+            {
+              echo "SUPABASE_URL=https://example.supabase.co"
+              echo "SUPABASE_PUBLISHABLE_KEY=placeholder-key"
+              echo "QDRANT_URL=https://example.qdrant.io"
+              echo "QDRANT_KEY=placeholder-key"
+            } > "$d/.env"
+          done
+
+      - name: docker compose up
+        run: docker compose up --build -d
+
+      - name: Curl every service through the gateway (with retries)
+        run: |
+          # The gateway itself (nginx) is ready almost instantly, but the
+          # FastAPI containers behind it take a few seconds to start
+          # accepting connections - retry the real per-service routes,
+          # not just the gateway's own static root.
+          for prefix in data-collection map route user navigation; do
+            echo "== /$prefix/ =="
+            ok=""
+            for i in $(seq 1 30); do
+              if curl -sf "http://localhost:8000/$prefix/" | tee /tmp/resp | grep -q '"status":"ok"'; then
+                cat /tmp/resp
+                ok=1
+                break
+              fi
+              sleep 1
+            done
+            if [ -z "$ok" ]; then
+              echo "FAILED: /$prefix/ never returned status ok"
+              docker compose logs
+              exit 1
+            fi
+          done
+
+      - name: docker compose logs (always, for debugging)
+        if: always()
+        run: docker compose logs
+
+      - name: docker compose down
+        if: always()
+        run: docker compose down -v
