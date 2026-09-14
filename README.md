@@ -136,7 +136,7 @@ navigation_logs.sql
 user_feedback.sql
 ```
 
-`places` and `buildings` have no seed data and no CRUD endpoint anywhere in the repo — insert one of each by hand before testing anchor points or routes:
+`places` and `buildings` have no seed data. Once the app and `backend-map-management` are running (steps 4-5 below), an admin can create both from the app itself (sign in as `admin` → the app bar's **Add place** / **Add building** menu) — no SQL needed. To seed them by hand instead (e.g. before the app is running):
 
 ```sql
 INSERT INTO places (id, code, name, latitude, longitude)
@@ -224,7 +224,7 @@ cd application && flutter test && flutter analyze
 
 1. **Sign up** in the app (creates a Supabase Auth user, then a `profiles` row via `backend-user-management`'s `POST /profiles` with `role_id: 1`).
 2. **Promote to admin**: in Supabase, `UPDATE profiles SET role_id = 2 WHERE id = '<the new user's auth id>';` — there's no in-app admin-invite flow yet. Log out and back in.
-3. **Capture two anchor points** from the admin screen (needs the `buildings` row from step 2 above) — take a photo, pick the building, submit. Do this twice; note their ids (`GET http://localhost:8000/map/anchor-points`, or the Supabase table editor).
+3. **Capture two anchor points** from the admin screen — if you didn't already create a place/building via SQL in step 2, use the app bar's **Add place** then **Add building** first. Then take a photo, pick the building, submit. Do this twice; note their ids (`GET http://localhost:8000/map/anchor-points`, or the Supabase table editor).
 4. **Create a route** referencing both anchor points — no in-app route-creation UI exists yet, so do it via curl, through the gateway:
    ```bash
    curl -X POST http://localhost:8000/route/routes \

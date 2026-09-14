@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'services/location_service.dart';
+import 'services/map_tile_config.dart';
 
 class SimpleMapWidget extends StatefulWidget {
   const SimpleMapWidget({super.key});
@@ -46,8 +47,8 @@ class _SimpleMapWidgetState extends State<SimpleMapWidget> {
       options: MapOptions(initialCenter: _position, initialZoom: 13),
       children: [
         TileLayer(
-          urlTemplate: 'https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.example.application',
+          urlTemplate: kMapTileUrlTemplate,
+          userAgentPackageName: kMapUserAgentPackageName,
         ),
         MarkerLayer(
           markers: [

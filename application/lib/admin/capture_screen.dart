@@ -2,11 +2,13 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/api_service.dart';
 import '../services/location_service.dart';
+import 'location_picker_screen.dart';
 
 /// Matches db_schema/location_type.sql's seeded values — static reference
 /// data with no CRUD endpoint anywhere, so hardcoded here rather than
@@ -36,6 +38,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   CameraController? _controller;
   XFile? _capturedImage;
+  LatLng? _pickedPosition;
   List<Map<String, dynamic>> _buildings = [];
   String? _selectedBuildingId;
   int _selectedLocationTypeId = kLocationTypes.keys.first;
@@ -86,6 +89,21 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
+  Future<void> _pickOnMap() async {
+    final fallback = _locationService.lastPosition;
+    final initial =
+        _pickedPosition ??
+        (fallback != null
+            ? LatLng(fallback.latitude, fallback.longitude)
+            : const LatLng(0, 0));
+    final result = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(initialPosition: initial),
+      ),
+    );
+    if (result != null) setState(() => _pickedPosition = result);
+  }
+
   Future<void> _takePhoto() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
     try {
@@ -111,8 +129,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
       setState(() => _error = 'Select a building.');
       return;
     }
-    if (position == null) {
-      setState(() => _error = 'Location not available yet.');
+    if (position == null && _pickedPosition == null) {
+      setState(
+        () => _error =
+            'Location not available - wait for GPS or pick on the map.',
+      );
       return;
     }
 
@@ -136,9 +157,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
         'building_id': _selectedBuildingId,
         'location_type_id': _selectedLocationTypeId,
         'image_url': imageUrl,
-        'latitude': position.latitude,
-        'longitude': position.longitude,
-        'altitude': position.altitude,
+        'latitude': _pickedPosition?.latitude ?? position!.latitude,
+        'longitude': _pickedPosition?.longitude ?? position!.longitude,
+        'altitude': position?.altitude,
         if (_descriptionController.text.trim().isNotEmpty)
           'location_description': _descriptionController.text.trim(),
         'captured_by': userId,
@@ -225,6 +246,20 @@ class _CaptureScreenState extends State<CaptureScreen> {
               decoration: const InputDecoration(
                 labelText: 'Description (optional)',
               ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _pickedPosition != null
+                  ? 'Location (picked): ${_pickedPosition!.latitude.toStringAsFixed(6)}, ${_pickedPosition!.longitude.toStringAsFixed(6)}'
+                  : _locationService.lastPosition != null
+                  ? 'Location (GPS): ${_locationService.lastPosition!.latitude.toStringAsFixed(6)}, ${_locationService.lastPosition!.longitude.toStringAsFixed(6)}'
+                  : 'Location: not available yet',
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _pickOnMap,
+              icon: const Icon(Icons.map),
+              label: const Text('Pick on map'),
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
