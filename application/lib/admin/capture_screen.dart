@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -39,6 +41,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
   CameraController? _controller;
   XFile? _capturedImage;
   LatLng? _pickedPosition;
+  StreamSubscription<CompassEvent>? _compassSubscription;
+  double? _liveHeading;
+  double? _capturedHeading;
   List<Map<String, dynamic>> _buildings = [];
   String? _selectedBuildingId;
   int _selectedLocationTypeId = kLocationTypes.keys.first;
@@ -53,6 +58,18 @@ class _CaptureScreenState extends State<CaptureScreen> {
     super.initState();
     _initCamera();
     _loadBuildings();
+    _compassSubscription = FlutterCompass.events?.listen((event) {
+      if (mounted) {
+        // `heading` is what the Android plugin actually computes from the
+        // device's sensors - `headingForCameraMode` is a real iOS feature
+        // but the Android implementation never populates it (stays 0.0,
+        // not null, so `??` never falls through) and this app is
+        // Android-only today (no ios/ directory in the repo).
+        setState(
+          () => _liveHeading = event.heading ?? event.headingForCameraMode,
+        );
+      }
+    });
   }
 
   Future<void> _initCamera() async {
@@ -98,7 +115,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
             : const LatLng(0, 0));
     final result = await Navigator.of(context).push<LatLng>(
       MaterialPageRoute(
-        builder: (_) => LocationPickerScreen(initialPosition: initial),
+        builder: (_) => LocationPickerScreen(
+          initialPosition: initial,
+          showBuildings: true,
+          showAnchorPoints: true,
+          anchorPointsBuildingId: _selectedBuildingId,
+        ),
       ),
     );
     if (result != null) setState(() => _pickedPosition = result);
@@ -108,7 +130,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (_controller == null || !_controller!.value.isInitialized) return;
     try {
       final image = await _controller!.takePicture();
-      setState(() => _capturedImage = image);
+      setState(() {
+        _capturedImage = image;
+        _capturedHeading = _liveHeading;
+      });
     } catch (e) {
       setState(() => _error = 'Failed to capture photo: $e');
     }
@@ -160,6 +185,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
         'latitude': _pickedPosition?.latitude ?? position!.latitude,
         'longitude': _pickedPosition?.longitude ?? position!.longitude,
         'altitude': position?.altitude,
+        'heading': _capturedHeading,
         if (_descriptionController.text.trim().isNotEmpty)
           'location_description': _descriptionController.text.trim(),
         'captured_by': userId,
@@ -168,6 +194,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       setState(() {
         _successMessage = 'Anchor point saved.';
         _capturedImage = null;
+        _capturedHeading = null;
         _descriptionController.clear();
       });
     } on ApiException catch (e) {
@@ -183,6 +210,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   void dispose() {
     _controller?.dispose();
     _descriptionController.dispose();
+    _compassSubscription?.cancel();
     super.dispose();
   }
 
@@ -195,13 +223,41 @@ class _CaptureScreenState extends State<CaptureScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(
-              height: 300,
-              child: _capturedImage != null
-                  ? Image.file(File(_capturedImage!.path), fit: BoxFit.cover)
-                  : (_controller != null && _controller!.value.isInitialized)
-                  ? CameraPreview(_controller!)
-                  : const Center(child: CircularProgressIndicator()),
+            Stack(
+              children: [
+                SizedBox(
+                  height: 300,
+                  width: double.infinity,
+                  child: _capturedImage != null
+                      ? Image.file(
+                          File(_capturedImage!.path),
+                          fit: BoxFit.cover,
+                        )
+                      : (_controller != null &&
+                            _controller!.value.isInitialized)
+                      ? CameraPreview(_controller!)
+                      : const Center(child: CircularProgressIndicator()),
+                ),
+                if (_capturedImage == null && _liveHeading != null)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'Facing: ${_liveHeading!.round()}°',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
             ElevatedButton(
@@ -255,6 +311,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   ? 'Location (GPS): ${_locationService.lastPosition!.latitude.toStringAsFixed(6)}, ${_locationService.lastPosition!.longitude.toStringAsFixed(6)}'
                   : 'Location: not available yet',
             ),
+            if (_capturedImage != null)
+              Text(
+                _capturedHeading != null
+                    ? 'Heading (captured): ${_capturedHeading!.round()}°'
+                    : 'Heading: not available for this photo',
+              ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: _pickOnMap,
