@@ -60,8 +60,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _loadBuildings();
     _compassSubscription = FlutterCompass.events?.listen((event) {
       if (mounted) {
+        // `heading` is what the Android plugin actually computes from the
+        // device's sensors - `headingForCameraMode` is a real iOS feature
+        // but the Android implementation never populates it (stays 0.0,
+        // not null, so `??` never falls through) and this app is
+        // Android-only today (no ios/ directory in the repo).
         setState(
-          () => _liveHeading = event.headingForCameraMode ?? event.heading,
+          () => _liveHeading = event.heading ?? event.headingForCameraMode,
         );
       }
     });
