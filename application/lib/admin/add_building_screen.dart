@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../services/api_service.dart';
 import '../services/location_service.dart';
+import 'location_picker_screen.dart';
 
 /// Admin form to create a `buildings` row under an existing place - the
 /// building dropdown in `capture_screen.dart` is populated from these.
@@ -57,6 +59,25 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
       setState(() => _error = 'Failed to load places: $e');
     } finally {
       if (mounted) setState(() => _loadingPlaces = false);
+    }
+  }
+
+  Future<void> _pickOnMap() async {
+    final lat = double.tryParse(_latController.text.trim());
+    final lng = double.tryParse(_lngController.text.trim());
+    final initial = (lat != null && lng != null)
+        ? LatLng(lat, lng)
+        : const LatLng(0, 0);
+    final result = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(initialPosition: initial),
+      ),
+    );
+    if (result != null) {
+      setState(() {
+        _latController.text = result.latitude.toString();
+        _lngController.text = result.longitude.toString();
+      });
     }
   }
 
@@ -178,6 +199,12 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
                 decimal: true,
                 signed: true,
               ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _pickOnMap,
+              icon: const Icon(Icons.map),
+              label: const Text('Pick on map'),
             ),
             const SizedBox(height: 12),
             TextField(

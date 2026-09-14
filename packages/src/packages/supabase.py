@@ -21,7 +21,7 @@ class SupaBase:
     def post_photos(
         self, img: BinaryIO, latitude: float, longitude: float, accuracy: float
     ):
-        self.client.storage.from_("Photo").upload(file=img, path=img.name)
+        self.client.storage.from_("Photo").upload(file=img.read(), path=img.name)
 
         self.client.table("Photo").insert(
             {
@@ -33,7 +33,7 @@ class SupaBase:
         ).execute()
 
     def upload_image(self, bucket: str, file: BinaryIO, filename: str) -> str:
-        self.client.storage.from_(bucket).upload(file=file, path=filename)
+        self.client.storage.from_(bucket).upload(file=file.read(), path=filename)
         return self.client.storage.from_(bucket).get_public_url(filename)
 
     def get_photos(self):

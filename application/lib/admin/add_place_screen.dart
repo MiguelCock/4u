@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../services/api_service.dart';
 import '../services/location_service.dart';
+import 'location_picker_screen.dart';
 
 /// Admin form to create a `places` row - the root of the place -> building ->
 /// anchor point chain, previously only creatable by hand via SQL.
@@ -32,6 +34,25 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     _lngController = TextEditingController(
       text: position?.longitude.toString() ?? '',
     );
+  }
+
+  Future<void> _pickOnMap() async {
+    final lat = double.tryParse(_latController.text.trim());
+    final lng = double.tryParse(_lngController.text.trim());
+    final initial = (lat != null && lng != null)
+        ? LatLng(lat, lng)
+        : const LatLng(0, 0);
+    final result = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(initialPosition: initial),
+      ),
+    );
+    if (result != null) {
+      setState(() {
+        _latController.text = result.latitude.toString();
+        _lngController.text = result.longitude.toString();
+      });
+    }
   }
 
   Future<void> _submit() async {
@@ -120,6 +141,12 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                 decimal: true,
                 signed: true,
               ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _pickOnMap,
+              icon: const Icon(Icons.map),
+              label: const Text('Pick on map'),
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
