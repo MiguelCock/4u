@@ -33,9 +33,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       appBar: AppBar(
         title: const Text('Pick a location'),
         actions: [
-          TextButton(
+          IconButton(
             onPressed: () => Navigator.of(context).pop(_picked),
-            child: const Text('Confirm', style: TextStyle(color: Colors.white)),
+            icon: const Icon(Icons.check),
+            tooltip: 'Confirm location',
           ),
         ],
       ),

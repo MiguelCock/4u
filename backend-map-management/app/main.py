@@ -55,6 +55,12 @@ async def get_anchor_point(id: str) -> AnchorPointResponse:
     return result.data[0]
 
 
+@app.delete("/anchor-points/{id}")
+async def delete_anchor_point(id: str):
+    db.client.table("anchor_points").delete().eq("id", id).execute()
+    return "ok"
+
+
 @app.get("/buildings")
 async def list_buildings() -> list[BuildingResponse]:
     result = db.client.table("buildings").select("*").execute()

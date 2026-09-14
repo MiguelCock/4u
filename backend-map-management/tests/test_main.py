@@ -31,6 +31,12 @@ def _mock_select_result(rows):
     return mock_client
 
 
+def _mock_delete_eq_result():
+    mock_client = MagicMock()
+    mock_client.table.return_value.delete.return_value.eq.return_value.execute.return_value.data = []
+    return mock_client
+
+
 _ANCHOR_POINT_ROW = {
     "id": "1",
     "building_id": "b1",
@@ -53,6 +59,17 @@ def test_get_anchor_point_404_when_missing():
     with patch("app.main.db.client", _mock_select_eq_result([])):
         response = client.get("/anchor-points/missing")
     assert response.status_code == 404
+
+
+def test_delete_anchor_point_returns_ok():
+    mock_client = _mock_delete_eq_result()
+    with patch("app.main.db.client", mock_client):
+        response = client.delete("/anchor-points/1")
+    assert response.status_code == 200
+    assert response.json() == "ok"
+    mock_client.table.return_value.delete.return_value.eq.assert_called_once_with(
+        "id", "1"
+    )
 
 
 _BUILDING_ROW = {
