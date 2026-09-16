@@ -130,13 +130,15 @@ profiles.sql
 buildings.sql
 anchor_points.sql    -- run `CREATE EXTENSION IF NOT EXISTS btree_gist;` first -
                       -- its GiST index needs it
+anchor_point_photos.sql  -- one row per photo (~4-8 per anchor point);
+                          -- must come after anchor_points.sql
 routes.sql
 navigation_sessions.sql
 navigation_logs.sql
 user_feedback.sql
 ```
 
-`places` and `buildings` have no seed data. Once the app and `backend-map-management` are running (steps 4-5 below), an admin can create both from the app itself (sign in as `admin` → the app bar's **Add place** / **Add building** menu) — no SQL needed. To seed them by hand instead (e.g. before the app is running):
+`places` and `buildings` have no seed data. Once the app and `backend-map-management` are running (steps 4-5 below), an admin can create both from the app itself (sign in as `admin` → the **Places**/**Buildings** tab's floating action button) — no SQL needed. To seed them by hand instead (e.g. before the app is running):
 
 ```sql
 INSERT INTO places (id, code, name, latitude, longitude)

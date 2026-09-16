@@ -1,3 +1,4 @@
+import mimetypes
 from typing import BinaryIO
 
 from supabase import Client, create_client
@@ -33,7 +34,12 @@ class SupaBase:
         ).execute()
 
     def upload_image(self, bucket: str, file: BinaryIO, filename: str) -> str:
-        self.client.storage.from_(bucket).upload(file=file.read(), path=filename)
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        self.client.storage.from_(bucket).upload(
+            file=file.read(),
+            path=filename,
+            file_options={"content-type": content_type},
+        )
         return self.client.storage.from_(bucket).get_public_url(filename)
 
     def get_photos(self):

@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -15,9 +13,8 @@ import '../services/map_tile_config.dart';
 ///
 /// Optionally overlays existing places/buildings/anchor points (each caller
 /// opts into whichever are relevant) so an admin can see duplicates and
-/// coverage gaps while picking - existing anchor points with a recorded
-/// `heading` show a rotated arrow for the direction they were captured
-/// facing.
+/// coverage gaps while picking - building markers show a small badge with
+/// their anchor-point count, and place markers show their building count.
 class LocationPickerScreen extends StatefulWidget {
   final LatLng initialPosition;
   final bool showPlaces;
@@ -29,6 +26,11 @@ class LocationPickerScreen extends StatefulWidget {
   /// whichever building is currently selected in the form.
   final String? anchorPointsBuildingId;
 
+  /// When set, only buildings belonging to this place are overlaid - used by
+  /// `CaptureScreen`/`AddBuildingScreen`, where buildings are always scoped
+  /// to whichever place is currently selected in the form.
+  final String? buildingsPlaceId;
+
   const LocationPickerScreen({
     super.key,
     required this.initialPosition,
@@ -36,6 +38,7 @@ class LocationPickerScreen extends StatefulWidget {
     this.showBuildings = false,
     this.showAnchorPoints = false,
     this.anchorPointsBuildingId,
+    this.buildingsPlaceId,
   });
 
   @override
@@ -68,10 +71,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             : Future.value(const []),
       ]);
       if (!mounted) return;
+      final buildings = (results[1] as List).cast<Map<String, dynamic>>();
       final anchorPoints = (results[2] as List).cast<Map<String, dynamic>>();
       setState(() {
         _places = (results[0] as List).cast<Map<String, dynamic>>();
-        _buildings = (results[1] as List).cast<Map<String, dynamic>>();
+        _buildings = widget.buildingsPlaceId == null
+            ? buildings
+            : buildings
+                  .where((b) => b['place_id'] == widget.buildingsPlaceId)
+                  .toList();
         _anchorPoints = widget.anchorPointsBuildingId == null
             ? anchorPoints
             : anchorPoints
@@ -86,19 +94,65 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     }
   }
 
+  Widget _badge(String label, {required Color color}) {
+    return Positioned(
+      right: 0,
+      top: 0,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        constraints: const BoxConstraints(minWidth: 16),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white, width: 1),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
   List<Marker> _overlayMarkers() {
     final markers = <Marker>[];
+
+    final buildingCountByPlace = <String, int>{};
+    for (final building in _buildings) {
+      final placeId = building['place_id'] as String?;
+      if (placeId == null) continue;
+      buildingCountByPlace[placeId] = (buildingCountByPlace[placeId] ?? 0) + 1;
+    }
+    final anchorCountByBuilding = <String, int>{};
+    for (final point in _anchorPoints) {
+      final buildingId = point['building_id'] as String?;
+      if (buildingId == null) continue;
+      anchorCountByBuilding[buildingId] =
+          (anchorCountByBuilding[buildingId] ?? 0) + 1;
+    }
 
     for (final place in _places) {
       final lat = (place['latitude'] as num?)?.toDouble();
       final lng = (place['longitude'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
+      final count = buildingCountByPlace[place['id']] ?? 0;
       markers.add(
         Marker(
           point: LatLng(lat, lng),
           width: 60,
           height: 60,
-          child: const Icon(Icons.flag, color: Colors.purple, size: 30),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              const Icon(Icons.flag, color: Colors.purple, size: 30),
+              if (count > 0) _badge('$count', color: Colors.purple),
+            ],
+          ),
         ),
       );
     }
@@ -107,12 +161,19 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       final lat = (building['latitude'] as num?)?.toDouble();
       final lng = (building['longitude'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
+      final count = anchorCountByBuilding[building['id']] ?? 0;
       markers.add(
         Marker(
           point: LatLng(lat, lng),
           width: 60,
           height: 60,
-          child: const Icon(Icons.apartment, color: Colors.orange, size: 30),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              const Icon(Icons.apartment, color: Colors.orange, size: 30),
+              if (count > 0) _badge('$count', color: Colors.orange),
+            ],
+          ),
         ),
       );
     }
@@ -121,22 +182,12 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       final lat = (point['latitude'] as num?)?.toDouble();
       final lng = (point['longitude'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
-      final heading = (point['heading'] as num?)?.toDouble();
       markers.add(
         Marker(
           point: LatLng(lat, lng),
           width: 40,
           height: 40,
-          child: heading == null
-              ? const Icon(Icons.circle, color: Colors.green, size: 16)
-              : Transform.rotate(
-                  angle: heading * math.pi / 180,
-                  child: const Icon(
-                    Icons.navigation,
-                    color: Colors.green,
-                    size: 28,
-                  ),
-                ),
+          child: const Icon(Icons.circle, color: Colors.green, size: 16),
         ),
       );
     }

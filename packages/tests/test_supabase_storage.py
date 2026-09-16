@@ -23,6 +23,30 @@ def test_upload_image_passes_bytes_not_the_raw_file_object():
     assert upload_mock.call_args.kwargs["file"] == b"fake-image-bytes"
 
 
+def test_upload_image_sets_content_type_from_filename():
+    db = _make_supabase()
+    fake_file = BytesIO(b"fake-image-bytes")
+
+    db.upload_image("anchor-points", fake_file, "photo.jpg")
+
+    upload_mock = db.client.storage.from_.return_value.upload
+    assert upload_mock.call_args.kwargs["file_options"] == {
+        "content-type": "image/jpeg"
+    }
+
+
+def test_upload_image_falls_back_to_octet_stream_for_unknown_extension():
+    db = _make_supabase()
+    fake_file = BytesIO(b"fake-bytes")
+
+    db.upload_image("anchor-points", fake_file, "photo.unknownext")
+
+    upload_mock = db.client.storage.from_.return_value.upload
+    assert upload_mock.call_args.kwargs["file_options"] == {
+        "content-type": "application/octet-stream"
+    }
+
+
 def test_post_photos_passes_bytes_not_the_raw_file_object():
     db = _make_supabase()
     fake_file = BytesIO(b"fake-photo-bytes")

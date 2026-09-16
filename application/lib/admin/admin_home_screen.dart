@@ -4,11 +4,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/api_service.dart';
 import 'add_building_screen.dart';
 import 'add_place_screen.dart';
+import 'capture_photo_screen.dart';
 import 'capture_screen.dart';
+import 'edit_anchor_point_screen.dart';
+import 'edit_building_screen.dart';
+import 'edit_place_screen.dart';
 
-/// `admin`-role home screen: anchor points grouped by place then building,
-/// with delete/refresh, plus entry points into `CaptureScreen`,
-/// `AddPlaceScreen`, and `AddBuildingScreen`.
+/// `admin`-role home screen: three tabs (places / buildings / anchor points),
+/// each searchable, with edit and delete (cascade-impact warning first)
+/// actions, plus entry points into the add/edit/capture screens.
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({super.key});
 
@@ -16,19 +20,57 @@ class AdminHomeScreen extends StatefulWidget {
   State<AdminHomeScreen> createState() => _AdminHomeScreenState();
 }
 
-class _AdminHomeScreenState extends State<AdminHomeScreen> {
+class _AdminHomeScreenState extends State<AdminHomeScreen>
+    with SingleTickerProviderStateMixin {
   final _mapApi = MapManagementApi();
+  late final TabController _tabController;
 
   List<Map<String, dynamic>> _places = [];
   List<Map<String, dynamic>> _buildings = [];
   List<Map<String, dynamic>> _anchorPoints = [];
+  List<Map<String, dynamic>> _photos = [];
   bool _loading = true;
   String? _error;
+
+  final _placeSearchController = TextEditingController();
+  final _buildingSearchController = TextEditingController();
+  final _anchorSearchController = TextEditingController();
+  String _placeQuery = '';
+  String _buildingQuery = '';
+  String _anchorQuery = '';
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this)
+      ..addListener(() => setState(() {}));
+    _placeSearchController.addListener(
+      () => setState(
+        () => _placeQuery = _placeSearchController.text.trim().toLowerCase(),
+      ),
+    );
+    _buildingSearchController.addListener(
+      () => setState(
+        () => _buildingQuery = _buildingSearchController.text
+            .trim()
+            .toLowerCase(),
+      ),
+    );
+    _anchorSearchController.addListener(
+      () => setState(
+        () => _anchorQuery = _anchorSearchController.text.trim().toLowerCase(),
+      ),
+    );
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _placeSearchController.dispose();
+    _buildingSearchController.dispose();
+    _anchorSearchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -37,6 +79,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         _mapApi.get('/places'),
         _mapApi.get('/buildings'),
         _mapApi.get('/anchor-points'),
+        _mapApi.get('/anchor-point-photos'),
       ]);
       if (!mounted) return;
       setState(() {
@@ -44,6 +87,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         _buildings = (results[1] as List? ?? []).cast<Map<String, dynamic>>();
         _anchorPoints = (results[2] as List? ?? [])
             .cast<Map<String, dynamic>>();
+        _photos = (results[3] as List? ?? []).cast<Map<String, dynamic>>();
         _loading = false;
         _error = null;
       });
@@ -56,12 +100,24 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     }
   }
 
-  Future<void> _deleteAnchorPoint(String id) async {
+  List<Map<String, dynamic>> _buildingsOf(String placeId) =>
+      _buildings.where((b) => b['place_id'] == placeId).toList();
+
+  List<Map<String, dynamic>> _anchorPointsOf(String buildingId) =>
+      _anchorPoints.where((p) => p['building_id'] == buildingId).toList();
+
+  List<Map<String, dynamic>> _photosOf(String anchorPointId) =>
+      _photos.where((p) => p['anchor_point_id'] == anchorPointId).toList();
+
+  Future<bool> _confirm({
+    required String title,
+    required String content,
+  }) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete anchor point?'),
-        content: const Text('This cannot be undone.'),
+        title: Text(title),
+        content: Text(content),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -74,10 +130,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    return confirmed == true;
+  }
 
+  Future<void> _runDelete(Future<void> Function() action) async {
     try {
-      await _mapApi.delete('/anchor-points/$id');
+      await action();
       await _loadData();
     } on ApiException catch (e) {
       if (mounted) {
@@ -88,85 +146,349 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     }
   }
 
-  /// Groups `_anchorPoints` by place, then building, each sorted by name -
-  /// falls back to "Unknown place"/"Unknown building" for anchor points
-  /// whose building/place reference doesn't resolve (e.g. stale data).
-  List<Widget> _buildGroupedList() {
-    final buildingsById = {for (final b in _buildings) b['id'] as String: b};
-    final placesById = {for (final p in _places) p['id'] as String: p};
+  Future<void> _deletePlace(Map<String, dynamic> place) async {
+    final buildings = _buildingsOf(place['id'] as String);
+    final buildingIds = buildings.map((b) => b['id'] as String).toSet();
+    final anchors = _anchorPoints
+        .where((p) => buildingIds.contains(p['building_id']))
+        .toList();
+    final anchorIds = anchors.map((p) => p['id'] as String).toSet();
+    final photoCount = _photos
+        .where((ph) => anchorIds.contains(ph['anchor_point_id']))
+        .length;
 
-    final grouped = <String, Map<String, List<Map<String, dynamic>>>>{};
-    final placeNames = <String, String>{};
-    final buildingNames = <String, String>{};
+    final confirmed = await _confirm(
+      title: 'Delete place?',
+      content:
+          'Deleting "${place['name']}" will also delete ${buildings.length} '
+          'building(s), ${anchors.length} anchor point(s), and $photoCount '
+          'photo(s). This cannot be undone.',
+    );
+    if (!confirmed) return;
+    await _runDelete(() => _mapApi.delete('/places/${place['id']}'));
+  }
 
-    for (final point in _anchorPoints) {
-      final buildingId = point['building_id'] as String?;
-      final building = buildingId != null ? buildingsById[buildingId] : null;
-      final placeId = building?['place_id'] as String?;
-      final place = placeId != null ? placesById[placeId] : null;
+  Future<void> _deleteBuilding(Map<String, dynamic> building) async {
+    final anchors = _anchorPointsOf(building['id'] as String);
+    final anchorIds = anchors.map((p) => p['id'] as String).toSet();
+    final photoCount = _photos
+        .where((ph) => anchorIds.contains(ph['anchor_point_id']))
+        .length;
 
-      final placeKey = place?['id'] as String? ?? 'unknown-place';
-      final buildingKey = building?['id'] as String? ?? 'unknown-building';
-      placeNames[placeKey] = place?['name'] as String? ?? 'Unknown place';
-      buildingNames[buildingKey] =
-          building?['name'] as String? ?? 'Unknown building';
+    final confirmed = await _confirm(
+      title: 'Delete building?',
+      content:
+          'Deleting "${building['name']}" will also delete ${anchors.length} '
+          'anchor point(s) and $photoCount photo(s). This cannot be undone.',
+    );
+    if (!confirmed) return;
+    await _runDelete(() => _mapApi.delete('/buildings/${building['id']}'));
+  }
 
-      grouped
-          .putIfAbsent(placeKey, () => {})
-          .putIfAbsent(buildingKey, () => [])
-          .add(point);
-    }
+  Future<void> _deleteAnchorPoint(Map<String, dynamic> point) async {
+    final photoCount = _photosOf(point['id'] as String).length;
+    final confirmed = await _confirm(
+      title: 'Delete anchor point?',
+      content:
+          'This will also delete $photoCount photo(s). This cannot be undone.',
+    );
+    if (!confirmed) return;
+    await _runDelete(() => _mapApi.delete('/anchor-points/${point['id']}'));
+  }
 
-    final sortedPlaceKeys = grouped.keys.toList()
-      ..sort((a, b) => placeNames[a]!.compareTo(placeNames[b]!));
+  Future<void> _editPlace(Map<String, dynamic> place) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => EditPlaceScreen(place: place)),
+    );
+    if (changed == true) _loadData();
+  }
 
-    final widgets = <Widget>[];
-    for (final placeKey in sortedPlaceKeys) {
-      widgets.add(
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-          child: Text(
-            placeNames[placeKey]!,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-          ),
+  Future<void> _editBuilding(Map<String, dynamic> building) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => EditBuildingScreen(building: building)),
+    );
+    if (changed == true) _loadData();
+  }
+
+  Future<void> _editAnchorPoint(Map<String, dynamic> point) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EditAnchorPointScreen(anchorPoint: point),
+      ),
+    );
+    if (changed == true) _loadData();
+  }
+
+  Future<void> _addPhoto(Map<String, dynamic> point) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CapturePhotoScreen(
+          anchorPointId: point['id'] as String,
+          anchorPointDescription:
+              point['location_description'] as String? ?? point['id'] as String,
         ),
-      );
+      ),
+    );
+    _loadData();
+  }
 
-      final buildingsMap = grouped[placeKey]!;
-      final sortedBuildingKeys = buildingsMap.keys.toList()
-        ..sort((a, b) => buildingNames[a]!.compareTo(buildingNames[b]!));
+  Widget _searchField(TextEditingController controller, String hint) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          hintText: hint,
+          prefixIcon: const Icon(Icons.search),
+          isDense: true,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
 
-      for (final buildingKey in sortedBuildingKeys) {
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 16, 4),
-            child: Text(
-              buildingNames[buildingKey]!,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-        );
-
-        for (final point in buildingsMap[buildingKey]!) {
-          widgets.add(
-            ListTile(
-              leading: const Icon(Icons.location_pin),
-              title: Text(
-                point['location_description'] as String? ??
-                    point['id'] as String,
+  Widget _placesTab() {
+    final filtered =
+        _places
+            .where(
+              (p) => (p['name'] as String? ?? '').toLowerCase().contains(
+                _placeQuery,
               ),
-              subtitle: Text('Status: ${point['status'] ?? 'unknown'}'),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline),
-                tooltip: 'Delete',
-                onPressed: () => _deleteAnchorPoint(point['id'] as String),
-              ),
+            )
+            .toList()
+          ..sort(
+            (a, b) => (a['name'] as String? ?? '').compareTo(
+              b['name'] as String? ?? '',
             ),
           );
-        }
-      }
+
+    return Column(
+      children: [
+        _searchField(_placeSearchController, 'Search places'),
+        Expanded(
+          child: filtered.isEmpty
+              ? const Center(child: Text('No places found.'))
+              : ListView.builder(
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final place = filtered[index];
+                    final buildingCount = _buildingsOf(
+                      place['id'] as String,
+                    ).length;
+                    return ListTile(
+                      leading: const Icon(Icons.flag, color: Colors.purple),
+                      title: Text(
+                        place['name'] as String? ?? place['id'] as String,
+                      ),
+                      subtitle: Text(
+                        '$buildingCount building(s)'
+                        '${(place['is_active'] as bool? ?? true) ? '' : ' - inactive'}',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined),
+                            tooltip: 'Edit',
+                            onPressed: () => _editPlace(place),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            tooltip: 'Delete',
+                            onPressed: () => _deletePlace(place),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildingsTab() {
+    final placesById = {for (final p in _places) p['id'] as String: p};
+    final filtered =
+        _buildings
+            .where(
+              (b) => (b['name'] as String? ?? '').toLowerCase().contains(
+                _buildingQuery,
+              ),
+            )
+            .toList()
+          ..sort(
+            (a, b) => (a['name'] as String? ?? '').compareTo(
+              b['name'] as String? ?? '',
+            ),
+          );
+
+    return Column(
+      children: [
+        _searchField(_buildingSearchController, 'Search buildings'),
+        Expanded(
+          child: filtered.isEmpty
+              ? const Center(child: Text('No buildings found.'))
+              : ListView.builder(
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final building = filtered[index];
+                    final place = placesById[building['place_id']];
+                    final anchorCount = _anchorPointsOf(
+                      building['id'] as String,
+                    ).length;
+                    return ListTile(
+                      leading: const Icon(
+                        Icons.apartment,
+                        color: Colors.orange,
+                      ),
+                      title: Text(
+                        building['name'] as String? ?? building['id'] as String,
+                      ),
+                      subtitle: Text(
+                        '${place?['name'] as String? ?? 'Unknown place'} · '
+                        '$anchorCount anchor point(s)'
+                        '${(building['is_active'] as bool? ?? true) ? '' : ' - inactive'}',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined),
+                            tooltip: 'Edit',
+                            onPressed: () => _editBuilding(building),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            tooltip: 'Delete',
+                            onPressed: () => _deleteBuilding(building),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _anchorPointsTab() {
+    final buildingsById = {for (final b in _buildings) b['id'] as String: b};
+    final filtered =
+        _anchorPoints
+            .where(
+              (p) => (p['location_description'] as String? ?? '')
+                  .toLowerCase()
+                  .contains(_anchorQuery),
+            )
+            .toList()
+          ..sort(
+            (a, b) => (a['location_description'] as String? ?? '').compareTo(
+              b['location_description'] as String? ?? '',
+            ),
+          );
+
+    return Column(
+      children: [
+        _searchField(_anchorSearchController, 'Search anchor points'),
+        Expanded(
+          child: filtered.isEmpty
+              ? const Center(child: Text('No anchor points found.'))
+              : ListView.builder(
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final point = filtered[index];
+                    final building = buildingsById[point['building_id']];
+                    final photos = _photosOf(point['id'] as String);
+                    final thumbUrl = photos.isNotEmpty
+                        ? photos.first['image_url'] as String?
+                        : null;
+                    return ListTile(
+                      leading: thumbUrl != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: Image.network(
+                                thumbUrl,
+                                width: 40,
+                                height: 40,
+                                fit: BoxFit.cover,
+                              ),
+                            )
+                          : const Icon(Icons.location_pin, color: Colors.green),
+                      title: Text(
+                        point['location_description'] as String? ??
+                            point['id'] as String,
+                      ),
+                      subtitle: Text(
+                        '${building?['name'] as String? ?? 'Unknown building'} · '
+                        'Status: ${point['status'] ?? 'unknown'} · '
+                        '${photos.length} photo(s)',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.add_a_photo_outlined),
+                            tooltip: 'Add photo',
+                            onPressed: () => _addPhoto(point),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined),
+                            tooltip: 'Edit',
+                            onPressed: () => _editAnchorPoint(point),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            tooltip: 'Delete',
+                            onPressed: () => _deleteAnchorPoint(point),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget? _fab() {
+    switch (_tabController.index) {
+      case 0:
+        return FloatingActionButton(
+          tooltip: 'Add place',
+          onPressed: () async {
+            await Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const AddPlaceScreen()));
+            _loadData();
+          },
+          child: const Icon(Icons.add),
+        );
+      case 1:
+        return FloatingActionButton(
+          tooltip: 'Add building',
+          onPressed: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AddBuildingScreen()),
+            );
+            _loadData();
+          },
+          child: const Icon(Icons.add),
+        );
+      default:
+        return FloatingActionButton(
+          tooltip: 'New anchor point',
+          onPressed: () async {
+            await Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const CaptureScreen()));
+            _loadData();
+          },
+          child: const Icon(Icons.add_a_photo),
+        );
     }
-    return widgets;
   }
 
   @override
@@ -174,26 +496,19 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Places'),
+            Tab(text: 'Buildings'),
+            Tab(text: 'Anchor points'),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
             onPressed: _loading ? null : _loadData,
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) async {
-              final screen = value == 'place'
-                  ? const AddPlaceScreen()
-                  : const AddBuildingScreen();
-              await Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => screen));
-              _loadData();
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'place', child: Text('Add place')),
-              PopupMenuItem(value: 'building', child: Text('Add building')),
-            ],
           ),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -201,33 +516,17 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const CaptureScreen()));
-          _loadData();
-        },
-        child: const Icon(Icons.add_a_photo),
-      ),
+      floatingActionButton: _fab(),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? Center(child: Text(_error!))
           : RefreshIndicator(
               onRefresh: _loadData,
-              child: _anchorPoints.isEmpty
-                  ? ListView(
-                      children: const [
-                        Padding(
-                          padding: EdgeInsets.all(32),
-                          child: Center(
-                            child: Text('No anchor points captured yet.'),
-                          ),
-                        ),
-                      ],
-                    )
-                  : ListView(children: _buildGroupedList()),
+              child: TabBarView(
+                controller: _tabController,
+                children: [_placesTab(), _buildingsTab(), _anchorPointsTab()],
+              ),
             ),
     );
   }
