@@ -132,6 +132,7 @@ anchor_points.sql    -- run `CREATE EXTENSION IF NOT EXISTS btree_gist;` first -
                       -- its GiST index needs it
 anchor_point_photos.sql  -- one row per photo (~4-8 per anchor point);
                           -- must come after anchor_points.sql
+anchor_point_connections.sql  -- walkability graph edges between anchor points
 routes.sql
 navigation_sessions.sql
 navigation_logs.sql
