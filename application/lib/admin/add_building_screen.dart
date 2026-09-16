@@ -70,7 +70,11 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
         : const LatLng(0, 0);
     final result = await Navigator.of(context).push<LatLng>(
       MaterialPageRoute(
-        builder: (_) => LocationPickerScreen(initialPosition: initial),
+        builder: (_) => LocationPickerScreen(
+          initialPosition: initial,
+          showPlaces: true,
+          showBuildings: true,
+        ),
       ),
     );
     if (result != null) {
