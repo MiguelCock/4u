@@ -76,6 +76,8 @@ class BuildingUpdate(BaseModel):
     code: str | None = None
     name: str | None = None
     address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     floors: int | None = None
     has_elevator: bool | None = None
     has_stairs: bool | None = None
@@ -98,4 +100,6 @@ class PlaceUpdate(BaseModel):
     code: str | None = None
     name: str | None = None
     address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     is_active: bool | None = None
