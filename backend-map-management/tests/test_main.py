@@ -99,6 +99,15 @@ def test_update_anchor_point_returns_updated_row():
     mock_client.table.return_value.update.assert_called_once_with({"floor": 2})
 
 
+def test_update_anchor_point_persists_latitude_and_longitude():
+    payload = {"latitude": 6.25, "longitude": -75.59}
+    mock_client = _mock_update_eq_result([{**_ANCHOR_POINT_ROW, **payload}])
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/1", json=payload)
+    assert response.status_code == 200
+    mock_client.table.return_value.update.assert_called_once_with(payload)
+
+
 def test_delete_anchor_point_returns_ok():
     mock_client = _mock_delete_eq_result()
     with patch("app.main.db.client", mock_client):
@@ -209,6 +218,15 @@ def test_update_building_returns_updated_row():
     mock_client.table.return_value.update.assert_called_once_with({"name": "Renamed"})
 
 
+def test_update_building_persists_latitude_and_longitude():
+    payload = {"latitude": 6.25, "longitude": -75.59}
+    mock_client = _mock_update_eq_result([{**_BUILDING_ROW, **payload}])
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/buildings/1", json=payload)
+    assert response.status_code == 200
+    mock_client.table.return_value.update.assert_called_once_with(payload)
+
+
 def test_delete_building_returns_ok():
     mock_client = _mock_delete_eq_result()
     with patch("app.main.db.client", mock_client):
@@ -264,6 +282,15 @@ def test_update_place_returns_updated_row():
     mock_client.table.return_value.update.assert_called_once_with(
         {"name": "Renamed Campus"}
     )
+
+
+def test_update_place_persists_latitude_and_longitude():
+    payload = {"latitude": 6.25, "longitude": -75.59}
+    mock_client = _mock_update_eq_result([{**_PLACE_ROW, **payload}])
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/places/p1", json=payload)
+    assert response.status_code == 200
+    mock_client.table.return_value.update.assert_called_once_with(payload)
 
 
 def test_delete_place_returns_ok():
