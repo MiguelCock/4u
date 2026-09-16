@@ -6,11 +6,16 @@ from packages.supabase import SupaBase
 
 from .models import (
     AnchorPointCreate,
+    AnchorPointPhotoCreate,
+    AnchorPointPhotoResponse,
     AnchorPointResponse,
+    AnchorPointUpdate,
     BuildingCreate,
     BuildingResponse,
+    BuildingUpdate,
     PlaceCreate,
     PlaceResponse,
+    PlaceUpdate,
 )
 
 load_dotenv()
@@ -55,9 +60,50 @@ async def get_anchor_point(id: str) -> AnchorPointResponse:
     return result.data[0]
 
 
+@app.patch("/anchor-points/{id}")
+async def update_anchor_point(id: str, anchor_point: AnchorPointUpdate):
+    result = (
+        db.client.table("anchor_points")
+        .update(anchor_point.model_dump(exclude_unset=True))
+        .eq("id", id)
+        .execute()
+    )
+    return result.data
+
+
 @app.delete("/anchor-points/{id}")
 async def delete_anchor_point(id: str):
     db.client.table("anchor_points").delete().eq("id", id).execute()
+    return "ok"
+
+
+@app.post("/anchor-points/{id}/photos")
+async def create_anchor_point_photo(id: str, photo: AnchorPointPhotoCreate):
+    payload = {**photo.model_dump(), "anchor_point_id": id}
+    result = db.client.table("anchor_point_photos").insert(payload).execute()
+    return result.data
+
+
+@app.get("/anchor-points/{id}/photos")
+async def list_anchor_point_photos(id: str) -> list[AnchorPointPhotoResponse]:
+    result = (
+        db.client.table("anchor_point_photos")
+        .select("*")
+        .eq("anchor_point_id", id)
+        .execute()
+    )
+    return result.data
+
+
+@app.get("/anchor-point-photos")
+async def list_all_anchor_point_photos() -> list[AnchorPointPhotoResponse]:
+    result = db.client.table("anchor_point_photos").select("*").execute()
+    return result.data
+
+
+@app.delete("/anchor-point-photos/{id}")
+async def delete_anchor_point_photo(id: str):
+    db.client.table("anchor_point_photos").delete().eq("id", id).execute()
     return "ok"
 
 
@@ -81,6 +127,23 @@ async def create_building(building: BuildingCreate):
     return result.data
 
 
+@app.patch("/buildings/{id}")
+async def update_building(id: str, building: BuildingUpdate):
+    result = (
+        db.client.table("buildings")
+        .update(building.model_dump(exclude_unset=True))
+        .eq("id", id)
+        .execute()
+    )
+    return result.data
+
+
+@app.delete("/buildings/{id}")
+async def delete_building(id: str):
+    db.client.table("buildings").delete().eq("id", id).execute()
+    return "ok"
+
+
 @app.post("/places")
 async def create_place(place: PlaceCreate):
     result = db.client.table("places").insert(place.model_dump()).execute()
@@ -99,3 +162,20 @@ async def get_place(id: str) -> PlaceResponse:
     if not result.data:
         raise HTTPException(status_code=404, detail="Place not found")
     return result.data[0]
+
+
+@app.patch("/places/{id}")
+async def update_place(id: str, place: PlaceUpdate):
+    result = (
+        db.client.table("places")
+        .update(place.model_dump(exclude_unset=True))
+        .eq("id", id)
+        .execute()
+    )
+    return result.data
+
+
+@app.delete("/places/{id}")
+async def delete_place(id: str):
+    db.client.table("places").delete().eq("id", id).execute()
+    return "ok"

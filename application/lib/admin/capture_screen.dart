@@ -1,15 +1,9 @@
-import 'dart:async';
-import 'dart:io';
-
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_compass/flutter_compass.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/api_service.dart';
 import '../services/location_service.dart';
+import 'capture_photo_screen.dart';
 import 'location_picker_screen.dart';
 
 /// Matches db_schema/location_type.sql's seeded values — static reference
@@ -27,6 +21,9 @@ const Map<int, String> kLocationTypes = {
   9: 'other',
 };
 
+/// Creates a new `anchor_points` row (position + description only — no
+/// photos live here anymore, since one physical point ends up with ~4-8
+/// photos). On success, hands off to `CapturePhotoScreen` to take them.
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({super.key});
 
@@ -37,73 +34,54 @@ class CaptureScreen extends StatefulWidget {
 class _CaptureScreenState extends State<CaptureScreen> {
   final _mapApi = MapManagementApi();
   final _locationService = LocationService();
+  final _descriptionController = TextEditingController();
 
-  CameraController? _controller;
-  XFile? _capturedImage;
-  LatLng? _pickedPosition;
-  StreamSubscription<CompassEvent>? _compassSubscription;
-  double? _liveHeading;
-  double? _capturedHeading;
+  List<Map<String, dynamic>> _places = [];
+  List<Map<String, dynamic>> _buildingsAll = [];
   List<Map<String, dynamic>> _buildings = [];
+  String? _selectedPlaceId;
   String? _selectedBuildingId;
   int _selectedLocationTypeId = kLocationTypes.keys.first;
-  final _descriptionController = TextEditingController();
-  bool _loadingBuildings = true;
+  LatLng? _pickedPosition;
+  bool _loading = true;
   bool _submitting = false;
   String? _error;
-  String? _successMessage;
 
   @override
   void initState() {
     super.initState();
-    _initCamera();
-    _loadBuildings();
-    _compassSubscription = FlutterCompass.events?.listen((event) {
-      if (mounted) {
-        // `heading` is what the Android plugin actually computes from the
-        // device's sensors - `headingForCameraMode` is a real iOS feature
-        // but the Android implementation never populates it (stays 0.0,
-        // not null, so `??` never falls through) and this app is
-        // Android-only today (no ios/ directory in the repo).
-        setState(
-          () => _liveHeading = event.heading ?? event.headingForCameraMode,
-        );
-      }
-    });
+    _loadData();
   }
 
-  Future<void> _initCamera() async {
-    if (await Permission.camera.request() != PermissionStatus.granted) return;
+  Future<void> _loadData() async {
     try {
-      final cameras = await availableCameras();
-      _controller = CameraController(
-        cameras.first,
-        ResolutionPreset.medium,
-        enableAudio: false,
-      );
-      await _controller!.initialize();
-      if (mounted) setState(() {});
-    } catch (_) {
-      // Camera unavailable (e.g. emulator/CI) - the rest of the form still works.
-    }
-  }
-
-  Future<void> _loadBuildings() async {
-    try {
-      final result = await _mapApi.get('/buildings');
-      if (result is List) {
-        setState(() {
-          _buildings = result.cast<Map<String, dynamic>>();
-          if (_buildings.isNotEmpty) {
-            _selectedBuildingId = _buildings.first['id'] as String?;
-          }
-        });
-      }
+      final results = await Future.wait([
+        _mapApi.get('/places'),
+        _mapApi.get('/buildings'),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _places = (results[0] as List).cast<Map<String, dynamic>>();
+        _buildingsAll = (results[1] as List).cast<Map<String, dynamic>>();
+        if (_places.isNotEmpty) {
+          _selectedPlaceId = _places.first['id'] as String?;
+        }
+        _applyBuildingFilter();
+      });
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to load buildings: $e');
+      setState(() => _error = 'Failed to load places/buildings: $e');
     } finally {
-      if (mounted) setState(() => _loadingBuildings = false);
+      if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _applyBuildingFilter() {
+    _buildings = _buildingsAll
+        .where((b) => b['place_id'] == _selectedPlaceId)
+        .toList();
+    _selectedBuildingId = _buildings.isNotEmpty
+        ? _buildings.first['id'] as String?
+        : null;
   }
 
   Future<void> _pickOnMap() async {
@@ -119,6 +97,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
           initialPosition: initial,
           showBuildings: true,
           showAnchorPoints: true,
+          buildingsPlaceId: _selectedPlaceId,
           anchorPointsBuildingId: _selectedBuildingId,
         ),
       ),
@@ -126,32 +105,20 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (result != null) setState(() => _pickedPosition = result);
   }
 
-  Future<void> _takePhoto() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-    try {
-      final image = await _controller!.takePicture();
-      setState(() {
-        _capturedImage = image;
-        _capturedHeading = _liveHeading;
-      });
-    } catch (e) {
-      setState(() => _error = 'Failed to capture photo: $e');
-    }
-  }
-
   Future<void> _submit() async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
     final position = _locationService.lastPosition;
-    if (userId == null) {
-      setState(() => _error = 'Not signed in.');
-      return;
-    }
-    if (_capturedImage == null) {
-      setState(() => _error = 'Take a photo first.');
+    final description = _descriptionController.text.trim();
+
+    if (_selectedPlaceId == null) {
+      setState(() => _error = 'Select a place.');
       return;
     }
     if (_selectedBuildingId == null) {
       setState(() => _error = 'Select a building.');
+      return;
+    }
+    if (description.isEmpty) {
+      setState(() => _error = 'Description is required.');
       return;
     }
     if (position == null && _pickedPosition == null) {
@@ -165,38 +132,29 @@ class _CaptureScreenState extends State<CaptureScreen> {
     setState(() {
       _submitting = true;
       _error = null;
-      _successMessage = null;
     });
 
     try {
-      final bytes = await _capturedImage!.readAsBytes();
-      final uploadResult = await _mapApi.postMultipart(
-        '/anchor-points/upload-image',
-        fieldName: 'file',
-        bytes: bytes,
-        filename: '${DateTime.now().millisecondsSinceEpoch}.jpg',
-      );
-      final imageUrl = (uploadResult as Map<String, dynamic>)['url'] as String;
-
-      await _mapApi.post('/anchor-points', {
+      final result = await _mapApi.post('/anchor-points', {
         'building_id': _selectedBuildingId,
         'location_type_id': _selectedLocationTypeId,
-        'image_url': imageUrl,
         'latitude': _pickedPosition?.latitude ?? position!.latitude,
         'longitude': _pickedPosition?.longitude ?? position!.longitude,
         'altitude': position?.altitude,
-        'heading': _capturedHeading,
-        if (_descriptionController.text.trim().isNotEmpty)
-          'location_description': _descriptionController.text.trim(),
-        'captured_by': userId,
+        'location_description': description,
       });
+      final id = (result as List).first['id'] as String;
 
-      setState(() {
-        _successMessage = 'Anchor point saved.';
-        _capturedImage = null;
-        _capturedHeading = null;
-        _descriptionController.clear();
-      });
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => CapturePhotoScreen(
+            anchorPointId: id,
+            anchorPointDescription: description,
+          ),
+        ),
+      );
+      if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       setState(() => _error = 'Failed to save anchor point: $e');
     } catch (e) {
@@ -208,146 +166,126 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   @override
   void dispose() {
-    _controller?.dispose();
     _descriptionController.dispose();
-    _compassSubscription?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Capture anchor point')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Stack(
-              children: [
-                SizedBox(
-                  height: 300,
-                  width: double.infinity,
-                  child: _capturedImage != null
-                      ? Image.file(
-                          File(_capturedImage!.path),
-                          fit: BoxFit.cover,
+      appBar: AppBar(title: const Text('New anchor point')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_places.isEmpty)
+                    const Text(
+                      'No places exist yet - add one first (Add place).',
+                      style: TextStyle(color: Colors.red),
+                    )
+                  else
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedPlaceId,
+                      decoration: const InputDecoration(labelText: 'Place'),
+                      items: _places
+                          .map(
+                            (p) => DropdownMenuItem(
+                              value: p['id'] as String,
+                              child: Text(
+                                p['name'] as String? ?? p['id'] as String,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => setState(() {
+                        _selectedPlaceId = value;
+                        _applyBuildingFilter();
+                      }),
+                    ),
+                  const SizedBox(height: 12),
+                  if (_places.isNotEmpty && _buildings.isEmpty)
+                    const Text(
+                      'No buildings in this place yet - add one first (Add building).',
+                      style: TextStyle(color: Colors.red),
+                    )
+                  else if (_buildings.isNotEmpty)
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedBuildingId,
+                      decoration: const InputDecoration(labelText: 'Building'),
+                      items: _buildings
+                          .map(
+                            (b) => DropdownMenuItem(
+                              value: b['id'] as String,
+                              child: Text(
+                                b['name'] as String? ?? b['id'] as String,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _selectedBuildingId = value),
+                    ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    initialValue: _selectedLocationTypeId,
+                    decoration: const InputDecoration(
+                      labelText: 'Location type',
+                    ),
+                    items: kLocationTypes.entries
+                        .map(
+                          (e) => DropdownMenuItem(
+                            value: e.key,
+                            child: Text(e.value),
+                          ),
                         )
-                      : (_controller != null &&
-                            _controller!.value.isInitialized)
-                      ? CameraPreview(_controller!)
-                      : const Center(child: CircularProgressIndicator()),
-                ),
-                if (_capturedImage == null && _liveHeading != null)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        'Facing: ${_liveHeading!.round()}°',
-                        style: const TextStyle(color: Colors.white),
-                      ),
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => _selectedLocationTypeId = value!),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _descriptionController,
+                    decoration: const InputDecoration(
+                      labelText: 'Description',
+                      helperText:
+                          'Required - used as this point\'s name so it can be told apart from others.',
                     ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: _takePhoto,
-              child: Text(
-                _capturedImage == null ? 'Take photo' : 'Retake photo',
+                  const SizedBox(height: 12),
+                  Text(
+                    _pickedPosition != null
+                        ? 'Location (picked): ${_pickedPosition!.latitude.toStringAsFixed(6)}, ${_pickedPosition!.longitude.toStringAsFixed(6)}'
+                        : _locationService.lastPosition != null
+                        ? 'Location (GPS): ${_locationService.lastPosition!.latitude.toStringAsFixed(6)}, ${_locationService.lastPosition!.longitude.toStringAsFixed(6)}'
+                        : 'Location: not available yet',
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _pickOnMap,
+                    icon: const Icon(Icons.map),
+                    label: const Text('Pick on map'),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(_error!, style: const TextStyle(color: Colors.red)),
+                  ],
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _submitting ? null : _submit,
+                    child: _submitting
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Create and add photos'),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            if (_loadingBuildings)
-              const Center(child: CircularProgressIndicator())
-            else
-              DropdownButtonFormField<String>(
-                initialValue: _selectedBuildingId,
-                decoration: const InputDecoration(labelText: 'Building'),
-                items: _buildings
-                    .map(
-                      (b) => DropdownMenuItem(
-                        value: b['id'] as String,
-                        child: Text(b['name'] as String? ?? b['id'] as String),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) =>
-                    setState(() => _selectedBuildingId = value),
-              ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              initialValue: _selectedLocationTypeId,
-              decoration: const InputDecoration(labelText: 'Location type'),
-              items: kLocationTypes.entries
-                  .map(
-                    (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
-                  )
-                  .toList(),
-              onChanged: (value) =>
-                  setState(() => _selectedLocationTypeId = value!),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Description (optional)',
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _pickedPosition != null
-                  ? 'Location (picked): ${_pickedPosition!.latitude.toStringAsFixed(6)}, ${_pickedPosition!.longitude.toStringAsFixed(6)}'
-                  : _locationService.lastPosition != null
-                  ? 'Location (GPS): ${_locationService.lastPosition!.latitude.toStringAsFixed(6)}, ${_locationService.lastPosition!.longitude.toStringAsFixed(6)}'
-                  : 'Location: not available yet',
-            ),
-            if (_capturedImage != null)
-              Text(
-                _capturedHeading != null
-                    ? 'Heading (captured): ${_capturedHeading!.round()}°'
-                    : 'Heading: not available for this photo',
-              ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _pickOnMap,
-              icon: const Icon(Icons.map),
-              label: const Text('Pick on map'),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
-            ],
-            if (_successMessage != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _successMessage!,
-                style: const TextStyle(color: Colors.green),
-              ),
-            ],
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _submitting ? null : _submit,
-              child: _submitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Save anchor point'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
