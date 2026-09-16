@@ -3,16 +3,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/api_service.dart';
 import 'add_building_screen.dart';
+import 'add_connection_screen.dart';
 import 'add_place_screen.dart';
 import 'capture_photo_screen.dart';
 import 'capture_screen.dart';
+import 'connect_anchor_points_screen.dart';
 import 'edit_anchor_point_screen.dart';
 import 'edit_building_screen.dart';
 import 'edit_place_screen.dart';
 
-/// `admin`-role home screen: three tabs (places / buildings / anchor points),
-/// each searchable, with edit and delete (cascade-impact warning first)
-/// actions, plus entry points into the add/edit/capture screens.
+/// `admin`-role home screen: four tabs (places / buildings / anchor points /
+/// connections), each searchable, with edit and delete (cascade-impact
+/// warning first) actions, plus entry points into the add/edit/capture/
+/// connect screens.
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({super.key});
 
@@ -29,20 +32,23 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   List<Map<String, dynamic>> _buildings = [];
   List<Map<String, dynamic>> _anchorPoints = [];
   List<Map<String, dynamic>> _photos = [];
+  List<Map<String, dynamic>> _connections = [];
   bool _loading = true;
   String? _error;
 
   final _placeSearchController = TextEditingController();
   final _buildingSearchController = TextEditingController();
   final _anchorSearchController = TextEditingController();
+  final _connectionSearchController = TextEditingController();
   String _placeQuery = '';
   String _buildingQuery = '';
   String _anchorQuery = '';
+  String _connectionQuery = '';
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this)
+    _tabController = TabController(length: 4, vsync: this)
       ..addListener(() => setState(() {}));
     _placeSearchController.addListener(
       () => setState(
@@ -61,6 +67,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         () => _anchorQuery = _anchorSearchController.text.trim().toLowerCase(),
       ),
     );
+    _connectionSearchController.addListener(
+      () => setState(
+        () => _connectionQuery = _connectionSearchController.text
+            .trim()
+            .toLowerCase(),
+      ),
+    );
     _loadData();
   }
 
@@ -70,6 +83,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     _placeSearchController.dispose();
     _buildingSearchController.dispose();
     _anchorSearchController.dispose();
+    _connectionSearchController.dispose();
     super.dispose();
   }
 
@@ -80,6 +94,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         _mapApi.get('/buildings'),
         _mapApi.get('/anchor-points'),
         _mapApi.get('/anchor-point-photos'),
+        _mapApi.get('/anchor-point-connections'),
       ]);
       if (!mounted) return;
       setState(() {
@@ -88,6 +103,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         _anchorPoints = (results[2] as List? ?? [])
             .cast<Map<String, dynamic>>();
         _photos = (results[3] as List? ?? []).cast<Map<String, dynamic>>();
+        _connections = (results[4] as List? ?? []).cast<Map<String, dynamic>>();
         _loading = false;
         _error = null;
       });
@@ -108,6 +124,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   List<Map<String, dynamic>> _photosOf(String anchorPointId) =>
       _photos.where((p) => p['anchor_point_id'] == anchorPointId).toList();
+
+  List<Map<String, dynamic>> _connectionsOf(String anchorPointId) =>
+      _connections
+          .where(
+            (c) =>
+                c['anchor_point_a_id'] == anchorPointId ||
+                c['anchor_point_b_id'] == anchorPointId,
+          )
+          .toList();
 
   Future<bool> _confirm({
     required String title,
@@ -156,13 +181,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final photoCount = _photos
         .where((ph) => anchorIds.contains(ph['anchor_point_id']))
         .length;
+    final connectionCount = _connections
+        .where(
+          (c) =>
+              anchorIds.contains(c['anchor_point_a_id']) ||
+              anchorIds.contains(c['anchor_point_b_id']),
+        )
+        .length;
 
     final confirmed = await _confirm(
       title: 'Delete place?',
       content:
           'Deleting "${place['name']}" will also delete ${buildings.length} '
-          'building(s), ${anchors.length} anchor point(s), and $photoCount '
-          'photo(s). This cannot be undone.',
+          'building(s), ${anchors.length} anchor point(s), $photoCount '
+          'photo(s), and $connectionCount connection(s). This cannot be undone.',
     );
     if (!confirmed) return;
     await _runDelete(() => _mapApi.delete('/places/${place['id']}'));
@@ -174,12 +206,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final photoCount = _photos
         .where((ph) => anchorIds.contains(ph['anchor_point_id']))
         .length;
+    final connectionCount = _connections
+        .where(
+          (c) =>
+              anchorIds.contains(c['anchor_point_a_id']) ||
+              anchorIds.contains(c['anchor_point_b_id']),
+        )
+        .length;
 
     final confirmed = await _confirm(
       title: 'Delete building?',
       content:
           'Deleting "${building['name']}" will also delete ${anchors.length} '
-          'anchor point(s) and $photoCount photo(s). This cannot be undone.',
+          'anchor point(s), $photoCount photo(s), and $connectionCount '
+          'connection(s). This cannot be undone.',
     );
     if (!confirmed) return;
     await _runDelete(() => _mapApi.delete('/buildings/${building['id']}'));
@@ -187,13 +227,26 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   Future<void> _deleteAnchorPoint(Map<String, dynamic> point) async {
     final photoCount = _photosOf(point['id'] as String).length;
+    final connectionCount = _connectionsOf(point['id'] as String).length;
     final confirmed = await _confirm(
       title: 'Delete anchor point?',
       content:
-          'This will also delete $photoCount photo(s). This cannot be undone.',
+          'This will also delete $photoCount photo(s) and $connectionCount '
+          'connection(s). This cannot be undone.',
     );
     if (!confirmed) return;
     await _runDelete(() => _mapApi.delete('/anchor-points/${point['id']}'));
+  }
+
+  Future<void> _deleteConnection(Map<String, dynamic> connection) async {
+    final confirmed = await _confirm(
+      title: 'Delete connection?',
+      content: 'This cannot be undone.',
+    );
+    if (!confirmed) return;
+    await _runDelete(
+      () => _mapApi.delete('/anchor-point-connections/${connection['id']}'),
+    );
   }
 
   Future<void> _editPlace(Map<String, dynamic> place) async {
@@ -453,6 +506,66 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  Widget _connectionsTab() {
+    final anchorPointsById = {
+      for (final p in _anchorPoints) p['id'] as String: p,
+    };
+    final buildingsById = {for (final b in _buildings) b['id'] as String: b};
+
+    String describe(String? anchorPointId) {
+      final point = anchorPointsById[anchorPointId];
+      return point?['location_description'] as String? ?? anchorPointId ?? '?';
+    }
+
+    final filtered = _connections.where((c) {
+      final aDesc = describe(c['anchor_point_a_id'] as String?).toLowerCase();
+      final bDesc = describe(c['anchor_point_b_id'] as String?).toLowerCase();
+      return aDesc.contains(_connectionQuery) ||
+          bDesc.contains(_connectionQuery);
+    }).toList();
+
+    return Column(
+      children: [
+        _searchField(_connectionSearchController, 'Search connections'),
+        Expanded(
+          child: filtered.isEmpty
+              ? const Center(child: Text('No connections found.'))
+              : ListView.builder(
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final connection = filtered[index];
+                    final aPoint =
+                        anchorPointsById[connection['anchor_point_a_id']];
+                    final bPoint =
+                        anchorPointsById[connection['anchor_point_b_id']];
+                    final aBuilding = buildingsById[aPoint?['building_id']];
+                    final bBuilding = buildingsById[bPoint?['building_id']];
+                    final distance = (connection['distance_meters'] as num?)
+                        ?.toStringAsFixed(1);
+                    return ListTile(
+                      leading: const Icon(Icons.timeline, color: Colors.teal),
+                      title: Text(
+                        '${describe(connection['anchor_point_a_id'] as String?)} '
+                        '↔ ${describe(connection['anchor_point_b_id'] as String?)}',
+                      ),
+                      subtitle: Text(
+                        '${aBuilding?['name'] as String? ?? 'Unknown'} / '
+                        '${bBuilding?['name'] as String? ?? 'Unknown'}'
+                        '${distance != null ? ' · ${distance}m' : ''}',
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: 'Delete',
+                        onPressed: () => _deleteConnection(connection),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
   Widget? _fab() {
     switch (_tabController.index) {
       case 0:
@@ -477,7 +590,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           },
           child: const Icon(Icons.add),
         );
-      default:
+      case 2:
         return FloatingActionButton(
           tooltip: 'New anchor point',
           onPressed: () async {
@@ -487,6 +600,19 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             _loadData();
           },
           child: const Icon(Icons.add_a_photo),
+        );
+      default:
+        return FloatingActionButton(
+          tooltip: 'Connect on map',
+          onPressed: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const ConnectAnchorPointsScreen(),
+              ),
+            );
+            _loadData();
+          },
+          child: const Icon(Icons.timeline),
         );
     }
   }
@@ -502,9 +628,23 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             Tab(text: 'Places'),
             Tab(text: 'Buildings'),
             Tab(text: 'Anchor points'),
+            Tab(text: 'Connections'),
           ],
         ),
         actions: [
+          if (_tabController.index == 3)
+            IconButton(
+              icon: const Icon(Icons.list_alt),
+              tooltip: 'Add connection (form)',
+              onPressed: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const AddConnectionScreen(),
+                  ),
+                );
+                _loadData();
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
@@ -525,7 +665,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               onRefresh: _loadData,
               child: TabBarView(
                 controller: _tabController,
-                children: [_placesTab(), _buildingsTab(), _anchorPointsTab()],
+                children: [
+                  _placesTab(),
+                  _buildingsTab(),
+                  _anchorPointsTab(),
+                  _connectionsTab(),
+                ],
               ),
             ),
     );

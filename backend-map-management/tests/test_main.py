@@ -43,6 +43,18 @@ def _mock_update_eq_result(rows):
     return mock_client
 
 
+def _mock_select_or_result(rows):
+    mock_client = MagicMock()
+    mock_client.table.return_value.select.return_value.or_.return_value.execute.return_value.data = rows
+    return mock_client
+
+
+def _mock_multi_table_client(table_mocks):
+    mock_client = MagicMock()
+    mock_client.table.side_effect = lambda name: table_mocks[name]
+    return mock_client
+
+
 _ANCHOR_POINT_ROW = {
     "id": "1",
     "building_id": "b1",
@@ -166,6 +178,136 @@ def test_delete_anchor_point_photo_returns_ok():
     assert response.json() == "ok"
     mock_client.table.return_value.delete.return_value.eq.assert_called_once_with(
         "id", "ph1"
+    )
+
+
+_CONNECTION_ROW = {
+    "id": "c1",
+    "anchor_point_a_id": "a1",
+    "anchor_point_b_id": "a2",
+    "distance_meters": 12.5,
+    "notes": None,
+    "created_by": "u1",
+    "created_at": "2026-01-01T00:00:00Z",
+}
+
+
+def test_create_anchor_point_connection_rejects_self_connection():
+    payload = {
+        "anchor_point_a_id": "a1",
+        "anchor_point_b_id": "a1",
+        "created_by": "u1",
+    }
+    response = client.post("/anchor-point-connections", json=payload)
+    assert response.status_code == 400
+
+
+def test_create_anchor_point_connection_uses_explicit_distance():
+    payload = {
+        "anchor_point_a_id": "a1",
+        "anchor_point_b_id": "a2",
+        "distance_meters": 12.5,
+        "created_by": "u1",
+    }
+    mock_client = _mock_insert_result([{**payload, "id": "c1", "notes": None}])
+    with patch("app.main.db.client", mock_client):
+        response = client.post("/anchor-point-connections", json=payload)
+    assert response.status_code == 200
+    insert_payload = mock_client.table.return_value.insert.call_args.args[0]
+    assert insert_payload["distance_meters"] == 12.5
+
+
+def test_create_anchor_point_connection_normalizes_id_order():
+    payload = {
+        "anchor_point_a_id": "zzzz",
+        "anchor_point_b_id": "aaaa",
+        "distance_meters": 5.0,
+        "created_by": "u1",
+    }
+    mock_client = _mock_insert_result(
+        [
+            {
+                **payload,
+                "id": "c1",
+                "anchor_point_a_id": "aaaa",
+                "anchor_point_b_id": "zzzz",
+                "notes": None,
+            }
+        ]
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post("/anchor-point-connections", json=payload)
+    assert response.status_code == 200
+    insert_payload = mock_client.table.return_value.insert.call_args.args[0]
+    assert insert_payload["anchor_point_a_id"] == "aaaa"
+    assert insert_payload["anchor_point_b_id"] == "zzzz"
+
+
+def test_create_anchor_point_connection_computes_distance_when_omitted():
+    anchor_points_table = MagicMock()
+    anchor_points_table.select.return_value.in_.return_value.execute.return_value.data = [
+        {"id": "a1", "latitude": 6.2442, "longitude": -75.5812},
+        {"id": "a2", "latitude": 6.2445, "longitude": -75.5810},
+    ]
+    connections_table = MagicMock()
+    connections_table.insert.return_value.execute.return_value.data = [
+        {
+            "id": "c1",
+            "anchor_point_a_id": "a1",
+            "anchor_point_b_id": "a2",
+            "distance_meters": 39.0,
+            "notes": None,
+            "created_by": "u1",
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+    ]
+    mock_client = _mock_multi_table_client(
+        {
+            "anchor_points": anchor_points_table,
+            "anchor_point_connections": connections_table,
+        }
+    )
+
+    payload = {
+        "anchor_point_a_id": "a1",
+        "anchor_point_b_id": "a2",
+        "created_by": "u1",
+    }
+    with patch("app.main.db.client", mock_client):
+        response = client.post("/anchor-point-connections", json=payload)
+
+    assert response.status_code == 200
+    insert_payload = connections_table.insert.call_args.args[0]
+    assert insert_payload["distance_meters"] is not None
+    assert insert_payload["distance_meters"] > 0
+
+
+def test_list_anchor_point_connections():
+    with patch("app.main.db.client", _mock_select_result([_CONNECTION_ROW])):
+        response = client.get("/anchor-point-connections")
+    assert response.status_code == 200
+    assert response.json() == [_CONNECTION_ROW]
+
+
+def test_list_anchor_point_connections_for_point():
+    mock_client = _mock_select_or_result([_CONNECTION_ROW])
+    with patch("app.main.db.client", mock_client):
+        response = client.get("/anchor-points/a1/connections")
+    assert response.status_code == 200
+    assert response.json() == [_CONNECTION_ROW]
+    mock_client.table.return_value.select.return_value.or_.assert_called_once_with(
+        "anchor_point_a_id.eq.a1,anchor_point_b_id.eq.a1"
+    )
+
+
+def test_delete_anchor_point_connection_returns_ok():
+    mock_client = _mock_delete_eq_result()
+    with patch("app.main.db.client", mock_client):
+        response = client.delete("/anchor-point-connections/c1")
+    assert response.status_code == 200
+    assert response.json() == "ok"
+    mock_client.table.return_value.delete.return_value.eq.assert_called_once_with(
+        "id", "c1"
     )
 
 

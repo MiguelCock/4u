@@ -1,3 +1,4 @@
+import math
 import os
 
 from dotenv import load_dotenv
@@ -5,6 +6,8 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from packages.supabase import SupaBase
 
 from .models import (
+    AnchorPointConnectionCreate,
+    AnchorPointConnectionResponse,
     AnchorPointCreate,
     AnchorPointPhotoCreate,
     AnchorPointPhotoResponse,
@@ -25,6 +28,19 @@ app = FastAPI()
 db = SupaBase(
     os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 )
+
+_EARTH_RADIUS_METERS = 6_371_000
+
+
+def _haversine_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lng2 - lng1)
+    a = (
+        math.sin(d_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    )
+    return _EARTH_RADIUS_METERS * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 @app.get("/")
@@ -104,6 +120,67 @@ async def list_all_anchor_point_photos() -> list[AnchorPointPhotoResponse]:
 @app.delete("/anchor-point-photos/{id}")
 async def delete_anchor_point_photo(id: str):
     db.client.table("anchor_point_photos").delete().eq("id", id).execute()
+    return "ok"
+
+
+@app.post("/anchor-point-connections")
+async def create_anchor_point_connection(connection: AnchorPointConnectionCreate):
+    if connection.anchor_point_a_id == connection.anchor_point_b_id:
+        raise HTTPException(
+            status_code=400, detail="Cannot connect an anchor point to itself"
+        )
+
+    payload = connection.model_dump()
+    # The CHECK constraint requires a_id < b_id (as text) - always normalize
+    # here so a connection made by tapping B-then-A in the app doesn't fail,
+    # and so the UNIQUE constraint actually catches reverse-order duplicates.
+    a_id, b_id = sorted((payload["anchor_point_a_id"], payload["anchor_point_b_id"]))
+    payload["anchor_point_a_id"] = a_id
+    payload["anchor_point_b_id"] = b_id
+
+    if payload["distance_meters"] is None:
+        points = (
+            db.client.table("anchor_points")
+            .select("id,latitude,longitude")
+            .in_("id", [a_id, b_id])
+            .execute()
+            .data
+        )
+        by_id = {p["id"]: p for p in points}
+        if a_id in by_id and b_id in by_id:
+            payload["distance_meters"] = _haversine_meters(
+                by_id[a_id]["latitude"],
+                by_id[a_id]["longitude"],
+                by_id[b_id]["latitude"],
+                by_id[b_id]["longitude"],
+            )
+
+    result = db.client.table("anchor_point_connections").insert(payload).execute()
+    return result.data
+
+
+@app.get("/anchor-point-connections")
+async def list_anchor_point_connections() -> list[AnchorPointConnectionResponse]:
+    result = db.client.table("anchor_point_connections").select("*").execute()
+    return result.data
+
+
+@app.get("/anchor-points/{id}/connections")
+async def list_anchor_point_connections_for_point(
+    id: str,
+) -> list[AnchorPointConnectionResponse]:
+    result = (
+        db.client.table("anchor_point_connections")
+        .select("*")
+        .or_(f"anchor_point_a_id.eq.{id},anchor_point_b_id.eq.{id}")
+        .execute()
+    )
+    return result.data
+
+
+@app.delete("/anchor-point-connections/{id}")
+async def delete_anchor_point_connection(id: str):
+    db.client.table("anchor_point_connections").delete().eq("id", id).execute()
     return "ok"
 
 

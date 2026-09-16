@@ -103,3 +103,18 @@ class PlaceUpdate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     is_active: bool | None = None
+
+
+class AnchorPointConnectionCreate(BaseModel):
+    anchor_point_a_id: str
+    anchor_point_b_id: str
+    # Server computes this via haversine (from the two anchor points'
+    # lat/lng) when the caller doesn't supply one.
+    distance_meters: float | None = None
+    notes: str | None = None
+    created_by: str
+
+
+class AnchorPointConnectionResponse(AnchorPointConnectionCreate):
+    id: str
+    created_at: str
