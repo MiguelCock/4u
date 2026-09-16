@@ -101,7 +101,7 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
       await _mapApi.post('/anchor-point-connections', {
         'anchor_point_a_id': _anchorPointAId,
         'anchor_point_b_id': _anchorPointBId,
-        if (distance != null) 'distance_meters': distance,
+        'distance_meters': ?distance,
         if (_notesController.text.trim().isNotEmpty)
           'notes': _notesController.text.trim(),
         'created_by': userId,
