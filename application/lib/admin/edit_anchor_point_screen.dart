@@ -155,16 +155,21 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
       }
     } else if (_status != 'verified') {
       // Un-verifying (back to pending, or rejected) must not leave a
-      // downgraded point searchable - best-effort like admin_home_screen's
-      // delete cleanup, unlike the verify branch above: this doesn't block
-      // saving the status change, and is safe to call even if the point was
-      // never actually indexed (a filter-delete with no matches is a no-op).
+      // downgraded point searchable. Deliberately blocking on failure, same
+      // as the verify branch above - an earlier best-effort version swallowed
+      // ApiException here, which meant a real failure would look identical to
+      // nothing happening at all. Safe to call even if the point was never
+      // actually indexed (a filter-delete with no matches is a no-op).
       try {
         await _aiTrainingApi.delete(
           '/index_anchor/${widget.anchorPoint['id']}',
         );
-      } on ApiException {
-        // Best-effort.
+      } on ApiException catch (e) {
+        setState(() {
+          _error = 'Un-verified, but removing from search failed: $e';
+          _submitting = false;
+        });
+        return;
       }
     }
 
