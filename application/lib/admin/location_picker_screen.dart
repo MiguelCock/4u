@@ -14,7 +14,9 @@ import '../services/map_tile_config.dart';
 /// Optionally overlays existing places/buildings/anchor points (each caller
 /// opts into whichever are relevant) so an admin can see duplicates and
 /// coverage gaps while picking - building markers show a small badge with
-/// their anchor-point count, and place markers show their building count.
+/// their anchor-point count, place markers show their building count, and
+/// anchor-point markers are colored by `status` (green = verified, grey =
+/// pending, red = rejected).
 class LocationPickerScreen extends StatefulWidget {
   final LatLng initialPosition;
   final bool showPlaces;
@@ -182,12 +184,17 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       final lat = (point['latitude'] as num?)?.toDouble();
       final lng = (point['longitude'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
+      final color = switch (point['status'] as String?) {
+        'verified' => Colors.green,
+        'rejected' => Colors.red,
+        _ => Colors.grey,
+      };
       markers.add(
         Marker(
           point: LatLng(lat, lng),
           width: 40,
           height: 40,
-          child: const Icon(Icons.circle, color: Colors.green, size: 16),
+          child: Icon(Icons.circle, color: color, size: 16),
         ),
       );
     }
