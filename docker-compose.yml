@@ -34,6 +34,13 @@ services:
     env_file:
       - backend-navigation-management/.env
 
+  ai-training:
+    build:
+      context: .
+      dockerfile: backend-ai-training/Dockerfile
+    env_file:
+      - backend-ai-training/.env
+
   gateway:
     image: nginx:1.27-alpine
     ports:
@@ -46,3 +53,4 @@ services:
       - route-management
       - user-management
       - navigation-management
+      - ai-training

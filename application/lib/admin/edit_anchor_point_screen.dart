@@ -25,6 +25,7 @@ class EditAnchorPointScreen extends StatefulWidget {
 
 class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
   final _mapApi = MapManagementApi();
+  final _aiTrainingApi = AiTrainingApi();
   late final TextEditingController _descriptionController;
   late LatLng _position;
   int? _locationTypeId;
@@ -115,12 +116,46 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
         'location_type_id': _locationTypeId,
         'status': _status,
       });
-      if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to update anchor point: $e');
-    } finally {
-      if (mounted) setState(() => _submitting = false);
+      setState(() {
+        _error = 'Failed to update anchor point: $e';
+        _submitting = false;
+      });
+      return;
     }
+
+    // Only confirmed-good anchor points enter the searchable index - index
+    // right after a successful verify, not on every save. Indexing failure
+    // doesn't roll back the verify (which already succeeded); it stays on
+    // this screen with an inline error instead of popping, since re-tapping
+    // Save safely retries (Qdrant upserts by photo id are idempotent).
+    if (_status == 'verified' && _photos.isNotEmpty) {
+      try {
+        await _aiTrainingApi.post('/index_anchor', {
+          'anchor_point_id': widget.anchorPoint['id'],
+          'latitude': _position.latitude,
+          'longitude': _position.longitude,
+          'building_id': widget.anchorPoint['building_id'],
+          'photos': _photos
+              .map(
+                (p) => {
+                  'photo_id': p['id'],
+                  'image_url': p['image_url'],
+                  'heading': p['heading'],
+                },
+              )
+              .toList(),
+        });
+      } on ApiException catch (e) {
+        setState(() {
+          _error = 'Verified, but indexing into search failed: $e';
+          _submitting = false;
+        });
+        return;
+      }
+    }
+
+    if (mounted) Navigator.of(context).pop(true);
   }
 
   @override

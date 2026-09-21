@@ -102,3 +102,7 @@ class NavigationManagementApi extends ApiService {
 class DataCollectionApi extends ApiService {
   DataCollectionApi() : super('$_gatewayUrl/data-collection');
 }
+
+class AiTrainingApi extends ApiService {
+  AiTrainingApi() : super('$_gatewayUrl/ai-training');
+}

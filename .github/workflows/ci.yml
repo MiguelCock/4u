@@ -196,6 +196,12 @@ jobs:
               echo "QDRANT_KEY=placeholder-key"
             } > "$d/.env"
           done
+          # backend-ai-training only reads the Qdrant vars (no Supabase
+          # access - see its CLAUDE.md), but writing all four is harmless.
+          {
+            echo "QDRANT_URL=https://example.qdrant.io"
+            echo "QDRANT_KEY=placeholder-key"
+          } > backend-ai-training/.env
 
       - name: docker compose up
         run: docker compose up --build -d
@@ -206,7 +212,7 @@ jobs:
           # FastAPI containers behind it take a few seconds to start
           # accepting connections - retry the real per-service routes,
           # not just the gateway's own static root.
-          for prefix in data-collection map route user navigation; do
+          for prefix in data-collection map route user navigation ai-training; do
             echo "== /$prefix/ =="
             ok=""
             for i in $(seq 1 30); do

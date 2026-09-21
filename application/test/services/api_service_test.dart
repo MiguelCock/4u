@@ -20,6 +20,7 @@ void main() {
       DataCollectionApi().baseUrl,
       'http://gateway.example/data-collection',
     );
+    expect(AiTrainingApi().baseUrl, 'http://gateway.example/ai-training');
   });
 
   test(
