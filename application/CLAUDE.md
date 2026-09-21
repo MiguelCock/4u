@@ -58,6 +58,6 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 ## Known gaps
 - Any corrected-position display is still unbuilt — there's no correction pipeline in any backend service yet (see `backend-ai-training/CLAUDE.md`).
 - `AuthGate` has no explicit "profile fetch failed" UI state — it silently treats that the same as a `user` role.
-- `CaptureScreen` doesn't validate that a building was actually seeded before offering it in the dropdown — an empty `_buildings` list just shows an empty dropdown, rather than pointing the admin at `AddBuildingScreen`.
 - `NavigationScreen` doesn't validate the route has valid `building_id`/anchor references before starting a session, and doesn't handle losing GPS mid-session beyond simply not logging that tick.
+- No screen anywhere creates a `routes` row (`backend-route-management`'s `POST /routes` has no caller in `lib/`) — `RouteListScreen`/`NavigationScreen` can't be exercised with real data until at least one route exists, and today that means a hand-written SQL insert or a direct curl to the gateway (see root `README.md`'s manual end-to-end walkthrough, step 4).
 - `test/widget_test.dart` is currently just a sanity smoke test so CI has something to run — add real widget/unit tests alongside new widgets/services. A full auth-flow test isn't practical without a mocked Supabase client, so none exists yet.

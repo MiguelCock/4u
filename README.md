@@ -244,9 +244,20 @@ Throughout this, `navigation_logs.corrected_lat`/`corrected_long`/`anchor_match_
 
 ## Current Development Status
 
-- **Completed:** App with basic authentication and roles, Supabase connection, photo + metadata upload, structured Git repository, validated conceptual research, initial CI/CD setup (GitHub Actions).
-- **In Progress:** Training pipeline implementation (PyTorch + OpenCV), Qdrant integration, automated tests.
-- **Next:** Proof of concept with one campus building (50-100 anchor points) to validate accuracy improvement.
+Tracked 1:1 against the GitHub issues seeded from the week-by-week schedule below (`gh issue list`) plus the admin-tooling work that schedule didn't anticipate. Last audited 2026-09-20.
+
+- **Week 1 — done.** Git branches + CI, Supabase/Qdrant deployed, `uv`/`pyproject.toml` across components, lint+test on every PR.
+- **Weeks 4, 5, 7 — partially done.** Done: Supabase Storage upload, Flutter clean-architecture + Auth login/signup, admin photo+coordinate capture. Still open: JWT/role validation in FastAPI, embedding-extractor/Qdrant unit tests, the 20-anchor-point PoC deliverable, differentiated user/admin navigation, a live user photo+GPS+IMU capture screen, corrected-position map visualization.
+- **Weeks 2, 3, 6, 8 — not started.** No image preprocessing, no embedding extraction, no Qdrant indexing/search, no UKF/sensor fusion, no `/correct_position` endpoint, no navigation instructions/guidance line. `backend-ai-training` is currently an 8-line stub that only prints library versions (see its `CLAUDE.md`); `packages/src/packages/qdrant.py`'s wrapper is never called by any service.
+- **Weeks 9-12 — not due yet.**
+- **Beyond the original schedule (done, admin tooling):** an API gateway in front of all 5 backend services, full admin CRUD for places/buildings/anchor points (create/edit/delete with cascade-impact warnings, search, filtered map overlays), the anchor-points/photos schema split (one point → many photos), and an anchor-point-connections walkability graph with a map-tap admin UI to build it. These went untracked by the original issue set — see issues #67-72 (each closed, crediting the PR that delivered it) for the record.
+
+**Known gaps before testing with real data**, beyond the missing correction pipeline (section 7 above already covers that in detail): anchor-point verification is a bare `pending`/`verified`/`rejected` dropdown on the one-at-a-time edit screen — no review queue, no photo shown while deciding, no bulk actions, and no way to see *verified* points distinctly on the map overlay.
+
+**Next steps (prioritized, not yet built):**
+1. Anchor-point validation: a pending-review queue/filter, photos visible in the verify flow, and verified points distinguished on the map overlay.
+2. The image → embedding → Qdrant pipeline (Weeks 2-3): a pretrained **EfficientNet-B0 as a fixed feature extractor, no fine-tuning** for the first pass — matches the Week 4 20-anchor-point PoC scope; fine-tuning (issue #17) stays deferred until there's a reason to revisit it.
+3. Navigation/correction (Week 6+) depends on step 2 existing first — not sequenced yet.
 
 ---
 
