@@ -38,7 +38,9 @@ def test_index_anchor_upserts_one_point_per_photo():
 
     assert response.status_code == 200
     assert response.json() == {"indexed": 2}
-    mock_qdrant.ensure_collection.assert_called_once_with("anchor_point_photos", 1280)
+    mock_qdrant.ensure_collection.assert_called_once_with(
+        "anchor_point_photos", 1280, indexed_fields=["anchor_point_id", "building_id"]
+    )
     upsert_call = mock_qdrant.client.upsert.call_args
     assert upsert_call.args[0] == "anchor_point_photos"
     points = upsert_call.kwargs["points"]
@@ -109,7 +111,9 @@ def test_search_similar_returns_matches():
             }
         ]
     }
-    mock_qdrant.ensure_collection.assert_called_once_with("anchor_point_photos", 1280)
+    mock_qdrant.ensure_collection.assert_called_once_with(
+        "anchor_point_photos", 1280, indexed_fields=["anchor_point_id", "building_id"]
+    )
     mock_qdrant.client.query_points.assert_called_once_with(
         "anchor_point_photos", query=[0.1] * 1280, limit=5
     )
@@ -144,7 +148,9 @@ def test_delete_indexed_photo():
 
     assert response.status_code == 200
     assert response.json() == "ok"
-    mock_qdrant.ensure_collection.assert_called_once_with("anchor_point_photos", 1280)
+    mock_qdrant.ensure_collection.assert_called_once_with(
+        "anchor_point_photos", 1280, indexed_fields=["anchor_point_id", "building_id"]
+    )
     mock_qdrant.client.delete.assert_called_once_with(
         "anchor_point_photos", points_selector=["p1"]
     )
