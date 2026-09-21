@@ -44,6 +44,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   String _buildingQuery = '';
   String _anchorQuery = '';
   String _connectionQuery = '';
+  String? _anchorStatusFilter;
 
   @override
   void initState() {
@@ -426,14 +427,52 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  Widget _statusFilterChips() {
+    const statuses = ['pending', 'verified', 'rejected'];
+    final counts = {
+      for (final s in statuses)
+        s: _anchorPoints.where((p) => p['status'] == s).length,
+    };
+
+    Widget chip(String? value, String label) {
+      final count = value == null ? _anchorPoints.length : counts[value] ?? 0;
+      return Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: ChoiceChip(
+          label: Text('$label ($count)'),
+          selected: _anchorStatusFilter == value,
+          onSelected: (_) => setState(() => _anchorStatusFilter = value),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            chip(null, 'All'),
+            chip('pending', 'Pending'),
+            chip('verified', 'Verified'),
+            chip('rejected', 'Rejected'),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _anchorPointsTab() {
     final buildingsById = {for (final b in _buildings) b['id'] as String: b};
     final filtered =
         _anchorPoints
             .where(
-              (p) => (p['location_description'] as String? ?? '')
-                  .toLowerCase()
-                  .contains(_anchorQuery),
+              (p) =>
+                  (_anchorStatusFilter == null ||
+                      p['status'] == _anchorStatusFilter) &&
+                  (p['location_description'] as String? ?? '')
+                      .toLowerCase()
+                      .contains(_anchorQuery),
             )
             .toList()
           ..sort(
@@ -444,6 +483,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
     return Column(
       children: [
+        _statusFilterChips(),
         _searchField(_anchorSearchController, 'Search anchor points'),
         Expanded(
           child: filtered.isEmpty

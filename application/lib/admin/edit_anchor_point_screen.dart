@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../services/api_service.dart';
+import 'capture_photo_screen.dart';
 import 'capture_screen.dart' show kLocationTypes;
 import 'location_picker_screen.dart';
 
@@ -9,8 +10,10 @@ const List<String> kAnchorPointStatuses = ['pending', 'verified', 'rejected'];
 
 /// Admin form to edit an existing `anchor_points` row (`PATCH
 /// /anchor-points/{id}`) - description, location type, status (verify
-/// workflow), and position (move on map). Photos are managed separately via
-/// `CapturePhotoScreen`.
+/// workflow), and position (move on map). Shows the point's captured photos
+/// read-only so an admin has something to actually judge before verifying/
+/// rejecting - full photo add/delete still happens in `CapturePhotoScreen`,
+/// reachable here via "Manage photos".
 class EditAnchorPointScreen extends StatefulWidget {
   final Map<String, dynamic> anchorPoint;
 
@@ -29,6 +32,9 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
   bool _submitting = false;
   String? _error;
 
+  List<Map<String, dynamic>> _photos = [];
+  bool _loadingPhotos = true;
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +47,38 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
     );
     _locationTypeId = widget.anchorPoint['location_type_id'] as int?;
     _status = widget.anchorPoint['status'] as String? ?? 'pending';
+    _loadPhotos();
+  }
+
+  Future<void> _loadPhotos() async {
+    try {
+      final result = await _mapApi.get(
+        '/anchor-points/${widget.anchorPoint['id']}/photos',
+      );
+      if (!mounted) return;
+      if (result is List) {
+        setState(() => _photos = result.cast<Map<String, dynamic>>());
+      }
+    } on ApiException {
+      // Photo preview is a convenience for the verify decision, not
+      // required to edit the rest of the form - fail silently.
+    } finally {
+      if (mounted) setState(() => _loadingPhotos = false);
+    }
+  }
+
+  Future<void> _managePhotos() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CapturePhotoScreen(
+          anchorPointId: widget.anchorPoint['id'] as String,
+          anchorPointDescription:
+              widget.anchorPoint['location_description'] as String? ??
+              widget.anchorPoint['id'] as String,
+        ),
+      ),
+    );
+    _loadPhotos();
   }
 
   Future<void> _pickOnMap() async {
@@ -118,6 +156,49 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
                   )
                   .toList(),
               onChanged: (value) => setState(() => _locationTypeId = value),
+            ),
+            const SizedBox(height: 12),
+            Text('Photos', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            if (_loadingPhotos)
+              const Center(child: CircularProgressIndicator())
+            else if (_photos.isEmpty)
+              const Text(
+                'No photos captured yet.',
+                style: TextStyle(color: Colors.red),
+              )
+            else
+              SizedBox(
+                height: 72,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _photos.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 6),
+                  itemBuilder: (context, index) {
+                    final url = _photos[index]['image_url'] as String?;
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: url != null
+                          ? Image.network(
+                              url,
+                              width: 72,
+                              height: 72,
+                              fit: BoxFit.cover,
+                            )
+                          : Container(
+                              width: 72,
+                              height: 72,
+                              color: Colors.grey.shade300,
+                            ),
+                    );
+                  },
+                ),
+              ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _managePhotos,
+              icon: const Icon(Icons.photo_library_outlined),
+              label: Text('Manage photos (${_photos.length})'),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
