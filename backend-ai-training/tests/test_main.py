@@ -135,3 +135,44 @@ def test_search_similar_respects_limit_form_field():
     mock_qdrant.client.query_points.assert_called_once_with(
         "anchor_point_photos", query=[0.1] * 1280, limit=10
     )
+
+
+def test_delete_indexed_photo():
+    mock_qdrant = MagicMock()
+    with patch("app.main.qdrant", mock_qdrant):
+        response = client.delete("/index_photo/p1")
+
+    assert response.status_code == 200
+    assert response.json() == "ok"
+    mock_qdrant.ensure_collection.assert_called_once_with("anchor_point_photos", 1280)
+    mock_qdrant.client.delete.assert_called_once_with(
+        "anchor_point_photos", points_selector=["p1"]
+    )
+
+
+def test_delete_indexed_anchor_filters_by_anchor_point_id():
+    mock_qdrant = MagicMock()
+    with patch("app.main.qdrant", mock_qdrant):
+        response = client.delete("/index_anchor/a1")
+
+    assert response.status_code == 200
+    assert response.json() == "ok"
+    call = mock_qdrant.client.delete.call_args
+    assert call.args[0] == "anchor_point_photos"
+    condition = call.kwargs["points_selector"].must[0]
+    assert condition.key == "anchor_point_id"
+    assert condition.match.value == "a1"
+
+
+def test_delete_indexed_building_filters_by_building_id():
+    mock_qdrant = MagicMock()
+    with patch("app.main.qdrant", mock_qdrant):
+        response = client.delete("/index_building/b1")
+
+    assert response.status_code == 200
+    assert response.json() == "ok"
+    call = mock_qdrant.client.delete.call_args
+    assert call.args[0] == "anchor_point_photos"
+    condition = call.kwargs["points_selector"].must[0]
+    assert condition.key == "building_id"
+    assert condition.match.value == "b1"

@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from packages.qdrant import Qdrant
-from qdrant_client.models import PointStruct
+from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
 
 from .embedding import download_image, extract_embedding
 from .models import IndexAnchorRequest, IndexAnchorResponse, SearchSimilarResponse
@@ -71,3 +71,40 @@ async def search_similar(
         for point in result.points
     ]
     return SearchSimilarResponse(matches=matches)
+
+
+@app.delete("/index_photo/{photo_id}")
+async def delete_indexed_photo(photo_id: str):
+    qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE)
+    qdrant.client.delete(_COLLECTION, points_selector=[photo_id])
+    return "ok"
+
+
+@app.delete("/index_anchor/{anchor_point_id}")
+async def delete_indexed_anchor(anchor_point_id: str):
+    qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE)
+    qdrant.client.delete(
+        _COLLECTION,
+        points_selector=Filter(
+            must=[
+                FieldCondition(
+                    key="anchor_point_id", match=MatchValue(value=anchor_point_id)
+                )
+            ]
+        ),
+    )
+    return "ok"
+
+
+@app.delete("/index_building/{building_id}")
+async def delete_indexed_building(building_id: str):
+    qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE)
+    qdrant.client.delete(
+        _COLLECTION,
+        points_selector=Filter(
+            must=[
+                FieldCondition(key="building_id", match=MatchValue(value=building_id))
+            ]
+        ),
+    )
+    return "ok"
