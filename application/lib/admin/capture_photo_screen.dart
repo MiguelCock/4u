@@ -45,11 +45,13 @@ class CapturePhotoScreen extends StatefulWidget {
 
 class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
   final _mapApi = MapManagementApi();
+  final _aiTrainingApi = AiTrainingApi();
 
   CameraController? _controller;
   StreamSubscription<CompassEvent>? _compassSubscription;
   double? _liveHeading;
   final List<_PhotoEntry> _photos = [];
+  Map<String, dynamic>? _anchorPoint;
   bool _loadingExisting = true;
   bool _capturing = false;
   String? _error;
@@ -58,6 +60,7 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
   void initState() {
     super.initState();
     _initCamera();
+    _loadAnchorPoint();
     _loadExistingPhotos();
     _compassSubscription = FlutterCompass.events?.listen((event) {
       if (mounted) {
@@ -86,6 +89,21 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
       if (mounted) setState(() {});
     } catch (_) {
       // Camera unavailable (e.g. emulator/CI) - the rest of the form still works.
+    }
+  }
+
+  Future<void> _loadAnchorPoint() async {
+    try {
+      final result = await _mapApi.get(
+        '/anchor-points/${widget.anchorPointId}',
+      );
+      if (!mounted) return;
+      if (result is Map) {
+        setState(() => _anchorPoint = result.cast<String, dynamic>());
+      }
+    } on ApiException {
+      // Only needed to decide whether to auto-index new photos below - not
+      // required for the rest of this screen to work.
     }
   }
 
@@ -168,6 +186,29 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
           );
         }
       });
+
+      // Only confirmed-good anchor points are searchable - if this point is
+      // already verified, keep it that way by indexing the new photo too,
+      // instead of only re-indexing on the next edit-screen save.
+      if (_anchorPoint?['status'] == 'verified') {
+        try {
+          await _aiTrainingApi.post('/index_anchor', {
+            'anchor_point_id': widget.anchorPointId,
+            'latitude': _anchorPoint!['latitude'],
+            'longitude': _anchorPoint!['longitude'],
+            'building_id': _anchorPoint!['building_id'],
+            'photos': [
+              {'photo_id': id, 'image_url': imageUrl, 'heading': heading},
+            ],
+          });
+        } on ApiException catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Saved, but indexing failed: $e')),
+            );
+          }
+        }
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -214,6 +255,15 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
           context,
         ).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
       }
+      return;
+    }
+
+    // Best-effort - cheap no-op if this photo was never indexed (e.g. the
+    // anchor point isn't verified), doesn't affect the delete above either way.
+    try {
+      await _aiTrainingApi.delete('/index_photo/${photo.id}');
+    } on ApiException {
+      // Nothing to show the admin - the photo is already gone either way.
     }
   }
 

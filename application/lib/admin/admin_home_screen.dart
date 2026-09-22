@@ -26,6 +26,7 @@ class AdminHomeScreen extends StatefulWidget {
 class _AdminHomeScreenState extends State<AdminHomeScreen>
     with SingleTickerProviderStateMixin {
   final _mapApi = MapManagementApi();
+  final _aiTrainingApi = AiTrainingApi();
   late final TabController _tabController;
 
   List<Map<String, dynamic>> _places = [];
@@ -172,6 +173,18 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     }
   }
 
+  /// Qdrant cleanup that never blocks or surfaces as the "delete failed"
+  /// error - the Postgres delete succeeding is what the confirmation dialog
+  /// and reload actually depend on; leaving a few stale vectors behind on a
+  /// bad day is far better than refusing to delete.
+  Future<void> _bestEffort(Future<void> Function() action) async {
+    try {
+      await action();
+    } on ApiException {
+      // Swallowed - see doc comment above.
+    }
+  }
+
   Future<void> _deletePlace(Map<String, dynamic> place) async {
     final buildings = _buildingsOf(place['id'] as String);
     final buildingIds = buildings.map((b) => b['id'] as String).toSet();
@@ -198,6 +211,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           'photo(s), and $connectionCount connection(s). This cannot be undone.',
     );
     if (!confirmed) return;
+    await _bestEffort(
+      () => Future.wait(
+        buildings.map(
+          (b) => _aiTrainingApi.delete('/index_building/${b['id']}'),
+        ),
+      ),
+    );
     await _runDelete(() => _mapApi.delete('/places/${place['id']}'));
   }
 
@@ -223,6 +243,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           'connection(s). This cannot be undone.',
     );
     if (!confirmed) return;
+    await _bestEffort(
+      () => _aiTrainingApi.delete('/index_building/${building['id']}'),
+    );
     await _runDelete(() => _mapApi.delete('/buildings/${building['id']}'));
   }
 
@@ -236,6 +259,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           'connection(s). This cannot be undone.',
     );
     if (!confirmed) return;
+    await _bestEffort(
+      () => _aiTrainingApi.delete('/index_anchor/${point['id']}'),
+    );
     await _runDelete(() => _mapApi.delete('/anchor-points/${point['id']}'));
   }
 

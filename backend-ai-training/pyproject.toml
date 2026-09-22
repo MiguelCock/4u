@@ -8,12 +8,18 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "fastapi[standard]>=0.141.1",
+    "httpx>=0.28.1",
     "opencv-python-headless>=5.0.0.93",
+    "packages",
+    "pillow>=12.0.0",
+    "python-dotenv>=1.2.3",
     "torch>=2.13.0",
     "torchvision>=0.28.0",
 ]
 
 [tool.uv.sources]
+packages = { path = "../packages", editable = true }
 torch = [
   { index = "pytorch-cpu" },
 ]
@@ -26,15 +32,13 @@ name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
-[project.scripts]
-dev = "backend_ai_training.main:main"
-
-[build-system]
-requires = ["uv_build>=0.12.2,<0.13.0"]
-build-backend = "uv_build"
-
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
     "ruff>=0.16.6",
 ]
+
+[tool.ruff.lint.flake8-bugbear]
+# `File(...)`/`Form(...)` as defaults are FastAPI's standard DI pattern, not a
+# real mutable-default bug (B008) - ruff only exempts `fastapi.Depends` by default.
+extend-immutable-calls = ["fastapi.File", "fastapi.Form"]

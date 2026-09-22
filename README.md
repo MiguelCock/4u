@@ -157,20 +157,18 @@ In Supabase Storage, create two **public** buckets — neither service creates i
 
 ### 4. Run the backend services
 
-`backend-ai-training` has no HTTP server (it's an offline stub — see its own `CLAUDE.md`), so it's not in this list; verify it separately with `uv run pytest` / `uv run dev` inside that directory.
-
-The app talks to all 5 services through a single **API gateway** (`gateway/nginx.conf`, path-prefix reverse proxy) rather than 5 separate ports — see it running via Docker Compose:
+The app talks to all 6 services through a single **API gateway** (`gateway/nginx.conf`, path-prefix reverse proxy) rather than 6 separate ports — see it running via Docker Compose:
 
 ```bash
 # fill in each service's .env first
-for d in backend-data-collection backend-map-management backend-route-management backend-user-management backend-navigation-management; do
-  (cd "$d" && cp .env.example .env)   # fill in SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY from step 1
+for d in backend-data-collection backend-map-management backend-route-management backend-user-management backend-navigation-management backend-ai-training; do
+  (cd "$d" && cp .env.example .env)   # fill in credentials from step 1 (backend-ai-training only needs QDRANT_URL/QDRANT_KEY)
 done
 
 docker compose up --build
 ```
 
-This starts all 5 services (no longer individually host-exposed) plus the `gateway` service on port **8000**, which is what the app actually talks to:
+This starts all 6 services (no longer individually host-exposed) plus the `gateway` service on port **8000**, which is what the app actually talks to:
 
 | Gateway path prefix | Routes to |
 |---|---|
@@ -179,6 +177,7 @@ This starts all 5 services (no longer individually host-exposed) plus the `gatew
 | `/route/*` | `backend-route-management` |
 | `/user/*` | `backend-user-management` |
 | `/navigation/*` | `backend-navigation-management` |
+| `/ai-training/*` | `backend-ai-training` |
 
 e.g. `POST http://localhost:8000/route/routes` reaches `backend-route-management`'s `POST /routes`. The gateway's port is published on `0.0.0.0`, so it's reachable from another device on the same WiFi network at `http://<your-LAN-IP>:8000`, not just from `localhost` — this matters because the app is normally tested on a physical phone (see step 5), which can't reach the dev machine's `localhost`.
 
@@ -244,20 +243,18 @@ Throughout this, `navigation_logs.corrected_lat`/`corrected_long`/`anchor_match_
 
 ## Current Development Status
 
-Tracked 1:1 against the GitHub issues seeded from the week-by-week schedule below (`gh issue list`) plus the admin-tooling work that schedule didn't anticipate. Last audited 2026-09-20.
+Tracked 1:1 against the GitHub issues seeded from the week-by-week schedule below (`gh issue list`) plus the admin-tooling work that schedule didn't anticipate. Last audited 2026-09-21.
 
 - **Week 1 — done.** Git branches + CI, Supabase/Qdrant deployed, `uv`/`pyproject.toml` across components, lint+test on every PR.
-- **Weeks 4, 5, 7 — partially done.** Done: Supabase Storage upload, Flutter clean-architecture + Auth login/signup, admin photo+coordinate capture. Still open: JWT/role validation in FastAPI, embedding-extractor/Qdrant unit tests, the 20-anchor-point PoC deliverable, differentiated user/admin navigation, a live user photo+GPS+IMU capture screen, corrected-position map visualization.
-- **Weeks 2, 3, 6, 8 — not started.** No image preprocessing, no embedding extraction, no Qdrant indexing/search, no UKF/sensor fusion, no `/correct_position` endpoint, no navigation instructions/guidance line. `backend-ai-training` is currently an 8-line stub that only prints library versions (see its `CLAUDE.md`); `packages/src/packages/qdrant.py`'s wrapper is never called by any service.
+- **Weeks 2, 3 — partially done.** Done: image preprocessing (OpenCV decode/resize), embedding extraction (pretrained EfficientNet-B0, no fine-tuning), Qdrant indexing (`POST /index_anchor`) and similarity search (`POST /search_similar`) — both real endpoints in `backend-ai-training`. Still open: fine-tuning the model on campus images (issue #17, deliberately deferred), and the >80%-accuracy search-validation deliverable (issue #22) — there isn't real anchor-point data indexed yet to validate against.
+- **Weeks 4, 5, 7 — partially done.** Done: Supabase Storage upload, Flutter clean-architecture + Auth login/signup, admin photo+coordinate capture. Still open: JWT/role validation in FastAPI, embedding-extractor/Qdrant unit tests (partially covered now by `backend-ai-training`'s own test suite, but issue #25 as originally scoped isn't formally closed), the 20-anchor-point PoC deliverable, differentiated user/admin navigation, a live user photo+GPS+IMU capture screen, corrected-position map visualization.
+- **Week 6, 8 — not started.** No UKF/sensor fusion, no `/correct_position` endpoint, no navigation instructions/guidance line — `/search_similar` exists but nothing calls it yet, since there's no navigation/correction pipeline to call it from.
 - **Weeks 9-12 — not due yet.**
-- **Beyond the original schedule (done, admin tooling):** an API gateway in front of all 5 backend services, full admin CRUD for places/buildings/anchor points (create/edit/delete with cascade-impact warnings, search, filtered map overlays), the anchor-points/photos schema split (one point → many photos), and an anchor-point-connections walkability graph with a map-tap admin UI to build it. These went untracked by the original issue set — see issues #67-72 (each closed, crediting the PR that delivered it) for the record.
+- **Beyond the original schedule (done, admin tooling):** an API gateway in front of all 6 backend services, full admin CRUD for places/buildings/anchor points (create/edit/delete with cascade-impact warnings, search, filtered map overlays), the anchor-points/photos schema split (one point → many photos), an anchor-point-connections walkability graph with a map-tap admin UI to build it, and a real anchor-point verification workflow (pending-review queue, photo review, status-colored map markers, auto-indexing into Qdrant on verify). These went untracked by the original issue set — see issues #67-72 (each closed, crediting the PR that delivered it) for the record.
 
-**Known gaps before testing with real data**, beyond the missing correction pipeline (section 7 above already covers that in detail): anchor-point verification is a bare `pending`/`verified`/`rejected` dropdown on the one-at-a-time edit screen — no review queue, no photo shown while deciding, no bulk actions, and no way to see *verified* points distinctly on the map overlay.
+**Known gaps before testing with real data**, beyond the missing correction pipeline (section 7 above already covers that in detail): nothing wires `/search_similar` into the navigation flow, so a corrected position is still never computed or shown — indexing now happens automatically when an admin verifies an anchor point, but nothing yet *uses* the resulting Qdrant index.
 
-**Next steps (prioritized, not yet built):**
-1. Anchor-point validation: a pending-review queue/filter, photos visible in the verify flow, and verified points distinguished on the map overlay.
-2. The image → embedding → Qdrant pipeline (Weeks 2-3): a pretrained **EfficientNet-B0 as a fixed feature extractor, no fine-tuning** for the first pass — matches the Week 4 20-anchor-point PoC scope; fine-tuning (issue #17) stays deferred until there's a reason to revisit it.
-3. Navigation/correction (Week 6+) depends on step 2 existing first — not sequenced yet.
+**Next step (not yet built):** navigation/correction (Week 6+) — a `/correct_position`-style endpoint fusing GPS + IMU + a `/search_similar` visual match via a Kalman filter, and wiring it into `NavigationScreen`. Depends on real anchor-point data actually being captured and verified first (the admin tooling for that now all exists).
 
 ---
 
