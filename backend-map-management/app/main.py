@@ -1,9 +1,12 @@
+import logging
 import math
 import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from packages.supabase import SupaBase
+
+logger = logging.getLogger(__name__)
 
 from .models import (
     AnchorPointConnectionCreate,
@@ -41,6 +44,44 @@ def _haversine_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> flo
         + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
     )
     return _EARTH_RADIUS_METERS * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _photo_urls_for_anchor_points(ids: list[str]) -> list[str]:
+    if not ids:
+        return []
+    result = (
+        db.client.table("anchor_point_photos")
+        .select("image_url")
+        .in_("anchor_point_id", ids)
+        .execute()
+    )
+    return [row["image_url"] for row in result.data]
+
+
+def _anchor_point_ids_for_buildings(ids: list[str]) -> list[str]:
+    if not ids:
+        return []
+    result = (
+        db.client.table("anchor_points").select("id").in_("building_id", ids).execute()
+    )
+    return [row["id"] for row in result.data]
+
+
+def _building_ids_for_place(id: str) -> list[str]:
+    result = db.client.table("buildings").select("id").eq("place_id", id).execute()
+    return [row["id"] for row in result.data]
+
+
+def _delete_photo_files(urls: list[str]) -> None:
+    # Best-effort: a stray Storage hiccup shouldn't block an admin from
+    # successfully deleting a record they already confirmed - same
+    # philosophy as the Qdrant cleanup on anchor-point mutations.
+    if not urls:
+        return
+    try:
+        db.delete_images_by_url("anchor-points", urls)
+    except Exception:
+        logger.exception("failed to delete anchor point photo files from storage")
 
 
 @app.get("/")
@@ -89,7 +130,9 @@ async def update_anchor_point(id: str, anchor_point: AnchorPointUpdate):
 
 @app.delete("/anchor-points/{id}")
 async def delete_anchor_point(id: str):
+    urls = _photo_urls_for_anchor_points([id])
     db.client.table("anchor_points").delete().eq("id", id).execute()
+    _delete_photo_files(urls)
     return "ok"
 
 
@@ -119,7 +162,15 @@ async def list_all_anchor_point_photos() -> list[AnchorPointPhotoResponse]:
 
 @app.delete("/anchor-point-photos/{id}")
 async def delete_anchor_point_photo(id: str):
+    result = (
+        db.client.table("anchor_point_photos")
+        .select("image_url")
+        .eq("id", id)
+        .execute()
+    )
+    url = result.data[0]["image_url"] if result.data else None
     db.client.table("anchor_point_photos").delete().eq("id", id).execute()
+    _delete_photo_files([url] if url else [])
     return "ok"
 
 
@@ -217,7 +268,9 @@ async def update_building(id: str, building: BuildingUpdate):
 
 @app.delete("/buildings/{id}")
 async def delete_building(id: str):
+    urls = _photo_urls_for_anchor_points(_anchor_point_ids_for_buildings([id]))
     db.client.table("buildings").delete().eq("id", id).execute()
+    _delete_photo_files(urls)
     return "ok"
 
 
@@ -254,5 +307,8 @@ async def update_place(id: str, place: PlaceUpdate):
 
 @app.delete("/places/{id}")
 async def delete_place(id: str):
+    building_ids = _building_ids_for_place(id)
+    urls = _photo_urls_for_anchor_points(_anchor_point_ids_for_buildings(building_ids))
     db.client.table("places").delete().eq("id", id).execute()
+    _delete_photo_files(urls)
     return "ok"
