@@ -51,5 +51,23 @@ def test_upload_photo_accepts_multipart_form_and_file():
     assert response.status_code == 200
     assert response.json() == "ok"
     mock.assert_called_once()
-    _, latitude, longitude, accuracy = mock.call_args.args
-    assert (latitude, longitude, accuracy) == (6.24, -75.58, 5.0)
+    _, latitude, longitude, accuracy, heading = mock.call_args.args
+    assert (latitude, longitude, accuracy, heading) == (6.24, -75.58, 5.0, None)
+
+
+def test_upload_photo_passes_heading_when_provided():
+    with patch("app.main.db.post_photos") as mock:
+        response = client.post(
+            "/upload",
+            data={
+                "latitude": "6.24",
+                "longitude": "-75.58",
+                "accuracy": "5.0",
+                "heading": "182.5",
+            },
+            files={"image": ("test.jpg", b"fake-bytes", "image/jpeg")},
+        )
+    assert response.status_code == 200
+    assert response.json() == "ok"
+    _, _, _, _, heading = mock.call_args.args
+    assert heading == 182.5
