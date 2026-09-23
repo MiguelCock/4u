@@ -79,3 +79,33 @@ def test_post_photos_passes_bytes_not_the_raw_file_object():
     upload_mock = db.client.storage.from_.return_value.upload
     upload_mock.assert_called_once()
     assert upload_mock.call_args.kwargs["file"] == b"fake-photo-bytes"
+
+
+def test_post_photos_includes_heading_when_provided():
+    db = _make_supabase()
+    fake_file = BytesIO(b"fake-photo-bytes")
+    fake_file.name = "photo.jpg"
+
+    db.post_photos(fake_file, 6.24, -75.58, 8.5, heading=42.0)
+
+    insert_mock = db.client.table.return_value.insert
+    insert_mock.assert_called_once_with(
+        {
+            "name": "photo.jpg",
+            "latitude": 6.24,
+            "longitude": -75.58,
+            "accuracy": 8.5,
+            "heading": 42.0,
+        }
+    )
+
+
+def test_post_photos_defaults_heading_to_none():
+    db = _make_supabase()
+    fake_file = BytesIO(b"fake-photo-bytes")
+    fake_file.name = "photo.jpg"
+
+    db.post_photos(fake_file, 6.24, -75.58, 8.5)
+
+    insert_mock = db.client.table.return_value.insert
+    assert insert_mock.call_args.args[0]["heading"] is None

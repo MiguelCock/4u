@@ -24,9 +24,10 @@ async def upload_photo(
     latitude: Annotated[float, Form()],
     longitude: Annotated[float, Form()],
     accuracy: Annotated[float, Form()],
+    heading: Annotated[float | None, Form()] = None,
     image: UploadFile = File(...),
 ):
-    db.post_photos(image.file, latitude, longitude, accuracy)
+    db.post_photos(image.file, latitude, longitude, accuracy, heading)
     return "ok"
 
 
