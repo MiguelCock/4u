@@ -42,6 +42,16 @@ class SupaBase:
         )
         return self.client.storage.from_(bucket).get_public_url(filename)
 
+    def delete_images_by_url(self, bucket: str, urls: list[str]) -> None:
+        # Takes public URLs (what every caller already has - e.g. an
+        # `anchor_point_photos.image_url` column) rather than bare filenames,
+        # so callers don't each need their own URL-parsing logic. Files were
+        # always uploaded flat (see upload_image, no subdirectories), so the
+        # last path segment is the storage-relative filename.
+        filenames = [url.rsplit("/", 1)[-1] for url in urls if url]
+        if filenames:
+            self.client.storage.from_(bucket).remove(filenames)
+
     def get_photos(self):
         return self.client.table("Photo").select("*").execute().data
 

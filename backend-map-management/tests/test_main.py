@@ -121,14 +121,67 @@ def test_update_anchor_point_persists_latitude_and_longitude():
 
 
 def test_delete_anchor_point_returns_ok():
-    mock_client = _mock_delete_eq_result()
-    with patch("app.main.db.client", mock_client):
+    photos_table = MagicMock()
+    photos_table.select.return_value.in_.return_value.execute.return_value.data = [
+        {"image_url": "https://example.com/a.jpg"},
+        {"image_url": "https://example.com/b.jpg"},
+    ]
+    anchor_points_table = MagicMock()
+    anchor_points_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    mock_client = _mock_multi_table_client(
+        {"anchor_point_photos": photos_table, "anchor_points": anchor_points_table}
+    )
+    with (
+        patch("app.main.db.client", mock_client),
+        patch("app.main.db.delete_images_by_url") as mock_delete_images,
+    ):
         response = client.delete("/anchor-points/1")
     assert response.status_code == 200
     assert response.json() == "ok"
-    mock_client.table.return_value.delete.return_value.eq.assert_called_once_with(
-        "id", "1"
+    photos_table.select.return_value.in_.assert_called_once_with(
+        "anchor_point_id", ["1"]
     )
+    anchor_points_table.delete.return_value.eq.assert_called_once_with("id", "1")
+    mock_delete_images.assert_called_once_with(
+        "anchor-points",
+        ["https://example.com/a.jpg", "https://example.com/b.jpg"],
+    )
+
+
+def test_delete_anchor_point_does_not_call_storage_when_no_photos():
+    photos_table = MagicMock()
+    photos_table.select.return_value.in_.return_value.execute.return_value.data = []
+    anchor_points_table = MagicMock()
+    anchor_points_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    mock_client = _mock_multi_table_client(
+        {"anchor_point_photos": photos_table, "anchor_points": anchor_points_table}
+    )
+    with (
+        patch("app.main.db.client", mock_client),
+        patch("app.main.db.delete_images_by_url") as mock_delete_images,
+    ):
+        response = client.delete("/anchor-points/1")
+    assert response.status_code == 200
+    mock_delete_images.assert_not_called()
+
+
+def test_delete_anchor_point_succeeds_even_if_storage_cleanup_fails():
+    photos_table = MagicMock()
+    photos_table.select.return_value.in_.return_value.execute.return_value.data = [
+        {"image_url": "https://example.com/a.jpg"}
+    ]
+    anchor_points_table = MagicMock()
+    anchor_points_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    mock_client = _mock_multi_table_client(
+        {"anchor_point_photos": photos_table, "anchor_points": anchor_points_table}
+    )
+    with (
+        patch("app.main.db.client", mock_client),
+        patch("app.main.db.delete_images_by_url", side_effect=RuntimeError("boom")),
+    ):
+        response = client.delete("/anchor-points/1")
+    assert response.status_code == 200
+    assert response.json() == "ok"
 
 
 _ANCHOR_POINT_PHOTO_ROW = {
@@ -171,13 +224,22 @@ def test_list_all_anchor_point_photos():
 
 
 def test_delete_anchor_point_photo_returns_ok():
-    mock_client = _mock_delete_eq_result()
-    with patch("app.main.db.client", mock_client):
+    photos_table = MagicMock()
+    photos_table.select.return_value.eq.return_value.execute.return_value.data = [
+        _ANCHOR_POINT_PHOTO_ROW
+    ]
+    photos_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    mock_client = _mock_multi_table_client({"anchor_point_photos": photos_table})
+    with (
+        patch("app.main.db.client", mock_client),
+        patch("app.main.db.delete_images_by_url") as mock_delete_images,
+    ):
         response = client.delete("/anchor-point-photos/ph1")
     assert response.status_code == 200
     assert response.json() == "ok"
-    mock_client.table.return_value.delete.return_value.eq.assert_called_once_with(
-        "id", "ph1"
+    photos_table.delete.return_value.eq.assert_called_once_with("id", "ph1")
+    mock_delete_images.assert_called_once_with(
+        "anchor-points", ["https://example.com/a.jpg"]
     )
 
 
@@ -370,13 +432,40 @@ def test_update_building_persists_latitude_and_longitude():
 
 
 def test_delete_building_returns_ok():
-    mock_client = _mock_delete_eq_result()
-    with patch("app.main.db.client", mock_client):
+    anchor_points_table = MagicMock()
+    anchor_points_table.select.return_value.in_.return_value.execute.return_value.data = [
+        {"id": "a1"},
+        {"id": "a2"},
+    ]
+    photos_table = MagicMock()
+    photos_table.select.return_value.in_.return_value.execute.return_value.data = [
+        {"image_url": "https://example.com/a.jpg"}
+    ]
+    buildings_table = MagicMock()
+    buildings_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    mock_client = _mock_multi_table_client(
+        {
+            "anchor_points": anchor_points_table,
+            "anchor_point_photos": photos_table,
+            "buildings": buildings_table,
+        }
+    )
+    with (
+        patch("app.main.db.client", mock_client),
+        patch("app.main.db.delete_images_by_url") as mock_delete_images,
+    ):
         response = client.delete("/buildings/1")
     assert response.status_code == 200
     assert response.json() == "ok"
-    mock_client.table.return_value.delete.return_value.eq.assert_called_once_with(
-        "id", "1"
+    anchor_points_table.select.return_value.in_.assert_called_once_with(
+        "building_id", ["1"]
+    )
+    photos_table.select.return_value.in_.assert_called_once_with(
+        "anchor_point_id", ["a1", "a2"]
+    )
+    buildings_table.delete.return_value.eq.assert_called_once_with("id", "1")
+    mock_delete_images.assert_called_once_with(
+        "anchor-points", ["https://example.com/a.jpg"]
     )
 
 
@@ -436,13 +525,42 @@ def test_update_place_persists_latitude_and_longitude():
 
 
 def test_delete_place_returns_ok():
-    mock_client = _mock_delete_eq_result()
-    with patch("app.main.db.client", mock_client):
+    buildings_table = MagicMock()
+    buildings_table.select.return_value.eq.return_value.execute.return_value.data = [
+        {"id": "b1"}
+    ]
+    anchor_points_table = MagicMock()
+    anchor_points_table.select.return_value.in_.return_value.execute.return_value.data = [
+        {"id": "a1"}
+    ]
+    photos_table = MagicMock()
+    photos_table.select.return_value.in_.return_value.execute.return_value.data = [
+        {"image_url": "https://example.com/a.jpg"}
+    ]
+    places_table = MagicMock()
+    places_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    mock_client = _mock_multi_table_client(
+        {
+            "buildings": buildings_table,
+            "anchor_points": anchor_points_table,
+            "anchor_point_photos": photos_table,
+            "places": places_table,
+        }
+    )
+    with (
+        patch("app.main.db.client", mock_client),
+        patch("app.main.db.delete_images_by_url") as mock_delete_images,
+    ):
         response = client.delete("/places/p1")
     assert response.status_code == 200
     assert response.json() == "ok"
-    mock_client.table.return_value.delete.return_value.eq.assert_called_once_with(
-        "id", "p1"
+    buildings_table.select.return_value.eq.assert_called_once_with("place_id", "p1")
+    anchor_points_table.select.return_value.in_.assert_called_once_with(
+        "building_id", ["b1"]
+    )
+    places_table.delete.return_value.eq.assert_called_once_with("id", "p1")
+    mock_delete_images.assert_called_once_with(
+        "anchor-points", ["https://example.com/a.jpg"]
     )
 
 

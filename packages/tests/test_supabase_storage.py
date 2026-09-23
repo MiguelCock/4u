@@ -47,6 +47,28 @@ def test_upload_image_falls_back_to_octet_stream_for_unknown_extension():
     }
 
 
+def test_delete_images_by_url_extracts_filenames_and_removes_in_one_call():
+    db = _make_supabase()
+    urls = [
+        "https://x.supabase.co/storage/v1/object/public/anchor-points/a.jpg",
+        "https://x.supabase.co/storage/v1/object/public/anchor-points/b.jpg",
+    ]
+
+    db.delete_images_by_url("anchor-points", urls)
+
+    db.client.storage.from_.assert_called_once_with("anchor-points")
+    remove_mock = db.client.storage.from_.return_value.remove
+    remove_mock.assert_called_once_with(["a.jpg", "b.jpg"])
+
+
+def test_delete_images_by_url_skips_storage_call_when_no_urls():
+    db = _make_supabase()
+
+    db.delete_images_by_url("anchor-points", [])
+
+    db.client.storage.from_.return_value.remove.assert_not_called()
+
+
 def test_post_photos_passes_bytes_not_the_raw_file_object():
     db = _make_supabase()
     fake_file = BytesIO(b"fake-photo-bytes")
