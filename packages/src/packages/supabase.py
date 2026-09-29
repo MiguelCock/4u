@@ -20,16 +20,31 @@ class SupaBase:
         return True
 
     def post_photos(
-        self, img: BinaryIO, latitude: float, longitude: float, accuracy: float
+        self,
+        img: BinaryIO,
+        filename: str,
+        latitude: float,
+        longitude: float,
+        accuracy: float,
+        heading: float | None = None,
     ):
-        self.client.storage.from_("Photo").upload(file=img.read(), path=img.name)
+        # Without an explicit content-type, storage3 defaults to text/plain,
+        # which the real "Photo" bucket's MIME-type restriction rejects
+        # (confirmed live) - same fix as upload_image already has.
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        self.client.storage.from_("Photo").upload(
+            file=img.read(),
+            path=filename,
+            file_options={"content-type": content_type},
+        )
 
-        self.client.table("Photo").insert(
+        self.client.table("photos").insert(
             {
-                "name": img.name,
+                "name": filename,
                 "latitude": latitude,
                 "longitude": longitude,
                 "accuracy": accuracy,
+                "heading": heading,
             }
         ).execute()
 
@@ -53,17 +68,18 @@ class SupaBase:
             self.client.storage.from_(bucket).remove(filenames)
 
     def get_photos(self):
-        return self.client.table("Photo").select("*").execute().data
+        return self.client.table("photos").select("*").execute().data
 
     def get_photo(self, id: int):
-        return self.client.table("Photo").select("*").eq("id", id).execute().data
+        return self.client.table("photos").select("*").eq("id", id).execute().data
 
     def dele_photo(self, id: int):
-        name = self.client.table("Photo").select("name").eq("id", id).execute().data
+        rows = self.client.table("photos").select("name").eq("id", id).execute().data
 
-        self.client.table("Photo").delete().eq("id", id).execute()
+        self.client.table("photos").delete().eq("id", id).execute()
 
-        self.client.storage.from_("Photo").remove([name])
+        if rows:
+            self.client.storage.from_("Photo").remove([rows[0]["name"]])
 
     def sing_up(self, email: str, password: str):
         self.client.auth.sign_up(

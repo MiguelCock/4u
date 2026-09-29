@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:path/path.dart' as path;
@@ -19,6 +20,8 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
   Future<void>? _initializeFuture;
   final _service = LocationService();
   StreamSubscription<Position>? _subscription;
+  StreamSubscription<CompassEvent>? _compassSubscription;
+  double? _liveHeading;
 
   @override
   void initState() {
@@ -27,6 +30,18 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
     _subscription = _service.positionStream.listen(
       (_) => mounted ? setState(() {}) : null,
     );
+    _compassSubscription = FlutterCompass.events?.listen((event) {
+      if (mounted) {
+        // `heading` is what the Android plugin actually computes from the
+        // device's sensors - `headingForCameraMode` is a real iOS feature
+        // but the Android implementation never populates it (stays 0.0,
+        // not null, so `??` never falls through) and this app is
+        // Android-only today (no ios/ directory in the repo).
+        setState(
+          () => _liveHeading = event.heading ?? event.headingForCameraMode,
+        );
+      }
+    });
   }
 
   Future<void> _initCamera() async {
@@ -63,13 +78,18 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
         }
         return;
       }
-      await _sendPhotoToServer(image, position);
+      final heading = _liveHeading;
+      await _sendPhotoToServer(image, position, heading);
     } catch (e) {
       return;
     }
   }
 
-  Future<void> _sendPhotoToServer(XFile image, Position position) async {
+  Future<void> _sendPhotoToServer(
+    XFile image,
+    Position position,
+    double? heading,
+  ) async {
     try {
       final bytes = await image.readAsBytes();
 
@@ -82,6 +102,7 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
           'latitude': position.latitude.toString(),
           'longitude': position.longitude.toString(),
           'accuracy': position.accuracy.toString(),
+          if (heading != null) 'heading': heading.toString(),
         },
       );
 
@@ -109,6 +130,7 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
   void dispose() {
     _controller?.dispose();
     _subscription?.cancel();
+    _compassSubscription?.cancel();
     super.dispose();
   }
 
