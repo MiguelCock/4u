@@ -25,9 +25,14 @@ PUBLIC_IP="$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
 
 cat <<EOF
 Instance started: $INSTANCE_ID
-New public IP: $PUBLIC_IP
+Public IP: $PUBLIC_IP
 
-Note: the public IP changes on every start/stop cycle (no Elastic IP is
-used here - it has its own small cost if left unattached, not worth it
-for this phase). Re-point anything using the old IP.
+If provision.sh allocated an Elastic IP for this instance, this is the
+same permanent address every time (application/.env doesn't need
+touching again). If ALLOCATE_EIP was set to false, this is a fresh
+dynamic IP instead - update application/.env's API_GATEWAY_URL by hand.
+
+Remember: the containers don't come back up on their own after a stop/
+start cycle (no restart policy set) - see README.md, it's just
+`ssh ... "cd ~/4u && sudo docker compose up -d"` (no rebuild needed).
 EOF

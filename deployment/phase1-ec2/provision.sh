@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Creates everything needed for the Phase 1 EC2 deployment (issue #90):
 # a security group (SSH from your IP only + the gateway's port from
-# anywhere), an SSH key pair (if you don't already have one), and the
-# instance itself with Docker + the Compose plugin pre-installed via
-# user-data. Re-running this script is safe - it reuses the security
-# group and key pair if they already exist, but will create a second
-# instance if one is already running (use start.sh to resume a stopped
-# one instead of provisioning a new one).
+# anywhere), an SSH key pair (if you don't already have one), a static
+# Elastic IP, and the instance itself with Docker + the Compose plugin
+# pre-installed via user-data. Also auto-writes application/.env's
+# API_GATEWAY_URL to the Elastic IP, so the app is pre-configured with
+# no manual copy-paste step. Re-running this script is safe - it reuses
+# the security group/key pair/Elastic IP if they already exist, but
+# will create a second instance if one is already running (use
+# start.sh to resume a stopped one instead of provisioning a new one).
 set -euo pipefail
 
 : "${AWS_REGION:=us-east-1}"
@@ -32,6 +34,18 @@ set -euo pipefail
 # changes, and is still within the AWS free tier's 30GB/month EBS
 # allowance.
 : "${ROOT_VOLUME_GB:=20}"
+# EC2 public IPs change on every stop/start cycle - without a static
+# Elastic IP, application/.env's API_GATEWAY_URL would need hand-editing
+# after every restart (confirmed live: it does change). An Elastic IP
+# has a small extra AWS cost while the instance is stopped, but makes
+# the app's config a one-time "set and forget." Set to "false" to skip
+# it and go back to the old dynamic-IP behavior.
+: "${ALLOCATE_EIP:=true}"
+: "${EIP_NAME_TAG:=4u-phase1-ec2}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_ENV_FILE="$SCRIPT_DIR/../../application/.env"
+APP_ENV_EXAMPLE="$SCRIPT_DIR/../../application/.env.example"
 
 echo "== Verifying AWS credentials =="
 aws sts get-caller-identity --region "$AWS_REGION" >/dev/null
@@ -130,11 +144,46 @@ aws ec2 wait instance-running --instance-ids "$INSTANCE_ID" --region "$AWS_REGIO
 PUBLIC_IP="$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
   --query 'Reservations[0].Instances[0].PublicIpAddress' --output text --region "$AWS_REGION")"
 
+if [[ "$ALLOCATE_EIP" == "true" ]]; then
+  echo "== Elastic IP =="
+  EIP_ALLOC_ID="$(aws ec2 describe-addresses \
+    --filters "Name=tag:Name,Values=$EIP_NAME_TAG" \
+    --query 'Addresses[0].AllocationId' --output text --region "$AWS_REGION" 2>/dev/null || true)"
+  if [[ -z "$EIP_ALLOC_ID" || "$EIP_ALLOC_ID" == "None" ]]; then
+    EIP_ALLOC_ID="$(aws ec2 allocate-address --domain vpc \
+      --tag-specifications "ResourceType=elastic-ip,Tags=[{Key=Name,Value=$EIP_NAME_TAG}]" \
+      --query 'AllocationId' --output text --region "$AWS_REGION")"
+    echo "Allocated new Elastic IP (allocation $EIP_ALLOC_ID)."
+  else
+    echo "Reusing existing Elastic IP (allocation $EIP_ALLOC_ID)."
+  fi
+  aws ec2 associate-address --instance-id "$INSTANCE_ID" --allocation-id "$EIP_ALLOC_ID" \
+    --region "$AWS_REGION" >/dev/null
+  PUBLIC_IP="$(aws ec2 describe-addresses --allocation-ids "$EIP_ALLOC_ID" \
+    --query 'Addresses[0].PublicIp' --output text --region "$AWS_REGION")"
+  echo "Associated Elastic IP $PUBLIC_IP with $INSTANCE_ID - this IP is now permanent across stop/start."
+
+  echo "== Updating application/.env =="
+  if [[ ! -f "$APP_ENV_FILE" ]]; then
+    if [[ -f "$APP_ENV_EXAMPLE" ]]; then
+      cp "$APP_ENV_EXAMPLE" "$APP_ENV_FILE"
+    else
+      touch "$APP_ENV_FILE"
+    fi
+  fi
+  if grep -q '^API_GATEWAY_URL=' "$APP_ENV_FILE" 2>/dev/null; then
+    sed -i "s|^API_GATEWAY_URL=.*|API_GATEWAY_URL=http://$PUBLIC_IP:$GATEWAY_PORT|" "$APP_ENV_FILE"
+  else
+    echo "API_GATEWAY_URL=http://$PUBLIC_IP:$GATEWAY_PORT" >> "$APP_ENV_FILE"
+  fi
+  echo "Set API_GATEWAY_URL=http://$PUBLIC_IP:$GATEWAY_PORT in $APP_ENV_FILE"
+fi
+
 cat <<EOF
 
 == Done ==
 Instance ID: $INSTANCE_ID
-Public IP:   $PUBLIC_IP
+Public IP:   $PUBLIC_IP$([ "$ALLOCATE_EIP" == "true" ] && echo " (Elastic IP - permanent)")
 SSH:         ssh -i $KEY_FILE ec2-user@$PUBLIC_IP
 
 Docker is installing via user-data in the background - give it a minute or

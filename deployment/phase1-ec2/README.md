@@ -37,6 +37,14 @@ The AL2023 AMI's **default root volume is only 2GB**. Building all 6 images (Pyt
 - **`docker compose build` needs `buildx` ≥0.17**, which AL2023's base `docker` package doesn't include (confirmed: `compose build requires buildx 0.17.0 or later`). `provision.sh`'s user-data now installs it the same way it installs the Compose plugin (`rsync` too — also missing from the base image, needed for the file-copy step below).
 - The very first `/search_similar`/`/index_anchor` call after a fresh start downloads EfficientNet-B0's pretrained weights (~20.5 MB) from `download.pytorch.org` at runtime — on this connection that took **~2.5 minutes** and exceeded nginx's default 60s proxy timeout (504 the first time, 200 OK on retry). Separately, the **very first request to any service** right after `docker compose up -d` can also 502 once (nginx resolves upstream container names before all backends are fully listening) — both resolve themselves on a retry a few seconds later, confirmed live. Neither is fixed here (out of scope for Phase 1) — worth knowing when demonstrating this deployment so an initial 502/504 isn't mistaken for a real failure.
 
+## Stable IP (Elastic IP)
+
+EC2's default public IP is **not permanent** — it changes on every stop/start cycle, confirmed live. That's a problem when `application/.env`'s `API_GATEWAY_URL` needs to keep pointing at it. `provision.sh` defaults to allocating and associating a real AWS **Elastic IP** (`ALLOCATE_EIP=true`) — a static address that stays the same for the life of the instance, across any number of stops/starts — and, as its last step, **automatically writes that IP into `application/.env`** (creating the file from `.env.example` first if it doesn't exist yet). No manual copy-paste, and it only needs doing once: re-provisioning isn't required after a stop/start, and `application/.env` is never touched again after the first `provision.sh` run.
+
+This has a small extra AWS cost while the instance is *stopped* (an allocated-but-unattached-or-idle Elastic IP isn't free — exact current rate not independently verified live here, check your AWS Academy billing view). `delete.sh` releases it as part of full teardown. Set `ALLOCATE_EIP=false` to skip this and go back to hand-editing `application/.env` after every restart instead.
+
+This substantially covers issue #91 ("point the app's `API_GATEWAY_URL` at this deployment") — #91 also covers running the full real user flow through it, a broader check than just the URL being right, so it's not closed by this alone.
+
 ### Cost (approximate — verify current pricing, not independently confirmed against a live AWS pricing query)
 
 Roughly, on-demand Linux, a commonly-cited region: `t3.micro` ≈ $0.0104/hr, `t3.small` ≈ $0.0208/hr, `t3.medium` ≈ $0.0416/hr. At `t3.medium`'s rate, even 100 hours of testing (well beyond a realistic Phase 1 testing window, especially combined with `stop.sh` between sessions) is about $4 — comfortably inside a $50 credit. If you want to stretch the credit further once the images are already built, you can downsize:
@@ -54,10 +62,10 @@ All four read config from environment variables (sensible defaults baked in — 
 
 | Script | What it does |
 |---|---|
-| `./provision.sh` | Creates the security group (SSH from your current IP only, the gateway's port `8000` from anywhere), an SSH key pair (saved to `~/.ssh/`, **not** into this repo), and launches a 20GB-disk instance with Docker + the Compose plugin + `buildx` + `rsync` pre-installed via user-data. Prints the SSH command and public IP when done. |
-| `./start.sh` | Resumes a **stopped** instance. Prints the new public IP (it changes every start/stop cycle — no Elastic IP is used, to avoid its own small idle cost). **Confirmed live: the containers don't come back up on their own** (`docker-compose.yml` sets no restart policy, and a `stop`/`start` instance cycle is a real reboot) — but the built images survive on disk, so after `start.sh` all that's needed is `ssh ... "cd ~/4u && sudo docker compose up -d"` (no `--build`, confirmed fast — seconds, not a rebuild). |
-| `./stop.sh` | Stops a **running** instance to pause compute billing between test sessions. Everything on disk survives. |
-| `./delete.sh` | Permanently terminates the instance and deletes the security group. Asks for confirmation first. Standing back up after this means `provision.sh` **and** redoing the manual setup below from scratch. |
+| `./provision.sh` | Creates the security group (SSH from your current IP only, the gateway's port `8000` from anywhere), an SSH key pair (saved to `~/.ssh/`, **not** into this repo), a static Elastic IP, and launches a 20GB-disk instance with Docker + the Compose plugin + `buildx` + `rsync` pre-installed via user-data. Writes the Elastic IP into `application/.env` automatically. Prints the SSH command and public IP when done. |
+| `./start.sh` | Resumes a **stopped** instance. Prints the public IP — permanent if `provision.sh` allocated an Elastic IP (the normal case), so `application/.env` doesn't need touching again. **Confirmed live: the containers don't come back up on their own** (`docker-compose.yml` sets no restart policy, and a `stop`/`start` instance cycle is a real reboot) — but the built images survive on disk, so after `start.sh` all that's needed is `ssh ... "cd ~/4u && sudo docker compose up -d"` (no `--build`, confirmed fast — seconds, not a rebuild). |
+| `./stop.sh` | Stops a **running** instance to pause compute billing between test sessions. Everything on disk survives, and the Elastic IP (if any) stays associated. |
+| `./delete.sh` | Permanently terminates the instance, releases its Elastic IP, and deletes the security group. Asks for confirmation first. Standing back up after this means `provision.sh` (which will allocate a **new**, different Elastic IP — automatically re-written into `application/.env`) **and** redoing the manual setup below from scratch. |
 
 None of these ever put real secrets in AWS-visible places (EC2 user-data is stored in plain text in your account's history and readable via the instance metadata service) — see "First-time setup" below for how `.env` files actually get there.
 
@@ -95,6 +103,6 @@ Not scripted on purpose — this only needs doing once per instance (surviving `
 
 ## Out of scope here (separate issues)
 
-- Pointing the Flutter app's `API_GATEWAY_URL` at this deployment and running the real end-to-end flow through it — #91.
+- Running the full real end-to-end user flow through this deployment (the URL itself is now auto-wired — see "Stable IP" above) — #91.
 - HTTPS in front of the gateway — #92.
 - A budget alarm / automated stop-start schedule — #93 (this folder's `stop.sh` is the manual version of half of that).
