@@ -1,4 +1,12 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+
+class AnchorPointMetadata(BaseModel):
+    indoor: bool | None = None
+    lighting: Literal["bright", "moderate", "dim"] | None = None
+    surface: str | None = None
 
 
 class AnchorPointCreate(BaseModel):
@@ -9,6 +17,7 @@ class AnchorPointCreate(BaseModel):
     longitude: float
     altitude: float | None = None
     location_description: str = Field(min_length=1)
+    metadata: AnchorPointMetadata = AnchorPointMetadata()
 
 
 # Deliberately NOT `AnchorPointResponse(AnchorPointCreate)` - existing rows
@@ -24,6 +33,10 @@ class AnchorPointResponse(BaseModel):
     altitude: float | None = None
     location_description: str | None = None
     status: str
+    # Loose dict, not AnchorPointMetadata - rows written before this field
+    # existed default to `{}`, and a strict submodel would 500 on any shape
+    # that doesn't conform, same reasoning as location_description above.
+    metadata: dict = {}
 
 
 class AnchorPointUpdate(BaseModel):
@@ -33,6 +46,7 @@ class AnchorPointUpdate(BaseModel):
     location_type_id: int | None = None
     floor: int | None = None
     status: str | None = None
+    metadata: AnchorPointMetadata | None = None
 
 
 class AnchorPointPhotoCreate(BaseModel):

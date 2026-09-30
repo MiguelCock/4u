@@ -102,6 +102,57 @@ def test_create_anchor_point_requires_description():
     assert response.status_code == 422
 
 
+def test_create_anchor_point_passes_metadata_through():
+    payload = {
+        "building_id": "b1",
+        "latitude": 6.24,
+        "longitude": -75.58,
+        "location_description": "Front door",
+        "metadata": {"indoor": False, "lighting": "bright", "surface": "concrete"},
+    }
+    mock_client = _mock_insert_result([{**payload, "id": "1"}])
+    with patch("app.main.db.client", mock_client):
+        response = client.post("/anchor-points", json=payload)
+    assert response.status_code == 200
+    insert_payload = mock_client.table.return_value.insert.call_args.args[0]
+    assert insert_payload["metadata"] == {
+        "indoor": False,
+        "lighting": "bright",
+        "surface": "concrete",
+    }
+
+
+def test_create_anchor_point_defaults_metadata_to_empty_fields():
+    payload = {
+        "building_id": "b1",
+        "latitude": 6.24,
+        "longitude": -75.58,
+        "location_description": "Front door",
+    }
+    mock_client = _mock_insert_result([{**payload, "id": "1"}])
+    with patch("app.main.db.client", mock_client):
+        response = client.post("/anchor-points", json=payload)
+    assert response.status_code == 200
+    insert_payload = mock_client.table.return_value.insert.call_args.args[0]
+    assert insert_payload["metadata"] == {
+        "indoor": None,
+        "lighting": None,
+        "surface": None,
+    }
+
+
+def test_create_anchor_point_rejects_invalid_lighting():
+    payload = {
+        "building_id": "b1",
+        "latitude": 6.24,
+        "longitude": -75.58,
+        "location_description": "Front door",
+        "metadata": {"lighting": "pitch-black"},
+    }
+    response = client.post("/anchor-points", json=payload)
+    assert response.status_code == 422
+
+
 def test_update_anchor_point_returns_updated_row():
     mock_client = _mock_update_eq_result([{**_ANCHOR_POINT_ROW, "floor": 2}])
     with patch("app.main.db.client", mock_client):
@@ -118,6 +169,43 @@ def test_update_anchor_point_persists_latitude_and_longitude():
         response = client.patch("/anchor-points/1", json=payload)
     assert response.status_code == 200
     mock_client.table.return_value.update.assert_called_once_with(payload)
+
+
+def test_update_anchor_point_persists_metadata_when_provided():
+    payload = {"metadata": {"indoor": True, "lighting": "dim", "surface": "tile"}}
+    mock_client = _mock_update_eq_result([{**_ANCHOR_POINT_ROW, **payload}])
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/1", json=payload)
+    assert response.status_code == 200
+    mock_client.table.return_value.update.assert_called_once_with(payload)
+
+
+def test_update_anchor_point_omits_metadata_when_not_provided():
+    payload = {"floor": 2}
+    mock_client = _mock_update_eq_result([{**_ANCHOR_POINT_ROW, **payload}])
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/1", json=payload)
+    assert response.status_code == 200
+    update_payload = mock_client.table.return_value.update.call_args.args[0]
+    assert "metadata" not in update_payload
+
+
+def test_get_anchor_point_includes_metadata():
+    # metadata is a loose dict on the response model (not the strict
+    # AnchorPointMetadata submodel), so it passes through exactly as
+    # stored - no defaults get filled in for keys the row doesn't have.
+    row = {**_ANCHOR_POINT_ROW, "metadata": {"indoor": True, "lighting": "bright"}}
+    with patch("app.main.db.client", _mock_select_eq_result([row])):
+        response = client.get("/anchor-points/1")
+    assert response.status_code == 200
+    assert response.json()["metadata"] == {"indoor": True, "lighting": "bright"}
+
+
+def test_get_anchor_point_defaults_metadata_when_row_has_none():
+    with patch("app.main.db.client", _mock_select_eq_result([_ANCHOR_POINT_ROW])):
+        response = client.get("/anchor-points/1")
+    assert response.status_code == 200
+    assert response.json()["metadata"] == {}
 
 
 def test_delete_anchor_point_returns_ok():

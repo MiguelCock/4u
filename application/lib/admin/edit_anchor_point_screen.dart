@@ -27,9 +27,12 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
   final _mapApi = MapManagementApi();
   final _aiTrainingApi = AiTrainingApi();
   late final TextEditingController _descriptionController;
+  late final TextEditingController _surfaceController;
   late LatLng _position;
   int? _locationTypeId;
   late String _status;
+  bool _indoor = true;
+  String? _lighting;
   bool _submitting = false;
   String? _error;
 
@@ -48,6 +51,13 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
     );
     _locationTypeId = widget.anchorPoint['location_type_id'] as int?;
     _status = widget.anchorPoint['status'] as String? ?? 'pending';
+    final metadata =
+        widget.anchorPoint['metadata'] as Map<String, dynamic>? ?? {};
+    _indoor = metadata['indoor'] as bool? ?? true;
+    _lighting = metadata['lighting'] as String?;
+    _surfaceController = TextEditingController(
+      text: metadata['surface'] as String? ?? '',
+    );
     _loadPhotos();
   }
 
@@ -109,12 +119,18 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
     });
 
     try {
+      final surface = _surfaceController.text.trim();
       await _mapApi.patch('/anchor-points/${widget.anchorPoint['id']}', {
         'location_description': description,
         'latitude': _position.latitude,
         'longitude': _position.longitude,
         'location_type_id': _locationTypeId,
         'status': _status,
+        'metadata': {
+          'indoor': _indoor,
+          'lighting': _lighting,
+          'surface': surface.isEmpty ? null : surface,
+        },
       });
     } on ApiException catch (e) {
       setState(() {
@@ -179,6 +195,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
   @override
   void dispose() {
     _descriptionController.dispose();
+    _surfaceController.dispose();
     super.dispose();
   }
 
@@ -209,6 +226,32 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
                   )
                   .toList(),
               onChanged: (value) => setState(() => _locationTypeId = value),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Indoor location'),
+              value: _indoor,
+              onChanged: (value) => setState(() => _indoor = value),
+            ),
+            DropdownButtonFormField<String?>(
+              initialValue: _lighting,
+              decoration: const InputDecoration(labelText: 'Lighting'),
+              items: const [
+                DropdownMenuItem(value: null, child: Text('Not set')),
+                DropdownMenuItem(value: 'bright', child: Text('Bright')),
+                DropdownMenuItem(value: 'moderate', child: Text('Moderate')),
+                DropdownMenuItem(value: 'dim', child: Text('Dim')),
+              ],
+              onChanged: (value) => setState(() => _lighting = value),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _surfaceController,
+              decoration: const InputDecoration(
+                labelText: 'Surface (optional)',
+                helperText: 'e.g. tile, carpet, concrete',
+              ),
             ),
             const SizedBox(height: 12),
             Text('Photos', style: Theme.of(context).textTheme.titleSmall),

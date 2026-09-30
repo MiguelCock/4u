@@ -35,6 +35,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   final _mapApi = MapManagementApi();
   final _locationService = LocationService();
   final _descriptionController = TextEditingController();
+  final _surfaceController = TextEditingController();
 
   List<Map<String, dynamic>> _places = [];
   List<Map<String, dynamic>> _buildingsAll = [];
@@ -43,6 +44,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
   String? _selectedBuildingId;
   int _selectedLocationTypeId = kLocationTypes.keys.first;
   LatLng? _pickedPosition;
+  bool _indoor = true;
+  String? _lighting;
   bool _loading = true;
   bool _submitting = false;
   String? _error;
@@ -135,6 +138,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     });
 
     try {
+      final surface = _surfaceController.text.trim();
       final result = await _mapApi.post('/anchor-points', {
         'building_id': _selectedBuildingId,
         'location_type_id': _selectedLocationTypeId,
@@ -142,6 +146,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
         'longitude': _pickedPosition?.longitude ?? position!.longitude,
         'altitude': position?.altitude,
         'location_description': description,
+        'metadata': {
+          'indoor': _indoor,
+          'lighting': _lighting,
+          'surface': surface.isEmpty ? null : surface,
+        },
       });
       final id = (result as List).first['id'] as String;
 
@@ -167,6 +176,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   @override
   void dispose() {
     _descriptionController.dispose();
+    _surfaceController.dispose();
     super.dispose();
   }
 
@@ -252,6 +262,35 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       labelText: 'Description',
                       helperText:
                           'Required - used as this point\'s name so it can be told apart from others.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Indoor location'),
+                    value: _indoor,
+                    onChanged: (value) => setState(() => _indoor = value),
+                  ),
+                  DropdownButtonFormField<String?>(
+                    initialValue: _lighting,
+                    decoration: const InputDecoration(labelText: 'Lighting'),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Not set')),
+                      DropdownMenuItem(value: 'bright', child: Text('Bright')),
+                      DropdownMenuItem(
+                        value: 'moderate',
+                        child: Text('Moderate'),
+                      ),
+                      DropdownMenuItem(value: 'dim', child: Text('Dim')),
+                    ],
+                    onChanged: (value) => setState(() => _lighting = value),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _surfaceController,
+                    decoration: const InputDecoration(
+                      labelText: 'Surface (optional)',
+                      helperText: 'e.g. tile, carpet, concrete',
                     ),
                   ),
                   const SizedBox(height: 12),
