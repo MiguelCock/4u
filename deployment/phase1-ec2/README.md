@@ -2,107 +2,117 @@
 
 A single, cheap EC2 instance running the existing `docker-compose.yml` unmodified, reachable over the internet, for real usability testing (issue #90). Not production — see the future `deployment/phase2-production/` for that (#94).
 
-## Prerequisites
+## Out of scope here (separate issues)
+
+- Running the full real end-to-end user flow through this deployment (the app's `API_GATEWAY_URL` gets wired up automatically as part of the steps below, but the broader "does the whole flow actually work" check is separate) — #91.
+- HTTPS in front of the gateway — #92.
+- A budget alarm / automated stop-start schedule — #93 (`stop.sh`/`start.sh` below are the manual version of half of that).
+
+## Prerequisites (one-time)
 
 1. **AWS CLI v2 installed and configured** with your own credentials (`aws configure` — never paste your access key/secret into a chat session; run it yourself in your own terminal).
 2. Verify it works: `aws sts get-caller-identity` should print your account details.
-3. An AWS account on the free tier / a promotional credit — see "Cost" below before picking an instance type.
-4. **If this is an AWS Academy Learner Lab account** (`assumed-role/voclabs/...` in step 2's output is the tell): these use short-lived session credentials tied to the lab session, not a long-lived IAM user — if any script suddenly starts failing auth partway through, the lab session likely needs restarting and `aws configure` re-run with the new temporary credentials it gives you. No region is set by default either; every script here defaults `AWS_REGION` to `us-east-1` (Academy labs are commonly restricted to this region) — override via the env var if yours differs.
+3. **If this is an AWS Academy Learner Lab account** (`assumed-role/voclabs/...` in step 2's output is the tell): these use short-lived session credentials tied to the lab session, not a long-lived IAM user — if any script suddenly starts failing auth partway through, the lab session likely needs restarting and `aws configure` re-run with the new temporary credentials it gives you. No region is set by default either; every script here defaults `AWS_REGION` to `us-east-1` (Academy labs are commonly restricted to this region) — override via the env var if yours differs.
+4. An AWS account on the free tier / a promotional credit — see the sizing/cost appendix at the end before picking an instance type, though the defaults here are already chosen with a $50 credit in mind.
 
-## Instance sizing — real evidence, not a guess
+All four scripts below read their config from environment variables (sensible defaults baked in, nothing to edit) and are run from this directory.
 
-Issue #90 explicitly asked for this to be validated, not assumed.
+## Deploying for the first time
 
-**Local measurement** (dev machine, 16GB RAM, Docker 29.8) by building and running the full stack and watching `docker stats`:
+### 1. `./provision.sh`
 
-| Container | Idle | After a real `/search_similar` call (loads the PyTorch model) |
-|---|---|---|
-| `ai-training` | ~421 MB | ~439 MB |
-| `map-management` / `route-management` / `data-collection` / `navigation-management` / `user-management` | ~78-81 MB each | ~78-81 MB each |
-| `gateway` | ~2-3 MB | ~2-3 MB |
-| **Total (7 containers)** | **~826 MB** | **~776-830 MB** |
+```
+./provision.sh
+```
 
-**Confirmed live on a real `t3.medium` instance** (the actual target hardware, not an estimate): `free -h` showed 1.2GB used / 3.7GB total / 2.2GB available at rest, and `docker stats` totaled ~803MB across all 7 containers — consistent with the local numbers above, with comfortable headroom to spare.
+This one command creates everything:
 
-That's *application* memory only — add OS + Docker daemon overhead (150-400 MB, confirmed in the `t3.medium` numbers above) and steady-state usage alone is already at or past **1 GB**, with zero margin on a 1GB instance. The **build** step is worse: `docker compose up --build` installs `torch`/`torchvision`/`opencv-python-headless` for `backend-ai-training` and builds all 6 images, which is meaningfully more memory- *and disk*-hungry than steady-state running (see "Disk size" below — this is what actually broke the first real attempt, not memory).
+- **A security group** — SSH (22) from your current public IP only (auto-detected), plus the gateway's port `8000` open to everyone (nothing else is reachable — the 6 backend services stay internal, same as local `docker compose`).
+- **An SSH key pair — this is where `~/.ssh/4u-phase1-key.pem` comes from.** AWS requires a key pair to exist before an instance can use one, so the first time this runs it calls `aws ec2 create-key-pair` and saves the private key to `~/.ssh/4u-phase1-key.pem` (outside the repo — `KEY_OUTPUT_DIR` if you want it elsewhere). AWS hands back the private key exactly once at creation time and never lets you download it again, so treat that `.pem` file as something to keep safe, not something to regenerate casually. Every later run of `provision.sh` reuses the same key pair instead of making a new one.
+- **A static Elastic IP**, allocated and attached to the instance. EC2's default public IP is *not* permanent — it changes on every stop/start cycle (confirmed live) — so without this, `application/.env` would need hand-editing after every restart. As its very last step, `provision.sh` **writes this IP straight into `application/.env`'s `API_GATEWAY_URL`** (creating the file from `.env.example` first if it doesn't exist) — nothing left to configure by hand. Set `ALLOCATE_EIP=false` if you'd rather skip this and manage the IP yourself.
+- **The instance itself** — `t3.medium`, a 20GB disk, and Docker + the Compose plugin + `buildx` + `rsync` installed via user-data. Two real things worth knowing, both only found by actually deploying this once: the Amazon Linux 2023 AMI's *default* root disk is just 2GB, which fills up completely partway through building 6 Docker images (confirmed live: `No space left on device`) — that's why 20GB is requested explicitly (`ROOT_VOLUME_GB` to change it). And AL2023's base `docker` package doesn't include a recent enough `buildx` for `docker compose build`, and doesn't include `rsync` at all — both are installed by user-data alongside Docker for exactly that reason.
 
-**Conclusion**: the true free-tier instance types (`t2.micro`/`t3.micro`, 1 GB RAM) are very likely too small, especially to build on. `provision.sh` defaults to **`t3.medium`** (4 GB) for headroom on both build and run — confirmed working end-to-end against a real AWS Academy Learner Lab account.
+Takes under a minute; prints the instance id, the Elastic IP, and the SSH command to use next.
 
-### Disk size — the real blocker hit on first deployment
+### 2. Wait for the instance to finish bootstrapping
 
-The AL2023 AMI's **default root volume is only 2GB**. Building all 6 images (Python base layers + `uv`-downloaded interpreters + torch/torchvision for `backend-ai-training`) filled it completely and failed mid-build with `No space left on device`, confirmed live. `provision.sh` now explicitly requests a **20GB `gp3`** root volume via `--block-device-mappings` (`ROOT_VOLUME_GB`, overridable) — comfortably within the AWS free tier's 30GB/month EBS allowance, confirmed to build and run the full stack successfully afterward.
+User-data (installing Docker/buildx/rsync) takes a minute or two after `provision.sh` reports the instance as running. Confirm it's ready:
 
-### Two more things only found by actually running this
+```
+ssh -i ~/.ssh/4u-phase1-key.pem ec2-user@<public-ip> "docker --version && docker buildx version && rsync --version"
+```
 
-- **`docker compose build` needs `buildx` ≥0.17**, which AL2023's base `docker` package doesn't include (confirmed: `compose build requires buildx 0.17.0 or later`). `provision.sh`'s user-data now installs it the same way it installs the Compose plugin (`rsync` too — also missing from the base image, needed for the file-copy step below).
-- The very first `/search_similar`/`/index_anchor` call after a fresh start downloads EfficientNet-B0's pretrained weights (~20.5 MB) from `download.pytorch.org` at runtime — on this connection that took **~2.5 minutes** and exceeded nginx's default 60s proxy timeout (504 the first time, 200 OK on retry). Separately, the **very first request to any service** right after `docker compose up -d` can also 502 once (nginx resolves upstream container names before all backends are fully listening) — both resolve themselves on a retry a few seconds later, confirmed live. Neither is fixed here (out of scope for Phase 1) — worth knowing when demonstrating this deployment so an initial 502/504 isn't mistaken for a real failure.
+### 3. Copy the repo over
 
-## Stable IP (Elastic IP)
+Only what the stack actually needs — `docker-compose.yml`, `gateway/`, `packages/`, and the 6 `backend-*/` directories (each already has its real, populated `.env` with Supabase Cloud/Qdrant Cloud credentials). The Flutter `application/` directory doesn't run on the server, so it's deliberately left out:
 
-EC2's default public IP is **not permanent** — it changes on every stop/start cycle, confirmed live. That's a problem when `application/.env`'s `API_GATEWAY_URL` needs to keep pointing at it. `provision.sh` defaults to allocating and associating a real AWS **Elastic IP** (`ALLOCATE_EIP=true`) — a static address that stays the same for the life of the instance, across any number of stops/starts — and, as its last step, **automatically writes that IP into `application/.env`** (creating the file from `.env.example` first if it doesn't exist yet). No manual copy-paste, and it only needs doing once: re-provisioning isn't required after a stop/start, and `application/.env` is never touched again after the first `provision.sh` run.
+```
+ssh -i ~/.ssh/4u-phase1-key.pem ec2-user@<public-ip> "mkdir -p ~/4u"
+rsync -avz -e "ssh -i ~/.ssh/4u-phase1-key.pem" \
+  --exclude '.venv' \
+  docker-compose.yml gateway packages backend-ai-training backend-data-collection backend-map-management backend-navigation-management backend-route-management backend-user-management \
+  ec2-user@<public-ip>:~/4u/
+```
 
-This has a small extra AWS cost while the instance is *stopped* (an allocated-but-unattached-or-idle Elastic IP isn't free — exact current rate not independently verified live here, check your AWS Academy billing view). `delete.sh` releases it as part of full teardown. Set `ALLOCATE_EIP=false` to skip this and go back to hand-editing `application/.env` after every restart instead.
+Run from the repo root. **No trailing slashes on the directory names** — confirmed live that adding them (e.g. `gateway/` instead of `gateway`) makes rsync copy each directory's *contents* into a shared destination, flattening and overwriting everything into one directory instead of preserving `gateway`, `packages`, etc. as their own subdirectories. `--exclude '.venv'` matches at any depth, so each service's own `.venv` is skipped either way.
 
-This substantially covers issue #91 ("point the app's `API_GATEWAY_URL` at this deployment") — #91 also covers running the full real user flow through it, a broader check than just the URL being right, so it's not closed by this alone.
+### 4. Build and start the stack
 
-### Cost (approximate — verify current pricing, not independently confirmed against a live AWS pricing query)
+```
+ssh -i ~/.ssh/4u-phase1-key.pem ec2-user@<public-ip>
+cd ~/4u
+sudo docker compose up --build -d
+```
 
-Roughly, on-demand Linux, a commonly-cited region: `t3.micro` ≈ $0.0104/hr, `t3.small` ≈ $0.0208/hr, `t3.medium` ≈ $0.0416/hr. At `t3.medium`'s rate, even 100 hours of testing (well beyond a realistic Phase 1 testing window, especially combined with `stop.sh` between sessions) is about $4 — comfortably inside a $50 credit. If you want to stretch the credit further once the images are already built, you can downsize:
+`sudo` is needed here even though user-data added `ec2-user` to the `docker` group — that only takes effect in a *new* login session, not the one you're already SSHed into right after provisioning. (Log out and back in, or just use `sudo`, which is simpler.)
+
+### 5. Verify it's reachable — from your own machine, not just inside the instance
+
+```
+curl http://<public-ip>:8000/map/
+curl http://<public-ip>:8000/route/
+curl http://<public-ip>:8000/user/
+curl http://<public-ip>:8000/navigation/
+curl http://<public-ip>:8000/data-collection/
+curl http://<public-ip>:8000/ai-training/
+```
+
+Each is a service's `GET /` health check, proxied through the gateway (see `gateway/nginx.conf` for the full path-prefix list). Confirmed live: all 6 respond `200 OK` once the stack settles — **if the very first request to any endpoint 502s or 504s, just retry once.** Two real, harmless timing issues found by actually doing this: nginx can briefly resolve a backend before it's fully listening right after `docker compose up -d` (502, self-resolves in a few seconds); and the very first real `/search_similar`/`/index_anchor` call anywhere downloads EfficientNet-B0's pretrained weights (~20.5MB) from `download.pytorch.org` at runtime, which took ~2.5 minutes on this connection and exceeded nginx's default 60s timeout (504 the first time, 200 OK on retry). Neither is fixed here — just don't mistake either for a real failure.
+
+### 6. `application/.env` is already done
+
+No extra step — step 1's Elastic IP write already put the right `API_GATEWAY_URL` in place. The app is ready to point at this deployment as soon as step 5 passes.
+
+## Redeploying once everything above is already set up
+
+The fast path — AWS CLI, credentials, the key pair, security group, and Elastic IP all already exist from a previous `provision.sh` run:
+
+- **Resuming after `stop.sh`**: run `./start.sh`, then just
+  ```
+  ssh -i ~/.ssh/4u-phase1-key.pem ec2-user@<public-ip> "cd ~/4u && sudo docker compose up -d"
+  ```
+  No `--build` needed — confirmed live that a stop/start cycle is a real reboot (`docker-compose.yml` sets no restart policy, so containers don't come back on their own), but the already-built images survive on disk, so this is seconds, not a rebuild. `start.sh` prints the IP — it's the same permanent Elastic IP as before, so `application/.env` doesn't need touching again.
+- **Pulled new code and want it live**: repeat step 3's `rsync` command, then step 4's `sudo docker compose up --build -d` again, on the already-running instance.
+- **Done testing for now**: `./stop.sh` — pauses compute billing, everything on disk (and the Elastic IP) survives.
+
+## Tearing down completely
+
+```
+./delete.sh
+```
+
+Permanently terminates the instance, releases the Elastic IP (it has its own small ongoing cost if left allocated and unattached — not worth keeping around once you're done), and deletes the security group. Asks for confirmation first. The SSH key pair is left alone — `provision.sh` will reuse it for the next instance, but that next instance will get a **new, different** Elastic IP (automatically re-written into `application/.env`), and the manual repo-copy + build steps above need doing again from scratch.
+
+## Appendix: instance sizing & cost
+
+Issue #90 asked for sizing to be validated, not assumed. Real measurement (local build + a real `t3.medium`, `docker stats`/`free -h`): all 7 containers together use **~800MB** under light real use (the `ai-training` container, which loads a PyTorch model, is the largest single one at ~420-440MB). That's application memory only — add OS/Docker overhead and it's already at or past 1GB, which is why the true free-tier types (`t2.micro`/`t3.micro`, 1GB) are very likely too small, especially to *build* on (installing `torch`/`torchvision`/`opencv-python-headless` is more memory- and disk-hungry than steady-state running — see step 1's disk note above). `provision.sh` defaults to `t3.medium` (4GB) for headroom on both.
+
+Approximate on-demand pricing, commonly-cited region (not independently verified live — check current rates in your AWS billing view): `t3.micro` ≈ $0.0104/hr, `t3.small` ≈ $0.0208/hr, `t3.medium` ≈ $0.0416/hr. Even 100 hours at `t3.medium`'s rate is about $4 — comfortably inside a $50 credit, especially combined with `stop.sh` between sessions. To stretch the credit further once the images are already built:
 
 ```
 ./stop.sh
 aws ec2 modify-instance-attribute --instance-id <id> --instance-type t3.small
 ./start.sh
 ```
-(Only works while stopped; `t3.small` is 2 GB, enough headroom to *run* the already-built stack per the table above, just not to rebuild it — resize back to `t3.medium` temporarily if you need to `docker compose up --build` again, e.g. after pulling new code.)
 
-## Scripts
-
-All four read config from environment variables (sensible defaults baked in — see the top of each script) so nothing needs editing to run them as-is.
-
-| Script | What it does |
-|---|---|
-| `./provision.sh` | Creates the security group (SSH from your current IP only, the gateway's port `8000` from anywhere), an SSH key pair (saved to `~/.ssh/`, **not** into this repo), a static Elastic IP, and launches a 20GB-disk instance with Docker + the Compose plugin + `buildx` + `rsync` pre-installed via user-data. Writes the Elastic IP into `application/.env` automatically. Prints the SSH command and public IP when done. |
-| `./start.sh` | Resumes a **stopped** instance. Prints the public IP — permanent if `provision.sh` allocated an Elastic IP (the normal case), so `application/.env` doesn't need touching again. **Confirmed live: the containers don't come back up on their own** (`docker-compose.yml` sets no restart policy, and a `stop`/`start` instance cycle is a real reboot) — but the built images survive on disk, so after `start.sh` all that's needed is `ssh ... "cd ~/4u && sudo docker compose up -d"` (no `--build`, confirmed fast — seconds, not a rebuild). |
-| `./stop.sh` | Stops a **running** instance to pause compute billing between test sessions. Everything on disk survives, and the Elastic IP (if any) stays associated. |
-| `./delete.sh` | Permanently terminates the instance, releases its Elastic IP, and deletes the security group. Asks for confirmation first. Standing back up after this means `provision.sh` (which will allocate a **new**, different Elastic IP — automatically re-written into `application/.env`) **and** redoing the manual setup below from scratch. |
-
-None of these ever put real secrets in AWS-visible places (EC2 user-data is stored in plain text in your account's history and readable via the instance metadata service) — see "First-time setup" below for how `.env` files actually get there.
-
-## First-time setup (manual, after `provision.sh`)
-
-Not scripted on purpose — this only needs doing once per instance (surviving `stop`/`start`, redone after `delete` + a fresh `provision.sh`):
-
-1. Wait a minute or two after `provision.sh` finishes for the user-data script to install Docker + buildx + rsync (confirm with `ssh -i ~/.ssh/4u-phase1-key.pem ec2-user@<public-ip> "docker --version && docker buildx version && rsync --version"`).
-2. Copy just what the stack actually needs to the instance — `docker-compose.yml`, `gateway/`, `packages/`, and the 6 `backend-*/` directories (each with its real, already-populated `.env`). The Flutter `application/` directory doesn't run on the server at all, so it's deliberately left out — no point shipping it or its build artifacts over:
-   ```
-   ssh -i ~/.ssh/4u-phase1-key.pem ec2-user@<public-ip> "mkdir -p ~/4u"
-   rsync -avz -e "ssh -i ~/.ssh/4u-phase1-key.pem" \
-     --exclude '.venv' \
-     docker-compose.yml gateway packages backend-ai-training backend-data-collection backend-map-management backend-navigation-management backend-route-management backend-user-management \
-     ec2-user@<public-ip>:~/4u/
-   ```
-   Run from the repo root. **No trailing slashes on the directory names** — confirmed live that `gateway/` (trailing slash) copies the *contents* of each directory into a shared destination, flattening and overwriting everything into one directory instead of preserving `gateway`, `packages`, etc. as their own subdirectories. `--exclude '.venv'` matches at any depth, so each service's own `.venv` is skipped either way.
-3. SSH in and start the stack:
-   ```
-   ssh -i ~/.ssh/4u-phase1-key.pem ec2-user@<public-ip>
-   cd ~/4u
-   sudo docker compose up --build -d
-   ```
-   (`sudo` — the `ec2-user` account was added to the `docker` group by user-data, but that only takes effect in a *new* login session, not the one you're already SSHed into right after provisioning)
-4. Verify it's reachable **from your own machine**, not just from inside the instance — and if the very first attempt at any endpoint 502s, just retry once (see "Two more things only found by actually running this" above):
-   ```
-   curl http://<public-ip>:8000/map/
-   curl http://<public-ip>:8000/route/
-   curl http://<public-ip>:8000/user/
-   curl http://<public-ip>:8000/navigation/
-   curl http://<public-ip>:8000/data-collection/
-   curl http://<public-ip>:8000/ai-training/
-   ```
-   (each service's `GET /` health check, proxied through the gateway — see `gateway/nginx.conf` for the full path-prefix list). Confirmed live: all 6 backend services plus the gateway's own `/` respond with `200 OK` once the stack settles.
-
-## Out of scope here (separate issues)
-
-- Running the full real end-to-end user flow through this deployment (the URL itself is now auto-wired — see "Stable IP" above) — #91.
-- HTTPS in front of the gateway — #92.
-- A budget alarm / automated stop-start schedule — #93 (this folder's `stop.sh` is the manual version of half of that).
+(Only works while stopped. `t3.small` is 2GB — enough to *run* the already-built stack, not to rebuild it; resize back to `t3.medium` temporarily for any future `--build`.)
