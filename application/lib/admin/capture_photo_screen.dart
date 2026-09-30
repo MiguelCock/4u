@@ -280,9 +280,10 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
       appBar: AppBar(
         title: Text('Photos: ${widget.anchorPointDescription}'),
         actions: [
-          TextButton(
+          IconButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Done', style: TextStyle(color: Colors.white)),
+            icon: const Icon(Icons.check),
+            tooltip: 'Done',
           ),
         ],
       ),
