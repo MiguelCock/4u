@@ -212,6 +212,15 @@ La confirmación siempre muestra los números reales (por ejemplo, "will also de
 | office | Ubicación de una oficina |
 | restroom | Ubicación de un baño |
 | cafeteria | Cafetería o zona de comedor |
+| hallway | Un tramo de pasillo — no una intersección, solo un tramo (útil como punto de referencia entre dos intersecciones) |
+| ramp | Una rampa de accesibilidad |
+| outdoor_path | Un camino o sendero exterior entre edificios |
+| parking | Una zona o lote de estacionamiento |
+| lobby | El lobby o atrio de un edificio |
+| auditorium | Un auditorio o aula magna |
+| courtyard | Un patio o plaza exterior |
+| crosswalk | Un cruce peatonal o cruce de calle |
+| bus_stop | Una parada de bus o transporte del campus |
 | other | Cualquier cosa que no encaje en las anteriores |
 
 ### Status del anchor point

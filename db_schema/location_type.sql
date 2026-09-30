@@ -15,4 +15,13 @@ INSERT INTO location_type (id, name, description) VALUES
 (6, 'office', 'Office location'),
 (7, 'restroom', 'Restroom location'),
 (8, 'cafeteria', 'Cafeteria or dining area'),
-(9, 'other', 'Other location');
+(9, 'other', 'Other location'),
+(10, 'hallway', 'Hallway or corridor segment (not an intersection)'),
+(11, 'ramp', 'Accessibility ramp'),
+(12, 'outdoor_path', 'Outdoor walkway or path between buildings'),
+(13, 'parking', 'Parking area or lot'),
+(14, 'lobby', 'Building lobby or atrium'),
+(15, 'auditorium', 'Auditorium or large lecture hall'),
+(16, 'courtyard', 'Outdoor courtyard or plaza'),
+(17, 'crosswalk', 'Pedestrian crosswalk or road crossing'),
+(18, 'bus_stop', 'Campus bus or shuttle stop');

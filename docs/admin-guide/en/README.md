@@ -212,6 +212,15 @@ The confirmation always shows the real counts (e.g. "will also delete 3 building
 | office | Office location |
 | restroom | Restroom location |
 | cafeteria | Cafeteria or dining area |
+| hallway | A hallway or corridor segment — not an intersection, just a stretch of hallway (useful as a waypoint between two intersections) |
+| ramp | An accessibility ramp |
+| outdoor_path | An outdoor walkway or path between buildings |
+| parking | A parking area or lot |
+| lobby | A building lobby or atrium |
+| auditorium | An auditorium or large lecture hall |
+| courtyard | An outdoor courtyard or plaza |
+| crosswalk | A pedestrian crosswalk or road crossing |
+| bus_stop | A campus bus or shuttle stop |
 | other | Anything that doesn't fit the above |
 
 ### Anchor point status
