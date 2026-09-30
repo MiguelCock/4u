@@ -18,6 +18,15 @@ const Map<int, String> kLocationTypes = {
   6: 'office',
   7: 'restroom',
   8: 'cafeteria',
+  10: 'hallway',
+  11: 'ramp',
+  12: 'outdoor_path',
+  13: 'parking',
+  14: 'lobby',
+  15: 'auditorium',
+  16: 'courtyard',
+  17: 'crosswalk',
+  18: 'bus_stop',
   9: 'other',
 };
 

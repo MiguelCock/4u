@@ -30,6 +30,8 @@ On start, the app loads `.env`, initializes the Supabase Auth client, then shows
 
 ### Manual usage
 
+> For a full admin walkthrough (adding places, buildings, anchor points, photos, verification, and connections), see [`docs/admin-guide/`](../docs/admin-guide/README.md) — the steps below are a quick developer smoke test, not the full admin flow.
+
 1. Launch the app. If not signed in, use **Sign up** (creates a Supabase Auth account, then a matching `profiles` row via `backend-user-management`'s `POST /profiles` — defaults to the `user` role) or **Log in**.
 2. Once signed in as `user`, you land on the original single-screen prototype: live location info, a camera preview with a capture button, and a map centered on the device's current position.
 3. The top panel shows the live GPS fix (lat/lng/accuracy), updating as `LocationService` streams new positions.
