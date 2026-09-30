@@ -780,7 +780,24 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          const DrawerHeader(child: Text('Admin')),
+          DrawerHeader(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Admin',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                Text(
+                  Supabase.instance.client.auth.currentUser?.email ?? '',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
           item(0, Icons.flag, Colors.purple, 'Places'),
           item(1, Icons.apartment, Colors.orange, 'Buildings'),
           item(2, Icons.location_pin, Colors.green, 'Anchor points'),
