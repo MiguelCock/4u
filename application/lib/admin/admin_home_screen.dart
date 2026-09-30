@@ -46,6 +46,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   String _anchorQuery = '';
   String _connectionQuery = '';
   String? _anchorStatusFilter;
+  String? _buildingsPlaceFilterId;
 
   @override
   void initState() {
@@ -106,6 +107,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             .cast<Map<String, dynamic>>();
         _photos = (results[3] as List? ?? []).cast<Map<String, dynamic>>();
         _connections = (results[4] as List? ?? []).cast<Map<String, dynamic>>();
+        if (_buildingsPlaceFilterId != null &&
+            !_places.any((p) => p['id'] == _buildingsPlaceFilterId)) {
+          _buildingsPlaceFilterId = null;
+        }
         _loading = false;
         _error = null;
       });
@@ -356,6 +361,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       place['id'] as String,
                     ).length;
                     return ListTile(
+                      onTap: () {
+                        setState(
+                          () => _buildingsPlaceFilterId = place['id'] as String,
+                        );
+                        _tabController.animateTo(1);
+                      },
                       leading: const Icon(Icons.flag, color: Colors.purple),
                       title: Text(
                         place['name'] as String? ?? place['id'] as String,
@@ -389,12 +400,18 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   Widget _buildingsTab() {
     final placesById = {for (final p in _places) p['id'] as String: p};
+    final scopedPlace = _buildingsPlaceFilterId != null
+        ? placesById[_buildingsPlaceFilterId]
+        : null;
     final filtered =
         _buildings
             .where(
-              (b) => (b['name'] as String? ?? '').toLowerCase().contains(
-                _buildingQuery,
-              ),
+              (b) =>
+                  (_buildingsPlaceFilterId == null ||
+                      b['place_id'] == _buildingsPlaceFilterId) &&
+                  (b['name'] as String? ?? '').toLowerCase().contains(
+                    _buildingQuery,
+                  ),
             )
             .toList()
           ..sort(
@@ -405,10 +422,29 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
     return Column(
       children: [
+        if (scopedPlace != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: InputChip(
+                label: Text(
+                  'Buildings in ${scopedPlace['name'] as String? ?? 'place'}',
+                ),
+                onDeleted: () => setState(() => _buildingsPlaceFilterId = null),
+              ),
+            ),
+          ),
         _searchField(_buildingSearchController, 'Search buildings'),
         Expanded(
           child: filtered.isEmpty
-              ? const Center(child: Text('No buildings found.'))
+              ? Center(
+                  child: Text(
+                    scopedPlace != null
+                        ? 'No buildings found in ${scopedPlace['name'] as String? ?? 'this place'}.'
+                        : 'No buildings found.',
+                  ),
+                )
               : ListView.builder(
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
