@@ -24,6 +24,14 @@ set -euo pipefail
 : "${SECURITY_GROUP_NAME:=4u-phase1-sg}"
 : "${INSTANCE_NAME_TAG:=4u-phase1-ec2}"
 : "${GATEWAY_PORT:=8000}"
+# The AL2023 AMI's default root volume is only 2GB - nowhere near enough
+# to build 6 Docker images (Python base layers + torch/torchvision for
+# backend-ai-training). Confirmed by hitting "No space left on device"
+# mid-build against the real 2GB default. 20GB comfortably covers the
+# full stack's images + build cache with room to rebuild after code
+# changes, and is still within the AWS free tier's 30GB/month EBS
+# allowance.
+: "${ROOT_VOLUME_GB:=20}"
 
 echo "== Verifying AWS credentials =="
 aws sts get-caller-identity --region "$AWS_REGION" >/dev/null
@@ -72,22 +80,36 @@ echo "== Latest Amazon Linux 2023 AMI =="
 AMI_ID="$(aws ec2 describe-images --owners amazon \
   --filters "Name=name,Values=al2023-ami-*-x86_64" "Name=state,Values=available" \
   --query 'sort_by(Images, &CreationDate)[-1].ImageId' --output text --region "$AWS_REGION")"
-echo "Using AMI $AMI_ID"
+ROOT_DEVICE_NAME="$(aws ec2 describe-images --image-ids "$AMI_ID" \
+  --query 'Images[0].RootDeviceName' --output text --region "$AWS_REGION")"
+echo "Using AMI $AMI_ID (root device $ROOT_DEVICE_NAME, resizing to ${ROOT_VOLUME_GB}GB)"
 
-# Deliberately installs Docker only - no secrets, no repo clone. Real
-# .env files get copied over SSH afterward (see README.md); EC2
-# user-data is visible via the instance metadata service and stored in
-# plain text in your AWS account history, so real secrets must never go
-# through it.
+# Deliberately installs Docker + build tooling only - no secrets, no repo
+# clone. Real .env files get copied over SSH afterward (see README.md);
+# EC2 user-data is visible via the instance metadata service and stored
+# in plain text in your AWS account history, so real secrets must never
+# go through it.
+#
+# buildx and rsync aren't in AL2023's base `docker` package/image -
+# confirmed live ("compose build requires buildx 0.17.0 or later" and
+# "rsync: command not found" the first time this was actually run).
 USER_DATA="$(cat <<'EOS'
 #!/bin/bash
-dnf install -y docker
+dnf install -y docker rsync
 systemctl enable --now docker
 usermod -aG docker ec2-user
 mkdir -p /usr/local/lib/docker/cli-plugins
 curl -sSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
   -o /usr/local/lib/docker/cli-plugins/docker-compose
 chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+ARCH=$(uname -m)
+case $ARCH in x86_64) BARCH=amd64 ;; aarch64) BARCH=arm64 ;; esac
+# buildx has no version-less "latest" download alias (unlike compose) -
+# its asset names embed the version, so the tag is resolved first.
+BUILDX_TAG=$(curl -sL https://api.github.com/repos/docker/buildx/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
+curl -sSL "https://github.com/docker/buildx/releases/download/${BUILDX_TAG}/buildx-${BUILDX_TAG}.linux-${BARCH}" \
+  -o /usr/local/lib/docker/cli-plugins/docker-buildx
+chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
 EOS
 )"
 
@@ -97,6 +119,7 @@ INSTANCE_ID="$(aws ec2 run-instances \
   --instance-type "$INSTANCE_TYPE" \
   --key-name "$KEY_NAME" \
   --security-group-ids "$SG_ID" \
+  --block-device-mappings "[{\"DeviceName\":\"$ROOT_DEVICE_NAME\",\"Ebs\":{\"VolumeSize\":$ROOT_VOLUME_GB,\"VolumeType\":\"gp3\"}}]" \
   --user-data "$USER_DATA" \
   --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$INSTANCE_NAME_TAG}]" \
   --query 'Instances[0].InstanceId' --output text --region "$AWS_REGION")"
