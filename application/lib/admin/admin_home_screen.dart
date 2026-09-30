@@ -47,6 +47,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   String _connectionQuery = '';
   String? _anchorStatusFilter;
   String? _buildingsPlaceFilterId;
+  String? _anchorPointsBuildingFilterId;
 
   @override
   void initState() {
@@ -110,6 +111,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         if (_buildingsPlaceFilterId != null &&
             !_places.any((p) => p['id'] == _buildingsPlaceFilterId)) {
           _buildingsPlaceFilterId = null;
+        }
+        if (_anchorPointsBuildingFilterId != null &&
+            !_buildings.any((b) => b['id'] == _anchorPointsBuildingFilterId)) {
+          _anchorPointsBuildingFilterId = null;
         }
         _loading = false;
         _error = null;
@@ -454,6 +459,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       building['id'] as String,
                     ).length;
                     return ListTile(
+                      onTap: () {
+                        setState(
+                          () => _anchorPointsBuildingFilterId =
+                              building['id'] as String,
+                        );
+                        _tabController.animateTo(2);
+                      },
                       leading: const Icon(
                         Icons.apartment,
                         color: Colors.orange,
@@ -526,10 +538,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   Widget _anchorPointsTab() {
     final buildingsById = {for (final b in _buildings) b['id'] as String: b};
+    final scopedBuilding = _anchorPointsBuildingFilterId != null
+        ? buildingsById[_anchorPointsBuildingFilterId]
+        : null;
     final filtered =
         _anchorPoints
             .where(
               (p) =>
+                  (_anchorPointsBuildingFilterId == null ||
+                      p['building_id'] == _anchorPointsBuildingFilterId) &&
                   (_anchorStatusFilter == null ||
                       p['status'] == _anchorStatusFilter) &&
                   (p['location_description'] as String? ?? '')
@@ -545,11 +562,31 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
     return Column(
       children: [
+        if (scopedBuilding != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: InputChip(
+                label: Text(
+                  'Anchor points in ${scopedBuilding['name'] as String? ?? 'building'}',
+                ),
+                onDeleted: () =>
+                    setState(() => _anchorPointsBuildingFilterId = null),
+              ),
+            ),
+          ),
         _statusFilterChips(),
         _searchField(_anchorSearchController, 'Search anchor points'),
         Expanded(
           child: filtered.isEmpty
-              ? const Center(child: Text('No anchor points found.'))
+              ? Center(
+                  child: Text(
+                    scopedBuilding != null
+                        ? 'No anchor points found in ${scopedBuilding['name'] as String? ?? 'this building'}.'
+                        : 'No anchor points found.',
+                  ),
+                )
               : ListView.builder(
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
