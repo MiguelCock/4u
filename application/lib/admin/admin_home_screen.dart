@@ -756,20 +756,46 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     }
   }
 
+  static const _sectionTitles = [
+    'Places',
+    'Buildings',
+    'Anchor points',
+    'Connections',
+  ];
+
+  Widget _drawer() {
+    Widget item(int index, IconData icon, Color color, String label) {
+      return ListTile(
+        leading: Icon(icon, color: color),
+        title: Text(label),
+        selected: _tabController.index == index,
+        onTap: () {
+          _tabController.animateTo(index);
+          Navigator.of(context).pop();
+        },
+      );
+    }
+
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          const DrawerHeader(child: Text('Admin')),
+          item(0, Icons.flag, Colors.purple, 'Places'),
+          item(1, Icons.apartment, Colors.orange, 'Buildings'),
+          item(2, Icons.location_pin, Colors.green, 'Anchor points'),
+          item(3, Icons.timeline, Colors.teal, 'Connections'),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: _drawer(),
       appBar: AppBar(
-        title: const Text('Admin'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Places'),
-            Tab(text: 'Buildings'),
-            Tab(text: 'Anchor points'),
-            Tab(text: 'Connections'),
-          ],
-        ),
+        title: Text(_sectionTitles[_tabController.index]),
         actions: [
           if (_tabController.index == 3)
             IconButton(
@@ -804,6 +830,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               onRefresh: _loadData,
               child: TabBarView(
                 controller: _tabController,
+                physics: const NeverScrollableScrollPhysics(),
                 children: [
                   _placesTab(),
                   _buildingsTab(),
