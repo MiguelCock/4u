@@ -54,3 +54,29 @@ services:
       - user-management
       - navigation-management
       - ai-training
+
+  # TLS termination for the Phase 1 EC2 deployment (#92) - reverse-proxies to
+  # the plain-HTTP `gateway` above and gets free, fully-automatic Let's
+  # Encrypt HTTPS. Gated behind the "https" profile so plain `docker compose
+  # up` (CI, local dev) never starts it - it only runs when COMPOSE_PROFILES
+  # includes "https" (set in deployment/phase1-ec2/.env, synced to the EC2
+  # instance's own .env by the deploy step - see that README).
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - ./gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - gateway
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

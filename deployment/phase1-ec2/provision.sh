@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # Creates everything needed for the Phase 1 EC2 deployment (issue #90):
-# a security group (SSH from your IP only + the gateway's port from
-# anywhere), an SSH key pair (if you don't already have one), a static
-# Elastic IP, and the instance itself with Docker + the Compose plugin
-# pre-installed via user-data. Also auto-writes application/.env's
-# API_GATEWAY_URL to the Elastic IP, so the app is pre-configured with
-# no manual copy-paste step. Re-running this script is safe - it reuses
-# the security group/key pair/Elastic IP if they already exist, but
-# will create a second instance if one is already running (use
-# start.sh to resume a stopped one instead of provisioning a new one).
+# a security group (SSH from your IP only + HTTPS on 80/443 from
+# anywhere - see #92), an SSH key pair (if you don't already have one),
+# a static Elastic IP, and the instance itself with Docker + the
+# Compose plugin pre-installed via user-data. Also auto-writes
+# application/.env's API_GATEWAY_URL and deployment/phase1-ec2/.env's
+# DOMAIN to a free sslip.io hostname derived from the Elastic IP, so
+# the app and the Caddy TLS sidecar are both pre-configured with no
+# manual copy-paste step. Re-running this script is safe and reuses
+# everything that already exists - the security group, key pair,
+# Elastic IP, *and* the instance itself (if one is already running, it
+# re-applies the security-group/HTTPS migration to it instead of
+# launching a second one; if one exists but is stopped, it tells you to
+# run start.sh first rather than launching a duplicate).
 set -euo pipefail
 
 : "${AWS_REGION:=us-east-1}"
@@ -25,6 +29,9 @@ set -euo pipefail
 : "${SSH_CIDR:=}"
 : "${SECURITY_GROUP_NAME:=4u-phase1-sg}"
 : "${INSTANCE_NAME_TAG:=4u-phase1-ec2}"
+# No longer opened to the public internet (see #92 - HTTPS via Caddy on
+# 80/443 is the only public entry point now). Still used for the gateway
+# container's own port mapping - local dev, CI, and SSH-tunnel debugging.
 : "${GATEWAY_PORT:=8000}"
 # The AL2023 AMI's default root volume is only 2GB - nowhere near enough
 # to build 6 Docker images (Python base layers + torch/torchvision for
@@ -67,15 +74,44 @@ SG_ID="$(aws ec2 describe-security-groups \
 if [[ -z "$SG_ID" || "$SG_ID" == "None" ]]; then
   SG_ID="$(aws ec2 create-security-group \
     --group-name "$SECURITY_GROUP_NAME" \
-    --description "4u Phase 1 EC2 - SSH from operator IP + gateway port only" \
+    --description "4u Phase 1 EC2 - SSH from operator IP + HTTPS gateway only" \
     --vpc-id "$VPC_ID" --query 'GroupId' --output text --region "$AWS_REGION")"
   aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
     --protocol tcp --port 22 --cidr "$SSH_CIDR" --region "$AWS_REGION" >/dev/null
-  aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
-    --protocol tcp --port "$GATEWAY_PORT" --cidr 0.0.0.0/0 --region "$AWS_REGION" >/dev/null
-  echo "Created security group $SG_ID (SSH from $SSH_CIDR, gateway port $GATEWAY_PORT from anywhere)."
+  echo "Created security group $SG_ID (SSH from $SSH_CIDR)."
 else
   echo "Reusing existing security group $SG_ID."
+fi
+
+# Idempotent by existence check, not just bare authorize/revoke calls - both
+# error under `set -euo pipefail` if the rule is already there/already gone,
+# which matters on every re-run (not just first creation), since an
+# already-provisioned instance's security group needs this same migration
+# applied to it (#92: HTTPS via Caddy on 80/443 replaces the old plain-HTTP
+# exposure on $GATEWAY_PORT).
+_has_ingress_rule() {
+  local port="$1"
+  local count
+  count="$(aws ec2 describe-security-groups --group-ids "$SG_ID" --region "$AWS_REGION" \
+    --query "length(SecurityGroups[0].IpPermissions[?ToPort==\`$port\` && contains(IpRanges[].CidrIp, '0.0.0.0/0')])" \
+    --output text)"
+  [[ "$count" != "0" ]]
+}
+
+for port in 80 443; do
+  if _has_ingress_rule "$port"; then
+    echo "Ingress for port $port already present."
+  else
+    aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
+      --protocol tcp --port "$port" --cidr 0.0.0.0/0 --region "$AWS_REGION" >/dev/null
+    echo "Opened port $port (0.0.0.0/0) for HTTPS."
+  fi
+done
+
+if _has_ingress_rule "$GATEWAY_PORT"; then
+  aws ec2 revoke-security-group-ingress --group-id "$SG_ID" \
+    --protocol tcp --port "$GATEWAY_PORT" --cidr 0.0.0.0/0 --region "$AWS_REGION" >/dev/null
+  echo "Closed old port $GATEWAY_PORT public exposure (now served over HTTPS instead)."
 fi
 
 echo "== SSH key pair =="
@@ -90,13 +126,35 @@ else
   echo "Reusing existing key pair '$KEY_NAME' (expecting $KEY_FILE to still be on this machine)."
 fi
 
-echo "== Latest Amazon Linux 2023 AMI =="
-AMI_ID="$(aws ec2 describe-images --owners amazon \
-  --filters "Name=name,Values=al2023-ami-*-x86_64" "Name=state,Values=available" \
-  --query 'sort_by(Images, &CreationDate)[-1].ImageId' --output text --region "$AWS_REGION")"
-ROOT_DEVICE_NAME="$(aws ec2 describe-images --image-ids "$AMI_ID" \
-  --query 'Images[0].RootDeviceName' --output text --region "$AWS_REGION")"
-echo "Using AMI $AMI_ID (root device $ROOT_DEVICE_NAME, resizing to ${ROOT_VOLUME_GB}GB)"
+echo "== Checking for an existing instance =="
+INSTANCE_ID="$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=$INSTANCE_NAME_TAG" "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+  --query 'Reservations[0].Instances[0].InstanceId' --output text --region "$AWS_REGION" 2>/dev/null || true)"
+
+if [[ -n "$INSTANCE_ID" && "$INSTANCE_ID" != "None" ]]; then
+  # Without this check, re-running provision.sh would launch a *second*
+  # instance (it has no other existing-instance guard) and, below, steal the
+  # Elastic IP away from the one currently serving real traffic - fine for a
+  # from-scratch run, not fine for migrating an already-live deployment onto
+  # HTTPS (#92).
+  LAUNCHED_NEW=false
+  STATE="$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
+    --query 'Reservations[0].Instances[0].State.Name' --output text --region "$AWS_REGION")"
+  if [[ "$STATE" != "running" ]]; then
+    echo "Instance $INSTANCE_ID (tagged Name=$INSTANCE_NAME_TAG) exists but is '$STATE', not running." >&2
+    echo "Run start.sh first, then re-run this script - provision.sh won't launch a second instance." >&2
+    exit 1
+  fi
+  echo "Found existing running instance $INSTANCE_ID - applying the security-group/HTTPS setup to it instead of launching a new one."
+else
+  LAUNCHED_NEW=true
+  echo "== Latest Amazon Linux 2023 AMI =="
+  AMI_ID="$(aws ec2 describe-images --owners amazon \
+    --filters "Name=name,Values=al2023-ami-*-x86_64" "Name=state,Values=available" \
+    --query 'sort_by(Images, &CreationDate)[-1].ImageId' --output text --region "$AWS_REGION")"
+  ROOT_DEVICE_NAME="$(aws ec2 describe-images --image-ids "$AMI_ID" \
+    --query 'Images[0].RootDeviceName' --output text --region "$AWS_REGION")"
+  echo "Using AMI $AMI_ID (root device $ROOT_DEVICE_NAME, resizing to ${ROOT_VOLUME_GB}GB)"
 
 # Deliberately installs Docker + build tooling only - no secrets, no repo
 # clone. Real .env files get copied over SSH afterward (see README.md);
@@ -140,6 +198,7 @@ INSTANCE_ID="$(aws ec2 run-instances \
 
 echo "Instance $INSTANCE_ID launching, waiting for it to reach 'running'..."
 aws ec2 wait instance-running --instance-ids "$INSTANCE_ID" --region "$AWS_REGION"
+fi
 
 PUBLIC_IP="$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
   --query 'Reservations[0].Instances[0].PublicIpAddress' --output text --region "$AWS_REGION")"
@@ -163,6 +222,14 @@ if [[ "$ALLOCATE_EIP" == "true" ]]; then
     --query 'Addresses[0].PublicIp' --output text --region "$AWS_REGION")"
   echo "Associated Elastic IP $PUBLIC_IP with $INSTANCE_ID - this IP is now permanent across stop/start."
 
+  # sslip.io resolves "<ip-with-dashes>.sslip.io" straight back to the IP -
+  # free, real, publicly-resolvable DNS with no domain purchase or Route53
+  # access needed (the latter is commonly restricted on AWS Academy Learner
+  # Lab accounts anyway - see README.md). Derived from the IP rather than
+  # pointed at it, so a delete.sh + re-provision.sh cycle (new IP) needs no
+  # manual DNS re-pointing - the new domain just falls out of the new IP.
+  DOMAIN="${PUBLIC_IP//./-}.sslip.io"
+
   echo "== Updating application/.env =="
   if [[ ! -f "$APP_ENV_FILE" ]]; then
     if [[ -f "$APP_ENV_EXAMPLE" ]]; then
@@ -172,11 +239,27 @@ if [[ "$ALLOCATE_EIP" == "true" ]]; then
     fi
   fi
   if grep -q '^API_GATEWAY_URL=' "$APP_ENV_FILE" 2>/dev/null; then
-    sed -i "s|^API_GATEWAY_URL=.*|API_GATEWAY_URL=http://$PUBLIC_IP:$GATEWAY_PORT|" "$APP_ENV_FILE"
+    sed -i "s|^API_GATEWAY_URL=.*|API_GATEWAY_URL=https://$DOMAIN|" "$APP_ENV_FILE"
   else
-    echo "API_GATEWAY_URL=http://$PUBLIC_IP:$GATEWAY_PORT" >> "$APP_ENV_FILE"
+    echo "API_GATEWAY_URL=https://$DOMAIN" >> "$APP_ENV_FILE"
   fi
-  echo "Set API_GATEWAY_URL=http://$PUBLIC_IP:$GATEWAY_PORT in $APP_ENV_FILE"
+  echo "Set API_GATEWAY_URL=https://$DOMAIN in $APP_ENV_FILE"
+
+  # Deliberately NOT written to the repo root - docker compose auto-loads a
+  # root .env for every invocation, including the operator's own local dev
+  # `docker compose up`, which would silently flip on the "https" profile
+  # and attempt real ACME against a domain that doesn't route to the
+  # operator's machine. This file stays here and gets copied to the
+  # instance's own repo root (~/4u/.env) during deploy - see README.md -
+  # where that auto-load behavior is exactly what's wanted.
+  REMOTE_ENV_FILE="$SCRIPT_DIR/.env"
+  {
+    echo "DOMAIN=$DOMAIN"
+    echo "COMPOSE_PROFILES=https"
+  } > "$REMOTE_ENV_FILE"
+  echo "Wrote $REMOTE_ENV_FILE - copy this to the instance's ~/4u/.env during deploy (see README.md)."
+else
+  echo "ALLOCATE_EIP=false - skipping application/.env wiring and HTTPS setup (sslip.io/Caddy both need a stable IP)."
 fi
 
 cat <<EOF
@@ -185,8 +268,10 @@ cat <<EOF
 Instance ID: $INSTANCE_ID
 Public IP:   $PUBLIC_IP$([ "$ALLOCATE_EIP" == "true" ] && echo " (Elastic IP - permanent)")
 SSH:         ssh -i $KEY_FILE ec2-user@$PUBLIC_IP
+$([ "$ALLOCATE_EIP" == "true" ] && echo "HTTPS domain: https://$DOMAIN (Let's Encrypt cert issued automatically on first deploy)")
 
-Docker is installing via user-data in the background - give it a minute or
-two before SSHing in. Next steps (copying the repo + .env files, starting
-the stack) are in README.md.
+$([ "$LAUNCHED_NEW" == "true" ] && echo "Docker is installing via user-data in the background - give it a minute or
+two before SSHing in. " )Next steps (copying the repo + .env files, including the
+new deployment/phase1-ec2/.env for HTTPS, and starting the stack) are in
+README.md.
 EOF
