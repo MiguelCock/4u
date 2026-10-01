@@ -99,3 +99,11 @@ class SupaBase:
 
     def is_logged_in(self, token) -> bool:
         return True
+
+    def get_user_id_from_token(self, access_token: str) -> str:
+        # Verifies the token for real against Supabase Auth itself (not a
+        # local signature check) - confirmed live that an invalid/expired
+        # token raises supabase.AuthApiError, which this lets propagate so
+        # callers can turn it into a 401. This is what lets a backend
+        # service trust a caller-supplied id instead of taking it on faith.
+        return self.client.auth.get_user(access_token).user.id
