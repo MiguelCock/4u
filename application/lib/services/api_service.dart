@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiException implements Exception {
   final int statusCode;
@@ -23,15 +24,25 @@ class ApiService {
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
+  /// Attaches the signed-in user's Supabase access token, if any, so
+  /// backend services can verify who's actually calling instead of trusting
+  /// whatever id shows up in a request body/path (omitted when signed out -
+  /// endpoints that require auth then 401 instead of silently acting as
+  /// nobody).
+  Map<String, String> _authHeaders([Map<String, String>? extra]) {
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    return {if (token != null) 'Authorization': 'Bearer $token', ...?extra};
+  }
+
   Future<dynamic> get(String path) async {
-    final response = await http.get(_uri(path));
+    final response = await http.get(_uri(path), headers: _authHeaders());
     return _handle(response);
   }
 
   Future<dynamic> post(String path, Map<String, dynamic> body) async {
     final response = await http.post(
       _uri(path),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders({'Content-Type': 'application/json'}),
       body: jsonEncode(body),
     );
     return _handle(response);
@@ -40,14 +51,14 @@ class ApiService {
   Future<dynamic> patch(String path, Map<String, dynamic> body) async {
     final response = await http.patch(
       _uri(path),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders({'Content-Type': 'application/json'}),
       body: jsonEncode(body),
     );
     return _handle(response);
   }
 
   Future<dynamic> delete(String path) async {
-    final response = await http.delete(_uri(path));
+    final response = await http.delete(_uri(path), headers: _authHeaders());
     return _handle(response);
   }
 
@@ -61,6 +72,7 @@ class ApiService {
     Map<String, String>? fields,
   }) async {
     final request = http.MultipartRequest('POST', _uri(path))
+      ..headers.addAll(_authHeaders())
       ..files.add(
         http.MultipartFile.fromBytes(fieldName, bytes, filename: filename),
       );
