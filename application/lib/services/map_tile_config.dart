@@ -7,4 +7,4 @@
 /// map usage policy" placeholder tile instead of real map tiles.
 const String kMapTileUrlTemplate =
     'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const String kMapUserAgentPackageName = 'com.example.application';
+const String kMapUserAgentPackageName = 'io.github.miguelcock.eyes4u';
