@@ -93,6 +93,11 @@ sudo docker compose up --build -d
 
 This same command now also starts `caddy` — no separate command to remember. It reads `COMPOSE_PROFILES=https` from the `.env` step 3 copied into `~/4u/`, which is what turns the `profiles: ["https"]`-gated `caddy` service on (plain `docker compose up`, like CI and local dev use, never starts it). Give it a few seconds after first start for Caddy to obtain its Let's Encrypt certificate — `sudo docker compose logs caddy` if an HTTPS request doesn't work right away.
 
+**If a deploy only changed `gateway/nginx.conf`** (a new route, nothing else), confirmed live that `docker compose up --build -d` alone does *not* pick it up — compose only recreates a container when the image/config it tracks changes, and a bind-mounted file's own content isn't one of those (the mount path is unchanged, so compose sees nothing to do). Force it:
+```
+sudo docker compose up -d --force-recreate gateway
+```
+
 ### 5. Verify it's reachable — from your own machine, not just inside the instance
 
 ```
