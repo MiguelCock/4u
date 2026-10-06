@@ -208,10 +208,15 @@ jobs:
             echo "QDRANT_URL=https://example.qdrant.io"
             echo "QDRANT_KEY=placeholder-key"
           } > backend-ai-training/.env
-          # backend-positioning has no secrets at all - AI_TRAINING_URL's
-          # real default already points at the right Docker Compose service
-          # name, nothing to substitute here.
-          echo "AI_TRAINING_URL=http://ai-training:80" > backend-positioning/.env
+          # backend-positioning now also needs Supabase (app-integration
+          # follow-up to #24 - only to verify caller bearer tokens on
+          # POST /correct_position). AI_TRAINING_URL's real default already
+          # points at the right Docker Compose service name.
+          {
+            echo "AI_TRAINING_URL=http://ai-training:80"
+            echo "SUPABASE_URL=https://example.supabase.co"
+            echo "SUPABASE_SERVICE_ROLE_KEY=placeholder-key"
+          } > backend-positioning/.env
 
       - name: docker compose up
         run: docker compose up --build -d

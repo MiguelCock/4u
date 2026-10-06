@@ -3,9 +3,9 @@ FROM python:3.12-slim
 # Install uv.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# No sibling `packages` dependency - this service doesn't touch Supabase or
-# Qdrant directly (see CLAUDE.md), so there's nothing in that shared library
-# for it to use.
+# Copy the shared `packages` library and this service into the container,
+# preserving their sibling layout so `../packages` resolves in pyproject.toml.
+COPY packages /packages
 COPY backend-positioning /app
 
 WORKDIR /app

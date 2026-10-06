@@ -12,8 +12,12 @@ dependencies = [
     "filterpy>=1.4.5",
     "httpx>=0.28.1",
     "numpy>=2.3.4",
+    "packages",
     "python-dotenv>=1.2.3",
 ]
+
+[tool.uv.sources]
+packages = { path = "../packages", editable = true }
 
 [dependency-groups]
 dev = [

@@ -21,6 +21,7 @@ void main() {
       'http://gateway.example/data-collection',
     );
     expect(AiTrainingApi().baseUrl, 'http://gateway.example/ai-training');
+    expect(PositioningApi().baseUrl, 'http://gateway.example/positioning');
   });
 
   test(
