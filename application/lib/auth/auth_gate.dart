@@ -11,10 +11,13 @@ const int kAdminRoleId = 2;
 
 /// Shows LoginScreen when signed out; when signed in, fetches the user's
 /// profile from backend-user-management to decide which role's home screen
-/// to show. If the profile fetch fails (backend down, profile row missing
-/// because signup's POST /profiles call failed, etc.) this falls back to
-/// the `user` home screen rather than getting stuck — there's no error
-/// screen for "logged in but no profile" in this first pass.
+/// to show. A 404 (no profile row - e.g. signup's POST /profiles call
+/// failed) is treated as "not an admin" and falls back to the `user` home
+/// screen, same as before. Anything else that goes wrong (backend
+/// unreachable, a non-404 error response, a hung connection) shows a
+/// distinct error screen with a retry action instead - silently landing on
+/// the user home screen for a real failure masked a real backend outage as
+/// what looked like a login bug (see #114/#115).
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
@@ -25,14 +28,30 @@ class AuthGate extends StatefulWidget {
 class _AuthGateState extends State<AuthGate> {
   final _userApi = UserManagementApi();
 
+  String? _fetchedForUserId;
+  Future<Map<String, dynamic>?>? _profileFuture;
+
   Future<Map<String, dynamic>?> _fetchProfile(String userId) async {
     try {
-      final result = await _userApi.get('/profiles/$userId');
+      final result = await _userApi
+          .get('/profiles/$userId')
+          .timeout(const Duration(seconds: 10));
       if (result is Map<String, dynamic>) return result;
       return null;
-    } catch (_) {
-      return null;
+    } on ApiException catch (e) {
+      // No profile row isn't a failed round-trip - treat it the same as
+      // "not an admin" (today's correct behavior). Anything else (5xx,
+      // etc.) is a real failure and should propagate to FutureBuilder's
+      // hasError instead of being swallowed here.
+      if (e.statusCode == 404) return null;
+      rethrow;
     }
+  }
+
+  void _retry(String userId) {
+    setState(() {
+      _profileFuture = _fetchProfile(userId);
+    });
   }
 
   @override
@@ -42,15 +61,50 @@ class _AuthGateState extends State<AuthGate> {
       builder: (context, snapshot) {
         final session = Supabase.instance.client.auth.currentSession;
         if (session == null) {
+          _fetchedForUserId = null;
+          _profileFuture = null;
           return const LoginScreen();
         }
 
+        // Only start a fetch once per signed-in user id - calling
+        // _fetchProfile directly inside FutureBuilder's `future:` would
+        // kick off a brand new request on every rebuild, and would also
+        // make a retry button impossible to wire up.
+        if (_fetchedForUserId != session.user.id) {
+          _fetchedForUserId = session.user.id;
+          _profileFuture = _fetchProfile(session.user.id);
+        }
+
         return FutureBuilder<Map<String, dynamic>?>(
-          future: _fetchProfile(session.user.id),
+          future: _profileFuture,
           builder: (context, profileSnapshot) {
             if (profileSnapshot.connectionState != ConnectionState.done) {
               return const Scaffold(
                 body: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (profileSnapshot.hasError) {
+              return Scaffold(
+                body: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          "Couldn't reach the server. Check your connection and try again.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.red),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () => _retry(session.user.id),
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               );
             }
             final roleId = profileSnapshot.data?['role_id'] as int?;
