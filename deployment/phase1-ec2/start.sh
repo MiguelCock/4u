@@ -32,7 +32,9 @@ same permanent address every time (application/.env doesn't need
 touching again). If ALLOCATE_EIP was set to false, this is a fresh
 dynamic IP instead - update application/.env's API_GATEWAY_URL by hand.
 
-Remember: the containers don't come back up on their own after a stop/
-start cycle (no restart policy set) - see README.md, it's just
-`ssh ... "cd ~/4u && sudo docker compose up -d"` (no rebuild needed).
+Every service has restart: unless-stopped, so the containers should come
+back on their own once Docker finishes starting on this instance - give
+it a minute. If something didn't come back for any reason, the fallback
+is still `ssh ... "cd ~/4u && sudo docker compose up -d"` (no rebuild
+needed) - see README.md.
 EOF

@@ -5,6 +5,7 @@ services:
       dockerfile: backend-data-collection/Dockerfile
     env_file:
       - backend-data-collection/.env
+    restart: unless-stopped
 
   map-management:
     build:
@@ -12,6 +13,7 @@ services:
       dockerfile: backend-map-management/Dockerfile
     env_file:
       - backend-map-management/.env
+    restart: unless-stopped
 
   route-management:
     build:
@@ -19,6 +21,7 @@ services:
       dockerfile: backend-route-management/Dockerfile
     env_file:
       - backend-route-management/.env
+    restart: unless-stopped
 
   user-management:
     build:
@@ -26,6 +29,7 @@ services:
       dockerfile: backend-user-management/Dockerfile
     env_file:
       - backend-user-management/.env
+    restart: unless-stopped
 
   navigation-management:
     build:
@@ -33,6 +37,7 @@ services:
       dockerfile: backend-navigation-management/Dockerfile
     env_file:
       - backend-navigation-management/.env
+    restart: unless-stopped
 
   ai-training:
     build:
@@ -40,6 +45,7 @@ services:
       dockerfile: backend-ai-training/Dockerfile
     env_file:
       - backend-ai-training/.env
+    restart: unless-stopped
 
   gateway:
     image: nginx:1.27-alpine
@@ -54,6 +60,7 @@ services:
       - user-management
       - navigation-management
       - ai-training
+    restart: unless-stopped
 
   # TLS termination for the Phase 1 EC2 deployment (#92) - reverse-proxies to
   # the plain-HTTP `gateway` above and gets free, fully-automatic Let's

@@ -95,11 +95,10 @@ No extra step — step 1's write already put the right `API_GATEWAY_URL=https://
 
 The fast path — AWS CLI, credentials, the key pair, security group, and Elastic IP all already exist from a previous `provision.sh` run:
 
-- **Resuming after `stop.sh`**: run `./start.sh`, then just
+- **Resuming after `stop.sh`**: run `./start.sh`. Every service has `restart: unless-stopped`, so the containers come back on their own once Docker finishes starting on the instance — no SSH step needed in the common case. `start.sh` prints the IP — it's the same permanent Elastic IP (and so the same HTTPS domain) as before, so neither `application/.env` nor `~/4u/.env` need touching again, and Caddy's already-issued certificate is still valid (it's on the `caddy_data` named volume, which also survives the reboot). If something didn't come back for any reason, the fallback is the same as always — no `--build` needed, the already-built images survive on disk:
   ```
   ssh -i ~/.ssh/4u-phase1-key.pem ec2-user@<public-ip> "cd ~/4u && sudo docker compose up -d"
   ```
-  No `--build` needed — confirmed live that a stop/start cycle is a real reboot (`docker-compose.yml` sets no restart policy, so containers don't come back on their own), but the already-built images survive on disk, so this is seconds, not a rebuild. `start.sh` prints the IP — it's the same permanent Elastic IP (and so the same HTTPS domain) as before, so neither `application/.env` nor `~/4u/.env` need touching again, and Caddy's already-issued certificate is still valid (it's on the `caddy_data` named volume, which also survives the reboot).
 - **Pulled new code and want it live**: repeat step 3's `rsync`/`scp` commands, then step 4's `sudo docker compose up --build -d` again, on the already-running instance.
 - **Done testing for now**: `./stop.sh` — pauses compute billing, everything on disk (and the Elastic IP) survives.
 
