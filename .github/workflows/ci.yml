@@ -199,9 +199,12 @@ jobs:
               echo "QDRANT_KEY=placeholder-key"
             } > "$d/.env"
           done
-          # backend-ai-training only reads the Qdrant vars (no Supabase
-          # access - see its CLAUDE.md), but writing all four is harmless.
+          # backend-ai-training now also needs Supabase (as of #24 - to
+          # verify caller bearer tokens / admin role on the write endpoints;
+          # it still never queries Postgres for anything else).
           {
+            echo "SUPABASE_URL=https://example.supabase.co"
+            echo "SUPABASE_SERVICE_ROLE_KEY=placeholder-key"
             echo "QDRANT_URL=https://example.qdrant.io"
             echo "QDRANT_KEY=placeholder-key"
           } > backend-ai-training/.env

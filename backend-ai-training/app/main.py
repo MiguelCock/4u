@@ -1,8 +1,9 @@
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from packages.qdrant import Qdrant
+from packages.supabase import SupaBase
 from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
 
 from .embedding import download_image, extract_embedding
@@ -13,6 +14,13 @@ load_dotenv()
 app = FastAPI()
 
 qdrant = Qdrant(os.environ.get("QDRANT_URL"), os.environ.get("QDRANT_KEY"))
+# Only needed to verify caller bearer tokens / admin role for the write
+# endpoints below - this service otherwise never queries Postgres directly
+# (see CLAUDE.md). POST /search_similar stays unauthenticated (#24 - it's
+# called server-to-server by backend-positioning with no end-user token).
+db = SupaBase(
+    os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+)
 
 _COLLECTION = "anchor_point_photos"
 _VECTOR_SIZE = 1280
@@ -21,6 +29,31 @@ _VECTOR_SIZE = 1280
 # listed here, or Qdrant rejects the request with a 400.
 _INDEXED_FIELDS = ["anchor_point_id", "building_id"]
 
+# Match db_schema/roles.sql's seeded rows.
+_ADMIN_ROLE_ID = 2
+
+
+async def get_caller_id(authorization: str | None = Header(default=None)) -> str:
+    """Verifies the caller's Supabase Auth bearer token for real (against
+    Supabase itself, not a local check) and returns the real, verified
+    caller id - copied verbatim from backend-user-management (#111), the
+    reusable template for this rollout (#24). 401s on anything missing,
+    malformed, or rejected by Supabase (expired/invalid token)."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    try:
+        return db.get_user_id_from_token(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Invalid or expired token") from e
+
+
+def _is_admin(caller_id: str) -> bool:
+    result = db.client.table("profiles").select("role_id").eq("id", caller_id).execute()
+    return bool(result.data) and result.data[0]["role_id"] == _ADMIN_ROLE_ID
+
 
 @app.get("/")
 async def root():
@@ -28,7 +61,11 @@ async def root():
 
 
 @app.post("/index_anchor")
-async def index_anchor(anchor: IndexAnchorRequest) -> IndexAnchorResponse:
+async def index_anchor(
+    anchor: IndexAnchorRequest, caller_id: str = Depends(get_caller_id)
+) -> IndexAnchorResponse:
+    if not _is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
     qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
 
     points = []
@@ -78,14 +115,20 @@ async def search_similar(
 
 
 @app.delete("/index_photo/{photo_id}")
-async def delete_indexed_photo(photo_id: str):
+async def delete_indexed_photo(photo_id: str, caller_id: str = Depends(get_caller_id)):
+    if not _is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
     qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
     qdrant.client.delete(_COLLECTION, points_selector=[photo_id])
     return "ok"
 
 
 @app.delete("/index_anchor/{anchor_point_id}")
-async def delete_indexed_anchor(anchor_point_id: str):
+async def delete_indexed_anchor(
+    anchor_point_id: str, caller_id: str = Depends(get_caller_id)
+):
+    if not _is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
     qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
     qdrant.client.delete(
         _COLLECTION,
@@ -101,7 +144,11 @@ async def delete_indexed_anchor(anchor_point_id: str):
 
 
 @app.delete("/index_building/{building_id}")
-async def delete_indexed_building(building_id: str):
+async def delete_indexed_building(
+    building_id: str, caller_id: str = Depends(get_caller_id)
+):
+    if not _is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
     qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
     qdrant.client.delete(
         _COLLECTION,
