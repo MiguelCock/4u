@@ -19,6 +19,17 @@ docker run -p 8000:80 --env-file .env backend-navigation-management
 
 This service owns the three `db_schema/` tables nothing else does: `navigation_sessions` (one row per "user walks a route" attempt — start/end time, status, start/end position, which route/building it happened in), `navigation_logs` (one row per GPS tick during a session — raw GPS, and, once it exists, the visually-corrected position and which anchor point matched), and `user_feedback` (a free-text comment tied to a user and optionally a session). Like every other backend service here, it's CRUD-stub level: `app/main.py` inserts/selects/updates rows via `db.client.table(...)` directly, with no business logic (no session-timeout handling, no validation that a session is `active` before you can log against it, no aggregation/analytics over logs).
 
+## Authorization (#24)
+
+Every endpoint depends on `get_caller_id` (`app/main.py`, `get_caller_id = db.get_caller_id` from `packages.supabase.SupaBase` - same shared dependency every other service uses) and gates on it:
+
+- **`POST /sessions`** / **`POST /feedback`** — `user_id` is forced server-side to the verified caller, overriding whatever the body sent (same "don't trust a client-supplied identity field" fix #111 applied to `profiles.id`).
+- **`GET /sessions`**, **`GET /logs`**, **`GET /feedback`** (the list endpoints) — admin only.
+- **`GET /sessions/{id}`**, **`PATCH /sessions/{id}`**, **`GET /feedback/{id}`** — admin, or the caller who owns the row (`row["user_id"] == caller_id`, checked directly since `user_id` is a field on these tables).
+- **`POST /logs`**, **`GET /logs/{id}`** — admin, or the caller who owns the *session* the log belongs to. `navigation_logs` has no `user_id` of its own, so ownership is resolved one hop away via the new `_session_owner(session_id) -> str | None` helper (`app/main.py`) — `session_id -> navigation_sessions.user_id`. `POST /logs` 404s if `session_id` doesn't exist and 403s if it belongs to someone else and the caller isn't an admin; `GET /logs/{id}` does the same two-hop lookup via the fetched log's own `session_id`.
+
+This was the one service in the #24 rollout needing admin-or-self checks instead of a flat admin-only/any-authenticated-user split (`backend-map-management`/`backend-route-management`/`backend-data-collection`/`backend-ai-training` only needed the latter) - and the only one needing the foreign-key-lookup ownership pattern, since every other service's ownership field lives directly on the row being checked.
+
 ## How it connects to the rest of the system
 
 There is no service-to-service HTTP call anywhere in this codebase — every backend service, including this one, talks straight to the same Supabase Postgres database via `packages.supabase.SupaBase`. "Connects to" here means *shares tables via foreign key*, not "calls an API":
