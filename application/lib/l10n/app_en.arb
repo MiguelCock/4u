@@ -1,0 +1,140 @@
+{
+  "@@locale": "en",
+
+  "appTitle": "4u",
+  "@appTitle": {"description": "App name, used as the home screen's AppBar title - kept untranslated in Spanish too since it's a brand name."},
+
+  "commonCancel": "Cancel",
+  "commonDelete": "Delete",
+  "commonEdit": "Edit",
+  "commonRefresh": "Refresh",
+  "commonRetry": "Retry",
+  "commonSaveChanges": "Save changes",
+  "commonNotSignedIn": "Not signed in.",
+  "commonOpenSettings": "Open settings",
+  "commonTryAgain": "Try again",
+  "commonLogOut": "Log out",
+  "commonFailedWithDetails": "{action} failed: {error}",
+  "@commonFailedWithDetails": {
+    "description": "Generic failure message - action is an already-localized short verb phrase, error is the exception text.",
+    "placeholders": {
+      "action": {"type": "String"},
+      "error": {"type": "String"}
+    }
+  },
+
+  "authGateUnreachable": "Couldn't reach the server. Check your connection and try again.",
+
+  "loginTitle": "Log in",
+  "loginEmailLabel": "Email",
+  "loginPasswordLabel": "Password",
+  "loginButton": "Log in",
+  "loginSignupPrompt": "Don't have an account? Sign up",
+  "loginErrorSignInFailed": "Sign in failed: {error}",
+  "@loginErrorSignInFailed": {"placeholders": {"error": {"type": "String"}}},
+
+  "signupTitle": "Sign up",
+  "signupFullNameOptional": "Full name (optional)",
+  "signupButton": "Sign up",
+  "signupErrorNoUser": "Sign up did not return a user.",
+  "signupErrorProfileSetupFailed": "Account created, but profile setup failed: {error}",
+  "@signupErrorProfileSetupFailed": {"placeholders": {"error": {"type": "String"}}},
+  "signupErrorSignUpFailed": "Sign up failed: {error}",
+  "@signupErrorSignUpFailed": {"placeholders": {"error": {"type": "String"}}},
+
+  "cameraLocationNotAvailable": "Location not available",
+  "cameraPhotoUploaded": "Photo uploaded!",
+  "cameraUploadFailedStatus": "Upload failed: {statusCode}",
+  "@cameraUploadFailedStatus": {
+    "placeholders": {"statusCode": {"type": "int"}}
+  },
+  "cameraPermissionDeniedError": "Camera permission denied. Grant camera access to take photos.",
+  "cameraUnavailableError": "Camera unavailable: {error}",
+  "@cameraUnavailableError": {
+    "placeholders": {"error": {"type": "String"}}
+  },
+
+  "locationLat": "Lat: {value}",
+  "@locationLat": {"placeholders": {"value": {"type": "String"}}},
+  "locationLng": "Lng: {value}",
+  "@locationLng": {"placeholders": {"value": {"type": "String"}}},
+  "locationAccuracy": "±{value}m",
+  "@locationAccuracy": {"placeholders": {"value": {"type": "String"}}},
+  "locationServiceDisabledError": "Location services are disabled.",
+  "locationPermissionDeniedError": "Location permission denied.",
+  "locationPermissionDeniedForeverError": "Location permission permanently denied.",
+  "locationOpenLocationSettings": "Open location settings",
+
+  "homeCameraTooltip": "Data collection camera",
+  "homeDataCollectionTitle": "Data collection",
+  "homeSettingsTooltip": "Settings",
+  "homeStartLabel": "Start",
+  "homeStartSubtitle": "Your current location",
+  "homeWhereTo": "Where to?",
+  "homeTapToChooseDestination": "Tap to choose a destination",
+  "homeFindRouteButton": "Find route",
+  "homeErrorLocationUnavailable": "Current location not available yet - try again shortly.",
+  "homeErrorNoVerifiedAnchors": "No verified anchor points exist yet.",
+  "homeErrorNoPath": "No walkable path found to that destination yet - an admin needs to add connections first.",
+  "homeErrorFailedToFindRoute": "Failed to find a route: {error}",
+  "@homeErrorFailedToFindRoute": {"placeholders": {"error": {"type": "String"}}},
+
+  "pickerErrorLoadFailed": "Failed to load locations: {error}",
+  "@pickerErrorLoadFailed": {"placeholders": {"error": {"type": "String"}}},
+  "pickerSelectBuilding": "Select a building",
+  "pickerSelectAnchorPoint": "Select an anchor point",
+  "pickerNoUniversitiesYet": "No universities yet.",
+  "pickerNoBuildingsInUniversity": "No buildings in this university yet.",
+  "pickerNoVerifiedAnchorsInBuilding": "No verified anchor points in this building yet.",
+
+  "navFeedbackTitle": "How did it go?",
+  "navFeedbackHint": "Optional feedback",
+  "navFeedbackSkip": "Skip",
+  "navFeedbackSubmit": "Submit",
+  "navDefaultTitle": "Navigating",
+  "navEndButton": "End navigation",
+  "navFailedToStartSession": "Failed to start navigation session: {error}",
+  "@navFailedToStartSession": {"placeholders": {"error": {"type": "String"}}},
+  "navCorrectedPosition": "Corrected: {lat}, {lng}{errorSuffix}",
+  "@navCorrectedPosition": {
+    "placeholders": {
+      "lat": {"type": "String"},
+      "lng": {"type": "String"},
+      "errorSuffix": {"type": "String"}
+    }
+  },
+
+  "settingsTitle": "Settings",
+  "settingsVerbosityLabel": "Verbosity",
+  "settingsVerbosityLow": "Low",
+  "settingsVerbosityMedium": "Medium",
+  "settingsVerbosityHigh": "High",
+  "settingsHighContrastLabel": "High contrast",
+  "settingsHighContrastSubtitle": "Stronger contrast colors for low vision",
+  "settingsLanguageLabel": "Language",
+  "settingsLanguageAuto": "Auto (device)",
+  "settingsLanguageEnglish": "English",
+  "settingsLanguageSpanish": "Español",
+  "settingsSaveButton": "Save",
+  "settingsSavedConfirmation": "Settings saved.",
+  "settingsErrorLoadFailed": "Failed to load your settings: {error}",
+  "@settingsErrorLoadFailed": {"placeholders": {"error": {"type": "String"}}},
+  "settingsErrorSaveFailed": "Failed to save settings: {error}",
+  "@settingsErrorSaveFailed": {"placeholders": {"error": {"type": "String"}}},
+
+  "adminLiveSessions": "Live sessions",
+  "adminUsersTabLabel": "Users",
+  "adminUsersBootstrapNote": "Promoting the very first admin account still requires a one-time manual step - see the project README.",
+  "adminUsersRoleUser": "User",
+  "adminUsersRoleAdmin": "Admin",
+  "adminUsersPromote": "Promote to admin",
+  "adminUsersDemote": "Demote to user",
+  "adminUsersDemoteConfirmTitle": "Demote this admin?",
+  "adminUsersDemoteConfirmContent": "{name} will lose admin access immediately.",
+  "@adminUsersDemoteConfirmContent": {"placeholders": {"name": {"type": "String"}}},
+  "adminUsersErrorLoadFailed": "Failed to load users: {error}",
+  "@adminUsersErrorLoadFailed": {"placeholders": {"error": {"type": "String"}}},
+  "adminUsersErrorUpdateFailed": "Failed to update user: {error}",
+  "@adminUsersErrorUpdateFailed": {"placeholders": {"error": {"type": "String"}}},
+  "adminUsersEmpty": "No users yet."
+}

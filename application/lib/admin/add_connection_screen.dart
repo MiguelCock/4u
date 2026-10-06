@@ -136,13 +136,15 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                   children: [
                     if (_places.isEmpty)
                       const Text(
-                        'No places exist yet - add one first (Add place).',
+                        'No universities exist yet - add one first (Add university).',
                         style: TextStyle(color: Colors.red),
                       )
                     else
                       DropdownButtonFormField<String>(
                         initialValue: _selectedPlaceId,
-                        decoration: const InputDecoration(labelText: 'Place'),
+                        decoration: const InputDecoration(
+                          labelText: 'University',
+                        ),
                         items: _places
                             .map(
                               (p) => DropdownMenuItem(

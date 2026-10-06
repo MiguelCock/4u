@@ -81,7 +81,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
         _applyBuildingFilter();
       });
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to load places/buildings: $e');
+      setState(() => _error = 'Failed to load universities/buildings: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -122,7 +122,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final description = _descriptionController.text.trim();
 
     if (_selectedPlaceId == null) {
-      setState(() => _error = 'Select a place.');
+      setState(() => _error = 'Select a university.');
       return;
     }
     if (_selectedBuildingId == null) {
@@ -203,13 +203,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   children: [
                     if (_places.isEmpty)
                       const Text(
-                        'No places exist yet - add one first (Add place).',
+                        'No universities exist yet - add one first (Add university).',
                         style: TextStyle(color: Colors.red),
                       )
                     else
                       DropdownButtonFormField<String>(
                         initialValue: _selectedPlaceId,
-                        decoration: const InputDecoration(labelText: 'Place'),
+                        decoration: const InputDecoration(
+                          labelText: 'University',
+                        ),
                         items: _places
                             .map(
                               (p) => DropdownMenuItem(
@@ -228,7 +230,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     const SizedBox(height: 12),
                     if (_places.isNotEmpty && _buildings.isEmpty)
                       const Text(
-                        'No buildings in this place yet - add one first (Add building).',
+                        'No buildings in this university yet - add one first (Add building).',
                         style: TextStyle(color: Colors.red),
                       )
                     else if (_buildings.isNotEmpty)

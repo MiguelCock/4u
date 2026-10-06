@@ -56,7 +56,7 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
         });
       }
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to load places: $e');
+      setState(() => _error = 'Failed to load universities: $e');
     } finally {
       if (mounted) setState(() => _loadingPlaces = false);
     }
@@ -93,7 +93,7 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
     final lng = double.tryParse(_lngController.text.trim());
     final floors = int.tryParse(_floorsController.text.trim()) ?? 1;
     if (_selectedPlaceId == null) {
-      setState(() => _error = 'Select a place.');
+      setState(() => _error = 'Select a university.');
       return;
     }
     if (code.isEmpty || name.isEmpty || lat == null || lng == null) {
@@ -154,13 +154,13 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
                 const Center(child: CircularProgressIndicator())
               else if (_places.isEmpty)
                 const Text(
-                  'No places exist yet - add one first (Add place).',
+                  'No universities exist yet - add one first (Add university).',
                   style: TextStyle(color: Colors.red),
                 )
               else
                 DropdownButtonFormField<String>(
                   initialValue: _selectedPlaceId,
-                  decoration: const InputDecoration(labelText: 'Place'),
+                  decoration: const InputDecoration(labelText: 'University'),
                   items: _places
                       .map(
                         (p) => DropdownMenuItem(

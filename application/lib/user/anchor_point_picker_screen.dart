@@ -1,19 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 
-/// Place -> Building -> anchor-point drill-down list, for picking a
+/// University -> Building -> anchor-point drill-down list, for picking a
 /// destination anchor point (see UserHomeScreen - the start point is
 /// auto-selected as the nearest verified anchor to the user's current GPS
 /// fix, not picked through here). Pops with the chosen anchor point's
 /// full map on confirm, or null if the caller just backs all the way out.
-///
-/// Fetches all three lists up front (same "fetch all, filter client-side"
-/// pattern AdminHomeScreen/LocationPickerScreen already use) rather than
-/// re-fetching per drill-down step. Anchor points are filtered to
-/// `status == 'verified'` - an unverified point has no indexed photos, so
-/// it's not a trustworthy destination/start for the visual-correction
-/// pipeline yet.
+/// "University" here is the display rename of the backend's generic
+/// `places` concept - see #106.
 class AnchorPointPickerScreen extends StatefulWidget {
   final String title;
 
@@ -33,7 +29,8 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
   List<Map<String, dynamic>> _buildings = [];
   List<Map<String, dynamic>> _anchorPoints = [];
 
-  // 0 = picking a place, 1 = picking a building, 2 = picking an anchor point.
+  // 0 = picking a university, 1 = picking a building, 2 = picking an
+  // anchor point.
   int _step = 0;
   Map<String, dynamic>? _selectedPlace;
   Map<String, dynamic>? _selectedBuilding;
@@ -61,8 +58,11 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
-        _error = 'Failed to load locations: $e';
+        _error = AppLocalizations.of(
+          context,
+        )!.pickerErrorLoadFailed(e.toString());
         _loading = false;
       });
     }
@@ -92,10 +92,12 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final stepTitle = switch (_step) {
       0 => widget.title,
-      1 => _selectedPlace?['name'] as String? ?? 'Select a building',
-      _ => _selectedBuilding?['name'] as String? ?? 'Select an anchor point',
+      1 => _selectedPlace?['name'] as String? ?? l10n.pickerSelectBuilding,
+      _ =>
+        _selectedBuilding?['name'] as String? ?? l10n.pickerSelectAnchorPoint,
     };
 
     return PopScope(
@@ -121,13 +123,14 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
   }
 
   Widget _buildStep() {
+    final l10n = AppLocalizations.of(context)!;
     switch (_step) {
       case 0:
         return _list(
           items: _places,
           icon: Icons.flag,
           color: Colors.purple,
-          emptyText: 'No places yet.',
+          emptyText: l10n.pickerNoUniversitiesYet,
           onTap: (place) => setState(() {
             _selectedPlace = place;
             _step = 1;
@@ -138,7 +141,7 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
           items: _buildingsInSelectedPlace,
           icon: Icons.apartment,
           color: Colors.orange,
-          emptyText: 'No buildings in this place yet.',
+          emptyText: l10n.pickerNoBuildingsInUniversity,
           onTap: (building) => setState(() {
             _selectedBuilding = building;
             _step = 2;
@@ -149,7 +152,7 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
           items: _anchorsInSelectedBuilding,
           icon: Icons.location_pin,
           color: Colors.green,
-          emptyText: 'No verified anchor points in this building yet.',
+          emptyText: l10n.pickerNoVerifiedAnchorsInBuilding,
           subtitleKey: 'location_description',
           onTap: (anchor) => Navigator.of(context).pop(anchor),
         );

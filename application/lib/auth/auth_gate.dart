@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../admin/admin_home_screen.dart';
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/app_preferences.dart';
 import '../user/user_home_screen.dart';
 import 'login_screen.dart';
 
@@ -36,7 +38,20 @@ class _AuthGateState extends State<AuthGate> {
       final result = await _userApi
           .get('/profiles/$userId')
           .timeout(const Duration(seconds: 10));
-      if (result is Map<String, dynamic>) return result;
+      if (result is Map<String, dynamic>) {
+        // Resolves after an await, outside any widget's build() call stack -
+        // safe to mutate a ValueNotifier an ancestor listens to here, unlike
+        // doing it synchronously inside build() (which would trip a
+        // "setState called during build" assertion on MainApp's
+        // ValueListenableBuilder while this subtree is still building).
+        if (mounted) {
+          applyPreferences(
+            result['preferences'] as Map<String, dynamic>?,
+            defaultHighContrast: MediaQuery.of(context).highContrast,
+          );
+        }
+        return result;
+      }
       return null;
     } on ApiException catch (e) {
       // No profile row isn't a failed round-trip - treat it the same as
@@ -91,15 +106,17 @@ class _AuthGateState extends State<AuthGate> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
-                          "Couldn't reach the server. Check your connection and try again.",
+                        Text(
+                          AppLocalizations.of(context)!.authGateUnreachable,
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.red),
+                          style: const TextStyle(color: Colors.red),
                         ),
                         const SizedBox(height: 16),
                         ElevatedButton(
                           onPressed: () => _retry(session.user.id),
-                          child: const Text('Retry'),
+                          child: Text(
+                            AppLocalizations.of(context)!.commonRetry,
+                          ),
                         ),
                       ],
                     ),

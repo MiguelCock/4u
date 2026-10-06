@@ -84,7 +84,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to save place: $e');
+      setState(() => _error = 'Failed to save university: $e');
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -103,7 +103,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Add place')),
+      appBar: AppBar(title: const Text('Add university')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -163,7 +163,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Save place'),
+                    : const Text('Save university'),
               ),
             ],
           ),

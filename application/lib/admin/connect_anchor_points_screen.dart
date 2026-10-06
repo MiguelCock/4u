@@ -223,7 +223,7 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
                         child: DropdownButtonFormField<String>(
                           initialValue: _selectedPlaceId,
                           decoration: const InputDecoration(
-                            labelText: 'Place',
+                            labelText: 'University',
                             isDense: true,
                           ),
                           items: _places

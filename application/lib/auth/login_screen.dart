@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../l10n/app_localizations.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -30,7 +31,13 @@ class _LoginScreenState extends State<LoginScreen> {
     } on AuthException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = 'Sign in failed: $e');
+      if (mounted) {
+        setState(
+          () => _error = AppLocalizations.of(
+            context,
+          )!.loginErrorSignInFailed(e.toString()),
+        );
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -45,8 +52,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Log in')),
+      appBar: AppBar(title: Text(l10n.loginTitle)),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
@@ -55,13 +63,13 @@ class _LoginScreenState extends State<LoginScreen> {
             TextField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email'),
+              decoration: InputDecoration(labelText: l10n.loginEmailLabel),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password'),
+              decoration: InputDecoration(labelText: l10n.loginPasswordLabel),
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
@@ -76,7 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Log in'),
+                  : Text(l10n.loginButton),
             ),
             TextButton(
               onPressed: _submitting
@@ -84,7 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   : () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const SignupScreen()),
                     ),
-              child: const Text("Don't have an account? Sign up"),
+              child: Text(l10n.loginSignupPrompt),
             ),
           ],
         ),

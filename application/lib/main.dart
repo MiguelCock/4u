@@ -3,6 +3,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'auth/auth_gate.dart';
+import 'l10n/app_localizations.dart';
+import 'services/app_preferences.dart';
 import 'services/location_service.dart';
 
 void main() async {
@@ -33,6 +35,35 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(title: '4u', home: AuthGate());
+    return ValueListenableBuilder<bool>(
+      valueListenable: highContrastNotifier,
+      builder: (context, highContrast, _) {
+        return ValueListenableBuilder<Locale?>(
+          valueListenable: localeNotifier,
+          builder: (context, locale, _) {
+            return MaterialApp(
+              title: '4u',
+              locale: locale,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              theme: ThemeData(
+                colorScheme: highContrast
+                    ? const ColorScheme.highContrastLight()
+                    : ColorScheme.fromSeed(seedColor: Colors.blue),
+              ),
+              darkTheme: ThemeData(
+                colorScheme: highContrast
+                    ? const ColorScheme.highContrastDark()
+                    : ColorScheme.fromSeed(
+                        seedColor: Colors.blue,
+                        brightness: Brightness.dark,
+                      ),
+              ),
+              home: const AuthGate(),
+            );
+          },
+        );
+      },
+    );
   }
 }

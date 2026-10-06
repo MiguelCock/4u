@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'add_building_screen.dart';
 import 'add_connection_screen.dart';
@@ -28,6 +29,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     with SingleTickerProviderStateMixin {
   final _mapApi = MapManagementApi();
   final _aiTrainingApi = AiTrainingApi();
+  final _userApi = UserManagementApi();
   late final TabController _tabController;
 
   List<Map<String, dynamic>> _places = [];
@@ -35,8 +37,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   List<Map<String, dynamic>> _anchorPoints = [];
   List<Map<String, dynamic>> _photos = [];
   List<Map<String, dynamic>> _connections = [];
+  List<Map<String, dynamic>> _users = [];
   bool _loading = true;
   String? _error;
+  bool _usersLoaded = false;
+  String? _usersError;
 
   final _placeSearchController = TextEditingController();
   final _buildingSearchController = TextEditingController();
@@ -53,8 +58,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this)
-      ..addListener(() => setState(() {}));
+    _tabController = TabController(length: 5, vsync: this)
+      ..addListener(() {
+        setState(() {});
+        if (_tabController.index == 4 && !_usersLoaded) _loadUsers();
+      });
     _placeSearchController.addListener(
       () => setState(
         () => _placeQuery = _placeSearchController.text.trim().toLowerCase(),
@@ -127,6 +135,121 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         _loading = false;
       });
     }
+  }
+
+  Future<void> _loadUsers() async {
+    try {
+      final result = await _userApi.get('/profiles');
+      if (!mounted) return;
+      setState(() {
+        _users = (result as List? ?? []).cast<Map<String, dynamic>>();
+        _usersLoaded = true;
+        _usersError = null;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _usersError = AppLocalizations.of(
+          context,
+        )!.adminUsersErrorLoadFailed(e.toString());
+        _usersLoaded = true;
+      });
+    }
+  }
+
+  Future<void> _setUserRole(Map<String, dynamic> user, int roleId) async {
+    try {
+      await _userApi.patch('/profiles/${user['id']}', {'role_id': roleId});
+      await _loadUsers();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(
+              context,
+            )!.adminUsersErrorUpdateFailed(e.toString()),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _promoteOrDemote(Map<String, dynamic> user) async {
+    const adminRoleId = 2;
+    const userRoleId = 1;
+    final isAdmin = user['role_id'] == adminRoleId;
+    if (!isAdmin) {
+      await _setUserRole(user, adminRoleId);
+      return;
+    }
+    final l10n = AppLocalizations.of(context)!;
+    final confirmed = await _confirm(
+      title: l10n.adminUsersDemoteConfirmTitle,
+      content: l10n.adminUsersDemoteConfirmContent(
+        user['full_name'] as String? ?? user['id'] as String,
+      ),
+    );
+    if (!confirmed) return;
+    await _setUserRole(user, userRoleId);
+  }
+
+  Widget _usersTab() {
+    final l10n = AppLocalizations.of(context)!;
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (!_usersLoaded) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_usersError != null) {
+      return Center(child: Text(_usersError!));
+    }
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Text(
+            l10n.adminUsersBootstrapNote,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        Expanded(
+          child: _users.isEmpty
+              ? Center(child: Text(l10n.adminUsersEmpty))
+              : ListView.builder(
+                  itemCount: _users.length,
+                  itemBuilder: (context, index) {
+                    final user = _users[index];
+                    final isAdmin = user['role_id'] == 2;
+                    final isSelf = user['id'] == currentUserId;
+                    return ListTile(
+                      leading: Icon(
+                        isAdmin
+                            ? Icons.admin_panel_settings
+                            : Icons.person_outline,
+                        color: isAdmin ? Colors.indigo : Colors.grey,
+                      ),
+                      title: Text(
+                        user['full_name'] as String? ?? user['id'] as String,
+                      ),
+                      subtitle: Text(
+                        isAdmin
+                            ? l10n.adminUsersRoleAdmin
+                            : l10n.adminUsersRoleUser,
+                      ),
+                      trailing: TextButton(
+                        onPressed: isSelf ? null : () => _promoteOrDemote(user),
+                        child: Text(
+                          isAdmin
+                              ? l10n.adminUsersDemote
+                              : l10n.adminUsersPromote,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
   }
 
   List<Map<String, dynamic>> _buildingsOf(String placeId) =>
@@ -215,7 +338,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         .length;
 
     final confirmed = await _confirm(
-      title: 'Delete place?',
+      title: 'Delete university?',
       content:
           'Deleting "${place['name']}" will also delete ${buildings.length} '
           'building(s), ${anchors.length} anchor point(s), $photoCount '
@@ -358,7 +481,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         _searchField(_placeSearchController, 'Search places'),
         Expanded(
           child: filtered.isEmpty
-              ? const Center(child: Text('No places found.'))
+              ? const Center(child: Text('No universities found.'))
               : ListView.builder(
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
@@ -475,7 +598,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         building['name'] as String? ?? building['id'] as String,
                       ),
                       subtitle: Text(
-                        '${place?['name'] as String? ?? 'Unknown place'} · '
+                        '${place?['name'] as String? ?? 'Unknown university'} · '
                         '$anchorCount anchor point(s)'
                         '${(building['is_active'] as bool? ?? true) ? '' : ' - inactive'}',
                       ),
@@ -710,7 +833,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     switch (_tabController.index) {
       case 0:
         return FloatingActionButton(
-          tooltip: 'Add place',
+          tooltip: 'Add university',
           onPressed: () async {
             await Navigator.of(
               context,
@@ -741,7 +864,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           },
           child: const Icon(Icons.add_a_photo),
         );
-      default:
+      case 3:
         return FloatingActionButton(
           tooltip: 'Connect on map',
           onPressed: () async {
@@ -754,15 +877,23 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           },
           child: const Icon(Icons.timeline),
         );
+      default:
+        // Users tab (index 4) - no "add" action, accounts are created via
+        // signup, not an admin-initiated flow.
+        return null;
     }
   }
 
-  static const _sectionTitles = [
-    'Places',
-    'Buildings',
-    'Anchor points',
-    'Connections',
-  ];
+  List<String> get _sectionTitles {
+    final l10n = AppLocalizations.of(context)!;
+    return [
+      'Universities',
+      'Buildings',
+      'Anchor points',
+      'Connections',
+      l10n.adminUsersTabLabel,
+    ];
+  }
 
   Widget _drawer() {
     Widget item(int index, IconData icon, Color color, String label) {
@@ -799,14 +930,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               ],
             ),
           ),
-          item(0, Icons.flag, Colors.purple, 'Places'),
+          item(0, Icons.flag, Colors.purple, 'Universities'),
           item(1, Icons.apartment, Colors.orange, 'Buildings'),
           item(2, Icons.location_pin, Colors.green, 'Anchor points'),
           item(3, Icons.timeline, Colors.teal, 'Connections'),
+          item(
+            4,
+            Icons.people,
+            Colors.indigo,
+            AppLocalizations.of(context)!.adminUsersTabLabel,
+          ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.my_location, color: Colors.teal),
-            title: const Text('Live sessions'),
+            title: Text(AppLocalizations.of(context)!.adminLiveSessions),
             onTap: () {
               Navigator.of(context).pop();
               Navigator.of(context).push(
@@ -865,6 +1002,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   _buildingsTab(),
                   _anchorPointsTab(),
                   _connectionsTab(),
+                  _usersTab(),
                 ],
               ),
             ),

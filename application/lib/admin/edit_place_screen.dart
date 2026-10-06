@@ -90,7 +90,7 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to update place: $e');
+      setState(() => _error = 'Failed to update university: $e');
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -108,7 +108,7 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit place')),
+      appBar: AppBar(title: const Text('Edit university')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
