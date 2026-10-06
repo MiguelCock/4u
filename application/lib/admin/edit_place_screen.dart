@@ -109,67 +109,69 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Edit place')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Name'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _addressController,
-              decoration: const InputDecoration(
-                labelText: 'Address (optional)',
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: 'Name'),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _latController,
-              decoration: const InputDecoration(labelText: 'Latitude'),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-                signed: true,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _lngController,
-              decoration: const InputDecoration(labelText: 'Longitude'),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-                signed: true,
-              ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _pickOnMap,
-              icon: const Icon(Icons.map),
-              label: const Text('Pick on map'),
-            ),
-            SwitchListTile(
-              title: const Text('Active'),
-              value: _isActive,
-              onChanged: (value) => setState(() => _isActive = value),
-            ),
-            if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              TextField(
+                controller: _addressController,
+                decoration: const InputDecoration(
+                  labelText: 'Address (optional)',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _latController,
+                decoration: const InputDecoration(labelText: 'Latitude'),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _lngController,
+                decoration: const InputDecoration(labelText: 'Longitude'),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: true,
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _pickOnMap,
+                icon: const Icon(Icons.map),
+                label: const Text('Pick on map'),
+              ),
+              SwitchListTile(
+                title: const Text('Active'),
+                value: _isActive,
+                onChanged: (value) => setState(() => _isActive = value),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(_error!, style: const TextStyle(color: Colors.red)),
+              ],
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _submitting ? null : _submit,
+                child: _submitting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save changes'),
+              ),
             ],
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _submitting ? null : _submit,
-              child: _submitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Save changes'),
-            ),
-          ],
+          ),
         ),
       ),
     );

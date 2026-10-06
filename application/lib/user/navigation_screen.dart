@@ -290,83 +290,85 @@ class _NavigationScreenState extends State<NavigationScreen> {
       appBar: AppBar(
         title: Text(widget.route['name'] as String? ?? 'Navigating'),
       ),
-      body: _starting
-          ? const Center(child: CircularProgressIndicator())
-          : Stack(
-              children: [
-                Column(
-                  children: [
-                    if (_error != null)
+      body: SafeArea(
+        child: _starting
+            ? const Center(child: CircularProgressIndicator())
+            : Stack(
+                children: [
+                  Column(
+                    children: [
+                      if (_error != null)
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      const LocationInfo(),
+                      if (correctedLat != null && correctedLong != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: Text(
+                            'Corrected: ${correctedLat.toStringAsFixed(6)}, '
+                            '${correctedLong.toStringAsFixed(6)}'
+                            '${_correctionError != null ? ' (±${_correctionError!.toStringAsFixed(2)}m)' : ''}',
+                            style: const TextStyle(color: Colors.green),
+                          ),
+                        ),
+                      Expanded(
+                        child: SimpleMapWidget(
+                          extraMarkers:
+                              correctedLat != null && correctedLong != null
+                              ? [
+                                  Marker(
+                                    point: LatLng(correctedLat, correctedLong),
+                                    width: 80,
+                                    height: 80,
+                                    child: const Icon(
+                                      Icons.location_pin,
+                                      color: Colors.green,
+                                      size: 40,
+                                    ),
+                                  ),
+                                ]
+                              : const [],
+                        ),
+                      ),
                       Padding(
                         padding: const EdgeInsets.all(16.0),
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    const LocationInfo(),
-                    if (correctedLat != null && correctedLong != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Text(
-                          'Corrected: ${correctedLat.toStringAsFixed(6)}, '
-                          '${correctedLong.toStringAsFixed(6)}'
-                          '${_correctionError != null ? ' (±${_correctionError!.toStringAsFixed(2)}m)' : ''}',
-                          style: const TextStyle(color: Colors.green),
-                        ),
-                      ),
-                    Expanded(
-                      child: SimpleMapWidget(
-                        extraMarkers:
-                            correctedLat != null && correctedLong != null
-                            ? [
-                                Marker(
-                                  point: LatLng(correctedLat, correctedLong),
-                                  width: 80,
-                                  height: 80,
-                                  child: const Icon(
-                                    Icons.location_pin,
-                                    color: Colors.green,
-                                    size: 40,
+                        child: ElevatedButton(
+                          onPressed: _ending ? null : _endSession,
+                          child: _ending
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
                                   ),
-                                ),
-                              ]
-                            : const [],
+                                )
+                              : const Text('End navigation'),
+                        ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: ElevatedButton(
-                        onPressed: _ending ? null : _endSession,
-                        child: _ending
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text('End navigation'),
-                      ),
-                    ),
-                  ],
-                ),
-                // Debug-build-only: lets a developer confirm the background
-                // capture is actually seeing something sane. Never shown in
-                // a release build (see kDebugMode above).
-                if (showDebugPreview)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    width: 100,
-                    height: 140,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: CameraPreview(_cameraController!),
-                    ),
+                    ],
                   ),
-              ],
-            ),
+                  // Debug-build-only: lets a developer confirm the background
+                  // capture is actually seeing something sane. Never shown in
+                  // a release build (see kDebugMode above).
+                  if (showDebugPreview)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      width: 100,
+                      height: 140,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: CameraPreview(_cameraController!),
+                      ),
+                    ),
+                ],
+              ),
+      ),
     );
   }
 }

@@ -203,134 +203,137 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Edit anchor point')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                helperText:
-                    'Required - used as this point\'s name so it can be told apart from others.',
-              ),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              initialValue: _locationTypeId,
-              decoration: const InputDecoration(labelText: 'Location type'),
-              items: kLocationTypes.entries
-                  .map(
-                    (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
-                  )
-                  .toList(),
-              onChanged: (value) => setState(() => _locationTypeId = value),
-            ),
-            const SizedBox(height: 12),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Indoor location'),
-              value: _indoor,
-              onChanged: (value) => setState(() => _indoor = value),
-            ),
-            DropdownButtonFormField<String?>(
-              initialValue: _lighting,
-              decoration: const InputDecoration(labelText: 'Lighting'),
-              items: const [
-                DropdownMenuItem(value: null, child: Text('Not set')),
-                DropdownMenuItem(value: 'bright', child: Text('Bright')),
-                DropdownMenuItem(value: 'moderate', child: Text('Moderate')),
-                DropdownMenuItem(value: 'dim', child: Text('Dim')),
-              ],
-              onChanged: (value) => setState(() => _lighting = value),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _surfaceController,
-              decoration: const InputDecoration(
-                labelText: 'Surface (optional)',
-                helperText: 'e.g. tile, carpet, concrete',
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text('Photos', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 8),
-            if (_loadingPhotos)
-              const Center(child: CircularProgressIndicator())
-            else if (_photos.isEmpty)
-              const Text(
-                'No photos captured yet.',
-                style: TextStyle(color: Colors.red),
-              )
-            else
-              SizedBox(
-                height: 72,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _photos.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 6),
-                  itemBuilder: (context, index) {
-                    final url = _photos[index]['image_url'] as String?;
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: url != null
-                          ? Image.network(
-                              url,
-                              width: 72,
-                              height: 72,
-                              fit: BoxFit.cover,
-                            )
-                          : Container(
-                              width: 72,
-                              height: 72,
-                              color: Colors.grey.shade300,
-                            ),
-                    );
-                  },
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Description',
+                  helperText:
+                      'Required - used as this point\'s name so it can be told apart from others.',
                 ),
               ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _managePhotos,
-              icon: const Icon(Icons.photo_library_outlined),
-              label: Text('Manage photos (${_photos.length})'),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: _status,
-              decoration: const InputDecoration(labelText: 'Status'),
-              items: kAnchorPointStatuses
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                  .toList(),
-              onChanged: (value) => setState(() => _status = value!),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Location: ${_position.latitude.toStringAsFixed(6)}, ${_position.longitude.toStringAsFixed(6)}',
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _pickOnMap,
-              icon: const Icon(Icons.map),
-              label: const Text('Move on map'),
-            ),
-            if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
-            ],
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _submitting ? null : _submit,
-              child: _submitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+              DropdownButtonFormField<int>(
+                initialValue: _locationTypeId,
+                decoration: const InputDecoration(labelText: 'Location type'),
+                items: kLocationTypes.entries
+                    .map(
+                      (e) =>
+                          DropdownMenuItem(value: e.key, child: Text(e.value)),
                     )
-                  : const Text('Save changes'),
-            ),
-          ],
+                    .toList(),
+                onChanged: (value) => setState(() => _locationTypeId = value),
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Indoor location'),
+                value: _indoor,
+                onChanged: (value) => setState(() => _indoor = value),
+              ),
+              DropdownButtonFormField<String?>(
+                initialValue: _lighting,
+                decoration: const InputDecoration(labelText: 'Lighting'),
+                items: const [
+                  DropdownMenuItem(value: null, child: Text('Not set')),
+                  DropdownMenuItem(value: 'bright', child: Text('Bright')),
+                  DropdownMenuItem(value: 'moderate', child: Text('Moderate')),
+                  DropdownMenuItem(value: 'dim', child: Text('Dim')),
+                ],
+                onChanged: (value) => setState(() => _lighting = value),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _surfaceController,
+                decoration: const InputDecoration(
+                  labelText: 'Surface (optional)',
+                  helperText: 'e.g. tile, carpet, concrete',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text('Photos', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              if (_loadingPhotos)
+                const Center(child: CircularProgressIndicator())
+              else if (_photos.isEmpty)
+                const Text(
+                  'No photos captured yet.',
+                  style: TextStyle(color: Colors.red),
+                )
+              else
+                SizedBox(
+                  height: 72,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _photos.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 6),
+                    itemBuilder: (context, index) {
+                      final url = _photos[index]['image_url'] as String?;
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: url != null
+                            ? Image.network(
+                                url,
+                                width: 72,
+                                height: 72,
+                                fit: BoxFit.cover,
+                              )
+                            : Container(
+                                width: 72,
+                                height: 72,
+                                color: Colors.grey.shade300,
+                              ),
+                      );
+                    },
+                  ),
+                ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _managePhotos,
+                icon: const Icon(Icons.photo_library_outlined),
+                label: Text('Manage photos (${_photos.length})'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _status,
+                decoration: const InputDecoration(labelText: 'Status'),
+                items: kAnchorPointStatuses
+                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                    .toList(),
+                onChanged: (value) => setState(() => _status = value!),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Location: ${_position.latitude.toStringAsFixed(6)}, ${_position.longitude.toStringAsFixed(6)}',
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _pickOnMap,
+                icon: const Icon(Icons.map),
+                label: const Text('Move on map'),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(_error!, style: const TextStyle(color: Colors.red)),
+              ],
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _submitting ? null : _submit,
+                child: _submitting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save changes'),
+              ),
+            ],
+          ),
         ),
       ),
     );

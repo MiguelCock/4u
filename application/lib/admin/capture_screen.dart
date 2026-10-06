@@ -193,147 +193,154 @@ class _CaptureScreenState extends State<CaptureScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('New anchor point')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_places.isEmpty)
-                    const Text(
-                      'No places exist yet - add one first (Add place).',
-                      style: TextStyle(color: Colors.red),
-                    )
-                  else
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedPlaceId,
-                      decoration: const InputDecoration(labelText: 'Place'),
-                      items: _places
-                          .map(
-                            (p) => DropdownMenuItem(
-                              value: p['id'] as String,
-                              child: Text(
-                                p['name'] as String? ?? p['id'] as String,
+      body: SafeArea(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_places.isEmpty)
+                      const Text(
+                        'No places exist yet - add one first (Add place).',
+                        style: TextStyle(color: Colors.red),
+                      )
+                    else
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedPlaceId,
+                        decoration: const InputDecoration(labelText: 'Place'),
+                        items: _places
+                            .map(
+                              (p) => DropdownMenuItem(
+                                value: p['id'] as String,
+                                child: Text(
+                                  p['name'] as String? ?? p['id'] as String,
+                                ),
                               ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) => setState(() {
-                        _selectedPlaceId = value;
-                        _applyBuildingFilter();
-                      }),
-                    ),
-                  const SizedBox(height: 12),
-                  if (_places.isNotEmpty && _buildings.isEmpty)
-                    const Text(
-                      'No buildings in this place yet - add one first (Add building).',
-                      style: TextStyle(color: Colors.red),
-                    )
-                  else if (_buildings.isNotEmpty)
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedBuildingId,
-                      decoration: const InputDecoration(labelText: 'Building'),
-                      items: _buildings
-                          .map(
-                            (b) => DropdownMenuItem(
-                              value: b['id'] as String,
-                              child: Text(
-                                b['name'] as String? ?? b['id'] as String,
+                            )
+                            .toList(),
+                        onChanged: (value) => setState(() {
+                          _selectedPlaceId = value;
+                          _applyBuildingFilter();
+                        }),
+                      ),
+                    const SizedBox(height: 12),
+                    if (_places.isNotEmpty && _buildings.isEmpty)
+                      const Text(
+                        'No buildings in this place yet - add one first (Add building).',
+                        style: TextStyle(color: Colors.red),
+                      )
+                    else if (_buildings.isNotEmpty)
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedBuildingId,
+                        decoration: const InputDecoration(
+                          labelText: 'Building',
+                        ),
+                        items: _buildings
+                            .map(
+                              (b) => DropdownMenuItem(
+                                value: b['id'] as String,
+                                child: Text(
+                                  b['name'] as String? ?? b['id'] as String,
+                                ),
                               ),
+                            )
+                            .toList(),
+                        onChanged: (value) =>
+                            setState(() => _selectedBuildingId = value),
+                      ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      initialValue: _selectedLocationTypeId,
+                      decoration: const InputDecoration(
+                        labelText: 'Location type',
+                      ),
+                      items: kLocationTypes.entries
+                          .map(
+                            (e) => DropdownMenuItem(
+                              value: e.key,
+                              child: Text(e.value),
                             ),
                           )
                           .toList(),
                       onChanged: (value) =>
-                          setState(() => _selectedBuildingId = value),
+                          setState(() => _selectedLocationTypeId = value!),
                     ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    initialValue: _selectedLocationTypeId,
-                    decoration: const InputDecoration(
-                      labelText: 'Location type',
-                    ),
-                    items: kLocationTypes.entries
-                        .map(
-                          (e) => DropdownMenuItem(
-                            value: e.key,
-                            child: Text(e.value),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) =>
-                        setState(() => _selectedLocationTypeId = value!),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _descriptionController,
-                    decoration: const InputDecoration(
-                      labelText: 'Description',
-                      helperText:
-                          'Required - used as this point\'s name so it can be told apart from others.',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Indoor location'),
-                    value: _indoor,
-                    onChanged: (value) => setState(() => _indoor = value),
-                  ),
-                  DropdownButtonFormField<String?>(
-                    initialValue: _lighting,
-                    decoration: const InputDecoration(labelText: 'Lighting'),
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('Not set')),
-                      DropdownMenuItem(value: 'bright', child: Text('Bright')),
-                      DropdownMenuItem(
-                        value: 'moderate',
-                        child: Text('Moderate'),
-                      ),
-                      DropdownMenuItem(value: 'dim', child: Text('Dim')),
-                    ],
-                    onChanged: (value) => setState(() => _lighting = value),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _surfaceController,
-                    decoration: const InputDecoration(
-                      labelText: 'Surface (optional)',
-                      helperText: 'e.g. tile, carpet, concrete',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _pickedPosition != null
-                        ? 'Location (picked): ${_pickedPosition!.latitude.toStringAsFixed(6)}, ${_pickedPosition!.longitude.toStringAsFixed(6)}'
-                        : _locationService.lastPosition != null
-                        ? 'Location (GPS): ${_locationService.lastPosition!.latitude.toStringAsFixed(6)}, ${_locationService.lastPosition!.longitude.toStringAsFixed(6)}'
-                        : 'Location: not available yet',
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: _pickOnMap,
-                    icon: const Icon(Icons.map),
-                    label: const Text('Pick on map'),
-                  ),
-                  if (_error != null) ...[
                     const SizedBox(height: 12),
-                    Text(_error!, style: const TextStyle(color: Colors.red)),
+                    TextField(
+                      controller: _descriptionController,
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                        helperText:
+                            'Required - used as this point\'s name so it can be told apart from others.',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Indoor location'),
+                      value: _indoor,
+                      onChanged: (value) => setState(() => _indoor = value),
+                    ),
+                    DropdownButtonFormField<String?>(
+                      initialValue: _lighting,
+                      decoration: const InputDecoration(labelText: 'Lighting'),
+                      items: const [
+                        DropdownMenuItem(value: null, child: Text('Not set')),
+                        DropdownMenuItem(
+                          value: 'bright',
+                          child: Text('Bright'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'moderate',
+                          child: Text('Moderate'),
+                        ),
+                        DropdownMenuItem(value: 'dim', child: Text('Dim')),
+                      ],
+                      onChanged: (value) => setState(() => _lighting = value),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _surfaceController,
+                      decoration: const InputDecoration(
+                        labelText: 'Surface (optional)',
+                        helperText: 'e.g. tile, carpet, concrete',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _pickedPosition != null
+                          ? 'Location (picked): ${_pickedPosition!.latitude.toStringAsFixed(6)}, ${_pickedPosition!.longitude.toStringAsFixed(6)}'
+                          : _locationService.lastPosition != null
+                          ? 'Location (GPS): ${_locationService.lastPosition!.latitude.toStringAsFixed(6)}, ${_locationService.lastPosition!.longitude.toStringAsFixed(6)}'
+                          : 'Location: not available yet',
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _pickOnMap,
+                      icon: const Icon(Icons.map),
+                      label: const Text('Pick on map'),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(_error!, style: const TextStyle(color: Colors.red)),
+                    ],
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _submitting ? null : _submit,
+                      child: _submitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Create and add photos'),
+                    ),
                   ],
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _submitting ? null : _submit,
-                    child: _submitting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Create and add photos'),
-                  ),
-                ],
+                ),
               ),
-            ),
+      ),
     );
   }
 }

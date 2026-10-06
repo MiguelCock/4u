@@ -143,49 +143,51 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          const ListTile(
-            leading: Icon(Icons.radio_button_checked, color: Colors.blue),
-            title: Text('Start'),
-            subtitle: Text('Your current location'),
-          ),
-          const Divider(height: 1),
-          ListTile(
-            leading: Icon(
-              _end == null ? Icons.radio_button_unchecked : Icons.location_on,
-              color: _end == null ? Colors.grey : Colors.blue,
+      body: SafeArea(
+        child: Column(
+          children: [
+            const ListTile(
+              leading: Icon(Icons.radio_button_checked, color: Colors.blue),
+              title: Text('Start'),
+              subtitle: Text('Your current location'),
             ),
-            title: const Text('Where to?'),
-            subtitle: Text(
-              _end == null
-                  ? 'Tap to choose a destination'
-                  : (_end!['location_description'] as String? ??
-                        _end!['id'] as String),
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(
+                _end == null ? Icons.radio_button_unchecked : Icons.location_on,
+                color: _end == null ? Colors.grey : Colors.blue,
+              ),
+              title: const Text('Where to?'),
+              subtitle: Text(
+                _end == null
+                    ? 'Tap to choose a destination'
+                    : (_end!['location_description'] as String? ??
+                          _end!['id'] as String),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _pickEnd,
             ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _pickEnd,
-          ),
-          if (_error != null)
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              ),
+            const Spacer(),
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              child: ElevatedButton(
+                onPressed: (_end != null && !_finding) ? _findRoute : null,
+                child: _finding
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Find route'),
+              ),
             ),
-          const Spacer(),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: ElevatedButton(
-              onPressed: (_end != null && !_finding) ? _findRoute : null,
-              child: _finding
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Find route'),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -287,133 +287,139 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Stack(
-            children: [
-              SizedBox(
-                height: 300,
-                width: double.infinity,
-                child: (_controller != null && _controller!.value.isInitialized)
-                    ? CameraPreview(_controller!)
-                    : const Center(child: CircularProgressIndicator()),
-              ),
-              if (_liveHeading != null)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      'Facing: ${_liveHeading!.round()}°',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Stack(
+              children: [
+                SizedBox(
+                  height: 300,
+                  width: double.infinity,
+                  child:
+                      (_controller != null && _controller!.value.isInitialized)
+                      ? CameraPreview(_controller!)
+                      : const Center(child: CircularProgressIndicator()),
                 ),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: ElevatedButton.icon(
-              onPressed: _capturing ? null : _takePhoto,
-              icon: _capturing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.camera_alt),
-              label: Text(
-                _capturing ? 'Saving...' : 'Take photo (${_photos.length})',
+                if (_liveHeading != null)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'Facing: ${_liveHeading!.round()}°',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: ElevatedButton.icon(
+                onPressed: _capturing ? null : _takePhoto,
+                icon: _capturing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.camera_alt),
+                label: Text(
+                  _capturing ? 'Saving...' : 'Take photo (${_photos.length})',
+                ),
               ),
             ),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12.0),
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
-            ),
-          const Divider(height: 1),
-          Expanded(
-            child: _loadingExisting
-                ? const Center(child: CircularProgressIndicator())
-                : _photos.isEmpty
-                ? const Center(child: Text('No photos yet - take one above.'))
-                : GridView.builder(
-                    padding: const EdgeInsets.all(8),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 6,
-                          mainAxisSpacing: 6,
-                        ),
-                    itemCount: _photos.length,
-                    itemBuilder: (context, index) {
-                      final photo = _photos[index];
-                      return Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          photo.localFile != null
-                              ? Image.file(photo.localFile!, fit: BoxFit.cover)
-                              : Image.network(
-                                  photo.imageUrl!,
-                                  fit: BoxFit.cover,
-                                ),
-                          if (photo.uploading)
-                            const ColoredBox(
-                              color: Colors.black45,
-                              child: Center(
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation(
-                                    Colors.white,
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              ),
+            const Divider(height: 1),
+            Expanded(
+              child: _loadingExisting
+                  ? const Center(child: CircularProgressIndicator())
+                  : _photos.isEmpty
+                  ? const Center(child: Text('No photos yet - take one above.'))
+                  : GridView.builder(
+                      padding: const EdgeInsets.all(8),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 6,
+                            mainAxisSpacing: 6,
+                          ),
+                      itemCount: _photos.length,
+                      itemBuilder: (context, index) {
+                        final photo = _photos[index];
+                        return Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            photo.localFile != null
+                                ? Image.file(
+                                    photo.localFile!,
+                                    fit: BoxFit.cover,
+                                  )
+                                : Image.network(
+                                    photo.imageUrl!,
+                                    fit: BoxFit.cover,
+                                  ),
+                            if (photo.uploading)
+                              const ColoredBox(
+                                color: Colors.black45,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation(
+                                      Colors.white,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            )
-                          else
-                            Positioned(
-                              top: 0,
-                              right: 0,
-                              child: IconButton(
-                                icon: const Icon(
-                                  Icons.delete,
-                                  color: Colors.white,
-                                ),
-                                onPressed: () => _deletePhoto(photo),
-                              ),
-                            ),
-                          if (photo.heading != null)
-                            Positioned(
-                              bottom: 0,
-                              left: 0,
-                              child: Container(
-                                color: Colors.black54,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                ),
-                                child: Text(
-                                  '${photo.heading!.round()}°',
-                                  style: const TextStyle(
+                              )
+                            else
+                              Positioned(
+                                top: 0,
+                                right: 0,
+                                child: IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
                                     color: Colors.white,
-                                    fontSize: 10,
+                                  ),
+                                  onPressed: () => _deletePhoto(photo),
+                                ),
+                              ),
+                            if (photo.heading != null)
+                              Positioned(
+                                bottom: 0,
+                                left: 0,
+                                child: Container(
+                                  color: Colors.black54,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                  ),
+                                  child: Text(
+                                    '${photo.heading!.round()}°',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
-          ),
-        ],
+                          ],
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
