@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
 
-/// Place -> Building -> anchor-point drill-down list, for picking a single
-/// anchor point as a trip's start or end (see PlanTripScreen). Pops with
-/// the chosen anchor point's full map on confirm, or null if the caller
-/// just backs all the way out.
+/// Place -> Building -> anchor-point drill-down list, for picking a
+/// destination anchor point (see UserHomeScreen - the start point is
+/// auto-selected as the nearest verified anchor to the user's current GPS
+/// fix, not picked through here). Pops with the chosen anchor point's
+/// full map on confirm, or null if the caller just backs all the way out.
 ///
 /// Fetches all three lists up front (same "fetch all, filter client-side"
 /// pattern AdminHomeScreen/LocationPickerScreen already use) rather than
