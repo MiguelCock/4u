@@ -126,146 +126,148 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
     final anchorPoints = _anchorPointsInScope;
     return Scaffold(
       appBar: AppBar(title: const Text('Add connection')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_places.isEmpty)
-                    const Text(
-                      'No places exist yet - add one first (Add place).',
-                      style: TextStyle(color: Colors.red),
-                    )
-                  else
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedPlaceId,
-                      decoration: const InputDecoration(labelText: 'Place'),
-                      items: _places
-                          .map(
-                            (p) => DropdownMenuItem(
-                              value: p['id'] as String,
-                              child: Text(
-                                p['name'] as String? ?? p['id'] as String,
+      body: SafeArea(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_places.isEmpty)
+                      const Text(
+                        'No places exist yet - add one first (Add place).',
+                        style: TextStyle(color: Colors.red),
+                      )
+                    else
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedPlaceId,
+                        decoration: const InputDecoration(labelText: 'Place'),
+                        items: _places
+                            .map(
+                              (p) => DropdownMenuItem(
+                                value: p['id'] as String,
+                                child: Text(
+                                  p['name'] as String? ?? p['id'] as String,
+                                ),
                               ),
+                            )
+                            .toList(),
+                        onChanged: (value) => setState(() {
+                          _selectedPlaceId = value;
+                          _selectedBuildingId = null;
+                          _anchorPointAId = null;
+                          _anchorPointBId = null;
+                        }),
+                      ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String?>(
+                      initialValue: _selectedBuildingId,
+                      decoration: const InputDecoration(
+                        labelText: 'Building (optional filter)',
+                      ),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('All buildings'),
+                        ),
+                        ..._buildingsInPlace.map(
+                          (b) => DropdownMenuItem<String?>(
+                            value: b['id'] as String,
+                            child: Text(
+                              b['name'] as String? ?? b['id'] as String,
                             ),
-                          )
-                          .toList(),
+                          ),
+                        ),
+                      ],
                       onChanged: (value) => setState(() {
-                        _selectedPlaceId = value;
-                        _selectedBuildingId = null;
+                        _selectedBuildingId = value;
                         _anchorPointAId = null;
                         _anchorPointBId = null;
                       }),
                     ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String?>(
-                    initialValue: _selectedBuildingId,
-                    decoration: const InputDecoration(
-                      labelText: 'Building (optional filter)',
-                    ),
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('All buildings'),
-                      ),
-                      ..._buildingsInPlace.map(
-                        (b) => DropdownMenuItem<String?>(
-                          value: b['id'] as String,
-                          child: Text(
-                            b['name'] as String? ?? b['id'] as String,
-                          ),
+                    const SizedBox(height: 12),
+                    if (anchorPoints.isEmpty)
+                      const Text(
+                        'No anchor points in scope.',
+                        style: TextStyle(color: Colors.red),
+                      )
+                    else ...[
+                      DropdownButtonFormField<String>(
+                        initialValue: _anchorPointAId,
+                        decoration: const InputDecoration(
+                          labelText: 'Anchor point A',
                         ),
+                        items: anchorPoints
+                            .map(
+                              (p) => DropdownMenuItem(
+                                value: p['id'] as String,
+                                child: Text(_label(p)),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) =>
+                            setState(() => _anchorPointAId = value),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: _anchorPointBId,
+                        decoration: const InputDecoration(
+                          labelText: 'Anchor point B',
+                        ),
+                        items: anchorPoints
+                            .where((p) => p['id'] != _anchorPointAId)
+                            .map(
+                              (p) => DropdownMenuItem(
+                                value: p['id'] as String,
+                                child: Text(_label(p)),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) =>
+                            setState(() => _anchorPointBId = value),
                       ),
                     ],
-                    onChanged: (value) => setState(() {
-                      _selectedBuildingId = value;
-                      _anchorPointAId = null;
-                      _anchorPointBId = null;
-                    }),
-                  ),
-                  const SizedBox(height: 12),
-                  if (anchorPoints.isEmpty)
-                    const Text(
-                      'No anchor points in scope.',
-                      style: TextStyle(color: Colors.red),
-                    )
-                  else ...[
-                    DropdownButtonFormField<String>(
-                      initialValue: _anchorPointAId,
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _distanceController,
                       decoration: const InputDecoration(
-                        labelText: 'Anchor point A',
+                        labelText: 'Distance in meters (optional)',
+                        helperText:
+                            'Leave blank to auto-compute straight-line distance.',
                       ),
-                      items: anchorPoints
-                          .map(
-                            (p) => DropdownMenuItem(
-                              value: p['id'] as String,
-                              child: Text(_label(p)),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) =>
-                          setState(() => _anchorPointAId = value),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                     ),
                     const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: _anchorPointBId,
+                    TextField(
+                      controller: _notesController,
                       decoration: const InputDecoration(
-                        labelText: 'Anchor point B',
+                        labelText: 'Notes (optional)',
                       ),
-                      items: anchorPoints
-                          .where((p) => p['id'] != _anchorPointAId)
-                          .map(
-                            (p) => DropdownMenuItem(
-                              value: p['id'] as String,
-                              child: Text(_label(p)),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) =>
-                          setState(() => _anchorPointBId = value),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(_error!, style: const TextStyle(color: Colors.red)),
+                    ],
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: (_submitting || anchorPoints.isEmpty)
+                          ? null
+                          : _submit,
+                      child: _submitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Save connection'),
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _distanceController,
-                    decoration: const InputDecoration(
-                      labelText: 'Distance in meters (optional)',
-                      helperText:
-                          'Leave blank to auto-compute straight-line distance.',
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _notesController,
-                    decoration: const InputDecoration(
-                      labelText: 'Notes (optional)',
-                    ),
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-                    Text(_error!, style: const TextStyle(color: Colors.red)),
-                  ],
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: (_submitting || anchorPoints.isEmpty)
-                        ? null
-                        : _submit,
-                    child: _submitting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Save connection'),
-                  ),
-                ],
+                ),
               ),
-            ),
+      ),
     );
   }
 }

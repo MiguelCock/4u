@@ -144,106 +144,112 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Add building')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (_loadingPlaces)
-              const Center(child: CircularProgressIndicator())
-            else if (_places.isEmpty)
-              const Text(
-                'No places exist yet - add one first (Add place).',
-                style: TextStyle(color: Colors.red),
-              )
-            else
-              DropdownButtonFormField<String>(
-                initialValue: _selectedPlaceId,
-                decoration: const InputDecoration(labelText: 'Place'),
-                items: _places
-                    .map(
-                      (p) => DropdownMenuItem(
-                        value: p['id'] as String,
-                        child: Text(p['name'] as String? ?? p['id'] as String),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) => setState(() => _selectedPlaceId = value),
-              ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _codeController,
-              decoration: const InputDecoration(labelText: 'Code'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Name'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _addressController,
-              decoration: const InputDecoration(
-                labelText: 'Address (optional)',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _latController,
-              decoration: const InputDecoration(labelText: 'Latitude'),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-                signed: true,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _lngController,
-              decoration: const InputDecoration(labelText: 'Longitude'),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-                signed: true,
-              ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _pickOnMap,
-              icon: const Icon(Icons.map),
-              label: const Text('Pick on map'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _floorsController,
-              decoration: const InputDecoration(labelText: 'Floors'),
-              keyboardType: TextInputType.number,
-            ),
-            CheckboxListTile(
-              title: const Text('Has elevator'),
-              value: _hasElevator,
-              onChanged: (value) =>
-                  setState(() => _hasElevator = value ?? false),
-            ),
-            CheckboxListTile(
-              title: const Text('Has stairs'),
-              value: _hasStairs,
-              onChanged: (value) => setState(() => _hasStairs = value ?? true),
-            ),
-            if (_error != null) ...[
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_loadingPlaces)
+                const Center(child: CircularProgressIndicator())
+              else if (_places.isEmpty)
+                const Text(
+                  'No places exist yet - add one first (Add place).',
+                  style: TextStyle(color: Colors.red),
+                )
+              else
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedPlaceId,
+                  decoration: const InputDecoration(labelText: 'Place'),
+                  items: _places
+                      .map(
+                        (p) => DropdownMenuItem(
+                          value: p['id'] as String,
+                          child: Text(
+                            p['name'] as String? ?? p['id'] as String,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) =>
+                      setState(() => _selectedPlaceId = value),
+                ),
               const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              TextField(
+                controller: _codeController,
+                decoration: const InputDecoration(labelText: 'Code'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: 'Name'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _addressController,
+                decoration: const InputDecoration(
+                  labelText: 'Address (optional)',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _latController,
+                decoration: const InputDecoration(labelText: 'Latitude'),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _lngController,
+                decoration: const InputDecoration(labelText: 'Longitude'),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: true,
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _pickOnMap,
+                icon: const Icon(Icons.map),
+                label: const Text('Pick on map'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _floorsController,
+                decoration: const InputDecoration(labelText: 'Floors'),
+                keyboardType: TextInputType.number,
+              ),
+              CheckboxListTile(
+                title: const Text('Has elevator'),
+                value: _hasElevator,
+                onChanged: (value) =>
+                    setState(() => _hasElevator = value ?? false),
+              ),
+              CheckboxListTile(
+                title: const Text('Has stairs'),
+                value: _hasStairs,
+                onChanged: (value) =>
+                    setState(() => _hasStairs = value ?? true),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(_error!, style: const TextStyle(color: Colors.red)),
+              ],
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: (_submitting || _places.isEmpty) ? null : _submit,
+                child: _submitting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save building'),
+              ),
             ],
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: (_submitting || _places.isEmpty) ? null : _submit,
-              child: _submitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Save building'),
-            ),
-          ],
+          ),
         ),
       ),
     );
