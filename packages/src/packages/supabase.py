@@ -1,11 +1,16 @@
 import mimetypes
 from typing import BinaryIO
 
+from fastapi import Header, HTTPException
 from supabase import Client, create_client
 
 
 class SupaBase:
     client: Client
+
+    # Match db_schema/roles.sql's seeded rows. Shared by get_caller_id/
+    # is_admin below so every service's admin check agrees on the same id.
+    ADMIN_ROLE_ID = 2
 
     def __init__(self, url: str, key: str):
         self.client = create_client(url, key)
@@ -107,3 +112,45 @@ class SupaBase:
         # callers can turn it into a 401. This is what lets a backend
         # service trust a caller-supplied id instead of taking it on faith.
         return self.client.auth.get_user(access_token).user.id
+
+    async def get_caller_id(
+        self, authorization: str | None = Header(default=None)
+    ) -> str:
+        """FastAPI dependency: verifies the caller's Supabase Auth bearer
+        token for real (via get_user_id_from_token above, not a local
+        signature check) and returns the real, verified caller id - the
+        reusable template introduced in #111 and rolled out to every
+        service in #24, now shared here instead of copy-pasted per service.
+        401s on anything missing, malformed, or rejected by Supabase
+        (expired/invalid token).
+
+        Bind it once per service as a plain module-level name so
+        `Depends(get_caller_id)` and `app.dependency_overrides[get_caller_id]`
+        in tests keep working:
+
+            db = SupaBase(...)
+            get_caller_id = db.get_caller_id
+        """
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Missing bearer token")
+        token = authorization.removeprefix("Bearer ").strip()
+        if not token:
+            raise HTTPException(status_code=401, detail="Missing bearer token")
+        try:
+            return self.get_user_id_from_token(token)
+        except Exception as e:
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired token"
+            ) from e
+
+    def is_admin(self, caller_id: str) -> bool:
+        """Looks up the caller's own role_id (db_schema/roles.sql: 1 = user,
+        2 = admin) - the shared admin-gate check behind every admin-only
+        endpoint across all services."""
+        result = (
+            self.client.table("profiles")
+            .select("role_id")
+            .eq("id", caller_id)
+            .execute()
+        )
+        return bool(result.data) and result.data[0]["role_id"] == self.ADMIN_ROLE_ID

@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from packages.qdrant import Qdrant
 from packages.supabase import SupaBase
 from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
@@ -29,30 +29,10 @@ _VECTOR_SIZE = 1280
 # listed here, or Qdrant rejects the request with a 400.
 _INDEXED_FIELDS = ["anchor_point_id", "building_id"]
 
-# Match db_schema/roles.sql's seeded rows.
-_ADMIN_ROLE_ID = 2
-
-
-async def get_caller_id(authorization: str | None = Header(default=None)) -> str:
-    """Verifies the caller's Supabase Auth bearer token for real (against
-    Supabase itself, not a local check) and returns the real, verified
-    caller id - copied verbatim from backend-user-management (#111), the
-    reusable template for this rollout (#24). 401s on anything missing,
-    malformed, or rejected by Supabase (expired/invalid token)."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing bearer token")
-    token = authorization.removeprefix("Bearer ").strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="Missing bearer token")
-    try:
-        return db.get_user_id_from_token(token)
-    except Exception as e:
-        raise HTTPException(status_code=401, detail="Invalid or expired token") from e
-
-
-def _is_admin(caller_id: str) -> bool:
-    result = db.client.table("profiles").select("role_id").eq("id", caller_id).execute()
-    return bool(result.data) and result.data[0]["role_id"] == _ADMIN_ROLE_ID
+# Shared with every other service via packages.supabase.SupaBase (#24) -
+# bound as a plain module-level name so Depends(get_caller_id) and tests'
+# app.dependency_overrides[get_caller_id] keep working unchanged.
+get_caller_id = db.get_caller_id
 
 
 @app.get("/")
@@ -64,7 +44,7 @@ async def root():
 async def index_anchor(
     anchor: IndexAnchorRequest, caller_id: str = Depends(get_caller_id)
 ) -> IndexAnchorResponse:
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
 
@@ -116,7 +96,7 @@ async def search_similar(
 
 @app.delete("/index_photo/{photo_id}")
 async def delete_indexed_photo(photo_id: str, caller_id: str = Depends(get_caller_id)):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
     qdrant.client.delete(_COLLECTION, points_selector=[photo_id])
@@ -127,7 +107,7 @@ async def delete_indexed_photo(photo_id: str, caller_id: str = Depends(get_calle
 async def delete_indexed_anchor(
     anchor_point_id: str, caller_id: str = Depends(get_caller_id)
 ):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
     qdrant.client.delete(
@@ -147,7 +127,7 @@ async def delete_indexed_anchor(
 async def delete_indexed_building(
     building_id: str, caller_id: str = Depends(get_caller_id)
 ):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
     qdrant.client.delete(

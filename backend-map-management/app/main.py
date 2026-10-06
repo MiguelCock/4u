@@ -3,7 +3,7 @@ import math
 import os
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from packages.supabase import SupaBase
 
 logger = logging.getLogger(__name__)
@@ -32,32 +32,12 @@ db = SupaBase(
     os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 )
 
-# Match db_schema/roles.sql's seeded rows.
-_ADMIN_ROLE_ID = 2
+# Shared with every other service via packages.supabase.SupaBase (#24) -
+# bound as a plain module-level name so Depends(get_caller_id) and tests'
+# app.dependency_overrides[get_caller_id] keep working unchanged.
+get_caller_id = db.get_caller_id
 
 _EARTH_RADIUS_METERS = 6_371_000
-
-
-async def get_caller_id(authorization: str | None = Header(default=None)) -> str:
-    """Verifies the caller's Supabase Auth bearer token for real (against
-    Supabase itself, not a local check) and returns the real, verified
-    caller id - copied verbatim from backend-user-management (#111), the
-    reusable template for this rollout (#24). 401s on anything missing,
-    malformed, or rejected by Supabase (expired/invalid token)."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing bearer token")
-    token = authorization.removeprefix("Bearer ").strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="Missing bearer token")
-    try:
-        return db.get_user_id_from_token(token)
-    except Exception as e:
-        raise HTTPException(status_code=401, detail="Invalid or expired token") from e
-
-
-def _is_admin(caller_id: str) -> bool:
-    result = db.client.table("profiles").select("role_id").eq("id", caller_id).execute()
-    return bool(result.data) and result.data[0]["role_id"] == _ADMIN_ROLE_ID
 
 
 def _haversine_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -118,7 +98,7 @@ async def root():
 async def upload_anchor_point_image(
     file: UploadFile = File(...), caller_id: str = Depends(get_caller_id)
 ):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     url = db.upload_image("anchor-points", file.file, file.filename)
     return {"url": url}
@@ -128,7 +108,7 @@ async def upload_anchor_point_image(
 async def create_anchor_point(
     anchor_point: AnchorPointCreate, caller_id: str = Depends(get_caller_id)
 ):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = (
         db.client.table("anchor_points").insert(anchor_point.model_dump()).execute()
@@ -158,7 +138,7 @@ async def get_anchor_point(
 async def update_anchor_point(
     id: str, anchor_point: AnchorPointUpdate, caller_id: str = Depends(get_caller_id)
 ):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = (
         db.client.table("anchor_points")
@@ -171,7 +151,7 @@ async def update_anchor_point(
 
 @app.delete("/anchor-points/{id}")
 async def delete_anchor_point(id: str, caller_id: str = Depends(get_caller_id)):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     urls = _photo_urls_for_anchor_points([id])
     db.client.table("anchor_points").delete().eq("id", id).execute()
@@ -183,7 +163,7 @@ async def delete_anchor_point(id: str, caller_id: str = Depends(get_caller_id)):
 async def create_anchor_point_photo(
     id: str, photo: AnchorPointPhotoCreate, caller_id: str = Depends(get_caller_id)
 ):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     # captured_by is an audit field (who captured this photo) - force it to
     # the verified caller rather than trusting whatever the body sent, same
@@ -217,7 +197,7 @@ async def list_all_anchor_point_photos(
 
 @app.delete("/anchor-point-photos/{id}")
 async def delete_anchor_point_photo(id: str, caller_id: str = Depends(get_caller_id)):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = (
         db.client.table("anchor_point_photos")
@@ -235,7 +215,7 @@ async def delete_anchor_point_photo(id: str, caller_id: str = Depends(get_caller
 async def create_anchor_point_connection(
     connection: AnchorPointConnectionCreate, caller_id: str = Depends(get_caller_id)
 ):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     if connection.anchor_point_a_id == connection.anchor_point_b_id:
         raise HTTPException(
@@ -299,7 +279,7 @@ async def list_anchor_point_connections_for_point(
 async def delete_anchor_point_connection(
     id: str, caller_id: str = Depends(get_caller_id)
 ):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     db.client.table("anchor_point_connections").delete().eq("id", id).execute()
     return "ok"
@@ -327,7 +307,7 @@ async def get_building(
 async def create_building(
     building: BuildingCreate, caller_id: str = Depends(get_caller_id)
 ):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = db.client.table("buildings").insert(building.model_dump()).execute()
     return result.data
@@ -337,7 +317,7 @@ async def create_building(
 async def update_building(
     id: str, building: BuildingUpdate, caller_id: str = Depends(get_caller_id)
 ):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = (
         db.client.table("buildings")
@@ -350,7 +330,7 @@ async def update_building(
 
 @app.delete("/buildings/{id}")
 async def delete_building(id: str, caller_id: str = Depends(get_caller_id)):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     urls = _photo_urls_for_anchor_points(_anchor_point_ids_for_buildings([id]))
     db.client.table("buildings").delete().eq("id", id).execute()
@@ -360,7 +340,7 @@ async def delete_building(id: str, caller_id: str = Depends(get_caller_id)):
 
 @app.post("/places")
 async def create_place(place: PlaceCreate, caller_id: str = Depends(get_caller_id)):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = db.client.table("places").insert(place.model_dump()).execute()
     return result.data
@@ -386,7 +366,7 @@ async def get_place(id: str, caller_id: str = Depends(get_caller_id)) -> PlaceRe
 async def update_place(
     id: str, place: PlaceUpdate, caller_id: str = Depends(get_caller_id)
 ):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = (
         db.client.table("places")
@@ -399,7 +379,7 @@ async def update_place(
 
 @app.delete("/places/{id}")
 async def delete_place(id: str, caller_id: str = Depends(get_caller_id)):
-    if not _is_admin(caller_id):
+    if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     building_ids = _building_ids_for_place(id)
     urls = _photo_urls_for_anchor_points(_anchor_point_ids_for_buildings(building_ids))

@@ -32,7 +32,7 @@ So although this was one of the later services scaffolded, almost every other se
 
 ## Authorization
 
-Every `/profiles` endpoint depends on `get_caller_id` (`app/main.py`), which reads the `Authorization: Bearer <token>` header and verifies it for real against Supabase Auth itself via `packages.supabase.SupaBase.get_user_id_from_token` (a live call to `client.auth.get_user(token)`, not a local signature check) — 401 on a missing or invalid/expired token. A small `_is_admin(caller_id)` helper then looks up the caller's own `role_id` (seeded in `db_schema/roles.sql`: `1` = user, `2` = admin) to gate admin-only actions. This closed a real, previously-exploitable hole where `PATCH /profiles/{any_id}` with `{"role_id": 2}` let anyone self-promote to admin with no auth at all.
+Every `/profiles` endpoint depends on `get_caller_id` (`app/main.py`, `get_caller_id = db.get_caller_id`), which reads the `Authorization: Bearer <token>` header and verifies it for real against Supabase Auth itself via `packages.supabase.SupaBase.get_user_id_from_token` (a live call to `client.auth.get_user(token)`, not a local signature check) — 401 on a missing or invalid/expired token. `db.is_admin(caller_id)` then looks up the caller's own `role_id` (seeded in `db_schema/roles.sql`: `1` = user, `2` = admin) to gate admin-only actions. Both `get_caller_id` and `is_admin` originated here (#111) but now live on `packages.supabase.SupaBase` itself (moved there once #24 rolled the same pattern out to every other service, to stop copy-pasting it) — see `packages/src/packages/supabase.py`. This closed a real, previously-exploitable hole where `PATCH /profiles/{any_id}` with `{"role_id": 2}` let anyone self-promote to admin with no auth at all.
 
 - **`POST /profiles`** — `id` and (unless the caller is already an admin) `role_id` are forced server-side to the verified caller's own id / the default `user` role, overriding whatever the request body sent. A caller can only ever create their own profile.
 - **`GET /profiles`** — admin only.
@@ -41,7 +41,7 @@ Every `/profiles` endpoint depends on `get_caller_id` (`app/main.py`), which rea
 - **`DELETE /profiles/{id}`** — admin only.
 - **`GET /roles`** / **`GET /roles/{id}`** — unauthenticated; static reference data, nothing sensitive.
 
-This is the first service in the repo with real per-request auth — issue #24 tracks rolling the same `get_caller_id`/`_is_admin` pattern out to the other 5 backend services, which are all still fully unauthenticated.
+This is the first service in the repo with real per-request auth — issue #24 rolled the same `get_caller_id`/`is_admin` pattern out to the other backend services (now shared via `packages.supabase.SupaBase` rather than copy-pasted per service).
 
 ## Complete workflow
 
