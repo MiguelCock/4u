@@ -17,14 +17,21 @@ final ValueNotifier<bool> highContrastNotifier = ValueNotifier<bool>(false);
 /// language regardless of device locale.
 final ValueNotifier<Locale?> localeNotifier = ValueNotifier<Locale?>(null);
 
-/// Reads `high_contrast`/`language` out of a `profiles.preferences` map
-/// (as returned by `GET /profiles/{id}`) and applies them to the notifiers
-/// above. `defaultHighContrast` is the OS-level signal
-/// (`MediaQuery.of(context).highContrast`), used only when the preference
-/// has never been explicitly set.
+/// Multiplies every `TextStyle`'s font size app-wide (`MainApp`'s
+/// `MaterialApp.builder` applies it via a `MediaQuery.textScaler`
+/// override) - 1.0 is normal size.
+final ValueNotifier<double> textScaleNotifier = ValueNotifier<double>(1.0);
+
+/// Reads `high_contrast`/`language`/`font_scale` out of a
+/// `profiles.preferences` map (as returned by `GET /profiles/{id}`) and
+/// applies them to the notifiers above. `defaultHighContrast` and
+/// `defaultTextScale` are OS-level signals
+/// (`MediaQuery.of(context).highContrast`/`textScaler.scale(1.0)`), used
+/// only when the corresponding preference has never been explicitly set.
 void applyPreferences(
   Map<String, dynamic>? preferences, {
   required bool defaultHighContrast,
+  double defaultTextScale = 1.0,
 }) {
   final prefs = preferences ?? const {};
   highContrastNotifier.value =
@@ -35,4 +42,6 @@ void applyPreferences(
     'es' => const Locale('es'),
     _ => null,
   };
+  textScaleNotifier.value =
+      (prefs['font_scale'] as num?)?.toDouble() ?? defaultTextScale;
 }

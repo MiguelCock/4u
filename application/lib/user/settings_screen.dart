@@ -18,6 +18,20 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
+/// The only selectable font-scale values - `_nearestFontScale` snaps any
+/// other value (e.g. an ambient OS text-scale signal like 1.1) to the
+/// closest one of these, since `SegmentedButton` only highlights a segment
+/// whose value matches `selected` exactly.
+const List<double> _kFontScales = [0.85, 1.0, 1.15, 1.3];
+
+double _nearestFontScale(double value) {
+  return _kFontScales.reduce(
+    (closest, candidate) => (candidate - value).abs() < (closest - value).abs()
+        ? candidate
+        : closest,
+  );
+}
+
 class _SettingsScreenState extends State<SettingsScreen> {
   final _userApi = UserManagementApi();
   bool _loading = true;
@@ -27,6 +41,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _verbosity = 'medium';
   bool _highContrast = false;
   String? _language; // null = auto (device)
+  double _fontScale = 1.0;
 
   @override
   void initState() {
@@ -53,6 +68,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             prefs['high_contrast'] as bool? ??
             MediaQuery.of(context).highContrast;
         _language = prefs['language'] as String?;
+        _fontScale = _nearestFontScale(
+          (prefs['font_scale'] as num?)?.toDouble() ??
+              MediaQuery.of(context).textScaler.scale(1.0),
+        );
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -79,13 +98,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'verbosity': _verbosity,
           'high_contrast': _highContrast,
           if (_language != null) 'language': _language,
+          'font_scale': _fontScale,
         },
       });
-      applyPreferences({
-        'verbosity': _verbosity,
-        'high_contrast': _highContrast,
-        'language': _language,
-      }, defaultHighContrast: _highContrast);
+      applyPreferences(
+        {
+          'verbosity': _verbosity,
+          'high_contrast': _highContrast,
+          'language': _language,
+          'font_scale': _fontScale,
+        },
+        defaultHighContrast: _highContrast,
+        defaultTextScale: _fontScale,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -174,6 +199,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       selected: {_language},
                       onSelectionChanged: (selection) =>
                           setState(() => _language = selection.first),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      l10n.settingsFontSizeLabel,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    SegmentedButton<double>(
+                      segments: [
+                        ButtonSegment(
+                          value: 0.85,
+                          label: Text(l10n.settingsFontSizeSmall),
+                        ),
+                        ButtonSegment(
+                          value: 1.0,
+                          label: Text(l10n.settingsFontSizeNormal),
+                        ),
+                        ButtonSegment(
+                          value: 1.15,
+                          label: Text(l10n.settingsFontSizeLarge),
+                        ),
+                        ButtonSegment(
+                          value: 1.3,
+                          label: Text(l10n.settingsFontSizeExtraLarge),
+                        ),
+                      ],
+                      selected: {_fontScale},
+                      onSelectionChanged: (selection) =>
+                          setState(() => _fontScale = selection.first),
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 12),

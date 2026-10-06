@@ -33,4 +33,21 @@ void main() {
     applyPreferences({}, defaultHighContrast: false);
     expect(localeNotifier.value, null);
   });
+
+  test('falls back to the OS-level default when font_scale is unset', () {
+    applyPreferences(null, defaultHighContrast: false, defaultTextScale: 1.3);
+    expect(textScaleNotifier.value, 1.3);
+
+    applyPreferences({}, defaultHighContrast: false, defaultTextScale: 1.0);
+    expect(textScaleNotifier.value, 1.0);
+  });
+
+  test('an explicit font_scale preference overrides the OS default', () {
+    applyPreferences(
+      {'font_scale': 1.15},
+      defaultHighContrast: false,
+      defaultTextScale: 1.0,
+    );
+    expect(textScaleNotifier.value, 1.15);
+  });
 }

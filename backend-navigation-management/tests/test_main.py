@@ -231,6 +231,51 @@ def test_update_session_allowed_for_admin():
     assert response.status_code == 200
 
 
+# --- DELETE /sessions/{id}: admin only, detaches feedback before deleting ---
+
+
+def test_delete_session_forbidden_for_non_admin():
+    _as_caller("u1")
+    with patch("app.main.db.client", _mock_select_eq_result(_USER_ROW)):
+        response = client.delete("/sessions/1")
+    assert response.status_code == 403
+
+
+def test_delete_session_allowed_for_admin():
+    _as_caller("admin1")
+    mock_client = _mock_multi_table_client(
+        {
+            "profiles": _profiles_table(admin=True),
+            "user_feedback": _sessions_table(update_rows=[]),
+            "navigation_sessions": _sessions_table(),
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.delete("/sessions/1")
+    assert response.status_code == 200
+
+
+def test_delete_session_detaches_feedback_before_deleting():
+    _as_caller("admin1")
+    feedback_table = _sessions_table(
+        update_rows=[{**_FEEDBACK_ROW, "session_id": None}]
+    )
+    sessions_table = _sessions_table()
+    mock_client = _mock_multi_table_client(
+        {
+            "profiles": _profiles_table(admin=True),
+            "user_feedback": feedback_table,
+            "navigation_sessions": sessions_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.delete("/sessions/1")
+    assert response.status_code == 200
+    feedback_table.update.assert_called_once_with({"session_id": None})
+    feedback_table.update.return_value.eq.assert_called_once_with("session_id", "1")
+    sessions_table.delete.return_value.eq.assert_called_once_with("id", "1")
+
+
 # --- POST /logs: admin or self via session_id -> navigation_sessions.user_id
 
 

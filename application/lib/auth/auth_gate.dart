@@ -48,6 +48,7 @@ class _AuthGateState extends State<AuthGate> {
           applyPreferences(
             result['preferences'] as Map<String, dynamic>?,
             defaultHighContrast: MediaQuery.of(context).highContrast,
+            defaultTextScale: MediaQuery.of(context).textScaler.scale(1.0),
           );
         }
         return result;

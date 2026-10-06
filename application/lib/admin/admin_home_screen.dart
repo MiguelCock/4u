@@ -12,7 +12,8 @@ import 'connect_anchor_points_screen.dart';
 import 'edit_anchor_point_screen.dart';
 import 'edit_building_screen.dart';
 import 'edit_place_screen.dart';
-import 'live_sessions_screen.dart';
+import 'sessions_screen.dart';
+import '../user/settings_screen.dart';
 
 /// `admin`-role home screen: four tabs (places / buildings / anchor points /
 /// connections), each searchable, with edit and delete (cascade-impact
@@ -943,12 +944,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           const Divider(),
           ListTile(
             leading: const Icon(Icons.my_location, color: Colors.teal),
-            title: Text(AppLocalizations.of(context)!.adminLiveSessions),
+            title: Text(AppLocalizations.of(context)!.adminSessions),
             onTap: () {
               Navigator.of(context).pop();
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const LiveSessionsScreen()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SessionsScreen()));
             },
           ),
         ],
@@ -980,6 +981,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
             onPressed: _loading ? null : _loadData,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: AppLocalizations.of(context)!.homeSettingsTooltip,
+            onPressed: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+            },
           ),
           IconButton(
             icon: const Icon(Icons.logout),

@@ -41,25 +41,39 @@ class MainApp extends StatelessWidget {
         return ValueListenableBuilder<Locale?>(
           valueListenable: localeNotifier,
           builder: (context, locale, _) {
-            return MaterialApp(
-              title: '4u',
-              locale: locale,
-              localizationsDelegates: AppLocalizations.localizationsDelegates,
-              supportedLocales: AppLocalizations.supportedLocales,
-              theme: ThemeData(
-                colorScheme: highContrast
-                    ? const ColorScheme.highContrastLight()
-                    : ColorScheme.fromSeed(seedColor: Colors.blue),
-              ),
-              darkTheme: ThemeData(
-                colorScheme: highContrast
-                    ? const ColorScheme.highContrastDark()
-                    : ColorScheme.fromSeed(
-                        seedColor: Colors.blue,
-                        brightness: Brightness.dark,
-                      ),
-              ),
-              home: const AuthGate(),
+            return ValueListenableBuilder<double>(
+              valueListenable: textScaleNotifier,
+              builder: (context, textScale, _) {
+                return MaterialApp(
+                  title: '4u',
+                  locale: locale,
+                  localizationsDelegates:
+                      AppLocalizations.localizationsDelegates,
+                  supportedLocales: AppLocalizations.supportedLocales,
+                  theme: ThemeData(
+                    colorScheme: highContrast
+                        ? const ColorScheme.highContrastLight()
+                        : ColorScheme.fromSeed(seedColor: Colors.blue),
+                  ),
+                  darkTheme: ThemeData(
+                    colorScheme: highContrast
+                        ? const ColorScheme.highContrastDark()
+                        : ColorScheme.fromSeed(
+                            seedColor: Colors.blue,
+                            brightness: Brightness.dark,
+                          ),
+                  ),
+                  builder: (context, child) {
+                    return MediaQuery(
+                      data: MediaQuery.of(
+                        context,
+                      ).copyWith(textScaler: TextScaler.linear(textScale)),
+                      child: child!,
+                    );
+                  },
+                  home: const AuthGate(),
+                );
+              },
             );
           },
         );
