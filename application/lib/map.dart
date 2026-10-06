@@ -7,7 +7,12 @@ import 'services/location_service.dart';
 import 'services/map_tile_config.dart';
 
 class SimpleMapWidget extends StatefulWidget {
-  const SimpleMapWidget({super.key});
+  /// Extra markers layered on top of the live-GPS marker below, e.g. a
+  /// corrected-position pin from NavigationScreen. Empty for every other
+  /// call site, so this is purely additive.
+  final List<Marker> extraMarkers;
+
+  const SimpleMapWidget({super.key, this.extraMarkers = const []});
 
   @override
   State<SimpleMapWidget> createState() => _SimpleMapWidgetState();
@@ -62,6 +67,7 @@ class _SimpleMapWidgetState extends State<SimpleMapWidget> {
                 size: 40,
               ),
             ),
+            ...widget.extraMarkers,
           ],
         ),
       ],

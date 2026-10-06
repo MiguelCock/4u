@@ -4,12 +4,23 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import _search_similar, app
+from app.main import _search_similar, app, get_caller_id
 
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _clear_overrides():
+    yield
+    app.dependency_overrides.clear()
+
+
+def _as_caller(caller_id: str) -> None:
+    app.dependency_overrides[get_caller_id] = lambda: caller_id
+
+
 def _post_correction(session_id="s1", lat=6.2, lng=-75.6, accuracy=5.0):
+    _as_caller("u1")
     return client.post(
         "/correct_position",
         data={
@@ -26,6 +37,31 @@ def test_root():
     response = client.get("/")
     assert response.status_code == 200
     assert response.json() == {"service": "backend-positioning", "status": "ok"}
+
+
+def test_no_token_is_rejected():
+    response = client.post(
+        "/correct_position",
+        data={"session_id": "s1", "latitude": 6.2, "longitude": -75.6, "accuracy": 5.0},
+        files={"photo": ("frame.jpg", b"fake-bytes", "image/jpeg")},
+    )
+    assert response.status_code == 401
+
+
+def test_garbage_token_is_rejected():
+    with patch("app.main.db.get_user_id_from_token", side_effect=Exception("bad")):
+        response = client.post(
+            "/correct_position",
+            data={
+                "session_id": "s1",
+                "latitude": 6.2,
+                "longitude": -75.6,
+                "accuracy": 5.0,
+            },
+            files={"photo": ("frame.jpg", b"fake-bytes", "image/jpeg")},
+            headers={"Authorization": "Bearer garbage"},
+        )
+    assert response.status_code == 401
 
 
 def test_correct_position_fuses_gps_and_visual_match():
@@ -63,6 +99,7 @@ def test_correct_position_degrades_to_gps_only_when_visual_match_unavailable():
 
 
 def test_correct_position_requires_session_id():
+    _as_caller("u1")
     response = client.post(
         "/correct_position",
         data={"latitude": 6.2, "longitude": -75.6, "accuracy": 5.0},

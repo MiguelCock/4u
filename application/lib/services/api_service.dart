@@ -118,3 +118,7 @@ class DataCollectionApi extends ApiService {
 class AiTrainingApi extends ApiService {
   AiTrainingApi() : super('$_gatewayUrl/ai-training');
 }
+
+class PositioningApi extends ApiService {
+  PositioningApi() : super('$_gatewayUrl/positioning');
+}
