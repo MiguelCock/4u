@@ -47,6 +47,21 @@ services:
       - backend-ai-training/.env
     restart: unless-stopped
 
+  # Fuses GPS + a visual anchor-point match (from ai-training) into a
+  # corrected position (#31-34). No Supabase/Qdrant credentials of its own
+  # (see backend-positioning/CLAUDE.md) - env_file still needs to exist
+  # because compose errors on a referenced file that's missing, even with
+  # nothing secret in it.
+  positioning:
+    build:
+      context: .
+      dockerfile: backend-positioning/Dockerfile
+    env_file:
+      - backend-positioning/.env
+    depends_on:
+      - ai-training
+    restart: unless-stopped
+
   gateway:
     image: nginx:1.27-alpine
     ports:
@@ -60,6 +75,7 @@ services:
       - user-management
       - navigation-management
       - ai-training
+      - positioning
     restart: unless-stopped
 
   # TLS termination for the Phase 1 EC2 deployment (#92) - reverse-proxies to
