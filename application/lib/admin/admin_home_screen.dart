@@ -11,6 +11,7 @@ import 'connect_anchor_points_screen.dart';
 import 'edit_anchor_point_screen.dart';
 import 'edit_building_screen.dart';
 import 'edit_place_screen.dart';
+import 'live_sessions_screen.dart';
 
 /// `admin`-role home screen: four tabs (places / buildings / anchor points /
 /// connections), each searchable, with edit and delete (cascade-impact
@@ -802,6 +803,17 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           item(1, Icons.apartment, Colors.orange, 'Buildings'),
           item(2, Icons.location_pin, Colors.green, 'Anchor points'),
           item(3, Icons.timeline, Colors.teal, 'Connections'),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.my_location, color: Colors.teal),
+            title: const Text('Live sessions'),
+            onTap: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LiveSessionsScreen()),
+              );
+            },
+          ),
         ],
       ),
     );

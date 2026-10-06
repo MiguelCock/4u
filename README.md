@@ -226,17 +226,13 @@ cd application && flutter test && flutter analyze
 
 1. **Sign up** in the app (creates a Supabase Auth user, then a `profiles` row via `backend-user-management`'s `POST /profiles` with `role_id: 1`).
 2. **Promote to admin**: in Supabase, `UPDATE profiles SET role_id = 2 WHERE id = '<the new user's auth id>';` — there's no in-app admin-invite flow yet. Log out and back in.
-3. **Capture two anchor points** from the admin screen — if you didn't already create a place/building via SQL in step 2, use the app bar's **Add place** then **Add building** first. Then take a photo, pick the building, submit. Do this twice; note their ids (`GET http://localhost:8000/map/anchor-points`, or the Supabase table editor).
-4. **Create a route** referencing both anchor points — no in-app route-creation UI exists yet, so do it via curl, through the gateway. Every write endpoint now requires a real bearer token (#24) — grab the admin's from the app (or `curl -X POST '<SUPABASE_URL>/auth/v1/token?grant_type=password' -H "apikey: <SUPABASE_PUBLISHABLE_KEY>" -H "Content-Type: application/json" -d '{"email":"...","password":"..."}'`'s `access_token`):
-   ```bash
-   curl -X POST http://localhost:8000/route/routes \
-     -H "Content-Type: application/json" \
-     -H "Authorization: Bearer <admin's access_token>" \
-     -d '{"building_id": "<building id>", "name": "Test route", "start_anchor_id": "<anchor 1 id>", "end_anchor_id": "<anchor 2 id>"}'
-   ```
+3. **Capture two anchor points** from the admin screen — if you didn't already create a place/building via SQL in step 2, use the app bar's **Add place** then **Add building** first. Take a photo, pick the building, submit; do this twice in the same building. Open each from **Anchor points** and set its status to **verified** (this both indexes it into Qdrant and is required for the picker in step 6 - unverified points aren't offered as trip start/end choices).
+4. **Connect the two anchor points**: from the drawer, open **Connections** → **Connect on map**, tap one anchor point then the other. This writes an `anchor_point_connections` row - without it, step 6's trip has no walkable path between the two points and `find_or_create` 404s.
 5. **Sign up a second, regular user** and log in as them.
-6. Tap **Navigate**, start the route, and confirm `navigation_logs` rows accumulate in Supabase roughly every second while the screen stays open (a self-rescheduling loop, not a fixed timer - see `application/CLAUDE.md`'s "Position correction tick"). With a working camera and at least one verified, indexed anchor point nearby, `corrected_lat`/`corrected_long`/`anchor_match_id`/`confidence_score` populate too; otherwise (no camera on an emulator, no nearby match, `backend-positioning` unreachable) those columns stay `NULL` and only raw GPS is logged for that tick - this is the designed degradation, not a bug.
-7. Tap **End navigation** and optionally leave feedback — confirm the session's `status` becomes `completed` and (if entered) a `user_feedback` row appears.
+6. Tap **Where to?**, pick the first anchor point as start and the second as end (Place → Building → anchor point, both drill-downs), then **Find route** — this calls `POST /routes/find_or_create`, which computes a path over the connection from step 4 and creates the route on the fly (no manual route-creation step needed anymore).
+7. Confirm `navigation_logs` rows accumulate in Supabase roughly every second while `NavigationScreen` stays open (a self-rescheduling loop, not a fixed timer - see `application/CLAUDE.md`'s "Position correction tick"). With a working camera and the verified, indexed anchor points nearby, `corrected_lat`/`corrected_long`/`anchor_match_id`/`confidence_score` populate too; otherwise (no camera on an emulator, no nearby match, `backend-positioning` unreachable) those columns stay `NULL` and only raw GPS is logged for that tick - this is the designed degradation, not a bug.
+8. Tap **End navigation** and optionally leave feedback — confirm the session's `status` becomes `completed` and (if entered) a `user_feedback` row appears.
+9. **As the admin**, open the drawer's **Live sessions** while the regular user is mid-navigation (steps 6-8) - the active session should appear, and tapping **Watch** should show its trail growing on the map roughly every 4 seconds.
 
 ---
 
