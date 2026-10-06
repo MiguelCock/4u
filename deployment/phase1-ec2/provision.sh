@@ -49,14 +49,15 @@ set -euo pipefail
 # 80/443 is the only public entry point now). Still used for the gateway
 # container's own port mapping - local dev, CI, and SSH-tunnel debugging.
 : "${GATEWAY_PORT:=8000}"
-# The AL2023 AMI's default root volume is only 2GB - nowhere near enough
-# to build 6 Docker images (Python base layers + torch/torchvision for
-# backend-ai-training). Confirmed by hitting "No space left on device"
-# mid-build against the real 2GB default. 20GB comfortably covers the
-# full stack's images + build cache with room to rebuild after code
-# changes, and is still within the AWS free tier's 30GB/month EBS
-# allowance.
-: "${ROOT_VOLUME_GB:=20}"
+# The AL2023 AMI's own root snapshot has grown over time - confirmed live
+# that a current AMI rejects anything below 30GB outright
+# ("InvalidBlockDeviceMapping: ... expect size >= 30GB"), not just the
+# original 2GB-default concern this used to be sized against (building 6
+# Docker images, including torch/torchvision for backend-ai-training, needs
+# real headroom beyond that snapshot minimum too). 32GB covers both with a
+# little margin; re-check this if a future AMI update raises the minimum
+# again.
+: "${ROOT_VOLUME_GB:=32}"
 # EC2 public IPs change on every stop/start cycle - without a static
 # Elastic IP, application/.env's API_GATEWAY_URL would need hand-editing
 # after every restart (confirmed live: it does change). An Elastic IP

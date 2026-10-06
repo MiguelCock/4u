@@ -18,12 +18,12 @@ A single, cheap EC2 instance running the existing `docker-compose.yml` unmodifie
    - Add this to your **own** `~/.ssh/config` (not a project file — this only transparently covers the `ssh`/`rsync`/`scp` commands below if it's the config SSH already reads):
      ```
      Host i-* mi-*
-         ProxyCommand sh -c "aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters 'portNumber=%p'"
+         ProxyCommand sh -c "aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters 'portNumber=%p' --region us-east-1"
          User ec2-user
          IdentityFile ~/.ssh/4u-phase1-key.pem
          StrictHostKeyChecking accept-new
      ```
-     `StrictHostKeyChecking accept-new` matters here specifically: connecting by instance ID means a brand-new `known_hosts` entry every time an instance is replaced, and the default `ask` behavior would hang the first non-interactive `rsync`/`scp` run (no TTY to answer the prompt).
+     `StrictHostKeyChecking accept-new` matters here specifically: connecting by instance ID means a brand-new `known_hosts` entry every time an instance is replaced, and the default `ask` behavior would hang the first non-interactive `rsync`/`scp` run (no TTY to answer the prompt). `--region us-east-1` matters too — confirmed live that `aws ssm start-session` fails outright with "NoRegion" if the AWS CLI has no default region configured (common on this project, since nothing else here relies on one either — see `AWS_REGION` elsewhere); change it to match if you're overriding that region.
    - This needs the instance to carry an IAM instance profile with `AmazonSSMManagedInstanceCore` attached. On an AWS Academy Learner Lab account, the pre-existing `LabInstanceProfile` already has this — `provision.sh` uses it by default (`IAM_INSTANCE_PROFILE` to override, e.g. on a non-Academy account, which would need its own role+instance-profile with that managed policy attached).
 
 All four scripts below read their config from environment variables (sensible defaults baked in, nothing to edit) and are run from this directory.
