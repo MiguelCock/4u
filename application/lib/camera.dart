@@ -215,6 +215,7 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
           child: Center(
             child: FloatingActionButton(
               onPressed: _takePhoto,
+              tooltip: l10n.cameraTakePhotoTooltip,
               child: const Icon(Icons.camera),
             ),
           ),

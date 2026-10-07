@@ -110,6 +110,7 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
           title: Text(stepTitle),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
+            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
             onPressed: _goBack,
           ),
         ),

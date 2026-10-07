@@ -33,6 +33,7 @@
 
   "cameraLocationNotAvailable": "Ubicación no disponible",
   "cameraPhotoUploaded": "¡Foto subida!",
+  "cameraTakePhotoTooltip": "Tomar foto",
   "cameraUploadFailedStatus": "Error al subir: {statusCode}",
   "cameraPermissionDeniedError": "Permiso de cámara denegado. Concede acceso a la cámara para tomar fotos.",
   "cameraUnavailableError": "Cámara no disponible: {error}",
@@ -73,6 +74,10 @@
   "navEndButton": "Terminar navegación",
   "navFailedToStartSession": "Error al iniciar la sesión de navegación: {error}",
   "navCorrectedPosition": "Corregido: {lat}, {lng}{errorSuffix}",
+  "navAnnouncementStarting": "Navegando hacia {name}",
+  "navAnnouncementApproaching": "Acercándote a {name}",
+  "navAnnouncementArrived": "Llegaste a {name}",
+  "navAnnouncementEnded": "Navegación finalizada",
 
   "settingsTitle": "Configuración",
   "settingsVerbosityLabel": "Nivel de detalle",
@@ -90,6 +95,8 @@
   "settingsFontSizeNormal": "Normal",
   "settingsFontSizeLarge": "Grande",
   "settingsFontSizeExtraLarge": "Muy grande",
+  "settingsVoiceGuidanceLabel": "Guía de voz",
+  "settingsVoiceGuidanceSubtitle": "Anuncios hablados durante la navegación (inicio de ruta, acercamiento a un punto, llegada)",
   "settingsSaveButton": "Guardar",
   "settingsSavedConfirmation": "Configuración guardada.",
   "settingsErrorLoadFailed": "Error al cargar tu configuración: {error}",

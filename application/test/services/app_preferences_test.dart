@@ -50,4 +50,20 @@ void main() {
     );
     expect(textScaleNotifier.value, 1.15);
   });
+
+  test('voice_guidance defaults to on, no OS signal to fall back to', () {
+    applyPreferences(null, defaultHighContrast: false);
+    expect(voiceGuidanceNotifier.value, true);
+
+    applyPreferences({}, defaultHighContrast: false);
+    expect(voiceGuidanceNotifier.value, true);
+  });
+
+  test('an explicit voice_guidance preference overrides the default', () {
+    applyPreferences({'voice_guidance': false}, defaultHighContrast: false);
+    expect(voiceGuidanceNotifier.value, false);
+
+    applyPreferences({'voice_guidance': true}, defaultHighContrast: false);
+    expect(voiceGuidanceNotifier.value, true);
+  });
 }

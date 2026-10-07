@@ -22,7 +22,15 @@ final ValueNotifier<Locale?> localeNotifier = ValueNotifier<Locale?>(null);
 /// override) - 1.0 is normal size.
 final ValueNotifier<double> textScaleNotifier = ValueNotifier<double>(1.0);
 
-/// Reads `high_contrast`/`language`/`font_scale` out of a
+/// Whether `NavigationScreen` should speak announcements (route start,
+/// waypoint proximity, arrival, end-of-session) via `flutter_tts` - the
+/// voice toggle #85 deferred until there was TTS to back it. Defaults to
+/// on, unlike the others above which default from an OS-level signal -
+/// there's no equivalent OS signal for "wants spoken navigation", so a
+/// sensible fixed default for this app's audience is on until turned off.
+final ValueNotifier<bool> voiceGuidanceNotifier = ValueNotifier<bool>(true);
+
+/// Reads `high_contrast`/`language`/`font_scale`/`voice_guidance` out of a
 /// `profiles.preferences` map (as returned by `GET /profiles/{id}`) and
 /// applies them to the notifiers above. `defaultHighContrast` and
 /// `defaultTextScale` are OS-level signals
@@ -44,4 +52,5 @@ void applyPreferences(
   };
   textScaleNotifier.value =
       (prefs['font_scale'] as num?)?.toDouble() ?? defaultTextScale;
+  voiceGuidanceNotifier.value = prefs['voice_guidance'] as bool? ?? true;
 }

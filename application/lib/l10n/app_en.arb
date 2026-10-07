@@ -44,6 +44,7 @@
 
   "cameraLocationNotAvailable": "Location not available",
   "cameraPhotoUploaded": "Photo uploaded!",
+  "cameraTakePhotoTooltip": "Take photo",
   "cameraUploadFailedStatus": "Upload failed: {statusCode}",
   "@cameraUploadFailedStatus": {
     "placeholders": {"statusCode": {"type": "int"}}
@@ -103,6 +104,13 @@
       "errorSuffix": {"type": "String"}
     }
   },
+  "navAnnouncementStarting": "Navigating to {name}",
+  "@navAnnouncementStarting": {"placeholders": {"name": {"type": "String"}}},
+  "navAnnouncementApproaching": "Approaching {name}",
+  "@navAnnouncementApproaching": {"placeholders": {"name": {"type": "String"}}},
+  "navAnnouncementArrived": "Arrived at {name}",
+  "@navAnnouncementArrived": {"placeholders": {"name": {"type": "String"}}},
+  "navAnnouncementEnded": "Navigation ended",
 
   "settingsTitle": "Settings",
   "settingsVerbosityLabel": "Verbosity",
@@ -120,6 +128,8 @@
   "settingsFontSizeNormal": "Normal",
   "settingsFontSizeLarge": "Large",
   "settingsFontSizeExtraLarge": "Extra large",
+  "settingsVoiceGuidanceLabel": "Voice guidance",
+  "settingsVoiceGuidanceSubtitle": "Spoken announcements while navigating (route start, approaching a point, arrival)",
   "settingsSaveButton": "Save",
   "settingsSavedConfirmation": "Settings saved.",
   "settingsErrorLoadFailed": "Failed to load your settings: {error}",
