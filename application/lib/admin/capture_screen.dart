@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import 'capture_photo_screen.dart';
@@ -29,6 +30,33 @@ const Map<int, String> kLocationTypes = {
   18: 'bus_stop',
   9: 'other',
 };
+
+/// `kLocationTypes`' values are the stable storage keys sent to/from the
+/// backend - this maps one to the localized label shown in dropdowns,
+/// without changing what's actually stored.
+String locationTypeLabel(AppLocalizations l10n, String type) {
+  return switch (type) {
+    'entrance' => l10n.locationTypeEntrance,
+    'intersection' => l10n.locationTypeIntersection,
+    'elevator' => l10n.locationTypeElevator,
+    'stairwell' => l10n.locationTypeStairwell,
+    'classroom' => l10n.locationTypeClassroom,
+    'office' => l10n.locationTypeOffice,
+    'restroom' => l10n.locationTypeRestroom,
+    'cafeteria' => l10n.locationTypeCafeteria,
+    'hallway' => l10n.locationTypeHallway,
+    'ramp' => l10n.locationTypeRamp,
+    'outdoor_path' => l10n.locationTypeOutdoorPath,
+    'parking' => l10n.locationTypeParking,
+    'lobby' => l10n.locationTypeLobby,
+    'auditorium' => l10n.locationTypeAuditorium,
+    'courtyard' => l10n.locationTypeCourtyard,
+    'crosswalk' => l10n.locationTypeCrosswalk,
+    'bus_stop' => l10n.locationTypeBusStop,
+    'other' => l10n.locationTypeOther,
+    _ => type,
+  };
+}
 
 /// Creates a new `anchor_points` row (position + description only — no
 /// photos live here anymore, since one physical point ends up with ~4-8
@@ -81,7 +109,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
         _applyBuildingFilter();
       });
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to load universities/buildings: $e');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.captureErrorLoadFailed(e.toString()),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -118,26 +150,24 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 
   Future<void> _submit() async {
+    final l10n = AppLocalizations.of(context)!;
     final position = _locationService.lastPosition;
     final description = _descriptionController.text.trim();
 
     if (_selectedPlaceId == null) {
-      setState(() => _error = 'Select a university.');
+      setState(() => _error = l10n.commonErrorSelectUniversity);
       return;
     }
     if (_selectedBuildingId == null) {
-      setState(() => _error = 'Select a building.');
+      setState(() => _error = l10n.captureErrorSelectBuilding);
       return;
     }
     if (description.isEmpty) {
-      setState(() => _error = 'Description is required.');
+      setState(() => _error = l10n.commonErrorDescriptionRequired);
       return;
     }
     if (position == null && _pickedPosition == null) {
-      setState(
-        () => _error =
-            'Location not available - wait for GPS or pick on the map.',
-      );
+      setState(() => _error = l10n.captureErrorLocationUnavailable);
       return;
     }
 
@@ -174,9 +204,17 @@ class _CaptureScreenState extends State<CaptureScreen> {
       );
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to save anchor point: $e');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.captureErrorSaveFailed(e.toString()),
+      );
     } catch (e) {
-      setState(() => _error = 'Failed to save anchor point: $e');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.captureErrorSaveFailed(e.toString()),
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -191,8 +229,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('New anchor point')),
+      appBar: AppBar(title: Text(l10n.captureTitle)),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -202,15 +241,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (_places.isEmpty)
-                      const Text(
-                        'No universities exist yet - add one first (Add university).',
-                        style: TextStyle(color: Colors.red),
+                      Text(
+                        l10n.commonNoUniversitiesYetHint,
+                        style: const TextStyle(color: Colors.red),
                       )
                     else
                       DropdownButtonFormField<String>(
                         initialValue: _selectedPlaceId,
-                        decoration: const InputDecoration(
-                          labelText: 'University',
+                        decoration: InputDecoration(
+                          labelText: l10n.commonUniversityLabel,
                         ),
                         items: _places
                             .map(
@@ -229,15 +268,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       ),
                     const SizedBox(height: 12),
                     if (_places.isNotEmpty && _buildings.isEmpty)
-                      const Text(
-                        'No buildings in this university yet - add one first (Add building).',
-                        style: TextStyle(color: Colors.red),
+                      Text(
+                        l10n.captureNoBuildingsHint,
+                        style: const TextStyle(color: Colors.red),
                       )
                     else if (_buildings.isNotEmpty)
                       DropdownButtonFormField<String>(
                         initialValue: _selectedBuildingId,
-                        decoration: const InputDecoration(
-                          labelText: 'Building',
+                        decoration: InputDecoration(
+                          labelText: l10n.commonBuildingLabel,
                         ),
                         items: _buildings
                             .map(
@@ -255,14 +294,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
                       initialValue: _selectedLocationTypeId,
-                      decoration: const InputDecoration(
-                        labelText: 'Location type',
+                      decoration: InputDecoration(
+                        labelText: l10n.commonLocationTypeLabel,
                       ),
                       items: kLocationTypes.entries
                           .map(
                             (e) => DropdownMenuItem(
                               value: e.key,
-                              child: Text(e.value),
+                              child: Text(locationTypeLabel(l10n, e.value)),
                             ),
                           )
                           .toList(),
@@ -272,57 +311,72 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _descriptionController,
-                      decoration: const InputDecoration(
-                        labelText: 'Description',
-                        helperText:
-                            'Required - used as this point\'s name so it can be told apart from others.',
+                      decoration: InputDecoration(
+                        labelText: l10n.commonDescriptionLabel,
+                        helperText: l10n.commonDescriptionHelper,
                       ),
                     ),
                     const SizedBox(height: 12),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Indoor location'),
+                      title: Text(l10n.commonIndoorLocationLabel),
                       value: _indoor,
                       onChanged: (value) => setState(() => _indoor = value),
                     ),
                     DropdownButtonFormField<String?>(
                       initialValue: _lighting,
-                      decoration: const InputDecoration(labelText: 'Lighting'),
-                      items: const [
-                        DropdownMenuItem(value: null, child: Text('Not set')),
+                      decoration: InputDecoration(
+                        labelText: l10n.commonLightingLabel,
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: null,
+                          child: Text(l10n.commonLightingNotSet),
+                        ),
                         DropdownMenuItem(
                           value: 'bright',
-                          child: Text('Bright'),
+                          child: Text(l10n.commonLightingBright),
                         ),
                         DropdownMenuItem(
                           value: 'moderate',
-                          child: Text('Moderate'),
+                          child: Text(l10n.commonLightingModerate),
                         ),
-                        DropdownMenuItem(value: 'dim', child: Text('Dim')),
+                        DropdownMenuItem(
+                          value: 'dim',
+                          child: Text(l10n.commonLightingDim),
+                        ),
                       ],
                       onChanged: (value) => setState(() => _lighting = value),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _surfaceController,
-                      decoration: const InputDecoration(
-                        labelText: 'Surface (optional)',
-                        helperText: 'e.g. tile, carpet, concrete',
+                      decoration: InputDecoration(
+                        labelText: l10n.commonSurfaceLabel,
+                        helperText: l10n.commonSurfaceHelper,
                       ),
                     ),
                     const SizedBox(height: 12),
                     Text(
                       _pickedPosition != null
-                          ? 'Location (picked): ${_pickedPosition!.latitude.toStringAsFixed(6)}, ${_pickedPosition!.longitude.toStringAsFixed(6)}'
+                          ? l10n.captureLocationPickedText(
+                              _pickedPosition!.latitude.toStringAsFixed(6),
+                              _pickedPosition!.longitude.toStringAsFixed(6),
+                            )
                           : _locationService.lastPosition != null
-                          ? 'Location (GPS): ${_locationService.lastPosition!.latitude.toStringAsFixed(6)}, ${_locationService.lastPosition!.longitude.toStringAsFixed(6)}'
-                          : 'Location: not available yet',
+                          ? l10n.captureLocationGpsText(
+                              _locationService.lastPosition!.latitude
+                                  .toStringAsFixed(6),
+                              _locationService.lastPosition!.longitude
+                                  .toStringAsFixed(6),
+                            )
+                          : l10n.captureLocationUnavailableText,
                     ),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: _pickOnMap,
                       icon: const Icon(Icons.map),
-                      label: const Text('Pick on map'),
+                      label: Text(l10n.commonPickOnMap),
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 12),
@@ -337,7 +391,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                               height: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('Create and add photos'),
+                          : Text(l10n.captureSubmitButton),
                     ),
                   ],
                 ),

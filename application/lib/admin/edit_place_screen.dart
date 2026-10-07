@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'location_picker_screen.dart';
 
@@ -69,7 +70,11 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
     final lat = double.tryParse(_latController.text.trim());
     final lng = double.tryParse(_lngController.text.trim());
     if (name.isEmpty || lat == null || lng == null) {
-      setState(() => _error = 'Name, latitude and longitude are required.');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.commonErrorNameLatLngRequired,
+      );
       return;
     }
 
@@ -90,7 +95,11 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to update university: $e');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.editPlaceErrorUpdateFailed(e.toString()),
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -107,8 +116,9 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit university')),
+      appBar: AppBar(title: Text(l10n.editPlaceTitle)),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -117,19 +127,17 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
             children: [
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Name'),
+                decoration: InputDecoration(labelText: l10n.commonName),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _addressController,
-                decoration: const InputDecoration(
-                  labelText: 'Address (optional)',
-                ),
+                decoration: InputDecoration(labelText: l10n.commonAddress),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _latController,
-                decoration: const InputDecoration(labelText: 'Latitude'),
+                decoration: InputDecoration(labelText: l10n.commonLatitude),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                   signed: true,
@@ -138,7 +146,7 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: _lngController,
-                decoration: const InputDecoration(labelText: 'Longitude'),
+                decoration: InputDecoration(labelText: l10n.commonLongitude),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                   signed: true,
@@ -148,10 +156,10 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
               OutlinedButton.icon(
                 onPressed: _pickOnMap,
                 icon: const Icon(Icons.map),
-                label: const Text('Pick on map'),
+                label: Text(l10n.commonPickOnMap),
               ),
               SwitchListTile(
-                title: const Text('Active'),
+                title: Text(l10n.commonActive),
                 value: _isActive,
                 onChanged: (value) => setState(() => _isActive = value),
               ),
@@ -168,7 +176,7 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Save changes'),
+                    : Text(l10n.commonSaveChanges),
               ),
             ],
           ),

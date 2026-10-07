@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import 'location_picker_screen.dart';
@@ -56,7 +57,11 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
         });
       }
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to load universities: $e');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.addBuildingErrorLoadUniversitiesFailed(e.toString()),
+      );
     } finally {
       if (mounted) setState(() => _loadingPlaces = false);
     }
@@ -93,12 +98,17 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
     final lng = double.tryParse(_lngController.text.trim());
     final floors = int.tryParse(_floorsController.text.trim()) ?? 1;
     if (_selectedPlaceId == null) {
-      setState(() => _error = 'Select a university.');
+      setState(
+        () =>
+            _error = AppLocalizations.of(context)!.commonErrorSelectUniversity,
+      );
       return;
     }
     if (code.isEmpty || name.isEmpty || lat == null || lng == null) {
       setState(
-        () => _error = 'Code, name, latitude and longitude are required.',
+        () => _error = AppLocalizations.of(
+          context,
+        )!.commonErrorCodeNameLatLngRequired,
       );
       return;
     }
@@ -123,7 +133,11 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to save building: $e');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.addBuildingErrorSaveFailed(e.toString()),
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -142,8 +156,9 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Add building')),
+      appBar: AppBar(title: Text(l10n.addBuildingTitle)),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -153,14 +168,16 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
               if (_loadingPlaces)
                 const Center(child: CircularProgressIndicator())
               else if (_places.isEmpty)
-                const Text(
-                  'No universities exist yet - add one first (Add university).',
-                  style: TextStyle(color: Colors.red),
+                Text(
+                  l10n.commonNoUniversitiesYetHint,
+                  style: const TextStyle(color: Colors.red),
                 )
               else
                 DropdownButtonFormField<String>(
                   initialValue: _selectedPlaceId,
-                  decoration: const InputDecoration(labelText: 'University'),
+                  decoration: InputDecoration(
+                    labelText: l10n.commonUniversityLabel,
+                  ),
                   items: _places
                       .map(
                         (p) => DropdownMenuItem(
@@ -177,24 +194,22 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: _codeController,
-                decoration: const InputDecoration(labelText: 'Code'),
+                decoration: InputDecoration(labelText: l10n.commonCode),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Name'),
+                decoration: InputDecoration(labelText: l10n.commonName),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _addressController,
-                decoration: const InputDecoration(
-                  labelText: 'Address (optional)',
-                ),
+                decoration: InputDecoration(labelText: l10n.commonAddress),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _latController,
-                decoration: const InputDecoration(labelText: 'Latitude'),
+                decoration: InputDecoration(labelText: l10n.commonLatitude),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                   signed: true,
@@ -203,7 +218,7 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: _lngController,
-                decoration: const InputDecoration(labelText: 'Longitude'),
+                decoration: InputDecoration(labelText: l10n.commonLongitude),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                   signed: true,
@@ -213,22 +228,22 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
               OutlinedButton.icon(
                 onPressed: _pickOnMap,
                 icon: const Icon(Icons.map),
-                label: const Text('Pick on map'),
+                label: Text(l10n.commonPickOnMap),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _floorsController,
-                decoration: const InputDecoration(labelText: 'Floors'),
+                decoration: InputDecoration(labelText: l10n.commonFloors),
                 keyboardType: TextInputType.number,
               ),
               CheckboxListTile(
-                title: const Text('Has elevator'),
+                title: Text(l10n.commonHasElevator),
                 value: _hasElevator,
                 onChanged: (value) =>
                     setState(() => _hasElevator = value ?? false),
               ),
               CheckboxListTile(
-                title: const Text('Has stairs'),
+                title: Text(l10n.commonHasStairs),
                 value: _hasStairs,
                 onChanged: (value) =>
                     setState(() => _hasStairs = value ?? true),
@@ -246,7 +261,7 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Save building'),
+                    : Text(l10n.addBuildingSaveButton),
               ),
             ],
           ),

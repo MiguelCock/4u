@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/map_tile_config.dart';
 
@@ -204,14 +205,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pick a location'),
+        title: Text(l10n.locationPickerTitle),
         actions: [
           IconButton(
             onPressed: () => Navigator.of(context).pop(_picked),
             icon: const Icon(Icons.check),
-            tooltip: 'Confirm location',
+            tooltip: l10n.locationPickerConfirmTooltip,
           ),
         ],
       ),

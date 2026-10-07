@@ -1,7 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'session_tracking_screen.dart';
+
+/// `navigation_sessions.status`'s stable storage values - this maps one to
+/// its localized label without changing what's actually stored.
+String sessionStatusLabel(AppLocalizations l10n, String? status) {
+  return switch (status) {
+    'active' => l10n.commonSessionStatusActive,
+    'completed' => l10n.commonSessionStatusCompleted,
+    'abandoned' => l10n.commonSessionStatusAbandoned,
+    'failed' => l10n.commonSessionStatusFailed,
+    _ => l10n.commonSessionStatusUnknown,
+  };
+}
 
 /// Admin-only: one user's full session history (every status - active,
 /// completed, abandoned, failed), with a Watch action into
@@ -61,21 +74,20 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
   }
 
   Future<bool> _confirmDelete() async {
+    final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete this session?'),
-        content: const Text(
-          'This also deletes its logged GPS history. This cannot be undone.',
-        ),
+        title: Text(l10n.userSessionsDeleteTitle),
+        content: Text(l10n.userSessionsDeleteContent),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
+            child: Text(l10n.commonDelete),
           ),
         ],
       ),
@@ -92,18 +104,23 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
       setState(() => _sessions.removeWhere((s) => s['id'] == session['id']));
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context)!.commonErrorDeleteFailed(e.toString()),
+          ),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(title: Text(widget.userName)),
       body: _sessions.isEmpty
-          ? const Center(child: Text('No sessions for this user.'))
+          ? Center(child: Text(l10n.userSessionsEmpty))
           : ListView.builder(
               itemCount: _sessions.length,
               itemBuilder: (context, index) {
@@ -119,11 +136,13 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
                         ? Colors.teal
                         : Colors.grey,
                   ),
-                  title: Text('Session ${session['id']}'),
+                  title: Text(l10n.userSessionsSessionLabel(session['id'])),
                   subtitle: Text(
-                    'Status: ${session['status'] ?? 'unknown'} · '
-                    'Started ${session['start_time'] ?? '?'}'
-                    '${routeName != null ? ' · $routeName' : ''}',
+                    l10n.userSessionsSubtitle(
+                      sessionStatusLabel(l10n, session['status'] as String?),
+                      session['start_time'] as String? ?? '?',
+                      routeName != null ? ' · $routeName' : '',
+                    ),
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -137,11 +156,11 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
                             ),
                           );
                         },
-                        child: const Text('Watch'),
+                        child: Text(l10n.userSessionsWatchButton),
                       ),
                       IconButton(
                         icon: const Icon(Icons.delete_outline),
-                        tooltip: 'Delete',
+                        tooltip: l10n.commonDelete,
                         onPressed: () => _deleteSession(session),
                       ),
                     ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'user_sessions_screen.dart';
 
@@ -54,9 +55,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sessions'),
+        title: Text(l10n.adminSessions),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
         ],
@@ -71,7 +73,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
             }
             if (snapshot.hasError) {
               return Center(
-                child: Text('Failed to load sessions: ${snapshot.error}'),
+                child: Text(
+                  l10n.sessionsErrorLoadFailed(snapshot.error.toString()),
+                ),
               );
             }
             final data = snapshot.data!;
@@ -84,7 +88,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                 return nameA.compareTo(nameB);
               });
             if (userIds.isEmpty) {
-              return const Center(child: Text('No sessions recorded yet.'));
+              return Center(child: Text(l10n.sessionsEmpty));
             }
             return ListView.builder(
               itemCount: userIds.length,
@@ -99,8 +103,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
                   leading: const Icon(Icons.person_outline),
                   title: Text(profile?['full_name'] as String? ?? userId),
                   subtitle: Text(
-                    '${userSessions.length} session(s)'
-                    '${activeCount > 0 ? ' · $activeCount active' : ''}',
+                    l10n.sessionsCountLabel(userSessions.length) +
+                        (activeCount > 0
+                            ? l10n.sessionsActiveSuffix(activeCount)
+                            : ''),
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {

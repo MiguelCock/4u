@@ -7,6 +7,7 @@ import 'package:flutter_compass/flutter_compass.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 
 class _PhotoEntry {
@@ -127,7 +128,11 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
         });
       }
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to load existing photos: $e');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.capturePhotoErrorLoadExistingFailed(e.toString()),
+      );
     } finally {
       if (mounted) setState(() => _loadingExisting = false);
     }
@@ -137,7 +142,7 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
     if (_controller == null || !_controller!.value.isInitialized) return;
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) {
-      setState(() => _error = 'Not signed in.');
+      setState(() => _error = AppLocalizations.of(context)!.commonNotSignedIn);
       return;
     }
 
@@ -204,7 +209,13 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
         } on ApiException catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Saved, but indexing failed: $e')),
+              SnackBar(
+                content: Text(
+                  AppLocalizations.of(
+                    context,
+                  )!.capturePhotoSnackbarIndexingFailed(e.toString()),
+                ),
+              ),
             );
           }
         }
@@ -217,7 +228,9 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
               (p) => p.uploading && p.localFile?.path == localFile!.path,
             );
           }
-          _error = 'Failed to save photo: $e';
+          _error = AppLocalizations.of(
+            context,
+          )!.capturePhotoErrorSaveFailed(e.toString());
         });
       }
     } finally {
@@ -227,19 +240,20 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
 
   Future<void> _deletePhoto(_PhotoEntry photo) async {
     if (photo.id == null) return;
+    final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete photo?'),
-        content: const Text('This cannot be undone.'),
+        title: Text(l10n.capturePhotoDeleteDialogTitle),
+        content: Text(l10n.commonCannotBeUndone),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
+            child: Text(l10n.commonDelete),
           ),
         ],
       ),
@@ -251,9 +265,9 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
       if (mounted) setState(() => _photos.remove(photo));
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.commonErrorDeleteFailed(e.toString()))),
+        );
       }
       return;
     }
@@ -276,14 +290,15 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: Text('Photos: ${widget.anchorPointDescription}'),
+        title: Text(l10n.capturePhotoTitle(widget.anchorPointDescription)),
         actions: [
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
             icon: const Icon(Icons.check),
-            tooltip: 'Done',
+            tooltip: l10n.capturePhotoDoneTooltip,
           ),
         ],
       ),
@@ -314,7 +329,7 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        'Facing: ${_liveHeading!.round()}°',
+                        l10n.capturePhotoFacingLabel(_liveHeading!.round()),
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
@@ -333,7 +348,9 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
                       )
                     : const Icon(Icons.camera_alt),
                 label: Text(
-                  _capturing ? 'Saving...' : 'Take photo (${_photos.length})',
+                  _capturing
+                      ? l10n.capturePhotoSavingLabel
+                      : l10n.capturePhotoTakeButton(_photos.length),
                 ),
               ),
             ),
@@ -347,7 +364,7 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
               child: _loadingExisting
                   ? const Center(child: CircularProgressIndicator())
                   : _photos.isEmpty
-                  ? const Center(child: Text('No photos yet - take one above.'))
+                  ? Center(child: Text(l10n.capturePhotoNoPhotosYet))
                   : GridView.builder(
                       padding: const EdgeInsets.all(8),
                       gridDelegate:

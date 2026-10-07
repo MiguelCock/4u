@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'location_picker_screen.dart';
 
@@ -82,7 +83,11 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
     final lng = double.tryParse(_lngController.text.trim());
     final floors = int.tryParse(_floorsController.text.trim()) ?? 1;
     if (name.isEmpty || lat == null || lng == null) {
-      setState(() => _error = 'Name, latitude and longitude are required.');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.commonErrorNameLatLngRequired,
+      );
       return;
     }
 
@@ -106,7 +111,11 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to update building: $e');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.editBuildingErrorUpdateFailed(e.toString()),
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -124,8 +133,9 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit building')),
+      appBar: AppBar(title: Text(l10n.editBuildingTitle)),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -134,19 +144,17 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
             children: [
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Name'),
+                decoration: InputDecoration(labelText: l10n.commonName),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _addressController,
-                decoration: const InputDecoration(
-                  labelText: 'Address (optional)',
-                ),
+                decoration: InputDecoration(labelText: l10n.commonAddress),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _latController,
-                decoration: const InputDecoration(labelText: 'Latitude'),
+                decoration: InputDecoration(labelText: l10n.commonLatitude),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                   signed: true,
@@ -155,7 +163,7 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: _lngController,
-                decoration: const InputDecoration(labelText: 'Longitude'),
+                decoration: InputDecoration(labelText: l10n.commonLongitude),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                   signed: true,
@@ -165,28 +173,28 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
               OutlinedButton.icon(
                 onPressed: _pickOnMap,
                 icon: const Icon(Icons.map),
-                label: const Text('Pick on map'),
+                label: Text(l10n.commonPickOnMap),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _floorsController,
-                decoration: const InputDecoration(labelText: 'Floors'),
+                decoration: InputDecoration(labelText: l10n.commonFloors),
                 keyboardType: TextInputType.number,
               ),
               CheckboxListTile(
-                title: const Text('Has elevator'),
+                title: Text(l10n.commonHasElevator),
                 value: _hasElevator,
                 onChanged: (value) =>
                     setState(() => _hasElevator = value ?? false),
               ),
               CheckboxListTile(
-                title: const Text('Has stairs'),
+                title: Text(l10n.commonHasStairs),
                 value: _hasStairs,
                 onChanged: (value) =>
                     setState(() => _hasStairs = value ?? true),
               ),
               SwitchListTile(
-                title: const Text('Active'),
+                title: Text(l10n.commonActive),
                 value: _isActive,
                 onChanged: (value) => setState(() => _isActive = value),
               ),
@@ -203,7 +211,7 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Save changes'),
+                    : Text(l10n.commonSaveChanges),
               ),
             ],
           ),
