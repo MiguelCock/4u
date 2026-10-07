@@ -1,12 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'capture_photo_screen.dart';
-import 'capture_screen.dart' show kLocationTypes;
+import 'capture_screen.dart' show kLocationTypes, locationTypeLabel;
 import 'location_picker_screen.dart';
 
 const List<String> kAnchorPointStatuses = ['pending', 'verified', 'rejected'];
+
+/// `kAnchorPointStatuses`' values are the stable storage keys - this maps
+/// one to its localized label without changing what's actually stored.
+String anchorStatusLabel(AppLocalizations l10n, String status) {
+  return switch (status) {
+    'pending' => l10n.commonStatusPending,
+    'verified' => l10n.commonStatusVerified,
+    'rejected' => l10n.commonStatusRejected,
+    _ => status,
+  };
+}
 
 /// Admin form to edit an existing `anchor_points` row (`PATCH
 /// /anchor-points/{id}`) - description, location type, status (verify
@@ -107,9 +119,10 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
   }
 
   Future<void> _submit() async {
+    final l10n = AppLocalizations.of(context)!;
     final description = _descriptionController.text.trim();
     if (description.isEmpty) {
-      setState(() => _error = 'Description is required.');
+      setState(() => _error = l10n.commonErrorDescriptionRequired);
       return;
     }
 
@@ -134,7 +147,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
       });
     } on ApiException catch (e) {
       setState(() {
-        _error = 'Failed to update anchor point: $e';
+        _error = l10n.editAnchorErrorUpdateFailed(e.toString());
         _submitting = false;
       });
       return;
@@ -164,7 +177,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
         });
       } on ApiException catch (e) {
         setState(() {
-          _error = 'Verified, but indexing into search failed: $e';
+          _error = l10n.editAnchorErrorIndexingFailed(e.toString());
           _submitting = false;
         });
         return;
@@ -182,7 +195,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
         );
       } on ApiException catch (e) {
         setState(() {
-          _error = 'Un-verified, but removing from search failed: $e';
+          _error = l10n.editAnchorErrorUnindexFailed(e.toString());
           _submitting = false;
         });
         return;
@@ -201,8 +214,9 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit anchor point')),
+      appBar: AppBar(title: Text(l10n.editAnchorTitle)),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -211,20 +225,23 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
             children: [
               TextField(
                 controller: _descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'Description',
-                  helperText:
-                      'Required - used as this point\'s name so it can be told apart from others.',
+                decoration: InputDecoration(
+                  labelText: l10n.commonDescriptionLabel,
+                  helperText: l10n.commonDescriptionHelper,
                 ),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<int>(
                 initialValue: _locationTypeId,
-                decoration: const InputDecoration(labelText: 'Location type'),
+                decoration: InputDecoration(
+                  labelText: l10n.commonLocationTypeLabel,
+                ),
                 items: kLocationTypes.entries
                     .map(
-                      (e) =>
-                          DropdownMenuItem(value: e.key, child: Text(e.value)),
+                      (e) => DropdownMenuItem(
+                        value: e.key,
+                        child: Text(locationTypeLabel(l10n, e.value)),
+                      ),
                     )
                     .toList(),
                 onChanged: (value) => setState(() => _locationTypeId = value),
@@ -232,38 +249,55 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
               const SizedBox(height: 12),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Indoor location'),
+                title: Text(l10n.commonIndoorLocationLabel),
                 value: _indoor,
                 onChanged: (value) => setState(() => _indoor = value),
               ),
               DropdownButtonFormField<String?>(
                 initialValue: _lighting,
-                decoration: const InputDecoration(labelText: 'Lighting'),
-                items: const [
-                  DropdownMenuItem(value: null, child: Text('Not set')),
-                  DropdownMenuItem(value: 'bright', child: Text('Bright')),
-                  DropdownMenuItem(value: 'moderate', child: Text('Moderate')),
-                  DropdownMenuItem(value: 'dim', child: Text('Dim')),
+                decoration: InputDecoration(
+                  labelText: l10n.commonLightingLabel,
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: null,
+                    child: Text(l10n.commonLightingNotSet),
+                  ),
+                  DropdownMenuItem(
+                    value: 'bright',
+                    child: Text(l10n.commonLightingBright),
+                  ),
+                  DropdownMenuItem(
+                    value: 'moderate',
+                    child: Text(l10n.commonLightingModerate),
+                  ),
+                  DropdownMenuItem(
+                    value: 'dim',
+                    child: Text(l10n.commonLightingDim),
+                  ),
                 ],
                 onChanged: (value) => setState(() => _lighting = value),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _surfaceController,
-                decoration: const InputDecoration(
-                  labelText: 'Surface (optional)',
-                  helperText: 'e.g. tile, carpet, concrete',
+                decoration: InputDecoration(
+                  labelText: l10n.commonSurfaceLabel,
+                  helperText: l10n.commonSurfaceHelper,
                 ),
               ),
               const SizedBox(height: 12),
-              Text('Photos', style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                l10n.editAnchorPhotosLabel,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
               const SizedBox(height: 8),
               if (_loadingPhotos)
                 const Center(child: CircularProgressIndicator())
               else if (_photos.isEmpty)
-                const Text(
-                  'No photos captured yet.',
-                  style: TextStyle(color: Colors.red),
+                Text(
+                  l10n.editAnchorNoPhotosYet,
+                  style: const TextStyle(color: Colors.red),
                 )
               else
                 SizedBox(
@@ -296,26 +330,36 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
               OutlinedButton.icon(
                 onPressed: _managePhotos,
                 icon: const Icon(Icons.photo_library_outlined),
-                label: Text('Manage photos (${_photos.length})'),
+                label: Text(l10n.editAnchorManagePhotosButton(_photos.length)),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _status,
-                decoration: const InputDecoration(labelText: 'Status'),
+                decoration: InputDecoration(
+                  labelText: l10n.editAnchorStatusLabel,
+                ),
                 items: kAnchorPointStatuses
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                    .map(
+                      (s) => DropdownMenuItem(
+                        value: s,
+                        child: Text(anchorStatusLabel(l10n, s)),
+                      ),
+                    )
                     .toList(),
                 onChanged: (value) => setState(() => _status = value!),
               ),
               const SizedBox(height: 12),
               Text(
-                'Location: ${_position.latitude.toStringAsFixed(6)}, ${_position.longitude.toStringAsFixed(6)}',
+                l10n.editAnchorLocationText(
+                  _position.latitude.toStringAsFixed(6),
+                  _position.longitude.toStringAsFixed(6),
+                ),
               ),
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: _pickOnMap,
                 icon: const Icon(Icons.map),
-                label: const Text('Move on map'),
+                label: Text(l10n.editAnchorMoveOnMapButton),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
@@ -330,7 +374,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Save changes'),
+                    : Text(l10n.commonSaveChanges),
               ),
             ],
           ),

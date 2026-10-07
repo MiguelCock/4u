@@ -3,11 +3,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../camera.dart';
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/geo_utils.dart';
 import '../services/location_service.dart';
 import 'anchor_point_picker_screen.dart';
 import 'navigation_screen.dart';
+import 'settings_screen.dart';
 
 /// The `user`-role home screen IS the trip-planning flow now (not a map,
 /// not a separate screen reached via a FAB): the user only picks a
@@ -33,8 +35,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Future<void> _pickEnd() async {
     final picked = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
-        builder: (_) =>
-            const AnchorPointPickerScreen(title: 'Where do you want to go?'),
+        builder: (_) => AnchorPointPickerScreen(
+          title: AppLocalizations.of(context)!.homeWhereTo,
+        ),
       ),
     );
     if (picked != null) setState(() => _end = picked);
@@ -70,7 +73,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     final position = _locationService.lastPosition;
     if (position == null) {
       setState(() {
-        _error = 'Current location not available yet - try again shortly.';
+        _error = AppLocalizations.of(context)!.homeErrorLocationUnavailable;
         _finding = false;
       });
       return;
@@ -88,7 +91,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       );
       if (start == null) {
         setState(() {
-          _error = 'No verified anchor points exist yet.';
+          _error = AppLocalizations.of(context)!.homeErrorNoVerifiedAnchors;
           _finding = false;
         });
         return;
@@ -107,10 +110,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       );
       setState(() => _finding = false);
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.statusCode == 404
-            ? "No walkable path found to that destination yet - an admin needs to add connections first."
-            : 'Failed to find a route: $e';
+            ? AppLocalizations.of(context)!.homeErrorNoPath
+            : AppLocalizations.of(
+                context,
+              )!.homeErrorFailedToFindRoute(e.toString());
         _finding = false;
       });
     }
@@ -118,19 +124,20 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('4u'),
+        title: Text(l10n.appTitle),
         backgroundColor: Colors.blue,
         actions: [
           IconButton(
             icon: const Icon(Icons.camera_alt_outlined),
-            tooltip: 'Data collection camera',
+            tooltip: l10n.homeCameraTooltip,
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('Data collection')),
+                    appBar: AppBar(title: Text(l10n.homeDataCollectionTitle)),
                     body: const SimpleCameraWidget(),
                   ),
                 ),
@@ -138,7 +145,17 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             },
           ),
           IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: l10n.homeSettingsTooltip,
+            onPressed: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
+            tooltip: l10n.commonLogOut,
             onPressed: () => Supabase.instance.client.auth.signOut(),
           ),
         ],
@@ -146,10 +163,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const ListTile(
-              leading: Icon(Icons.radio_button_checked, color: Colors.blue),
-              title: Text('Start'),
-              subtitle: Text('Your current location'),
+            ListTile(
+              leading: const Icon(
+                Icons.radio_button_checked,
+                color: Colors.blue,
+              ),
+              title: Text(l10n.homeStartLabel),
+              subtitle: Text(l10n.homeStartSubtitle),
             ),
             const Divider(height: 1),
             ListTile(
@@ -157,10 +177,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 _end == null ? Icons.radio_button_unchecked : Icons.location_on,
                 color: _end == null ? Colors.grey : Colors.blue,
               ),
-              title: const Text('Where to?'),
+              title: Text(l10n.homeWhereTo),
               subtitle: Text(
                 _end == null
-                    ? 'Tap to choose a destination'
+                    ? l10n.homeTapToChooseDestination
                     : (_end!['location_description'] as String? ??
                           _end!['id'] as String),
               ),
@@ -183,7 +203,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Find route'),
+                    : Text(l10n.homeFindRouteButton),
               ),
             ),
           ],

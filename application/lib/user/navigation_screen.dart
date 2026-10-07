@@ -11,6 +11,7 @@ import 'package:path/path.dart' as path;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../l10n/app_localizations.dart';
 import '../location.dart';
 import '../map.dart';
 import '../services/api_service.dart';
@@ -84,7 +85,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) {
       setState(() {
-        _error = 'Not signed in.';
+        _error = AppLocalizations.of(context)!.commonNotSignedIn;
         _starting = false;
       });
       return;
@@ -111,8 +112,11 @@ class _NavigationScreenState extends State<NavigationScreen> {
       });
       _runTick();
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
-        _error = 'Failed to start navigation session: $e';
+        _error = AppLocalizations.of(
+          context,
+        )!.navFailedToStartSession(e.toString());
         _starting = false;
       });
     }
@@ -231,19 +235,20 @@ class _NavigationScreenState extends State<NavigationScreen> {
   }
 
   Future<void> _showFeedbackDialog(String sessionId) async {
+    final l10n = AppLocalizations.of(context)!;
     final controller = TextEditingController();
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('How did it go?'),
+        title: Text(l10n.navFeedbackTitle),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(hintText: 'Optional feedback'),
+          decoration: InputDecoration(hintText: l10n.navFeedbackHint),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Skip'),
+            child: Text(l10n.navFeedbackSkip),
           ),
           TextButton(
             onPressed: () async {
@@ -262,7 +267,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
               }
               if (context.mounted) Navigator.of(context).pop();
             },
-            child: const Text('Submit'),
+            child: Text(l10n.navFeedbackSubmit),
           ),
         ],
       ),
@@ -279,6 +284,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final correctedLat = _correctedLat;
     final correctedLong = _correctedLong;
     final showDebugPreview =
@@ -288,7 +294,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.route['name'] as String? ?? 'Navigating'),
+        title: Text(widget.route['name'] as String? ?? l10n.navDefaultTitle),
       ),
       body: SafeArea(
         child: _starting
@@ -310,9 +316,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16.0),
                           child: Text(
-                            'Corrected: ${correctedLat.toStringAsFixed(6)}, '
-                            '${correctedLong.toStringAsFixed(6)}'
-                            '${_correctionError != null ? ' (±${_correctionError!.toStringAsFixed(2)}m)' : ''}',
+                            l10n.navCorrectedPosition(
+                              correctedLat.toStringAsFixed(6),
+                              correctedLong.toStringAsFixed(6),
+                              _correctionError != null
+                                  ? ' (±${_correctionError!.toStringAsFixed(2)}m)'
+                                  : '',
+                            ),
                             style: const TextStyle(color: Colors.green),
                           ),
                         ),
@@ -347,7 +357,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Text('End navigation'),
+                              : Text(l10n.navEndButton),
                         ),
                       ),
                     ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 
 /// Dropdown-based fallback/precision flow for creating an anchor-point
@@ -54,7 +55,11 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
         }
       });
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to load data: $e');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.commonErrorLoadDataFailed(e.toString()),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -76,17 +81,18 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
       point['location_description'] as String? ?? point['id'] as String;
 
   Future<void> _submit() async {
+    final l10n = AppLocalizations.of(context)!;
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) {
-      setState(() => _error = 'Not signed in.');
+      setState(() => _error = l10n.commonNotSignedIn);
       return;
     }
     if (_anchorPointAId == null || _anchorPointBId == null) {
-      setState(() => _error = 'Select both anchor points.');
+      setState(() => _error = l10n.addConnectionErrorSelectBoth);
       return;
     }
     if (_anchorPointAId == _anchorPointBId) {
-      setState(() => _error = 'Select two different anchor points.');
+      setState(() => _error = l10n.addConnectionErrorSelectDifferent);
       return;
     }
 
@@ -108,7 +114,7 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to save connection: $e');
+      setState(() => _error = l10n.addConnectionErrorSaveFailed(e.toString()));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -123,9 +129,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final anchorPoints = _anchorPointsInScope;
     return Scaffold(
-      appBar: AppBar(title: const Text('Add connection')),
+      appBar: AppBar(title: Text(l10n.addConnectionTitle)),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -135,14 +142,16 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (_places.isEmpty)
-                      const Text(
-                        'No places exist yet - add one first (Add place).',
-                        style: TextStyle(color: Colors.red),
+                      Text(
+                        l10n.commonNoUniversitiesYetHint,
+                        style: const TextStyle(color: Colors.red),
                       )
                     else
                       DropdownButtonFormField<String>(
                         initialValue: _selectedPlaceId,
-                        decoration: const InputDecoration(labelText: 'Place'),
+                        decoration: InputDecoration(
+                          labelText: l10n.commonUniversityLabel,
+                        ),
                         items: _places
                             .map(
                               (p) => DropdownMenuItem(
@@ -163,13 +172,13 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String?>(
                       initialValue: _selectedBuildingId,
-                      decoration: const InputDecoration(
-                        labelText: 'Building (optional filter)',
+                      decoration: InputDecoration(
+                        labelText: l10n.addConnectionBuildingFilterLabel,
                       ),
                       items: [
-                        const DropdownMenuItem<String?>(
+                        DropdownMenuItem<String?>(
                           value: null,
-                          child: Text('All buildings'),
+                          child: Text(l10n.commonAllBuildings),
                         ),
                         ..._buildingsInPlace.map(
                           (b) => DropdownMenuItem<String?>(
@@ -188,15 +197,15 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                     ),
                     const SizedBox(height: 12),
                     if (anchorPoints.isEmpty)
-                      const Text(
-                        'No anchor points in scope.',
-                        style: TextStyle(color: Colors.red),
+                      Text(
+                        l10n.addConnectionNoAnchorPointsInScope,
+                        style: const TextStyle(color: Colors.red),
                       )
                     else ...[
                       DropdownButtonFormField<String>(
                         initialValue: _anchorPointAId,
-                        decoration: const InputDecoration(
-                          labelText: 'Anchor point A',
+                        decoration: InputDecoration(
+                          labelText: l10n.addConnectionAnchorPointALabel,
                         ),
                         items: anchorPoints
                             .map(
@@ -212,8 +221,8 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         initialValue: _anchorPointBId,
-                        decoration: const InputDecoration(
-                          labelText: 'Anchor point B',
+                        decoration: InputDecoration(
+                          labelText: l10n.addConnectionAnchorPointBLabel,
                         ),
                         items: anchorPoints
                             .where((p) => p['id'] != _anchorPointAId)
@@ -231,10 +240,9 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _distanceController,
-                      decoration: const InputDecoration(
-                        labelText: 'Distance in meters (optional)',
-                        helperText:
-                            'Leave blank to auto-compute straight-line distance.',
+                      decoration: InputDecoration(
+                        labelText: l10n.addConnectionDistanceLabel,
+                        helperText: l10n.addConnectionDistanceHelper,
                       ),
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
@@ -243,8 +251,8 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _notesController,
-                      decoration: const InputDecoration(
-                        labelText: 'Notes (optional)',
+                      decoration: InputDecoration(
+                        labelText: l10n.addConnectionNotesLabel,
                       ),
                     ),
                     if (_error != null) ...[
@@ -262,7 +270,7 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                               height: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('Save connection'),
+                          : Text(l10n.addConnectionSaveButton),
                     ),
                   ],
                 ),

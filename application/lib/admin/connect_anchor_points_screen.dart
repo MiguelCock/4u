@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/map_tile_config.dart';
 
@@ -58,7 +59,11 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
         }
       });
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to load data: $e');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.commonErrorLoadDataFailed(e.toString()),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -89,7 +94,7 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
 
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) {
-      setState(() => _error = 'Not signed in.');
+      setState(() => _error = AppLocalizations.of(context)!.commonNotSignedIn);
       return;
     }
 
@@ -113,17 +118,24 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
         _connections = (connectionsResult as List).cast<Map<String, dynamic>>();
         _selectedAnchorPointId = id;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Connected $fromDesc ↔ $toDesc')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(
+              context,
+            )!.connectSnackbarConnected(fromDesc, toDesc),
+          ),
+        ),
+      );
     } on ApiException catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               e.statusCode == 500 || e.statusCode == 409
-                  ? 'Already connected (or a save error occurred).'
-                  : 'Failed to connect: $e',
+                  ? l10n.connectErrorAlreadyConnected
+                  : l10n.connectErrorConnectFailed(e.toString()),
             ),
           ),
         );
@@ -209,8 +221,9 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Connect on map')),
+      appBar: AppBar(title: Text(l10n.adminFabConnectOnMap)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -222,8 +235,8 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           initialValue: _selectedPlaceId,
-                          decoration: const InputDecoration(
-                            labelText: 'Place',
+                          decoration: InputDecoration(
+                            labelText: l10n.commonUniversityLabel,
                             isDense: true,
                           ),
                           items: _places
@@ -247,14 +260,14 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
                       Expanded(
                         child: DropdownButtonFormField<String?>(
                           initialValue: _selectedBuildingId,
-                          decoration: const InputDecoration(
-                            labelText: 'Building',
+                          decoration: InputDecoration(
+                            labelText: l10n.commonBuildingLabel,
                             isDense: true,
                           ),
                           items: [
-                            const DropdownMenuItem<String?>(
+                            DropdownMenuItem<String?>(
                               value: null,
-                              child: Text('All buildings'),
+                              child: Text(l10n.commonAllBuildings),
                             ),
                             ..._buildingsInPlace.map(
                               (b) => DropdownMenuItem<String?>(
@@ -288,9 +301,10 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       _selectedAnchorPointId == null
-                          ? 'Tap an anchor point to start a connection.'
-                          : 'Tap another anchor point to connect '
-                                '"${_describePoint(_selectedAnchorPointId!)}" to it.',
+                          ? l10n.connectTapToStart
+                          : l10n.connectTapToFinish(
+                              _describePoint(_selectedAnchorPointId!),
+                            ),
                     ),
                   ),
                 ),

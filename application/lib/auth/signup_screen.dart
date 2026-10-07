@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 
 /// Matches roles.sql's seeded values (`db_schema/roles.sql`) — this is
@@ -35,7 +36,11 @@ class _SignupScreenState extends State<SignupScreen> {
       );
       final user = response.user;
       if (user == null) {
-        setState(() => _error = 'Sign up did not return a user.');
+        if (mounted) {
+          setState(
+            () => _error = AppLocalizations.of(context)!.signupErrorNoUser,
+          );
+        }
         return;
       }
 
@@ -52,16 +57,26 @@ class _SignupScreenState extends State<SignupScreen> {
       } on ApiException catch (e) {
         // Auth account was created even if profile creation failed; surface
         // it but don't block the auth flow itself on the backend being up.
-        setState(
-          () => _error = 'Account created, but profile setup failed: $e',
-        );
+        if (mounted) {
+          setState(
+            () => _error = AppLocalizations.of(
+              context,
+            )!.signupErrorProfileSetupFailed(e.toString()),
+          );
+        }
         return;
       }
       // On success, AuthGate's onAuthStateChange listener takes over.
     } on AuthException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = 'Sign up failed: $e');
+      if (mounted) {
+        setState(
+          () => _error = AppLocalizations.of(
+            context,
+          )!.signupErrorSignUpFailed(e.toString()),
+        );
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -77,8 +92,9 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Sign up')),
+      appBar: AppBar(title: Text(l10n.signupTitle)),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
@@ -86,21 +102,21 @@ class _SignupScreenState extends State<SignupScreen> {
           children: [
             TextField(
               controller: _fullNameController,
-              decoration: const InputDecoration(
-                labelText: 'Full name (optional)',
+              decoration: InputDecoration(
+                labelText: l10n.signupFullNameOptional,
               ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email'),
+              decoration: InputDecoration(labelText: l10n.loginEmailLabel),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password'),
+              decoration: InputDecoration(labelText: l10n.loginPasswordLabel),
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
@@ -115,7 +131,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Sign up'),
+                  : Text(l10n.signupButton),
             ),
           ],
         ),

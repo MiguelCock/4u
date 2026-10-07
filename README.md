@@ -225,7 +225,7 @@ cd application && flutter test && flutter analyze
 ### 7. Manual end-to-end walkthrough
 
 1. **Sign up** in the app (creates a Supabase Auth user, then a `profiles` row via `backend-user-management`'s `POST /profiles` with `role_id: 1`).
-2. **Promote to admin**: in Supabase, `UPDATE profiles SET role_id = 2 WHERE id = '<the new user's auth id>';` — there's no in-app admin-invite flow yet. Log out and back in.
+2. **Promote to admin**: for the very first admin on a fresh project, in Supabase: `UPDATE profiles SET role_id = 2 WHERE id = '<the new user's auth id>';` (#95 - an in-app flow can't bootstrap the first admin, since there's no admin yet to grant it). Log out and back in. Any *subsequent* admin can instead be promoted from the app itself: sign in as this admin, open the drawer's **Users** tab, and tap **Promote to admin** on their row.
 3. **Capture two anchor points** from the admin screen — if you didn't already create a place/building via SQL in step 2, use the app bar's **Add place** then **Add building** first. Take a photo, pick the building, submit; do this twice in the same building. Open each from **Anchor points** and set its status to **verified** (this both indexes it into Qdrant and is required for the picker in step 6 - unverified points aren't offered as trip start/end choices).
 4. **Connect the two anchor points**: from the drawer, open **Connections** → **Connect on map**, tap one anchor point then the other. This writes an `anchor_point_connections` row - without it, step 6's trip has no walkable path between the two points and `find_or_create` 404s.
 5. **Sign up a second, regular user** and log in as them.

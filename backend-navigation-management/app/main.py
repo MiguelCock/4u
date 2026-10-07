@@ -100,6 +100,21 @@ async def update_session(
     return result.data
 
 
+@app.delete("/sessions/{id}")
+async def delete_session(id: str, caller_id: str = Depends(get_caller_id)):
+    if not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
+    # user_feedback.session_id has no ON DELETE action (db_schema/user_feedback.sql),
+    # so it must be detached (keeping the comment, just orphaning the link) before the
+    # session delete, or that delete would fail on the FK. navigation_logs.session_id
+    # cascades automatically (ON DELETE CASCADE) - nothing to do for those.
+    db.client.table("user_feedback").update({"session_id": None}).eq(
+        "session_id", id
+    ).execute()
+    db.client.table("navigation_sessions").delete().eq("id", id).execute()
+    return "ok"
+
+
 @app.post("/logs")
 async def create_log(log: NavigationLogCreate, caller_id: str = Depends(get_caller_id)):
     owner_id = _session_owner(log.session_id)

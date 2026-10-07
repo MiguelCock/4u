@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import 'location_picker_screen.dart';
@@ -63,7 +64,9 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     final lng = double.tryParse(_lngController.text.trim());
     if (code.isEmpty || name.isEmpty || lat == null || lng == null) {
       setState(
-        () => _error = 'Code, name, latitude and longitude are required.',
+        () => _error = AppLocalizations.of(
+          context,
+        )!.commonErrorCodeNameLatLngRequired,
       );
       return;
     }
@@ -84,7 +87,11 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      setState(() => _error = 'Failed to save place: $e');
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.addPlaceErrorSaveFailed(e.toString()),
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -102,8 +109,9 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Add place')),
+      appBar: AppBar(title: Text(l10n.addPlaceTitle)),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -112,24 +120,22 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
             children: [
               TextField(
                 controller: _codeController,
-                decoration: const InputDecoration(labelText: 'Code'),
+                decoration: InputDecoration(labelText: l10n.commonCode),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Name'),
+                decoration: InputDecoration(labelText: l10n.commonName),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _addressController,
-                decoration: const InputDecoration(
-                  labelText: 'Address (optional)',
-                ),
+                decoration: InputDecoration(labelText: l10n.commonAddress),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _latController,
-                decoration: const InputDecoration(labelText: 'Latitude'),
+                decoration: InputDecoration(labelText: l10n.commonLatitude),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                   signed: true,
@@ -138,7 +144,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: _lngController,
-                decoration: const InputDecoration(labelText: 'Longitude'),
+                decoration: InputDecoration(labelText: l10n.commonLongitude),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                   signed: true,
@@ -148,7 +154,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
               OutlinedButton.icon(
                 onPressed: _pickOnMap,
                 icon: const Icon(Icons.map),
-                label: const Text('Pick on map'),
+                label: Text(l10n.commonPickOnMap),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
@@ -163,7 +169,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Save place'),
+                    : Text(l10n.addPlaceSaveButton),
               ),
             ],
           ),

@@ -5,6 +5,7 @@ import 'package:flutter_compass/flutter_compass.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:path/path.dart' as path;
+import 'l10n/app_localizations.dart';
 import 'services/api_service.dart';
 import 'services/location_service.dart';
 
@@ -23,6 +24,12 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
   StreamSubscription<CompassEvent>? _compassSubscription;
   double? _liveHeading;
 
+  /// Set on permission denial or any camera init failure, so build() can
+  /// show a real error with a recovery action instead of an infinite
+  /// spinner forever (#84).
+  String? _error;
+  bool _permissionPermanentlyDenied = false;
+
   @override
   void initState() {
     super.initState();
@@ -32,11 +39,6 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
     );
     _compassSubscription = FlutterCompass.events?.listen((event) {
       if (mounted) {
-        // `heading` is what the Android plugin actually computes from the
-        // device's sensors - `headingForCameraMode` is a real iOS feature
-        // but the Android implementation never populates it (stays 0.0,
-        // not null, so `??` never falls through) and this app is
-        // Android-only today (no ios/ directory in the repo).
         setState(
           () => _liveHeading = event.heading ?? event.headingForCameraMode,
         );
@@ -45,8 +47,17 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
   }
 
   Future<void> _initCamera() async {
-    if (await Permission.camera.request() != PermissionStatus.granted) {
-      // print('Camera permission denied');
+    setState(() {
+      _error = null;
+      _permissionPermanentlyDenied = false;
+    });
+    final status = await Permission.camera.request();
+    if (status != PermissionStatus.granted) {
+      if (!mounted) return;
+      setState(() {
+        _error = AppLocalizations.of(context)!.cameraPermissionDeniedError;
+        _permissionPermanentlyDenied = status.isPermanentlyDenied;
+      });
       return;
     }
     try {
@@ -58,9 +69,14 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
       );
       _initializeFuture = _controller!.initialize();
       await _initializeFuture;
-      setState(() {});
+      if (mounted) setState(() {});
     } catch (e) {
-      // print('Camera init error: $e');
+      if (!mounted) return;
+      setState(
+        () => _error = AppLocalizations.of(
+          context,
+        )!.cameraUnavailableError(e.toString()),
+      );
     }
   }
 
@@ -73,7 +89,11 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
       if (position == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location not available')),
+            SnackBar(
+              content: Text(
+                AppLocalizations.of(context)!.cameraLocationNotAvailable,
+              ),
+            ),
           );
         }
         return;
@@ -107,21 +127,35 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Photo uploaded!')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.cameraPhotoUploaded),
+          ),
+        );
       }
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: ${e.statusCode}')),
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(
+                context,
+              )!.cameraUploadFailedStatus(e.statusCode),
+            ),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(
+                context,
+              )!.cameraUnavailableError(e.toString()),
+            ),
+          ),
+        );
       }
     }
   }
@@ -136,6 +170,36 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: _permissionPermanentlyDenied
+                    ? openAppSettings
+                    : _initCamera,
+                child: Text(
+                  _permissionPermanentlyDenied
+                      ? l10n.commonOpenSettings
+                      : l10n.commonTryAgain,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (_controller == null || !_controller!.value.isInitialized) {
       return const Center(child: CircularProgressIndicator());
     }
