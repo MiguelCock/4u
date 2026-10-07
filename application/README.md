@@ -4,7 +4,7 @@ Flutter mobile app for the GPS positioning correction system — a single codeba
 
 ## Setup
 
-For the full multi-service setup (Supabase project, schema, Storage buckets, running all 5 backend services), see the root [README.md's **Local Setup & End-to-End Testing**](../README.md#local-setup--end-to-end-testing) section. This section covers just the app's own `.env`.
+For the full multi-service setup (Supabase project, schema, Storage buckets, running all 7 backend services), see [`docs/SETUP.md`](../docs/SETUP.md). This section covers just the app's own `.env`.
 
 ```bash
 cp .env.example .env   # fill in every value below
