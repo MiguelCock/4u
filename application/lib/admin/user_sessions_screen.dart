@@ -44,6 +44,7 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
   late List<Map<String, dynamic>> _sessions;
   Map<String, Map<String, dynamic>> _routesById = {};
   bool _loadingRoutes = true;
+  Map<String, List<Map<String, dynamic>>> _feedbackBySessionId = {};
 
   @override
   void initState() {
@@ -55,6 +56,7 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
         ),
       );
     _loadRoutes();
+    _loadFeedback();
   }
 
   Future<void> _loadRoutes() async {
@@ -71,6 +73,68 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
       // block showing the sessions themselves.
       if (mounted) setState(() => _loadingRoutes = false);
     }
+  }
+
+  /// Fetches every comment (admin-only `GET /feedback`, fetch-all-filter-
+  /// client-side like everywhere else in this app) and groups the
+  /// non-empty ones by session_id, scoped to this user's sessions. A
+  /// failed fetch just means no comment badges show - not required to
+  /// review the sessions themselves.
+  Future<void> _loadFeedback() async {
+    try {
+      final result = await _navigationApi.get('/feedback');
+      final feedback = (result as List? ?? []).cast<Map<String, dynamic>>();
+      final sessionIds = _sessions.map((s) => s['id'] as String).toSet();
+      final bySession = <String, List<Map<String, dynamic>>>{};
+      for (final f in feedback) {
+        final sessionId = f['session_id'] as String?;
+        final comment = f['comment'] as String?;
+        if (sessionId == null ||
+            comment == null ||
+            comment.trim().isEmpty ||
+            !sessionIds.contains(sessionId)) {
+          continue;
+        }
+        bySession.putIfAbsent(sessionId, () => []).add(f);
+      }
+      if (!mounted) return;
+      setState(() => _feedbackBySessionId = bySession);
+    } on ApiException {
+      // Comment badges are a nice-to-have - a failed fetch shouldn't block
+      // showing the sessions themselves.
+    }
+  }
+
+  void _showFeedback(List<Map<String, dynamic>> comments) {
+    final l10n = AppLocalizations.of(context)!;
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.userSessionsFeedbackDialogTitle),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final comment in comments) ...[
+                Text(comment['comment'] as String? ?? ''),
+                Text(
+                  comment['created_at'] as String? ?? '',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                if (comment != comments.last) const Divider(),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(l10n.commonCancel),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool> _confirmDelete() async {
@@ -129,6 +193,7 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
                 final routeName = _loadingRoutes || routeId == null
                     ? null
                     : _routesById[routeId]?['name'] as String?;
+                final comments = _feedbackBySessionId[session['id']];
                 return ListTile(
                   leading: Icon(
                     Icons.my_location,
@@ -158,6 +223,12 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
                         },
                         child: Text(l10n.userSessionsWatchButton),
                       ),
+                      if (comments != null && comments.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.comment_outlined),
+                          tooltip: l10n.userSessionsFeedbackTooltip,
+                          onPressed: () => _showFeedback(comments),
+                        ),
                       IconButton(
                         icon: const Icon(Icons.delete_outline),
                         tooltip: l10n.commonDelete,

@@ -17,7 +17,13 @@ import 'settings_screen.dart';
 /// point nearest their current GPS fix, Uber-pickup-pin style, rather than
 /// making them pick both ends.
 class UserHomeScreen extends StatefulWidget {
-  const UserHomeScreen({super.key});
+  /// True when reached via AdminHomeScreen's "Test as user" drawer entry
+  /// (#79) - purely cosmetic (shows a banner so an admin can't mistake this
+  /// for a second real account), no behavior change: nothing downstream of
+  /// here (this screen, NavigationScreen, the feedback dialog) checks role.
+  final bool adminPreview;
+
+  const UserHomeScreen({super.key, this.adminPreview = false});
 
   @override
   State<UserHomeScreen> createState() => _UserHomeScreenState();
@@ -163,6 +169,19 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            if (widget.adminPreview)
+              Container(
+                width: double.infinity,
+                color: Colors.amber.shade100,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Text(
+                  l10n.adminPreviewBanner,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
             ListTile(
               leading: const Icon(
                 Icons.radio_button_checked,

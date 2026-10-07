@@ -364,5 +364,16 @@
   "@userSessionsSessionLabel": {"placeholders": {"id": {"type": "String"}}},
   "userSessionsSubtitle": "Status: {status} · Started {time}{routeSuffix}",
   "@userSessionsSubtitle": {"placeholders": {"status": {"type": "String"}, "time": {"type": "String"}, "routeSuffix": {"type": "String"}}},
-  "userSessionsWatchButton": "Watch"
+  "userSessionsWatchButton": "Watch",
+
+  "adminTestAsUser": "Test as user",
+  "adminPreviewBanner": "Admin preview - testing the user flow",
+
+  "userSessionsFeedbackTooltip": "View comment",
+  "userSessionsFeedbackDialogTitle": "Comment",
+  "feedbackScreenTitle": "Feedback",
+  "feedbackEmpty": "No feedback yet.",
+  "feedbackErrorLoadFailed": "Failed to load feedback: {error}",
+  "@feedbackErrorLoadFailed": {"placeholders": {"error": {"type": "String"}}},
+  "feedbackSessionDeleted": "Session deleted"
 }

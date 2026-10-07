@@ -285,5 +285,15 @@
   "userSessionsDeleteContent": "Esto también eliminará su historial de GPS registrado. Esto no se puede deshacer.",
   "userSessionsSessionLabel": "Sesión {id}",
   "userSessionsSubtitle": "Estado: {status} · Iniciada {time}{routeSuffix}",
-  "userSessionsWatchButton": "Ver"
+  "userSessionsWatchButton": "Ver",
+
+  "adminTestAsUser": "Probar como usuario",
+  "adminPreviewBanner": "Vista previa de administrador - probando el flujo de usuario",
+
+  "userSessionsFeedbackTooltip": "Ver comentario",
+  "userSessionsFeedbackDialogTitle": "Comentario",
+  "feedbackScreenTitle": "Comentarios",
+  "feedbackEmpty": "Todavía no hay comentarios.",
+  "feedbackErrorLoadFailed": "Error al cargar los comentarios: {error}",
+  "feedbackSessionDeleted": "Sesión eliminada"
 }
