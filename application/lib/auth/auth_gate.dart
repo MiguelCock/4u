@@ -14,12 +14,17 @@ const int kAdminRoleId = 2;
 /// Shows LoginScreen when signed out; when signed in, fetches the user's
 /// profile from backend-user-management to decide which role's home screen
 /// to show. A 404 (no profile row - e.g. signup's POST /profiles call
-/// failed) is treated as "not an admin" and falls back to the `user` home
-/// screen, same as before. Anything else that goes wrong (backend
-/// unreachable, a non-404 error response, a hung connection) shows a
-/// distinct error screen with a retry action instead - silently landing on
-/// the user home screen for a real failure masked a real backend outage as
-/// what looked like a login bug (see #114/#115).
+/// failed after the Supabase Auth account was already created, since
+/// there's no compensating transaction between the two - see
+/// signup_screen.dart) self-heals by creating the missing row right here,
+/// rather than just working around its absence - a real production
+/// account was once left stuck with no profile at all (no Settings access,
+/// couldn't be promoted to admin) until this existed. Anything else that
+/// goes wrong (backend unreachable, a non-404 error response, a hung
+/// connection, or the self-heal POST itself failing) shows a distinct
+/// error screen with a retry action instead - silently landing on the user
+/// home screen for a real failure masked a real backend outage as what
+/// looked like a login bug (see #114/#115).
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
@@ -38,30 +43,39 @@ class _AuthGateState extends State<AuthGate> {
       final result = await _userApi
           .get('/profiles/$userId')
           .timeout(const Duration(seconds: 10));
-      if (result is Map<String, dynamic>) {
-        // Resolves after an await, outside any widget's build() call stack -
-        // safe to mutate a ValueNotifier an ancestor listens to here, unlike
-        // doing it synchronously inside build() (which would trip a
-        // "setState called during build" assertion on MainApp's
-        // ValueListenableBuilder while this subtree is still building).
-        if (mounted) {
-          applyPreferences(
-            result['preferences'] as Map<String, dynamic>?,
-            defaultHighContrast: MediaQuery.of(context).highContrast,
-            defaultTextScale: MediaQuery.of(context).textScaler.scale(1.0),
-          );
-        }
-        return result;
-      }
+      if (result is Map<String, dynamic>) return _applyAndReturn(result);
       return null;
     } on ApiException catch (e) {
-      // No profile row isn't a failed round-trip - treat it the same as
-      // "not an admin" (today's correct behavior). Anything else (5xx,
-      // etc.) is a real failure and should propagate to FutureBuilder's
-      // hasError instead of being swallowed here.
-      if (e.statusCode == 404) return null;
-      rethrow;
+      // Anything but a missing row (5xx, etc.) is a real failure and
+      // should propagate to FutureBuilder's hasError instead of being
+      // swallowed here.
+      if (e.statusCode != 404) rethrow;
     }
+    // No profile row - self-heal it now rather than just working around
+    // its absence. id/role_id are forced server-side to this verified
+    // caller / the default `user` role regardless of what's sent (see
+    // backend-user-management's create_profile), so an empty body is
+    // enough. If this also fails (e.g. a rare race with another self-heal
+    // attempt), let it propagate the same way a GET failure would.
+    final created = await _userApi.post('/profiles', {});
+    final row = (created as List).first as Map<String, dynamic>;
+    return _applyAndReturn(row);
+  }
+
+  /// Resolves after an await, outside any widget's build() call stack -
+  /// safe to mutate a ValueNotifier an ancestor listens to here, unlike
+  /// doing it synchronously inside build() (which would trip a "setState
+  /// called during build" assertion on MainApp's ValueListenableBuilder
+  /// while this subtree is still building).
+  Map<String, dynamic> _applyAndReturn(Map<String, dynamic> result) {
+    if (mounted) {
+      applyPreferences(
+        result['preferences'] as Map<String, dynamic>?,
+        defaultHighContrast: MediaQuery.of(context).highContrast,
+        defaultTextScale: MediaQuery.of(context).textScaler.scale(1.0),
+      );
+    }
+    return result;
   }
 
   void _retry(String userId) {
