@@ -79,7 +79,7 @@ flutter analyze
 ## Known gaps
 
 - The building dropdown in the admin capture screen is empty until at least one `buildings` row exists — use the app bar's **Add building** (and **Add place** first, if needed) rather than seeding it in Supabase by hand.
-- `AuthGate` falls back to the `user` home screen if the `profiles` fetch fails for any reason (backend down, profile row missing) rather than showing an explicit error state.
+- `AuthGate` self-heals a missing `profiles` row (creates one on the spot) but still shows a generic error+retry screen for any other backend failure, rather than a more specific message per failure mode.
 - Navigation logs only raw GPS — there's no visual-correction pipeline anywhere in the repo yet (see `backend-ai-training/CLAUDE.md`), so `corrected_lat`/`corrected_long`/`anchor_match_id`/`confidence_score` are never populated.
 - A route needs `building_id`/`start_anchor_id`/`end_anchor_id` already pointing at real rows for navigation to make sense — nothing in the app validates this before starting a session.
 
