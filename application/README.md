@@ -4,10 +4,19 @@ Flutter mobile app for the GPS positioning correction system — a single codeba
 
 ## Setup
 
+For the full multi-service setup (Supabase project, schema, Storage buckets, running all 7 backend services), see [`docs/SETUP.md`](../docs/SETUP.md). This section covers just the app's own `.env`.
+
 ```bash
-cp .env.example .env   # fill in BACKEND_URL
+cp .env.example .env   # fill in every value below
 flutter pub get
 ```
+
+`.env` needs:
+
+| Variable | Purpose |
+|---|---|
+| `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` | Supabase Auth (login/signup) — same project the backend services use |
+| `API_GATEWAY_URL` | Base URL of the API gateway in front of all 5 backend services (see root README) — each service is reached at its own path prefix (`/data-collection`, `/map`, `/route`, `/user`, `/navigation`) |
 
 Camera and location permissions are declared in `android/app/src/main/AndroidManifest.xml`.
 
@@ -17,15 +26,19 @@ Camera and location permissions are declared in `android/app/src/main/AndroidMan
 flutter run
 ```
 
-Currently `lib/main.dart` shows all functionality on a single screen — live location info, a camera preview with a capture button, and a map centered on the device's current position — rather than separate `user`/`admin` screens/navigation.
+On start, the app loads `.env`, initializes the Supabase Auth client, then shows `AuthGate`: a login/signup screen if signed out, or the role-appropriate home screen (`UserHomeScreen`/`AdminHomeScreen`, from `backend-user-management`'s `profiles.role_id`) if signed in.
 
 ### Manual usage
 
-1. Launch the app on a device or emulator with location services enabled.
-2. Grant location and camera permissions when prompted.
+> For a full admin walkthrough (adding places, buildings, anchor points, photos, verification, and connections), see [`docs/admin-guide/`](../docs/admin-guide/README.md) — the steps below are a quick developer smoke test, not the full admin flow.
+
+1. Launch the app. If not signed in, use **Sign up** (creates a Supabase Auth account, then a matching `profiles` row via `backend-user-management`'s `POST /profiles` — defaults to the `user` role) or **Log in**.
+2. Once signed in as `user`, you land on the original single-screen prototype: live location info, a camera preview with a capture button, and a map centered on the device's current position.
 3. The top panel shows the live GPS fix (lat/lng/accuracy), updating as `LocationService` streams new positions.
 4. The map panel re-centers on each position update.
-5. Tap the camera button to take a photo; it's uploaded (multipart: file field `photo`, plus `latitude`/`longitude`/`accuracy` form fields) to the backend URL hardcoded in `lib/camera.dart` — see the **Known gaps** note below before expecting this to reach your local backend.
+5. Tap the camera button to take a photo; it's uploaded (multipart: file field `image`, plus `latitude`/`longitude`/`accuracy` form fields) via `DataCollectionApi` to the gateway's `/data-collection/upload`.
+6. Tap **Navigate** to see the route list (via the gateway's `/route`) and start one — this creates a navigation session (`/navigation`), logs your raw GPS position every 5 seconds while the screen is open, and lets you end the session and leave optional feedback.
+7. Signing in as `admin` (a profile with `role_id: 2`, set by hand in Supabase for now — there's no admin-invite flow) shows a list of captured anchor points and a button to capture a new one: take a photo, pick a building and location type, optionally describe it, and save — this uploads the photo to `backend-map-management` and creates the `anchor_points` row with your account as `captured_by`. The app bar's menu also has **Add place** / **Add building**, so a place and building can be created from the app first if none exist yet.
 
 ### Running on a physical device (ADB)
 
@@ -61,12 +74,14 @@ flutter test
 flutter analyze
 ```
 
-`test/widget_test.dart` is currently just a sanity smoke test so CI has something to run — add real widget/unit tests alongside new widgets/services.
+`test/widget_test.dart` is currently just a sanity smoke test so CI has something to run — add real widget/unit tests alongside new widgets/services. CI copies `.env.example` to `.env` before running tests, since `pubspec.yaml` declares `.env` as an asset (`flutter_dotenv`) and Flutter's asset bundling needs the file to exist even with placeholder values.
 
 ## Known gaps
 
-- `lib/camera.dart`'s upload call is hardcoded to `http://10.10.79.249:3000/upload` instead of reading `BACKEND_URL` from `.env` — update it to point at whichever backend service you're running (`backend-data-collection` by default) before testing photo upload end-to-end.
-- No role-based (`user` vs `admin`) navigation exists yet.
+- The building dropdown in the admin capture screen is empty until at least one `buildings` row exists — use the app bar's **Add building** (and **Add place** first, if needed) rather than seeding it in Supabase by hand.
+- `AuthGate` falls back to the `user` home screen if the `profiles` fetch fails for any reason (backend down, profile row missing) rather than showing an explicit error state.
+- Navigation logs only raw GPS — there's no visual-correction pipeline anywhere in the repo yet (see `backend-ai-training/CLAUDE.md`), so `corrected_lat`/`corrected_long`/`anchor_match_id`/`confidence_score` are never populated.
+- A route needs `building_id`/`start_anchor_id`/`end_anchor_id` already pointing at real rows for navigation to make sense — nothing in the app validates this before starting a session.
 
 ## Keeping dependencies up to date
 

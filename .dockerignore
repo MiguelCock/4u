@@ -1,0 +1,9 @@
+.git
+**/.venv
+**/__pycache__
+**/*.pyc
+application
+db_schema
+**/build
+**/.dart_tool
+**/node_modules

@@ -1,0 +1,81 @@
+name: Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.33.0) - required for a manual run, since there is no tag ref to infer it from'
+        required: true
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: application
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: 'stable'
+
+      # Real values, unlike ci.yml's test job - this build is the actual
+      # artifact real testers install, so flutter_dotenv needs to bundle the
+      # real gateway/Supabase config (see pubspec.yaml's assets: [.env]).
+      # SUPABASE_URL/SUPABASE_PUBLISHABLE_KEY already exist as repo secrets
+      # (packages' live-connectivity tests use them too). API_GATEWAY_URL is
+      # a repo *variable*, not a secret - it's just a public HTTPS URL.
+      - name: Write real .env
+        run: |
+          {
+            echo "API_GATEWAY_URL=${{ vars.API_GATEWAY_URL }}"
+            echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}"
+            echo "SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}"
+          } > .env
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      # See application/android/app/build.gradle.kts - signingConfigs falls
+      # back to debug signing when key.properties doesn't exist, so this is
+      # what turns that on for a real, release-signed build. The keystore
+      # itself is never committed or generated here - it's a one-time local
+      # `keytool` output the repo owner base64-encoded into this secret.
+      # key.properties must live at android/ (rootProject.file("key.properties")
+      # in build.gradle.kts) - storeFile is written as an absolute path so it
+      # resolves correctly regardless of which project dir Gradle's file()
+      # evaluates it against.
+      - name: Write release signing config
+        working-directory: application/android/app
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+          {
+            echo "storeFile=$(pwd)/release.keystore"
+            echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+            echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}"
+            echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}"
+          } > ../key.properties
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Remove signing material
+        if: always()
+        working-directory: application/android
+        run: rm -f app/release.keystore key.properties
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: application/build/app/outputs/flutter-apk/app-release.apk
+          generate_release_notes: true

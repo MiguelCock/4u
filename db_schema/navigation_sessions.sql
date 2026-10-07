@@ -1,4 +1,4 @@
-navigation_sessions (
+CREATE TABLE navigation_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     building_id UUID NOT NULL REFERENCES buildings(id),
@@ -10,7 +10,7 @@ navigation_sessions (
     end_position JSONB,
     device_info JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
-)
+);
 
 -- Indexes
 CREATE INDEX idx_navigation_sessions_user ON navigation_sessions (user_id);

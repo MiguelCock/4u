@@ -4,9 +4,24 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'services/location_service.dart';
+import 'services/map_tile_config.dart';
 
 class SimpleMapWidget extends StatefulWidget {
-  const SimpleMapWidget({super.key});
+  /// Extra markers layered on top of the live-GPS marker below, e.g. a
+  /// corrected-position pin from NavigationScreen. Empty for every other
+  /// call site, so this is purely additive.
+  final List<Marker> extraMarkers;
+
+  /// The planned route's anchor points, in order, drawn as a line under
+  /// the markers - e.g. NavigationScreen's turn-by-turn guidance line.
+  /// Empty for every other call site, so this is purely additive too.
+  final List<LatLng> plannedPath;
+
+  const SimpleMapWidget({
+    super.key,
+    this.extraMarkers = const [],
+    this.plannedPath = const [],
+  });
 
   @override
   State<SimpleMapWidget> createState() => _SimpleMapWidgetState();
@@ -46,9 +61,19 @@ class _SimpleMapWidgetState extends State<SimpleMapWidget> {
       options: MapOptions(initialCenter: _position, initialZoom: 13),
       children: [
         TileLayer(
-          urlTemplate: 'https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.example.application',
+          urlTemplate: kMapTileUrlTemplate,
+          userAgentPackageName: kMapUserAgentPackageName,
         ),
+        if (widget.plannedPath.length > 1)
+          PolylineLayer(
+            polylines: [
+              Polyline(
+                points: widget.plannedPath,
+                strokeWidth: 4,
+                color: Colors.blueGrey,
+              ),
+            ],
+          ),
         MarkerLayer(
           markers: [
             Marker(
@@ -61,6 +86,7 @@ class _SimpleMapWidgetState extends State<SimpleMapWidget> {
                 size: 40,
               ),
             ),
+            ...widget.extraMarkers,
           ],
         ),
       ],

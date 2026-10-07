@@ -1,4 +1,4 @@
-profiles (
+CREATE TABLE profiles (
     id UUID PRIMARY KEY DEFAULT auth.uid(),
     place_id UUID REFERENCES places(id),
     role_id SMALLINT REFERENCES roles(id),
@@ -9,4 +9,4 @@ profiles (
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
-)
+);

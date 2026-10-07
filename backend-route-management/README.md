@@ -7,7 +7,7 @@ Built following the [uv + FastAPI guide](https://docs.astral.sh/uv/guides/integr
 ## Setup
 
 ```bash
-cp .env.example .env   # fill in SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY
+cp .env.example .env   # fill in SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
 uv sync
 ```
 
@@ -20,8 +20,9 @@ uv run fastapi dev             # http://localhost:8000, auto-reload
 Or with Docker:
 
 ```bash
-docker build -t backend-route-management .
-docker run -p 8000:80 --env-file .env backend-route-management
+cd ..
+docker build -f backend-route-management/Dockerfile -t backend-route-management .
+docker run -p 8000:80 --env-file backend-route-management/.env backend-route-management
 ```
 
 ## API / manual usage
@@ -63,6 +64,3 @@ uv run pytest
 
 `tests/conftest.py` sets dummy Supabase env vars so the test suite doesn't need real credentials or network access. Only `GET /` is currently exercised for real — the other endpoints hit Supabase at request time.
 
-## Known issue
-
-`db_schema/routes.sql` (repo root) currently contains a copy-paste of `anchor_points.sql` rather than an actual `routes` table definition, and the `RouteCreate`/`RouteResponse` models here are a best-guess shape, not derived from a real schema. Fix the schema and reconcile it with these models before pointing this service at a real database.

@@ -7,7 +7,7 @@ Built following the [uv + FastAPI guide](https://docs.astral.sh/uv/guides/integr
 ## Setup
 
 ```bash
-cp .env.example .env   # fill in SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY
+cp .env.example .env   # fill in SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
 uv sync
 ```
 
@@ -20,8 +20,9 @@ uv run fastapi dev             # http://localhost:8000, auto-reload
 Or with Docker:
 
 ```bash
-docker build -t backend-navigation-management .
-docker run -p 8000:80 --env-file .env backend-navigation-management
+cd ..
+docker build -f backend-navigation-management/Dockerfile -t backend-navigation-management .
+docker run -p 8000:80 --env-file backend-navigation-management/.env backend-navigation-management
 ```
 
 ## API / manual usage
@@ -82,5 +83,5 @@ uv run pytest
 ## Known limitations
 
 - This is CRUD-stub level: no auth check, no validation that `user_id`/`building_id`/`route_id`/`anchor_match_id` actually reference existing rows (Postgres FK constraints will reject bad ids, but this service doesn't check first or return a friendly error).
-- Nothing populates `NavigationLogCreate.corrected_lat`/`corrected_long`/`correction_error`/`anchor_match_id`/`confidence_score` today — those fields exist because `db_schema/navigation_logs.sql` has columns for the real-time visual-correction pipeline (OpenCV → PyTorch embedding → Qdrant search → Kalman filter) described in the root `README.md`, but that pipeline isn't implemented anywhere in the repo yet. This service only gives that future pipeline somewhere to write its output — it doesn't compute anything itself.
+- Nothing populates `NavigationLogCreate.corrected_lat`/`corrected_long`/`correction_error`/`anchor_match_id`/`confidence_score` today — not because the pipeline doesn't exist (it does now, see `backend-positioning`), but because `application/lib/user/navigation_screen.dart` doesn't call `backend-positioning`'s `POST /correct_position` yet and so has nothing to pass through. Those columns exist in `db_schema/navigation_logs.sql` for exactly this purpose, shaped to match `/correct_position`'s response directly. This service only gives that pipeline somewhere to write its output — it doesn't compute anything itself.
 - See `CLAUDE.md` in this directory for how this service's tables connect to every other service.

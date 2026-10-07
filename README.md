@@ -1,280 +1,86 @@
-to allow conection from the front end to collect the data in my machine
+# 4u
 
-```bash
-sudo ufw disable
-```
+GPS positioning correction for assisted navigation of visually impaired people on university campuses — no extra hardware, just a phone.
 
-to create the common forlder for the mono repo follow this tutorial [https://medium.com/@life-is-short-so-enjoy-it/python-monorepo-with-uv-f4ced6f1f425](link)
+## About
 
-uv init py-zcommonlib --lib
+Raw GPS is usually accurate to 5-20 meters, which isn't tight enough to safely guide someone who can't see the path in front of them. Dedicated indoor-positioning hardware (BLE beacons, LIDAR) can close that gap, but it's expensive to install and maintain across an entire campus.
 
+4u takes a different approach: an admin walks the campus once, photographing landmark "anchor points" (entrances, intersections, elevators, etc.) with their exact coordinates. From then on, when a user is navigating, their phone's live photo is matched against that anchor-point database using a visual embedding model, and the match is fused with the phone's raw GPS via a Kalman filter to produce a corrected position — typically under 5 meters of error, using hardware everyone already carries.
 
-# Project Definition: GPS Positioning Correction System using AI for Visually Impaired Navigation Assistance
+## Features
 
----
+- **Visual GPS correction** — matches a live photo against indexed anchor-point photos (EfficientNet-B0 embeddings + Qdrant similarity search) and fuses the match with raw GPS via an Unscented Kalman filter.
+- **Trip planning & navigation** — pick a destination, get an auto-computed route over admin-built walkability connections, and follow a live guidance line on the map while navigating.
+- **Admin anchor-point tooling** — capture photos + coordinates, review and verify submissions, build the walkability graph between points, and manage the places/buildings hierarchy — all from the app.
+- **Session review** — browse every user's past navigation sessions grouped by user, re-watch a session's logged trail against its planned route, and read the feedback comments they left.
+- **Admin "test as user"** — run the full trip-planning → navigation → feedback flow on your own admin account, no second test account needed.
+- **Accessibility settings** — high contrast, adjustable text size, and a fully localized UI (English/Spanish).
 
-## Objective
+## Architecture
 
-Develop an assisted navigation system for visually impaired individuals in university environments that **corrects GPS error** (currently 5 to 20 meters) using **computer vision and artificial intelligence**, without requiring additional physical infrastructure (BLE beacons, LIDAR sensors, etc.). The system runs on the user's smartphone and cloud servers, using a hybrid approach that combines **machine learning (visual feature extraction)** and **statistical filtering (Kalman Filter)**.
+A Python/Dart monorepo: a single Flutter app (serving both a `user` and an `admin` role) talks to seven independent FastAPI microservices through one API gateway, backed by Supabase (Postgres + Storage) and Qdrant (vector search).
 
----
+| Path | What it is |
+|---|---|
+| [`application/`](application/README.md) | The Flutter mobile app — both roles, one codebase. |
+| [`backend-data-collection/`](backend-data-collection/CLAUDE.md) | Receives raw walk photos + GPS from the app. |
+| [`backend-map-management/`](backend-map-management/CLAUDE.md) | Admin CRUD: places, buildings, anchor points, connections. |
+| [`backend-route-management/`](backend-route-management/CLAUDE.md) | Computes and stores navigation routes. |
+| [`backend-user-management/`](backend-user-management/CLAUDE.md) | Profiles, roles, preferences. |
+| [`backend-navigation-management/`](backend-navigation-management/CLAUDE.md) | Navigation sessions, GPS/correction logs, feedback. |
+| [`backend-ai-training/`](backend-ai-training/CLAUDE.md) | Embedding extraction + Qdrant indexing/search. |
+| [`backend-positioning/`](backend-positioning/CLAUDE.md) | Fuses GPS + a visual match into a corrected position. |
+| [`packages/`](packages/) | Shared Python library (DB/vector-store clients, auth). |
+| [`db_schema/`](db_schema/) | Hand-maintained Postgres table definitions. |
+| [`gateway/`](gateway/) | The nginx reverse proxy every client talks to. |
+| [`deployment/phase1-ec2/`](deployment/phase1-ec2/README.md) | Scripts for the live EC2 deployment. |
 
-## Technical and Scientific Justification
-
-- **GPS Limitation:** In urban environments and near buildings, GPS has errors of up to 20 meters, insufficient to safely guide a visually impaired person.
-
-- **Costly Physical Infrastructure:** Solutions like Lazarillo and Evelity require BLE beacons (hundreds per building), with high installation and maintenance costs. Our proposal eliminates this need.
-
-- **Scientific Support:** The literature (Zhuang et al., 2023) validates that sensor fusion (GPS + camera + IMU) with machine learning methods outperforms traditional approaches. Computer vision models (YOLO, CNNs) already achieve >83% accuracy in real-time (Ben Attallah et al., 2023).
-
-- **Feasibility:** The user's smartphone is the only required hardware. Heavy processing (AI) is delegated to servers, keeping the app lightweight and accessible.
-
----
-
-## System Components
-
-### Single Mobile Application (Flutter)
-
-- **Role-Based Access:** Single codebase with two user roles:
-  - **User Role:** Sends real-time data (photo, GPS, heading, accelerometer/gyroscope) to the server and receives corrected position for guidance.
-  - **Admin Role:** Collects **anchor points** (photos with exact coordinates or ground truth) at strategic campus locations (entrances, intersections, elevators). These points feed the vector database.
-- **Testing:** Flutter testing to ensure frontend quality.
-
-### Backend (Python + FastAPI + uv)
-
-Independent microservices for:
-- Authentication and role management.
-- Data collection and validation.
-- **AI Inference** (real-time).
-- **Model Training** (offline).
-- Route and map management.
-- **Unit and integration tests:** pytest for the backend.
-- **Code formatting:** Black for consistent Python style.
-
-### Storage
-
-- **Supabase (PostgreSQL):** Users, roles, routes, anchor point metadata.
-- **Supabase Storage (S3):** Image storage.
-- **Qdrant (Vector Database):** Stores **embeddings** (visual feature vectors) of anchor points for millisecond similarity search.
-
-### Artificial Intelligence (PyTorch + OpenCV)
-
-- **Feature Extractor:** Pre-trained CNN (e.g., ResNet, EfficientNet) that converts any image into a numerical embedding. Trained **once** with anchor point photos.
-- **Vector Database (Qdrant):** Indexes embeddings and their associated coordinates. During inference, receives the user's photo embedding and returns the coordinate of the most visually similar anchor point.
-- **Kalman Filter:** Fuses in real-time the inertial prediction (IMU), noisy GPS (used only as a geographic filter), and visual correction (anchor point coordinate) to generate a smooth and accurate final position (< 5 meters error).
-
-### Development and CI/CD
-
-- **Version Control:** Git with branch-based workflow (main/develop/features).
-- **Continuous Integration and Delivery (CI/CD):** GitHub Actions to automate testing, formatting, and deployment.
-- **Code Quality:** Black (Python), Dart format (Flutter), and automated tests (pytest for backend, Flutter testing for frontend).
-- **Development Assistant:** Claude Code as a support tool for code writing and review.
-
----
-
-## Data Flow (Real-Time Inference)
-
-1. **User walks:** App sends every 1-2 seconds: photo + GPS + heading + IMU.
-2. **Server (FastAPI):** Receives and authenticates the request.
-3. **OpenCV:** Preprocesses the image (resize, normalize).
-4. **PyTorch:** Extracts the embedding from the image.
-5. **Qdrant:** Searches for the most similar embeddings among anchor points (filtered by geographic proximity using noisy GPS as a filter).
-6. **Qdrant:** Returns the exact coordinate of the most similar anchor point.
-7. **Kalman Filter:** Fuses inertial prediction (IMU), noisy GPS, and visual correction to calculate the corrected position.
-8. **FastAPI:** Returns the corrected coordinate to the App.
-9. **App:** Uses the corrected coordinate to provide safe navigation instructions.
-
----
-
-## Training Process (Offline)
-
-1. **Anchor point collection:** Trained personnel (admin role) walks the campus taking photos at strategic points (entrances, intersections, elevators) with **exact** coordinates (ground truth obtained with high-precision GPS or manual correction on satellite map).
-2. **Storage:** Photo → S3, metadata → Supabase.
-3. **Embedding extraction:** PyTorch processes photos and generates embeddings.
-4. **Indexing in Qdrant:** Embeddings are stored along with their exact coordinates and metadata (building, floor, heading).
-5. **The feature extractor model is trained once** and does not need retraining when adding new points; only new embeddings are indexed in Qdrant.
-
----
-
-## Validation and Evaluation
-
-### Phase 1 (Technical - Laboratory)
-- **Metric:** Positioning error (meters) – compare raw GPS vs. corrected GPS.
-- **Goal:** Reduce error from 20m to < 5m.
-- **Metric:** System latency (< 500ms).
-
-### Phase 2 (Users - Campus)
-- **Metric:** Success rate in completing routes without incidents (> 90%).
-- **Metric:** Usability (System Usability Scale, SUS > 70).
-- **Participants:** Visually impaired users in controlled campus tests.
-
----
-
-## Current Development Status
-
-- **Completed:** App with basic authentication and roles, Supabase connection, photo + metadata upload, structured Git repository, validated conceptual research, initial CI/CD setup (GitHub Actions).
-- **In Progress:** Training pipeline implementation (PyTorch + OpenCV), Qdrant integration, automated tests.
-- **Next:** Proof of concept with one campus building (50-100 anchor points) to validate accuracy improvement.
-
----
-
-## Technology Stack Summary
+## Tech stack
 
 | Layer | Technology |
-|-------|------------|
-| Frontend (single app with roles) | Flutter (Dart) + Flutter Testing |
-| Backend | Python + FastAPI + uv + pytest + Black |
-| Computer Vision | OpenCV |
-| Deep Learning | PyTorch |
-| Vector Database | Qdrant |
-| Relational Database + Storage | Supabase (PostgreSQL + S3) |
-| Version Control | Git |
+|---|---|
+| Mobile app | Flutter (Dart) |
+| Backend | Python, FastAPI, `uv` |
+| Visual embeddings | PyTorch (EfficientNet-B0) |
+| Vector search | Qdrant |
+| Position fusion | Unscented Kalman filter (`filterpy`) |
+| Database & storage | Supabase (Postgres + S3-compatible storage) |
 | CI/CD | GitHub Actions |
-| Development Assistant | Claude Code |
 
+## Quick start
 
----
+```bash
+git clone https://github.com/MiguelCock/4u.git
+cd 4u
 
+# one-time: create a Supabase project, apply db_schema/*.sql, create two
+# Storage buckets, and a Qdrant Cloud (or self-hosted) instance
 
-# Development Schedule in 3 Months  
-## Version for Slide Presentations
+# fill in each backend service's .env from its .env.example, then:
+docker compose up --build
 
----
+cd application
+cp .env.example .env   # fill in Supabase + the gateway URL
+flutter pub get
+flutter run
+```
 
-## MONTH 1: System Foundations  
-*(Weeks 1–4)*
+For the full walkthrough — exact schema order, Storage bucket setup, running every service, and a manual end-to-end test script — see **[`docs/SETUP.md`](docs/SETUP.md)**.
 
-### Week 1 – Infrastructure and Environment
-**Configuration of the technological ecosystem**
-- Git repository with branches (`main`, `develop`, `features`) and GitHub Actions configured
-- Deployment of Supabase (PostgreSQL + Storage) and Qdrant (vector database)
-- Python environment with `uv` and `pyproject.toml` for dependency management
-- Basic CI/CD with linting (Black) and automated tests on every PR
+## Usage
 
----
+- Using the app as a developer: [`application/README.md`](application/README.md).
+- Using the admin flow (capturing anchor points, verifying them, building routes): [`docs/admin-guide/`](docs/admin-guide/README.md) (English/Spanish).
 
-### Week 2 – AI Pipeline (Embedding Extraction)
-**Implementation of the visual feature extractor**
-- Loading and configuration of pre-trained **EfficientNet-B0** in PyTorch
-- Image preprocessing module with OpenCV (resizing, normalization)
-- **Fine-tuning** script with campus images to adapt the model to the domain
-- Functional pipeline: image → vector embedding (1280 dimensions)
+## Documentation
 
----
+Each component has its own `CLAUDE.md` with the real architecture detail — how it's built, what it depends on, and its known gaps. Start with the root [`CLAUDE.md`](CLAUDE.md) for the full repository map and conventions.
 
-### Week 3 – Vector Database (Qdrant)
-**Indexing and similarity search**
-- Qdrant client for connection and collection management
-- Endpoint `/index_anchor`: upload anchor point (image + exact coordinates)
-- Endpoint `/search_similar`: search for top-k most similar embeddings
-- Search validation with accuracy > 80% in initial tests
+## Project status
 
----
+Actively developed. See the repo's [Issues](https://github.com/MiguelCock/4u/issues) for what's in progress and known gaps.
 
-### Week 4 – Integration and Initial Testing
-**Connection of all base components**
-- Integration with Supabase Storage for image storage
-- JWT authentication and role validation (user/admin) in FastAPI
-- Unit tests (pytest) for embedding extractor and Qdrant client
-- **Deliverable:** Proof of concept with 20 anchor points and functional search
+## Contributing
 
----
-
-## MONTH 2: Core System Development  
-*(Weeks 5–8)*
-
-### Week 5 – Base Mobile App (Flutter)
-**First version of the mobile application**
-- Flutter project with clean architecture (models, services, screens, widgets)
-- Login/registration screen with JWT authentication (Supabase connection)
-- Differentiated navigation for **user** (data sending) and **administrator** (anchor capture)
-- **Deliverable:** App with functional authentication and roles
-
----
-
-### Week 6 – Kalman Filter and Sensor Fusion
-**Real-time position correction**
-- Implementation of the **Unscented Kalman Filter (UKF)** with `filterpy`
-- Fusion module combining: noisy GPS + heading/IMU + visual correction
-- Endpoint `/correct_position`: receives photo, GPS and IMU → returns corrected position
-- **Metric:** Latency < 500ms and error reduced from 20m to < 5m
-
----
-
-### Week 7 – Complete App Functionalities
-**Interface for both roles**
-- User screen: capture photo + GPS + IMU and send to server
-- Visualization of corrected position on interactive map
-- Administrator screen: capture photo and select exact coordinates on map
-- **Deliverable:** Complete app for real-time data sending and receiving
-
----
-
-### Week 8 – Assisted Navigation
-**Step-by-step navigation instructions**
-- Generation of navigation instructions (text-to-speech) based on corrected position
-- Checkpoint logic: "turn left in 20 meters"
-- Guidance line on the map to follow the route
-- **Deliverable:** User can receive complete step-by-step navigation instructions
-
----
-
-## MONTH 3: Integration, Testing and Deployment  
-*(Weeks 9–12)*
-
-### Week 9 – Integration and System Testing
-**Unification of all components**
-- Microservices unified into a single deployment (Docker or serverless)
-- Testing environment with 50 anchor points in a real building
-- Load testing: simulation of 10 concurrent users
-- Integration tests (pytest) for the entire end-to-end flow
-
----
-
-### Week 10 – User Testing (Internal)
-**Validation with visually impaired individuals**
-- Recruitment of 3-5 collaborators for controlled testing
-- Tests on pre-designed routes within the selected building
-- Metrics: positioning error, route success rate, **SUS (System Usability Scale)**
-- **Deliverable:** Test report with qualitative feedback and metrics
-
----
-
-### Week 11 – Refinement and Optimization
-**Adjustments based on real data**
-- UKF optimization: adjustment of covariance and noise matrices
-- Qdrant search improvement: cosine distance and threshold tuning
-- Performance optimization: caching, image compression
-- Bug fixing in the app (UI, navigation, error handling)
-
----
-
-### Week 12 – Documentation, Deployment and Closure
-**Final project delivery**
-- Complete documentation: architecture, API, user manual
-- Deployment in production environment with basic monitoring
-- Preparation of final presentation and live demo
-- Final acceptance testing with users and project closure
-
----
-
-## Project Success KPIs
-
-| KPI | Target | Expected Status |
-|-----|--------|-----------------|
-| **Positioning accuracy** | Error < 5 meters | Validated with real data |
-| **System latency** | < 500 ms | Met in load testing |
-| **Route success rate** | > 90% | Measured with users |
-| **Usability (SUS)** | > 70 points | Survey applied |
-| **Test coverage** | > 80% | Ensured with pytest |
-
----
-
-## Role of Claude in Development
-
-- Generation of boilerplate code (endpoints, models, clients)
-- Implementation of the UKF and transition matrices
-- Creation of automated unit tests
-- Documentation and user guides
-- Code review and optimization
-- Design of SUS questionnaires and test guides
+Branch off `develop`, open a PR against it — CI runs the matching component's tests automatically. `main` tracks tagged releases only.

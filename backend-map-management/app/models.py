@@ -1,21 +1,64 @@
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class AnchorPointMetadata(BaseModel):
+    indoor: bool | None = None
+    lighting: Literal["bright", "moderate", "dim"] | None = None
+    surface: str | None = None
 
 
 class AnchorPointCreate(BaseModel):
     building_id: str
     location_type_id: int | None = None
     floor: int = 0
-    heading: float | None = None
-    image_url: str
+    latitude: float
+    longitude: float
+    altitude: float | None = None
+    location_description: str = Field(min_length=1)
+    metadata: AnchorPointMetadata = AnchorPointMetadata()
+
+
+# Deliberately NOT `AnchorPointResponse(AnchorPointCreate)` - existing rows
+# captured before location_description became required can still have a
+# null value, and a required response field would 500 on those on GET.
+class AnchorPointResponse(BaseModel):
+    id: str
+    building_id: str
+    location_type_id: int | None = None
+    floor: int = 0
     latitude: float
     longitude: float
     altitude: float | None = None
     location_description: str | None = None
-
-
-class AnchorPointResponse(AnchorPointCreate):
-    id: str
     status: str
+    # Loose dict, not AnchorPointMetadata - rows written before this field
+    # existed default to `{}`, and a strict submodel would 500 on any shape
+    # that doesn't conform, same reasoning as location_description above.
+    metadata: dict = {}
+
+
+class AnchorPointUpdate(BaseModel):
+    location_description: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    location_type_id: int | None = None
+    floor: int | None = None
+    status: str | None = None
+    metadata: AnchorPointMetadata | None = None
+
+
+class AnchorPointPhotoCreate(BaseModel):
+    image_url: str
+    heading: float | None = None
+    captured_by: str
+
+
+class AnchorPointPhotoResponse(AnchorPointPhotoCreate):
+    id: str
+    anchor_point_id: str
+    captured_at: str
 
 
 class BuildingResponse(BaseModel):
@@ -29,3 +72,63 @@ class BuildingResponse(BaseModel):
     floors: int
     has_elevator: bool
     has_stairs: bool
+
+
+class BuildingCreate(BaseModel):
+    place_id: str
+    code: str
+    name: str
+    latitude: float
+    longitude: float
+    address: str | None = None
+    floors: int = 1
+    has_elevator: bool = False
+    has_stairs: bool = True
+
+
+class BuildingUpdate(BaseModel):
+    code: str | None = None
+    name: str | None = None
+    address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    floors: int | None = None
+    has_elevator: bool | None = None
+    has_stairs: bool | None = None
+    is_active: bool | None = None
+
+
+class PlaceCreate(BaseModel):
+    code: str
+    name: str
+    latitude: float
+    longitude: float
+    address: str | None = None
+
+
+class PlaceResponse(PlaceCreate):
+    id: str
+
+
+class PlaceUpdate(BaseModel):
+    code: str | None = None
+    name: str | None = None
+    address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    is_active: bool | None = None
+
+
+class AnchorPointConnectionCreate(BaseModel):
+    anchor_point_a_id: str
+    anchor_point_b_id: str
+    # Server computes this via haversine (from the two anchor points'
+    # lat/lng) when the caller doesn't supply one.
+    distance_meters: float | None = None
+    notes: str | None = None
+    created_by: str
+
+
+class AnchorPointConnectionResponse(AnchorPointConnectionCreate):
+    id: str
+    created_at: str

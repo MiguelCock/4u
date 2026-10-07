@@ -7,7 +7,7 @@ Built following the [uv + FastAPI guide](https://docs.astral.sh/uv/guides/integr
 ## Setup
 
 ```bash
-cp .env.example .env   # fill in SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY
+cp .env.example .env   # fill in SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
 uv sync
 ```
 
@@ -17,12 +17,15 @@ uv sync
 uv run fastapi dev             # http://localhost:8000, auto-reload
 ```
 
-Or with Docker:
+Or with Docker (build from the **repo root**, since the Dockerfile also copies the sibling `packages/` dependency):
 
 ```bash
-docker build -t fastapi-app .
-docker run -p 8000:80 --env-file .env fastapi-app
+cd ..
+docker build -f backend-data-collection/Dockerfile -t fastapi-app .
+docker run -p 8000:80 --env-file backend-data-collection/.env fastapi-app
 ```
+
+Or run this alongside the other 4 backend services with `docker compose up --build` from the repo root (see the root `README.md`'s Local Setup section).
 
 ## API / manual usage
 
@@ -31,15 +34,25 @@ Once running, the interactive Swagger UI at `http://localhost:8000/docs` is the 
 | Method | Path         | Body                                             | Purpose                        |
 |--------|--------------|---------------------------------------------------|---------------------------------|
 | GET    | `/`          | —                                                   | Health check                    |
-| POST   | `/upload`    | multipart file field `image` + JSON matching `ImageMetaData` (`latitude`, `longitude`, `accuracy`) | Upload a photo + its metadata  |
+| POST   | `/upload`    | multipart file field `image` + form fields `latitude`, `longitude`, `accuracy` | Upload a photo + its metadata  |
 | GET    | `/upload`    | —                                                   | List uploaded photos            |
-| GET    | `/upload:id` | —                                                   | Get one photo by id             |
-| DELETE | `/upload:id` | —                                                   | Delete one photo by id          |
+| GET    | `/upload/{id}` | —                                                 | Get one photo by id             |
+| DELETE | `/upload/{id}` | —                                                 | Delete one photo by id          |
 
-Example health check:
+Example:
 
 ```bash
 curl http://localhost:8000/
+
+curl -X POST http://localhost:8000/upload \
+  -F "latitude=6.2442" \
+  -F "longitude=-75.5812" \
+  -F "accuracy=8.5" \
+  -F "image=@/path/to/photo.jpg;type=image/jpeg"
+
+curl http://localhost:8000/upload
+curl http://localhost:8000/upload/5
+curl -X DELETE http://localhost:8000/upload/5
 ```
 
 ## Testing
@@ -48,10 +61,9 @@ curl http://localhost:8000/
 uv run pytest
 ```
 
-`tests/conftest.py` sets dummy Supabase env vars so the test suite doesn't need real credentials or network access. Only `GET /` is currently exercised for real — the other endpoints hit Supabase at request time.
+`tests/conftest.py` sets dummy Supabase env vars so the test suite doesn't need real credentials or network access. `tests/test_main.py` mocks the `db` calls (`unittest.mock.patch`) to exercise the route logic (path-param binding, form/file parsing, response passthrough) without hitting Supabase for real.
 
-## Known issues
+## Known limitations
 
-- `POST /upload` mixes a plain JSON body (`ImageMetaData`) with a multipart file (`File(...)`) in the same request, which FastAPI does not support directly (a multipart request isn't JSON) — this endpoint likely needs the metadata fields declared with `Form(...)` instead. It also expects the file field to be named `image`, while the Flutter app (`application/lib/camera.dart`) currently uploads it as `photo` with the metadata as separate form fields.
-- `GET /upload` and `GET /upload:id` both call the Supabase query (`db.get_photos()` / `db.get_photo(id)`) but discard the result and return an empty placeholder instead — they will always appear to return no data.
-- `/upload:id` uses a literal colon rather than FastAPI's `{id}` path-parameter syntax, so `id` is not actually bound from the URL path.
+- The `"Photo"` Postgres table isn't defined in the repo's `db_schema/` — `packages.supabase.SupaBase.post_photos` assumes it has `name`/`latitude`/`longitude`/`accuracy` columns (matching the pydantic field names), since there's no schema file to confirm the real deployed shape against. Adjust `post_photos` if the actual table differs.
+- `GET /upload` and `GET /upload/{id}` return whatever Supabase returns with no response-model validation (same reason — the table's real shape is unconfirmed), so malformed rows would pass through as-is rather than erroring.

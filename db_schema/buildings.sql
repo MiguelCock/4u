@@ -1,4 +1,4 @@
-buildings (
+CREATE TABLE buildings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     place_id UUID NOT NULL REFERENCES places(id) ON DELETE CASCADE,
     code TEXT NOT NULL,
@@ -14,4 +14,4 @@ buildings (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(place_id, code)
-)
+);

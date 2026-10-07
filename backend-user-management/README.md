@@ -7,7 +7,7 @@ Built following the [uv + FastAPI guide](https://docs.astral.sh/uv/guides/integr
 ## Setup
 
 ```bash
-cp .env.example .env   # fill in SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY
+cp .env.example .env   # fill in SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
 uv sync
 ```
 
@@ -20,8 +20,9 @@ uv run fastapi dev             # http://localhost:8000, auto-reload
 Or with Docker:
 
 ```bash
-docker build -t backend-user-management .
-docker run -p 8000:80 --env-file .env backend-user-management
+cd ..
+docker build -f backend-user-management/Dockerfile -t backend-user-management .
+docker run -p 8000:80 --env-file backend-user-management/.env backend-user-management
 ```
 
 ## API / manual usage
