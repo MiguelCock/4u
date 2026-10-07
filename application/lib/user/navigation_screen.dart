@@ -50,12 +50,42 @@ class _NavigationScreenState extends State<NavigationScreen> {
   double? _correctedLat;
   double? _correctedLong;
   double? _correctionError;
+  List<LatLng> _plannedPath = [];
 
   @override
   void initState() {
     super.initState();
     _startSession();
     _initCamera();
+    _loadPlannedPath();
+  }
+
+  /// Resolves the route's anchor ids (already in hand from find_or_create,
+  /// no need to re-fetch the route itself) into coordinates for the
+  /// guidance line - same per-id anchor lookup SessionTrackingScreen's
+  /// admin-side route overlay already does.
+  Future<void> _loadPlannedPath() async {
+    final anchorIds = [
+      widget.route['start_anchor_id'] as String,
+      ...(widget.route['waypoint_anchor_ids'] as List? ?? const [])
+          .cast<String>(),
+      widget.route['end_anchor_id'] as String,
+    ];
+    final points = <LatLng>[];
+    for (final id in anchorIds) {
+      try {
+        final anchor =
+            await MapManagementApi().get('/anchor-points/$id')
+                as Map<String, dynamic>;
+        final lat = (anchor['latitude'] as num?)?.toDouble();
+        final lng = (anchor['longitude'] as num?)?.toDouble();
+        if (lat != null && lng != null) points.add(LatLng(lat, lng));
+      } on ApiException {
+        // The guidance line is a nice-to-have overlay - a missing/deleted
+        // anchor shouldn't block navigation, it just means no line.
+      }
+    }
+    if (mounted) setState(() => _plannedPath = points);
   }
 
   Future<void> _initCamera() async {
@@ -328,6 +358,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
                         ),
                       Expanded(
                         child: SimpleMapWidget(
+                          plannedPath: _plannedPath,
                           extraMarkers:
                               correctedLat != null && correctedLong != null
                               ? [

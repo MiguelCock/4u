@@ -12,7 +12,16 @@ class SimpleMapWidget extends StatefulWidget {
   /// call site, so this is purely additive.
   final List<Marker> extraMarkers;
 
-  const SimpleMapWidget({super.key, this.extraMarkers = const []});
+  /// The planned route's anchor points, in order, drawn as a line under
+  /// the markers - e.g. NavigationScreen's turn-by-turn guidance line.
+  /// Empty for every other call site, so this is purely additive too.
+  final List<LatLng> plannedPath;
+
+  const SimpleMapWidget({
+    super.key,
+    this.extraMarkers = const [],
+    this.plannedPath = const [],
+  });
 
   @override
   State<SimpleMapWidget> createState() => _SimpleMapWidgetState();
@@ -55,6 +64,16 @@ class _SimpleMapWidgetState extends State<SimpleMapWidget> {
           urlTemplate: kMapTileUrlTemplate,
           userAgentPackageName: kMapUserAgentPackageName,
         ),
+        if (widget.plannedPath.length > 1)
+          PolylineLayer(
+            polylines: [
+              Polyline(
+                points: widget.plannedPath,
+                strokeWidth: 4,
+                color: Colors.blueGrey,
+              ),
+            ],
+          ),
         MarkerLayer(
           markers: [
             Marker(
