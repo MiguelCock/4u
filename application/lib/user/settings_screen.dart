@@ -6,11 +6,8 @@ import '../services/api_service.dart';
 import '../services/app_preferences.dart';
 
 /// #85 + #107: lets the signed-in user configure verbosity, high contrast,
-/// and language, backed by the already-existing `profiles.preferences`
-/// JSONB column and `PATCH /profiles/{id}`. Deliberately does NOT include
-/// a voice/text "feedback_type" toggle - see application/CLAUDE.md for why
-/// (no TTS exists to back it; real screen-reader support is #82, not a
-/// per-user app preference).
+/// language, and (#39/#40/#83) voice guidance, backed by the already-
+/// existing `profiles.preferences` JSONB column and `PATCH /profiles/{id}`.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -42,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _highContrast = false;
   String? _language; // null = auto (device)
   double _fontScale = 1.0;
+  bool _voiceGuidance = true;
 
   @override
   void initState() {
@@ -72,6 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           (prefs['font_scale'] as num?)?.toDouble() ??
               MediaQuery.of(context).textScaler.scale(1.0),
         );
+        _voiceGuidance = prefs['voice_guidance'] as bool? ?? true;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -99,6 +98,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'high_contrast': _highContrast,
           if (_language != null) 'language': _language,
           'font_scale': _fontScale,
+          'voice_guidance': _voiceGuidance,
         },
       });
       applyPreferences(
@@ -107,6 +107,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'high_contrast': _highContrast,
           'language': _language,
           'font_scale': _fontScale,
+          'voice_guidance': _voiceGuidance,
         },
         defaultHighContrast: _highContrast,
         defaultTextScale: _fontScale,
@@ -227,6 +228,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       selected: {_fontScale},
                       onSelectionChanged: (selection) =>
                           setState(() => _fontScale = selection.first),
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      title: Text(l10n.settingsVoiceGuidanceLabel),
+                      subtitle: Text(l10n.settingsVoiceGuidanceSubtitle),
+                      value: _voiceGuidance,
+                      onChanged: (value) =>
+                          setState(() => _voiceGuidance = value),
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 12),

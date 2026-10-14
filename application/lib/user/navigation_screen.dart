@@ -4,7 +4,9 @@ import 'dart:io' show Platform;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
@@ -15,7 +17,34 @@ import '../l10n/app_localizations.dart';
 import '../location.dart';
 import '../map.dart';
 import '../services/api_service.dart';
+import '../services/app_preferences.dart';
+import '../services/geo_utils.dart';
 import '../services/location_service.dart';
+
+/// A resolved checkpoint along the planned route - an anchor point's
+/// coordinates plus its description, used for proximity announcements
+/// (#40). Deliberately distance-based only, not compass-bearing turn
+/// detection ("turn left") - see this file's `_checkProximity` doc comment.
+class _Waypoint {
+  final LatLng point;
+  final String description;
+
+  const _Waypoint({required this.point, required this.description});
+}
+
+/// How close (meters) the live GPS fix needs to be to a waypoint before
+/// it's announced as "approaching"/"arrived" - roughly in line with GPS's
+/// own typical accuracy, so it doesn't fire too early or never fire at all.
+const double _kProximityThresholdMeters = 20.0;
+
+/// How often (while still outside `_kProximityThresholdMeters` of the next
+/// waypoint) to speak an ongoing distance update - real on-device testing
+/// of the arrival-only announcements found long silent gaps between them
+/// uncomfortable for a user who can't see the screen's corrected-position
+/// marker either, so this fills them in without going back to "every ~1s
+/// tick" (that was the original, deliberately rejected design - still too
+/// frequent to be useful signal rather than noise).
+const Duration _kPeriodicAnnouncementInterval = Duration(seconds: 25);
 
 class NavigationScreen extends StatefulWidget {
   final Map<String, dynamic> route;
@@ -30,6 +59,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   final _navigationApi = NavigationManagementApi();
   final _positioningApi = PositioningApi();
   final _locationService = LocationService();
+  final _tts = FlutterTts();
   String? _sessionId;
   CameraController? _cameraController;
 
@@ -41,6 +71,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   // and queue up behind backend-positioning's per-session lock instead of
   // just running slightly slower.
   Timer? _pendingTickTimer;
+  Timer? _periodicAnnouncementTimer;
   bool _stopped = false;
 
   bool _starting = true;
@@ -51,6 +82,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
   double? _correctedLong;
   double? _correctionError;
   List<LatLng> _plannedPath = [];
+  List<_Waypoint> _waypoints = [];
+  int _nextWaypointIndex = 0;
+  String? _lastHapticAnchorId;
 
   @override
   void initState() {
@@ -58,12 +92,30 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _startSession();
     _initCamera();
     _loadPlannedPath();
+    _periodicAnnouncementTimer = Timer.periodic(
+      _kPeriodicAnnouncementInterval,
+      (_) => _announcePeriodicDistance(),
+    );
+  }
+
+  /// Speaks [text] if the user has voice guidance on (#39/#40/#85) -
+  /// voiceGuidanceNotifier is the same app_preferences.dart pattern
+  /// high_contrast/font_scale already use, just read directly here rather
+  /// than via a ValueListenableBuilder, since this screen doesn't need to
+  /// rebuild when it changes, only to check it at the moment of an
+  /// announcement.
+  Future<void> _speak(String text) async {
+    if (!voiceGuidanceNotifier.value) return;
+    await _tts.speak(text);
   }
 
   /// Resolves the route's anchor ids (already in hand from find_or_create,
   /// no need to re-fetch the route itself) into coordinates for the
-  /// guidance line - same per-id anchor lookup SessionTrackingScreen's
-  /// admin-side route overlay already does.
+  /// guidance line (`_plannedPath`, every point including the start) and
+  /// into `_waypoints` (every point *except* the start - nothing to
+  /// "approach" at the point you're already standing at) for #40's
+  /// proximity announcements - same per-id anchor lookup
+  /// SessionTrackingScreen's admin-side route overlay already does.
   Future<void> _loadPlannedPath() async {
     final anchorIds = [
       widget.route['start_anchor_id'] as String,
@@ -72,20 +124,89 @@ class _NavigationScreenState extends State<NavigationScreen> {
       widget.route['end_anchor_id'] as String,
     ];
     final points = <LatLng>[];
-    for (final id in anchorIds) {
+    final waypoints = <_Waypoint>[];
+    for (var i = 0; i < anchorIds.length; i++) {
       try {
         final anchor =
-            await MapManagementApi().get('/anchor-points/$id')
+            await MapManagementApi().get('/anchor-points/${anchorIds[i]}')
                 as Map<String, dynamic>;
         final lat = (anchor['latitude'] as num?)?.toDouble();
         final lng = (anchor['longitude'] as num?)?.toDouble();
-        if (lat != null && lng != null) points.add(LatLng(lat, lng));
+        if (lat == null || lng == null) continue;
+        final point = LatLng(lat, lng);
+        points.add(point);
+        if (i > 0) {
+          waypoints.add(
+            _Waypoint(
+              point: point,
+              description:
+                  anchor['location_description'] as String? ?? anchorIds[i],
+            ),
+          );
+        }
       } on ApiException {
-        // The guidance line is a nice-to-have overlay - a missing/deleted
-        // anchor shouldn't block navigation, it just means no line.
+        // The guidance line/checkpoints are a nice-to-have overlay - a
+        // missing/deleted anchor shouldn't block navigation, it just means
+        // no line/announcement for that point.
       }
     }
-    if (mounted) setState(() => _plannedPath = points);
+    if (mounted) {
+      setState(() {
+        _plannedPath = points;
+        _waypoints = waypoints;
+      });
+    }
+  }
+
+  /// Distance-based proximity announcements, not full compass-bearing
+  /// turn-by-turn ("turn left in 20 meters") - #40's literal ask - that
+  /// would need comparing the device's compass heading against the bearing
+  /// to the next waypoint, a deliberate scope cut for a follow-up. This
+  /// announces each waypoint in order once the live GPS fix comes within
+  /// `_kProximityThresholdMeters` of it, skipping ahead past any waypoint
+  /// never reached within range (e.g. a noisy fix overshot it) rather than
+  /// getting stuck waiting for an exact hit.
+  void _checkProximity(Position position) {
+    if (_nextWaypointIndex >= _waypoints.length) return;
+    final here = LatLng(position.latitude, position.longitude);
+    final target = _waypoints[_nextWaypointIndex];
+    if (haversineMeters(here, target.point) > _kProximityThresholdMeters) {
+      return;
+    }
+    final isLast = _nextWaypointIndex == _waypoints.length - 1;
+    final l10n = AppLocalizations.of(context)!;
+    _speak(
+      isLast
+          ? l10n.navAnnouncementArrived(target.description)
+          : l10n.navAnnouncementApproaching(target.description),
+    );
+    _nextWaypointIndex++;
+  }
+
+  /// Fills the gap between arrival-based announcements with an ongoing
+  /// "N meters to X" update, every `_kPeriodicAnnouncementInterval` - only
+  /// while still outside `_kProximityThresholdMeters`, so this never
+  /// doubles up with `_checkProximity`'s own announcement right at the
+  /// threshold. Distance is rounded to the nearest 10m since a raw GPS
+  /// distance jitters tick to tick - an exact-looking number would be
+  /// misleadingly precise.
+  void _announcePeriodicDistance() {
+    if (_stopped || !mounted) return;
+    if (_nextWaypointIndex >= _waypoints.length) return;
+    final position = _locationService.lastPosition;
+    if (position == null) return;
+    final target = _waypoints[_nextWaypointIndex];
+    final distance = haversineMeters(
+      LatLng(position.latitude, position.longitude),
+      target.point,
+    );
+    if (distance <= _kProximityThresholdMeters) return;
+    final rounded = (distance / 10).round() * 10;
+    _speak(
+      AppLocalizations.of(
+        context,
+      )!.navAnnouncementDistanceToNext(rounded, target.description),
+    );
   }
 
   Future<void> _initCamera() async {
@@ -140,6 +261,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
         _sessionId = sessionData['id'] as String?;
         _starting = false;
       });
+      if (mounted) {
+        _speak(
+          AppLocalizations.of(
+            context,
+          )!.navAnnouncementStarting(widget.route['name'] as String? ?? ''),
+        );
+      }
       _runTick();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -158,6 +286,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     final position = _locationService.lastPosition;
     try {
       if (sessionId == null || position == null) return;
+      if (mounted) _checkProximity(position);
       final controller = _cameraController;
       if (controller == null || !controller.value.isInitialized) {
         await _logRawTick(sessionId, position);
@@ -217,6 +346,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
         });
       }
 
+      // A short haptic pulse once per *newly* matched anchor point, not
+      // every tick re-confirming the same match (every ~1s - that would be
+      // constant buzzing, noise rather than a signal) (#83).
+      final anchorMatchId = result['anchor_match_id'] as String?;
+      if (anchorMatchId != null && anchorMatchId != _lastHapticAnchorId) {
+        _lastHapticAnchorId = anchorMatchId;
+        HapticFeedback.selectionClick();
+      }
+
       await _navigationApi.post('/logs', {
         'session_id': sessionId,
         'gps_lat': position.latitude,
@@ -260,6 +398,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
     } on ApiException catch (_) {
       // Session end best-effort too - still let the user leave the screen.
     }
+    if (mounted) {
+      await _speak(AppLocalizations.of(context)!.navAnnouncementEnded);
+    }
     if (mounted) await _showFeedbackDialog(sessionId);
     if (mounted) Navigator.of(context).pop();
   }
@@ -267,6 +408,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
   Future<void> _showFeedbackDialog(String sessionId) async {
     final l10n = AppLocalizations.of(context)!;
     final controller = TextEditingController();
+    await _speak(l10n.navFeedbackTitle);
+    if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -308,7 +451,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
   void dispose() {
     _stopped = true;
     _pendingTickTimer?.cancel();
+    _periodicAnnouncementTimer?.cancel();
     _cameraController?.dispose();
+    _tts.stop();
     super.dispose();
   }
 
@@ -398,8 +543,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
                   // a release build (see kDebugMode above).
                   if (showDebugPreview)
                     Positioned(
-                      top: 8,
-                      right: 8,
+                      bottom: 8,
+                      left: 8,
                       width: 100,
                       height: 140,
                       child: ClipRRect(
