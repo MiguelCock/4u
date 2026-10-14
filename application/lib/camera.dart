@@ -178,10 +178,13 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.red),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red),
+                ),
               ),
               const SizedBox(height: 12),
               OutlinedButton(
@@ -215,6 +218,7 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
           child: Center(
             child: FloatingActionButton(
               onPressed: _takePhoto,
+              tooltip: l10n.cameraTakePhotoTooltip,
               child: const Icon(Icons.camera),
             ),
           ),

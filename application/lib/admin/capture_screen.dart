@@ -62,7 +62,15 @@ String locationTypeLabel(AppLocalizations l10n, String type) {
 /// photos live here anymore, since one physical point ends up with ~4-8
 /// photos). On success, hands off to `CapturePhotoScreen` to take them.
 class CaptureScreen extends StatefulWidget {
-  const CaptureScreen({super.key});
+  /// Pre-selects this university/building if the admin opened this form
+  /// while already filtered to one (`AdminHomeScreen`'s
+  /// `_anchorPointsBuildingFilterId`, plus that building's own `place_id`)
+  /// - falls back to the first fetched place/building otherwise, same as
+  /// before.
+  final String? initialPlaceId;
+  final String? initialBuildingId;
+
+  const CaptureScreen({super.key, this.initialPlaceId, this.initialBuildingId});
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -103,10 +111,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
       setState(() {
         _places = (results[0] as List).cast<Map<String, dynamic>>();
         _buildingsAll = (results[1] as List).cast<Map<String, dynamic>>();
-        if (_places.isNotEmpty) {
+        final initialPlaceId = widget.initialPlaceId;
+        if (initialPlaceId != null &&
+            _places.any((p) => p['id'] == initialPlaceId)) {
+          _selectedPlaceId = initialPlaceId;
+        } else if (_places.isNotEmpty) {
           _selectedPlaceId = _places.first['id'] as String?;
         }
-        _applyBuildingFilter();
+        _applyBuildingFilter(preferredBuildingId: widget.initialBuildingId);
       });
     } on ApiException catch (e) {
       setState(
@@ -119,13 +131,18 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
-  void _applyBuildingFilter() {
+  void _applyBuildingFilter({String? preferredBuildingId}) {
     _buildings = _buildingsAll
         .where((b) => b['place_id'] == _selectedPlaceId)
         .toList();
-    _selectedBuildingId = _buildings.isNotEmpty
-        ? _buildings.first['id'] as String?
-        : null;
+    if (preferredBuildingId != null &&
+        _buildings.any((b) => b['id'] == preferredBuildingId)) {
+      _selectedBuildingId = preferredBuildingId;
+    } else {
+      _selectedBuildingId = _buildings.isNotEmpty
+          ? _buildings.first['id'] as String?
+          : null;
+    }
   }
 
   Future<void> _pickOnMap() async {

@@ -87,6 +87,7 @@ class BuildingCreate(BaseModel):
 
 
 class BuildingUpdate(BaseModel):
+    place_id: str | None = None
     code: str | None = None
     name: str | None = None
     address: str | None = None

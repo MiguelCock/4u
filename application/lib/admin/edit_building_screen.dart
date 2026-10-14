@@ -6,8 +6,8 @@ import '../services/api_service.dart';
 import 'location_picker_screen.dart';
 
 /// Admin form to edit an existing `buildings` row (`PATCH /buildings/{id}`) -
-/// mirrors `AddBuildingScreen` but pre-filled and without a place picker
-/// (moving a building between places isn't supported here).
+/// mirrors `AddBuildingScreen` but pre-filled, plus a university picker so
+/// a building can be moved to a different one.
 class EditBuildingScreen extends StatefulWidget {
   final Map<String, dynamic> building;
 
@@ -30,6 +30,10 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
   bool _submitting = false;
   String? _error;
 
+  List<Map<String, dynamic>> _places = [];
+  String? _selectedPlaceId;
+  bool _loadingPlaces = true;
+
   @override
   void initState() {
     super.initState();
@@ -51,6 +55,26 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
     _hasElevator = widget.building['has_elevator'] as bool? ?? false;
     _hasStairs = widget.building['has_stairs'] as bool? ?? true;
     _isActive = widget.building['is_active'] as bool? ?? true;
+    _selectedPlaceId = widget.building['place_id'] as String?;
+    _loadPlaces();
+  }
+
+  Future<void> _loadPlaces() async {
+    try {
+      final result = await _mapApi.get('/places');
+      if (!mounted) return;
+      setState(() {
+        _places = (result as List? ?? []).cast<Map<String, dynamic>>();
+        if (_selectedPlaceId == null && _places.isNotEmpty) {
+          _selectedPlaceId = _places.first['id'] as String?;
+        }
+      });
+    } on ApiException {
+      // The university picker degrades to "unchanged" if this fails - not
+      // required to edit the rest of the form.
+    } finally {
+      if (mounted) setState(() => _loadingPlaces = false);
+    }
   }
 
   Future<void> _pickOnMap() async {
@@ -98,6 +122,7 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
 
     try {
       await _mapApi.patch('/buildings/${widget.building['id']}', {
+        if (_selectedPlaceId != null) 'place_id': _selectedPlaceId,
         'name': name,
         'latitude': lat,
         'longitude': lng,
@@ -142,6 +167,28 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_loadingPlaces)
+                const Center(child: CircularProgressIndicator())
+              else if (_places.isNotEmpty)
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedPlaceId,
+                  decoration: InputDecoration(
+                    labelText: l10n.commonUniversityLabel,
+                  ),
+                  items: _places
+                      .map(
+                        (p) => DropdownMenuItem(
+                          value: p['id'] as String,
+                          child: Text(
+                            p['name'] as String? ?? p['id'] as String,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) =>
+                      setState(() => _selectedPlaceId = value),
+                ),
+              const SizedBox(height: 12),
               TextField(
                 controller: _nameController,
                 decoration: InputDecoration(labelText: l10n.commonName),

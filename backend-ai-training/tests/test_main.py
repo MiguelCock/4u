@@ -89,7 +89,10 @@ def test_index_anchor_upserts_one_point_per_photo():
     assert response.status_code == 200
     assert response.json() == {"indexed": 2}
     mock_qdrant.ensure_collection.assert_called_once_with(
-        "anchor_point_photos", 1280, indexed_fields=["anchor_point_id", "building_id"]
+        "anchor_point_photos",
+        1280,
+        indexed_fields=["anchor_point_id", "building_id"],
+        geo_indexed_fields=["location"],
     )
     upsert_call = mock_qdrant.client.upsert.call_args
     assert upsert_call.args[0] == "anchor_point_photos"
@@ -101,6 +104,7 @@ def test_index_anchor_upserts_one_point_per_photo():
         "anchor_point_id": "a1",
         "latitude": 6.24,
         "longitude": -75.58,
+        "location": {"lon": -75.58, "lat": 6.24},
         "building_id": "b1",
         "heading": 90.0,
     }
@@ -184,10 +188,13 @@ def test_search_similar_returns_matches():
         ]
     }
     mock_qdrant.ensure_collection.assert_called_once_with(
-        "anchor_point_photos", 1280, indexed_fields=["anchor_point_id", "building_id"]
+        "anchor_point_photos",
+        1280,
+        indexed_fields=["anchor_point_id", "building_id"],
+        geo_indexed_fields=["location"],
     )
     mock_qdrant.client.query_points.assert_called_once_with(
-        "anchor_point_photos", query=[0.1] * 1280, limit=5
+        "anchor_point_photos", query=[0.1] * 1280, limit=5, query_filter=None
     )
 
 
@@ -209,8 +216,55 @@ def test_search_similar_respects_limit_form_field():
 
     assert response.status_code == 200
     mock_qdrant.client.query_points.assert_called_once_with(
-        "anchor_point_photos", query=[0.1] * 1280, limit=10
+        "anchor_point_photos", query=[0.1] * 1280, limit=10, query_filter=None
     )
+
+
+def test_search_similar_with_location_scopes_to_geo_radius():
+    mock_result = MagicMock()
+    mock_result.points = []
+    mock_qdrant = MagicMock()
+    mock_qdrant.client.query_points.return_value = mock_result
+
+    with (
+        patch("app.main.qdrant", mock_qdrant),
+        patch("app.main.extract_embedding", return_value=[0.1] * 1280),
+    ):
+        response = client.post(
+            "/search_similar",
+            files={"file": ("query.jpg", b"fake-bytes", "image/jpeg")},
+            data={"latitude": "6.24", "longitude": "-75.58"},
+        )
+
+    assert response.status_code == 200
+    call = mock_qdrant.client.query_points.call_args
+    query_filter = call.kwargs["query_filter"]
+    condition = query_filter.must[0]
+    assert condition.key == "location"
+    assert condition.geo_radius.center.lon == -75.58
+    assert condition.geo_radius.center.lat == 6.24
+    assert condition.geo_radius.radius == 150.0
+
+
+def test_search_similar_with_custom_radius_overrides_default():
+    mock_result = MagicMock()
+    mock_result.points = []
+    mock_qdrant = MagicMock()
+    mock_qdrant.client.query_points.return_value = mock_result
+
+    with (
+        patch("app.main.qdrant", mock_qdrant),
+        patch("app.main.extract_embedding", return_value=[0.1] * 1280),
+    ):
+        response = client.post(
+            "/search_similar",
+            files={"file": ("query.jpg", b"fake-bytes", "image/jpeg")},
+            data={"latitude": "6.24", "longitude": "-75.58", "radius_meters": "50"},
+        )
+
+    assert response.status_code == 200
+    call = mock_qdrant.client.query_points.call_args
+    assert call.kwargs["query_filter"].must[0].geo_radius.radius == 50.0
 
 
 def test_delete_indexed_photo_forbidden_for_non_admin():
@@ -232,7 +286,10 @@ def test_delete_indexed_photo():
     assert response.status_code == 200
     assert response.json() == "ok"
     mock_qdrant.ensure_collection.assert_called_once_with(
-        "anchor_point_photos", 1280, indexed_fields=["anchor_point_id", "building_id"]
+        "anchor_point_photos",
+        1280,
+        indexed_fields=["anchor_point_id", "building_id"],
+        geo_indexed_fields=["location"],
     )
     mock_qdrant.client.delete.assert_called_once_with(
         "anchor_point_photos", points_selector=["p1"]

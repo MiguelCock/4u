@@ -116,7 +116,7 @@ async def test_search_similar_retries_then_gives_up_on_persistent_failure():
     mock_client.__aexit__.return_value = None
 
     with patch("app.main.httpx.AsyncClient", return_value=mock_client):
-        result = await _search_similar(b"fake-bytes", "frame.jpg")
+        result = await _search_similar(b"fake-bytes", "frame.jpg", 6.24, -75.58)
 
     assert result is None
     # Initial attempt + the configured retries, not a single bare try.
@@ -137,7 +137,26 @@ async def test_search_similar_recovers_after_one_transient_failure():
     mock_client.__aexit__.return_value = None
 
     with patch("app.main.httpx.AsyncClient", return_value=mock_client):
-        result = await _search_similar(b"fake-bytes", "frame.jpg")
+        result = await _search_similar(b"fake-bytes", "frame.jpg", 6.24, -75.58)
 
     assert result == {"anchor_point_id": "a1", "score": 0.9}
     assert mock_client.post.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_search_similar_forwards_latitude_and_longitude():
+    ok_response = AsyncMock()
+    ok_response.raise_for_status = lambda: None
+    ok_response.json = lambda: {"matches": []}
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = ok_response
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = None
+
+    with patch("app.main.httpx.AsyncClient", return_value=mock_client):
+        await _search_similar(b"fake-bytes", "frame.jpg", 6.24, -75.58)
+
+    call = mock_client.post.call_args
+    assert call.kwargs["data"]["latitude"] == "6.24"
+    assert call.kwargs["data"]["longitude"] == "-75.58"

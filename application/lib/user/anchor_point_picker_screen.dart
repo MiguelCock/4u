@@ -110,13 +110,14 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
           title: Text(stepTitle),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
+            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
             onPressed: _goBack,
           ),
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-            ? Center(child: Text(_error!))
+            ? Center(child: Semantics(liveRegion: true, child: Text(_error!)))
             : _buildStep(),
       ),
     );

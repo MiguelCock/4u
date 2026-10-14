@@ -38,12 +38,12 @@ All four scripts below read their config from environment variables (sensible de
 
 This one command creates everything:
 
-- **A security group** — HTTPS on 80/443 open to everyone (nothing else is reachable — the 6 backend services stay internal, same as local `docker compose`; see the HTTPS note below for why 8000 isn't opened anymore). **No inbound SSH port at all** — see #116 below.
+- **A security group** — HTTPS on 80/443 open to everyone (nothing else is reachable — the 7 backend services stay internal, same as local `docker compose`; see the HTTPS note below for why 8000 isn't opened anymore). **No inbound SSH port at all** — see #116 below.
 - **An SSH key pair — this is where `~/.ssh/4u-phase1-key.pem` comes from.** AWS requires a key pair to exist before an instance can use one, so the first time this runs it calls `aws ec2 create-key-pair` and saves the private key to `~/.ssh/4u-phase1-key.pem` (outside the repo — `KEY_OUTPUT_DIR` if you want it elsewhere). AWS hands back the private key exactly once at creation time and never lets you download it again, so treat that `.pem` file as something to keep safe, not something to regenerate casually. Every later run of `provision.sh` reuses the same key pair instead of making a new one. It's still used for SSH auth — only the *transport* changed (see below).
 - **SSH over SSM, not a direct port — issue #116.** A plain security-group rule restricted to the operator's current public IP kept breaking as that IP rotated (confirmed live, repeatedly, within minutes on one connection). `provision.sh` instead attaches an IAM instance profile (`IAM_INSTANCE_PROFILE`, defaults to the AWS Academy-provided `LabInstanceProfile`) at launch and installs/enables `amazon-ssm-agent` via user-data, so the instance registers with AWS Systems Manager Session Manager — reachable from anywhere by IAM authorization, no inbound port needed. **This can only be set at launch**, not retrofitted onto an already-running instance (confirmed live: `ec2:AssociateIamInstanceProfile` is explicitly denied for the student role on an Academy account) — if you're migrating an existing instance onto this, terminate it first (not `delete.sh` — that also releases the Elastic IP) and let `provision.sh` launch a fresh one. See Prerequisites above for the one-time local setup (`session-manager-plugin` + an SSH config block) this needs.
 - **A static Elastic IP**, allocated and attached to the instance. EC2's default public IP is *not* permanent — it changes on every stop/start cycle (confirmed live) — so without this, `application/.env` would need hand-editing after every restart. Set `ALLOCATE_EIP=false` if you'd rather skip this and manage the IP yourself — HTTPS setup (below) needs a stable IP, so it's skipped entirely when this is off.
 - **HTTPS, via a free domain and automatic Let's Encrypt — issue #92.** `provision.sh` derives `DOMAIN=<ip-with-dashes>.sslip.io` from the Elastic IP — [sslip.io](https://sslip.io) is a free public DNS service that resolves `34-201-1-2.sslip.io` straight back to `34.201.1.2`, so there's no domain to buy and no Route53 access needed (handy since AWS Academy Learner Lab accounts commonly restrict Route53). It's on the Public Suffix List, so Let's Encrypt's rate limits apply per-derived-subdomain, not against a shared parent domain — repeated provisioning here won't collide with anyone else using sslip.io. Because the domain is *derived from* the IP rather than *pointed at* it, a `delete.sh` + re-`provision.sh` cycle (new IP) needs no manual DNS fix-up — the new domain just falls out of the new IP. `provision.sh` writes `API_GATEWAY_URL=https://$DOMAIN` into `application/.env` and `DOMAIN`/`COMPOSE_PROFILES=https` into `deployment/phase1-ec2/.env` (copied to the instance in step 3) — nothing to configure by hand. TLS termination is `caddy`, a new service in `docker-compose.yml` (gated behind the `https` Compose profile so it never starts during local dev or CI) that reverse-proxies to the existing `gateway` and gets a real certificate automatically, at no extra AWS cost (no ALB, no ACM, no Route53).
-- **The instance itself** — `t3.medium`, a 20GB disk, and Docker + the Compose plugin + `buildx` + `rsync` installed via user-data. Two real things worth knowing, both only found by actually deploying this once: the Amazon Linux 2023 AMI's *default* root disk is just 2GB, which fills up completely partway through building 6 Docker images (confirmed live: `No space left on device`) — that's why 20GB is requested explicitly (`ROOT_VOLUME_GB` to change it). And AL2023's base `docker` package doesn't include a recent enough `buildx` for `docker compose build`, and doesn't include `rsync` at all — both are installed by user-data alongside Docker for exactly that reason.
+- **The instance itself** — `t3.medium`, a 20GB disk, and Docker + the Compose plugin + `buildx` + `rsync` installed via user-data. Two real things worth knowing, both only found by actually deploying this once: the Amazon Linux 2023 AMI's *default* root disk is just 2GB, which fills up completely partway through building 7 Docker images (confirmed live: `No space left on device`) — that's why 20GB is requested explicitly (`ROOT_VOLUME_GB` to change it). And AL2023's base `docker` package doesn't include a recent enough `buildx` for `docker compose build`, and doesn't include `rsync` at all — both are installed by user-data alongside Docker for exactly that reason.
 
 Takes a couple of minutes (a bit longer than before — user-data now also installs the SSM agent); prints the instance id, the Elastic IP, the HTTPS domain, and the SSH command to use next (by instance id, over SSM). Safe to re-run against an already-provisioned instance too — it detects the existing instance (by its `Name` tag) and re-applies the security-group/HTTPS migration to it instead of launching a second one (though see the SSH-over-SSM bullet above — an *existing* instance from before #116 won't gain SSM access without being replaced).
 
@@ -63,13 +63,13 @@ ssh ec2-user@<instance-id> "docker --version && docker buildx version && rsync -
 
 ### 3. Copy the repo over
 
-Only what the stack actually needs — `docker-compose.yml`, `gateway/`, `packages/`, and the 6 `backend-*/` directories (each already has its real, populated `.env` with Supabase Cloud/Qdrant Cloud credentials). The Flutter `application/` directory doesn't run on the server, so it's deliberately left out:
+Only what the stack actually needs — `docker-compose.yml`, `gateway/`, `packages/`, and the 7 `backend-*/` directories (each already has its real, populated `.env` with Supabase Cloud/Qdrant Cloud credentials — `backend-positioning`'s has nothing secret in it, but `docker-compose.yml` still requires the file to exist). The Flutter `application/` directory doesn't run on the server, so it's deliberately left out:
 
 ```
 ssh ec2-user@<instance-id> "mkdir -p ~/4u"
 rsync -avz -e ssh \
   --exclude '.venv' \
-  docker-compose.yml gateway packages backend-ai-training backend-data-collection backend-map-management backend-navigation-management backend-route-management backend-user-management \
+  docker-compose.yml gateway packages backend-ai-training backend-data-collection backend-map-management backend-navigation-management backend-route-management backend-user-management backend-positioning \
   ec2-user@<instance-id>:~/4u/
 ```
 
@@ -98,6 +98,8 @@ This same command now also starts `caddy` — no separate command to remember. I
 sudo docker compose up -d --force-recreate gateway
 ```
 
+**Every redeploy should actually force-recreate `gateway` too, not just when `nginx.conf` changed** - confirmed live, separately from the above: nginx resolves each `proxy_pass http://<service>:80` hostname to a container IP once, at worker startup, and does not re-resolve it later. A normal `docker compose up --build -d` recreates every backend container whose image changed (new IPs on the Docker bridge network) but leaves `gateway` itself untouched if its own image/config look unchanged to compose - so an already-running gateway keeps proxying to whatever IP each hostname resolved to *at its own last startup*, which can by then belong to a different, unrelated container if Docker reused the address. Live symptom: all health checks still returned `200 OK` (every path *looked* fine), but `/map/` was silently proxying to `backend-user-management`, `/route/` to `backend-map-management`, and `/user/` to `backend-route-management` - a correctness bug invisible to a status-code-only check, not a reachability one. `--force-recreate gateway` (same command as above) fixes it by making nginx start fresh and re-resolve every hostname after the backend containers already have their final IPs. Worth doing as a matter of course after any redeploy, not just a `nginx.conf` change.
+
 ### 5. Verify it's reachable — from your own machine, not just inside the instance
 
 ```
@@ -107,9 +109,10 @@ curl https://<domain>/user/
 curl https://<domain>/navigation/
 curl https://<domain>/data-collection/
 curl https://<domain>/ai-training/
+curl https://<domain>/positioning/
 ```
 
-(`<domain>` is the `sslip.io` hostname `provision.sh` printed, e.g. `34-201-1-2.sslip.io` — same thing `application/.env`'s `API_GATEWAY_URL` now points at.) Each is a service's `GET /` health check, proxied through Caddy then the gateway (see `gateway/nginx.conf` for the full path-prefix list). Confirmed live: all 6 respond `200 OK` once the stack settles — **if the very first request to any endpoint 502s or 504s, just retry once.** Two real, harmless timing issues found by actually doing this: nginx can briefly resolve a backend before it's fully listening right after `docker compose up -d` (502, self-resolves in a few seconds); and the very first real `/search_similar`/`/index_anchor` call anywhere downloads EfficientNet-B0's pretrained weights (~20.5MB) from `download.pytorch.org` at runtime, which took ~2.5 minutes on this connection and exceeded nginx's default 60s timeout (504 the first time, 200 OK on retry). Neither is fixed here — just don't mistake either for a real failure.
+(`<domain>` is the `sslip.io` hostname `provision.sh` printed, e.g. `34-201-1-2.sslip.io` — same thing `application/.env`'s `API_GATEWAY_URL` now points at.) Each is a service's `GET /` health check, proxied through Caddy then the gateway (see `gateway/nginx.conf` for the full path-prefix list). Confirmed live: all 7 respond `200 OK` once the stack settles — **if the very first request to any endpoint 502s or 504s, just retry once.** Two real, harmless timing issues found by actually doing this: nginx can briefly resolve a backend before it's fully listening right after `docker compose up -d` (502, self-resolves in a few seconds); and the very first real `/search_similar`/`/index_anchor` call anywhere downloads EfficientNet-B0's pretrained weights (~20.5MB) from `download.pytorch.org` at runtime, which took ~2.5 minutes on this connection and exceeded nginx's default 60s timeout (504 the first time, 200 OK on retry). Neither is fixed here — just don't mistake either for a real failure.
 
 ### 6. `application/.env` is already done
 
@@ -123,7 +126,7 @@ The fast path — AWS CLI, credentials, the key pair, security group, and Elasti
   ```
   ssh ec2-user@<instance-id> "cd ~/4u && sudo docker compose up -d"
   ```
-- **Pulled new code and want it live**: repeat step 3's `rsync`/`scp` commands, then step 4's `sudo docker compose up --build -d` again, on the already-running instance.
+- **Pulled new code and want it live**: repeat step 3's `rsync`/`scp` commands, then step 4's `sudo docker compose up --build -d` again, on the already-running instance - followed by `sudo docker compose up -d --force-recreate gateway` every time (see step 4's note above), not only when `gateway/nginx.conf` itself changed. Every health check can return `200 OK` and the routing still be silently wrong otherwise.
 - **Done testing for now**: `./stop.sh` — pauses compute billing, everything on disk (and the Elastic IP) survives.
 
 ## Tearing down completely

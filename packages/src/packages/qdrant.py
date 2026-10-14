@@ -18,6 +18,7 @@ class Qdrant:
         vector_size: int,
         distance: str = "Cosine",
         indexed_fields: list[str] | None = None,
+        geo_indexed_fields: list[str] | None = None,
     ) -> None:
         if not self.client.collection_exists(name):
             self.client.create_collection(
@@ -36,4 +37,12 @@ class Qdrant:
         for field in indexed_fields or []:
             self.client.create_payload_index(
                 name, field_name=field, field_schema=PayloadSchemaType.KEYWORD
+            )
+        # Separate from the above: a field used in a `GeoRadius`/
+        # `GeoBoundingBox` filter condition needs a GEO (not KEYWORD) index,
+        # and the payload value itself must be Qdrant's native geo-point
+        # shape (`{"lon": ..., "lat": ...}`), not a plain float.
+        for field in geo_indexed_fields or []:
+            self.client.create_payload_index(
+                name, field_name=field, field_schema=PayloadSchemaType.GEO
             )
