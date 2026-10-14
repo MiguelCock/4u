@@ -179,7 +179,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 ),
                 child: Text(
                   l10n.adminPreviewBanner,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  // Explicit dark color - this background is a fixed light
+                  // amber regardless of theme, and in dark mode the ambient
+                  // text color defaults to near-white (same issue fixed for
+                  // LocationInfo's GPS row).
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ListTile(

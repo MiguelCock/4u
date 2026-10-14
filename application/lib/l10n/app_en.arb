@@ -111,6 +111,13 @@
   "navAnnouncementArrived": "Arrived at {name}",
   "@navAnnouncementArrived": {"placeholders": {"name": {"type": "String"}}},
   "navAnnouncementEnded": "Navigation ended",
+  "navAnnouncementDistanceToNext": "{distance} meters to {name}",
+  "@navAnnouncementDistanceToNext": {
+    "placeholders": {
+      "distance": {"type": "int"},
+      "name": {"type": "String"}
+    }
+  },
 
   "settingsTitle": "Settings",
   "settingsVerbosityLabel": "Verbosity",

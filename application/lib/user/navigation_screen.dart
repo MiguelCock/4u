@@ -37,6 +37,15 @@ class _Waypoint {
 /// own typical accuracy, so it doesn't fire too early or never fire at all.
 const double _kProximityThresholdMeters = 20.0;
 
+/// How often (while still outside `_kProximityThresholdMeters` of the next
+/// waypoint) to speak an ongoing distance update - real on-device testing
+/// of the arrival-only announcements found long silent gaps between them
+/// uncomfortable for a user who can't see the screen's corrected-position
+/// marker either, so this fills them in without going back to "every ~1s
+/// tick" (that was the original, deliberately rejected design - still too
+/// frequent to be useful signal rather than noise).
+const Duration _kPeriodicAnnouncementInterval = Duration(seconds: 25);
+
 class NavigationScreen extends StatefulWidget {
   final Map<String, dynamic> route;
 
@@ -62,6 +71,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   // and queue up behind backend-positioning's per-session lock instead of
   // just running slightly slower.
   Timer? _pendingTickTimer;
+  Timer? _periodicAnnouncementTimer;
   bool _stopped = false;
 
   bool _starting = true;
@@ -82,6 +92,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _startSession();
     _initCamera();
     _loadPlannedPath();
+    _periodicAnnouncementTimer = Timer.periodic(
+      _kPeriodicAnnouncementInterval,
+      (_) => _announcePeriodicDistance(),
+    );
   }
 
   /// Speaks [text] if the user has voice guidance on (#39/#40/#85) -
@@ -167,6 +181,32 @@ class _NavigationScreenState extends State<NavigationScreen> {
           : l10n.navAnnouncementApproaching(target.description),
     );
     _nextWaypointIndex++;
+  }
+
+  /// Fills the gap between arrival-based announcements with an ongoing
+  /// "N meters to X" update, every `_kPeriodicAnnouncementInterval` - only
+  /// while still outside `_kProximityThresholdMeters`, so this never
+  /// doubles up with `_checkProximity`'s own announcement right at the
+  /// threshold. Distance is rounded to the nearest 10m since a raw GPS
+  /// distance jitters tick to tick - an exact-looking number would be
+  /// misleadingly precise.
+  void _announcePeriodicDistance() {
+    if (_stopped || !mounted) return;
+    if (_nextWaypointIndex >= _waypoints.length) return;
+    final position = _locationService.lastPosition;
+    if (position == null) return;
+    final target = _waypoints[_nextWaypointIndex];
+    final distance = haversineMeters(
+      LatLng(position.latitude, position.longitude),
+      target.point,
+    );
+    if (distance <= _kProximityThresholdMeters) return;
+    final rounded = (distance / 10).round() * 10;
+    _speak(
+      AppLocalizations.of(
+        context,
+      )!.navAnnouncementDistanceToNext(rounded, target.description),
+    );
   }
 
   Future<void> _initCamera() async {
@@ -411,6 +451,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   void dispose() {
     _stopped = true;
     _pendingTickTimer?.cancel();
+    _periodicAnnouncementTimer?.cancel();
     _cameraController?.dispose();
     _tts.stop();
     super.dispose();
@@ -502,8 +543,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
                   // a release build (see kDebugMode above).
                   if (showDebugPreview)
                     Positioned(
-                      top: 8,
-                      right: 8,
+                      bottom: 8,
+                      left: 8,
                       width: 100,
                       height: 140,
                       child: ClipRRect(

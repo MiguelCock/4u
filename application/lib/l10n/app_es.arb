@@ -78,6 +78,7 @@
   "navAnnouncementApproaching": "Acercándote a {name}",
   "navAnnouncementArrived": "Llegaste a {name}",
   "navAnnouncementEnded": "Navegación finalizada",
+  "navAnnouncementDistanceToNext": "{distance} metros hasta {name}",
 
   "settingsTitle": "Configuración",
   "settingsVerbosityLabel": "Nivel de detalle",
