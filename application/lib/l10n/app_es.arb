@@ -78,6 +78,8 @@
   "navAnnouncementApproaching": "Acercándote a {name}",
   "navAnnouncementArrived": "Llegaste a {name}",
   "navAnnouncementEnded": "Navegación finalizada",
+  "navAnnouncementCameraDisclosure": "Tu cámara se usará periódicamente para ayudar a corregir tu posición.",
+  "navAnnouncementCameraBlocked": "La cámara parece estar bloqueada. Por favor descúbrela.",
   "navAnnouncementDistanceToNext": "{distance} metros hasta {name}",
 
   "settingsTitle": "Configuración",

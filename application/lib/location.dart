@@ -76,9 +76,12 @@ class _LocationInfoState extends State<LocationInfo> {
                 const Icon(Icons.location_off, color: Colors.red),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    message,
-                    style: const TextStyle(color: Colors.red),
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      message,
+                      style: const TextStyle(color: Colors.red),
+                    ),
                   ),
                 ),
               ],

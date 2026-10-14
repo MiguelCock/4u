@@ -239,7 +239,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 12),
-                      Text(_error!, style: const TextStyle(color: Colors.red)),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ),
                     ],
                     const SizedBox(height: 16),
                     ElevatedButton(

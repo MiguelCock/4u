@@ -9,7 +9,12 @@ import 'location_picker_screen.dart';
 /// Admin form to create a `buildings` row under an existing place - the
 /// building dropdown in `capture_screen.dart` is populated from these.
 class AddBuildingScreen extends StatefulWidget {
-  const AddBuildingScreen({super.key});
+  /// Pre-selects this university if the admin opened this form while
+  /// already filtered to one (`AdminHomeScreen`'s `_buildingsPlaceFilterId`)
+  /// - falls back to the first fetched place otherwise, same as before.
+  final String? initialPlaceId;
+
+  const AddBuildingScreen({super.key, this.initialPlaceId});
 
   @override
   State<AddBuildingScreen> createState() => _AddBuildingScreenState();
@@ -51,7 +56,10 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
       if (result is List) {
         setState(() {
           _places = result.cast<Map<String, dynamic>>();
-          if (_places.isNotEmpty) {
+          final initial = widget.initialPlaceId;
+          if (initial != null && _places.any((p) => p['id'] == initial)) {
+            _selectedPlaceId = initial;
+          } else if (_places.isNotEmpty) {
             _selectedPlaceId = _places.first['id'] as String?;
           }
         });

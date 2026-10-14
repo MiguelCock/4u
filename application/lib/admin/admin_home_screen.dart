@@ -656,16 +656,23 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
-  Widget _statusFilterChips() {
+  /// [scopedAnchorPoints] is the building-filtered (but not yet
+  /// status-filtered) list - counts here must reflect whichever building
+  /// is currently selected, not every building's anchor points, or an
+  /// admin drilled into one building sees a global "Verified (47)" count
+  /// that doesn't match anything on screen.
+  Widget _statusFilterChips(List<Map<String, dynamic>> scopedAnchorPoints) {
     final l10n = AppLocalizations.of(context)!;
     const statuses = ['pending', 'verified', 'rejected'];
     final counts = {
       for (final s in statuses)
-        s: _anchorPoints.where((p) => p['status'] == s).length,
+        s: scopedAnchorPoints.where((p) => p['status'] == s).length,
     };
 
     Widget chip(String? value, String label) {
-      final count = value == null ? _anchorPoints.length : counts[value] ?? 0;
+      final count = value == null
+          ? scopedAnchorPoints.length
+          : counts[value] ?? 0;
       return Padding(
         padding: const EdgeInsets.only(right: 6),
         child: ChoiceChip(
@@ -698,12 +705,17 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final scopedBuilding = _anchorPointsBuildingFilterId != null
         ? buildingsById[_anchorPointsBuildingFilterId]
         : null;
+    final buildingScoped = _anchorPoints
+        .where(
+          (p) =>
+              _anchorPointsBuildingFilterId == null ||
+              p['building_id'] == _anchorPointsBuildingFilterId,
+        )
+        .toList();
     final filtered =
-        _anchorPoints
+        buildingScoped
             .where(
               (p) =>
-                  (_anchorPointsBuildingFilterId == null ||
-                      p['building_id'] == _anchorPointsBuildingFilterId) &&
                   (_anchorStatusFilter == null ||
                       p['status'] == _anchorStatusFilter) &&
                   (p['location_description'] as String? ?? '')
@@ -735,7 +747,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               ),
             ),
           ),
-        _statusFilterChips(),
+        _statusFilterChips(buildingScoped),
         _searchField(_anchorSearchController, l10n.adminSearchAnchorPointsHint),
         Expanded(
           child: filtered.isEmpty
@@ -890,7 +902,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           tooltip: l10n.adminFabAddBuilding,
           onPressed: () async {
             await Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AddBuildingScreen()),
+              MaterialPageRoute(
+                builder: (_) =>
+                    AddBuildingScreen(initialPlaceId: _buildingsPlaceFilterId),
+              ),
             );
             _loadData();
           },
@@ -900,9 +915,22 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         return FloatingActionButton(
           tooltip: l10n.adminFabNewAnchorPoint,
           onPressed: () async {
-            await Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const CaptureScreen()));
+            final buildingId = _anchorPointsBuildingFilterId;
+            final placeId = buildingId == null
+                ? null
+                : _buildings.firstWhere(
+                        (b) => b['id'] == buildingId,
+                        orElse: () => const {},
+                      )['place_id']
+                      as String?;
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => CaptureScreen(
+                  initialPlaceId: placeId,
+                  initialBuildingId: buildingId,
+                ),
+              ),
+            );
             _loadData();
           },
           child: const Icon(Icons.add_a_photo),

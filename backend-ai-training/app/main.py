@@ -4,7 +4,14 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from packages.qdrant import Qdrant
 from packages.supabase import SupaBase
-from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
+from qdrant_client.models import (
+    FieldCondition,
+    Filter,
+    GeoPoint,
+    GeoRadius,
+    MatchValue,
+    PointStruct,
+)
 
 from .embedding import download_image, extract_embedding
 from .models import IndexAnchorRequest, IndexAnchorResponse, SearchSimilarResponse
@@ -28,6 +35,15 @@ _VECTOR_SIZE = 1280
 # index on that field - every field ever used in a Filter() below must be
 # listed here, or Qdrant rejects the request with a 400.
 _INDEXED_FIELDS = ["anchor_point_id", "building_id"]
+# "location" is Qdrant's native geo-point payload shape ({"lon":..,"lat":..}),
+# separate from the plain latitude/longitude floats kept for backward-
+# compat/response echoing - a GeoRadius filter condition needs a GEO (not
+# KEYWORD) index on it.
+_GEO_INDEXED_FIELDS = ["location"]
+# Campus-scale, generous enough to absorb GPS noise - #search_similar's
+# whole point is to narrow the candidate pool to "plausibly where the
+# caller actually is standing", not to be a precise cutoff.
+_DEFAULT_SEARCH_RADIUS_METERS = 150.0
 
 # Shared with every other service via packages.supabase.SupaBase (#24) -
 # bound as a plain module-level name so Depends(get_caller_id) and tests'
@@ -46,7 +62,12 @@ async def index_anchor(
 ) -> IndexAnchorResponse:
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
+    qdrant.ensure_collection(
+        _COLLECTION,
+        _VECTOR_SIZE,
+        indexed_fields=_INDEXED_FIELDS,
+        geo_indexed_fields=_GEO_INDEXED_FIELDS,
+    )
 
     points = []
     for photo in anchor.photos:
@@ -60,6 +81,12 @@ async def index_anchor(
                     "anchor_point_id": anchor.anchor_point_id,
                     "latitude": anchor.latitude,
                     "longitude": anchor.longitude,
+                    # Qdrant's native geo-point shape, used by
+                    # /search_similar's GeoRadius filter - the flat
+                    # latitude/longitude above stay for backward-compat
+                    # and response echoing, this is the one actually
+                    # indexed as GEO (see _GEO_INDEXED_FIELDS).
+                    "location": {"lon": anchor.longitude, "lat": anchor.latitude},
                     "building_id": anchor.building_id,
                     "heading": photo.heading,
                 },
@@ -73,12 +100,42 @@ async def index_anchor(
 
 @app.post("/search_similar")
 async def search_similar(
-    file: UploadFile = File(...), limit: int = Form(5)
+    file: UploadFile = File(...),
+    limit: int = Form(5),
+    # Optional: when the caller's (raw, pre-correction) GPS fix is known,
+    # scope the search to nearby anchor points instead of the entire
+    # collection - both for latency and correctness (a visually-similar but
+    # geographically-distant point shouldn't win on cosine similarity
+    # alone). Omitted entirely -> identical unscoped behavior as before,
+    # so this stays backward-compatible with any other caller.
+    latitude: float | None = Form(None),
+    longitude: float | None = Form(None),
+    radius_meters: float | None = Form(None),
 ) -> SearchSimilarResponse:
-    qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
+    qdrant.ensure_collection(
+        _COLLECTION,
+        _VECTOR_SIZE,
+        indexed_fields=_INDEXED_FIELDS,
+        geo_indexed_fields=_GEO_INDEXED_FIELDS,
+    )
 
     embedding = extract_embedding(file.file.read())
-    result = qdrant.client.query_points(_COLLECTION, query=embedding, limit=limit)
+    query_filter = None
+    if latitude is not None and longitude is not None:
+        query_filter = Filter(
+            must=[
+                FieldCondition(
+                    key="location",
+                    geo_radius=GeoRadius(
+                        center=GeoPoint(lon=longitude, lat=latitude),
+                        radius=radius_meters or _DEFAULT_SEARCH_RADIUS_METERS,
+                    ),
+                )
+            ]
+        )
+    result = qdrant.client.query_points(
+        _COLLECTION, query=embedding, limit=limit, query_filter=query_filter
+    )
 
     matches = [
         {
@@ -98,7 +155,12 @@ async def search_similar(
 async def delete_indexed_photo(photo_id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
+    qdrant.ensure_collection(
+        _COLLECTION,
+        _VECTOR_SIZE,
+        indexed_fields=_INDEXED_FIELDS,
+        geo_indexed_fields=_GEO_INDEXED_FIELDS,
+    )
     qdrant.client.delete(_COLLECTION, points_selector=[photo_id])
     return "ok"
 
@@ -109,7 +171,12 @@ async def delete_indexed_anchor(
 ):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
+    qdrant.ensure_collection(
+        _COLLECTION,
+        _VECTOR_SIZE,
+        indexed_fields=_INDEXED_FIELDS,
+        geo_indexed_fields=_GEO_INDEXED_FIELDS,
+    )
     qdrant.client.delete(
         _COLLECTION,
         points_selector=Filter(
@@ -129,7 +196,12 @@ async def delete_indexed_building(
 ):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    qdrant.ensure_collection(_COLLECTION, _VECTOR_SIZE, indexed_fields=_INDEXED_FIELDS)
+    qdrant.ensure_collection(
+        _COLLECTION,
+        _VECTOR_SIZE,
+        indexed_fields=_INDEXED_FIELDS,
+        geo_indexed_fields=_GEO_INDEXED_FIELDS,
+    )
     qdrant.client.delete(
         _COLLECTION,
         points_selector=Filter(

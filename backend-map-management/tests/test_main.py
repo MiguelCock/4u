@@ -728,6 +728,16 @@ def test_update_building_persists_latitude_and_longitude():
     mock_client.table.return_value.update.assert_called_once_with(payload)
 
 
+def test_update_building_persists_place_id():
+    _as_caller("admin1")
+    payload = {"place_id": "2"}
+    mock_client = _mock_update_eq_result([{**_BUILDING_ROW, **payload}])
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/buildings/1", json=payload)
+    assert response.status_code == 200
+    mock_client.table.return_value.update.assert_called_once_with(payload)
+
+
 def test_delete_building_forbidden_for_non_admin():
     _as_caller("u1")
     mock_client = _mock_multi_table_client({"profiles": _profiles_table(admin=False)})
