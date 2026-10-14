@@ -111,6 +111,8 @@
   "navAnnouncementArrived": "Arrived at {name}",
   "@navAnnouncementArrived": {"placeholders": {"name": {"type": "String"}}},
   "navAnnouncementEnded": "Navigation ended",
+  "navAnnouncementCameraDisclosure": "Your camera will be used periodically to help correct your position.",
+  "navAnnouncementCameraBlocked": "Camera appears to be blocked. Please uncover it.",
   "navAnnouncementDistanceToNext": "{distance} meters to {name}",
   "@navAnnouncementDistanceToNext": {
     "placeholders": {

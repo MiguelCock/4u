@@ -117,7 +117,7 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-            ? Center(child: Text(_error!))
+            ? Center(child: Semantics(liveRegion: true, child: Text(_error!)))
             : _buildStep(),
       ),
     );

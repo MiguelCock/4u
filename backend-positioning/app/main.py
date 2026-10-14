@@ -48,18 +48,29 @@ async def root():
     return {"service": "backend-positioning", "status": "ok"}
 
 
-async def _search_similar(photo_bytes: bytes, filename: str) -> dict | None:
+async def _search_similar(
+    photo_bytes: bytes, filename: str, latitude: float, longitude: float
+) -> dict | None:
     """Best-effort call to backend-ai-training's /search_similar. Returns
     the best (highest-score) match, or None if the service is unreachable,
     slow, or returns no matches - callers degrade to a GPS-only correction
-    rather than failing the whole request over a visual-matching blip."""
+    rather than failing the whole request over a visual-matching blip.
+
+    Forwards the caller's raw (pre-correction) GPS fix so the search can be
+    geo-scoped to nearby anchor points instead of the entire collection -
+    this was sitting right here in `correct_position`'s own params and
+    simply never got passed on before."""
     async with httpx.AsyncClient(timeout=_SEARCH_TIMEOUT_SECONDS) as client:
         for attempt in range(_SEARCH_RETRIES + 1):
             try:
                 response = await client.post(
                     f"{AI_TRAINING_URL}/search_similar",
                     files={"file": (filename, photo_bytes, "image/jpeg")},
-                    data={"limit": "1"},
+                    data={
+                        "limit": "1",
+                        "latitude": str(latitude),
+                        "longitude": str(longitude),
+                    },
                 )
                 response.raise_for_status()
                 matches = response.json().get("matches", [])
@@ -92,7 +103,9 @@ async def correct_position(
     # app/session_store.py's module docstring.
     lock = _store.get_lock(session_id, latitude, longitude)
     async with lock:
-        match = await _search_similar(photo_bytes, photo.filename or "frame.jpg")
+        match = await _search_similar(
+            photo_bytes, photo.filename or "frame.jpg", latitude, longitude
+        )
 
         result = await _store.correct(
             session_id=session_id,

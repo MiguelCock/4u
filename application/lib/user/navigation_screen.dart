@@ -19,6 +19,7 @@ import '../map.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
 import '../services/geo_utils.dart';
+import '../services/image_utils.dart';
 import '../services/location_service.dart';
 
 /// A resolved checkpoint along the planned route - an anchor point's
@@ -45,6 +46,12 @@ const double _kProximityThresholdMeters = 20.0;
 /// tick" (that was the original, deliberately rejected design - still too
 /// frequent to be useful signal rather than noise).
 const Duration _kPeriodicAnnouncementInterval = Duration(seconds: 25);
+
+/// How many consecutive ticks must read as blocked (see
+/// `services/image_utils.dart`'s `isFrameBlocked`) before the camera is
+/// treated as actually covered - debounced so one dim hallway or a brief
+/// motion blur doesn't trigger a false alarm.
+const int _kCameraBlockedDebounceTicks = 3;
 
 class NavigationScreen extends StatefulWidget {
   final Map<String, dynamic> route;
@@ -85,6 +92,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
   List<_Waypoint> _waypoints = [];
   int _nextWaypointIndex = 0;
   String? _lastHapticAnchorId;
+  int _consecutiveBlockedTicks = 0;
+  bool _blockedAnnounced = false;
 
   @override
   void initState() {
@@ -104,8 +113,16 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// than via a ValueListenableBuilder, since this screen doesn't need to
   /// rebuild when it changes, only to check it at the moment of an
   /// announcement.
-  Future<void> _speak(String text) async {
+  ///
+  /// [assertive] mirrors Android's own accessibility live-region model
+  /// (a "polite" update waits for the current speech to finish; an
+  /// "assertive" one interrupts it) - routine announcements (route start,
+  /// periodic distance, approaching/arrived, session end) stay polite and
+  /// just queue; safety-relevant ones (a blocked camera) are assertive,
+  /// stopping whatever's queued first so they're not buried behind it.
+  Future<void> _speak(String text, {bool assertive = false}) async {
     if (!voiceGuidanceNotifier.value) return;
+    if (assertive) await _tts.stop();
     await _tts.speak(text);
   }
 
@@ -262,10 +279,19 @@ class _NavigationScreenState extends State<NavigationScreen> {
         _starting = false;
       });
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         _speak(
-          AppLocalizations.of(
-            context,
-          )!.navAnnouncementStarting(widget.route['name'] as String? ?? ''),
+          l10n.navAnnouncementStarting(widget.route['name'] as String? ?? ''),
+        );
+        // Camera-use transparency: said every time, not just once ever -
+        // simplest way to stay always-honest about it without persisting
+        // a "seen it once" flag. Spoken (politely, after the route-start
+        // announcement) *and* shown as text - the same secondary-channel
+        // principle this screen already follows for every other
+        // announcement, for anyone who can't hear it.
+        _speak(l10n.navAnnouncementCameraDisclosure);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.navAnnouncementCameraDisclosure)),
         );
       }
       _runTick();
@@ -322,6 +348,32 @@ class _NavigationScreenState extends State<NavigationScreen> {
     try {
       final image = await controller.takePicture();
       final bytes = await image.readAsBytes();
+
+      if (isFrameBlocked(bytes)) {
+        _consecutiveBlockedTicks++;
+        if (_consecutiveBlockedTicks >= _kCameraBlockedDebounceTicks &&
+            !_blockedAnnounced) {
+          _blockedAnnounced = true;
+          if (mounted) {
+            _speak(
+              AppLocalizations.of(context)!.navAnnouncementCameraBlocked,
+              assertive: true,
+            );
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  AppLocalizations.of(context)!.navAnnouncementCameraBlocked,
+                ),
+              ),
+            );
+          }
+        }
+        await _logRawTick(sessionId, position);
+        return;
+      }
+      _consecutiveBlockedTicks = 0;
+      _blockedAnnounced = false;
+
       final result =
           await _positioningApi.postMultipart(
                 '/correct_position',
@@ -481,9 +533,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
                       if (_error != null)
                         Padding(
                           padding: const EdgeInsets.all(16.0),
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(color: Colors.red),
+                          child: Semantics(
+                            liveRegion: true,
+                            child: Text(
+                              _error!,
+                              style: const TextStyle(color: Colors.red),
+                            ),
                           ),
                         ),
                       const LocationInfo(),

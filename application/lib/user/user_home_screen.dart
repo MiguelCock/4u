@@ -216,7 +216,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
               ),
             const Spacer(),
             Padding(
