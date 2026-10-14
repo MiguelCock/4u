@@ -98,6 +98,8 @@ This same command now also starts `caddy` — no separate command to remember. I
 sudo docker compose up -d --force-recreate gateway
 ```
 
+**Every redeploy should actually force-recreate `gateway` too, not just when `nginx.conf` changed** - confirmed live, separately from the above: nginx resolves each `proxy_pass http://<service>:80` hostname to a container IP once, at worker startup, and does not re-resolve it later. A normal `docker compose up --build -d` recreates every backend container whose image changed (new IPs on the Docker bridge network) but leaves `gateway` itself untouched if its own image/config look unchanged to compose - so an already-running gateway keeps proxying to whatever IP each hostname resolved to *at its own last startup*, which can by then belong to a different, unrelated container if Docker reused the address. Live symptom: all health checks still returned `200 OK` (every path *looked* fine), but `/map/` was silently proxying to `backend-user-management`, `/route/` to `backend-map-management`, and `/user/` to `backend-route-management` - a correctness bug invisible to a status-code-only check, not a reachability one. `--force-recreate gateway` (same command as above) fixes it by making nginx start fresh and re-resolve every hostname after the backend containers already have their final IPs. Worth doing as a matter of course after any redeploy, not just a `nginx.conf` change.
+
 ### 5. Verify it's reachable — from your own machine, not just inside the instance
 
 ```
@@ -124,7 +126,7 @@ The fast path — AWS CLI, credentials, the key pair, security group, and Elasti
   ```
   ssh ec2-user@<instance-id> "cd ~/4u && sudo docker compose up -d"
   ```
-- **Pulled new code and want it live**: repeat step 3's `rsync`/`scp` commands, then step 4's `sudo docker compose up --build -d` again, on the already-running instance.
+- **Pulled new code and want it live**: repeat step 3's `rsync`/`scp` commands, then step 4's `sudo docker compose up --build -d` again, on the already-running instance - followed by `sudo docker compose up -d --force-recreate gateway` every time (see step 4's note above), not only when `gateway/nginx.conf` itself changed. Every health check can return `200 OK` and the routing still be silently wrong otherwise.
 - **Done testing for now**: `./stop.sh` — pauses compute billing, everything on disk (and the Elastic IP) survives.
 
 ## Tearing down completely
