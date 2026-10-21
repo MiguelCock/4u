@@ -6,6 +6,28 @@ import 'package:geolocator/geolocator.dart';
 import 'services/location_service.dart';
 import 'services/map_tile_config.dart';
 
+/// A map pin whose *tip* sits exactly on [point]. A plain centred
+/// `Icons.location_pin` marker puts the glyph's middle on the point, which
+/// draws the tip ~17px south of it, so the pin never lined up with route
+/// lines or anchor dots, and a point picked by aiming the tip was saved
+/// north of where the admin meant. The glyph's tip is at y=22 of its 24-unit
+/// box, so it's 36.7px down a 40px icon.
+Marker locationPinMarker(LatLng point, Color color) {
+  const size = 40.0;
+  return Marker(
+    point: point,
+    width: size,
+    height: size,
+    alignment: Marker.computePixelAlignment(
+      width: size,
+      height: size,
+      left: size / 2,
+      top: size * 22 / 24,
+    ),
+    child: Icon(Icons.location_pin, color: color, size: size),
+  );
+}
+
 class SimpleMapWidget extends StatefulWidget {
   /// Extra markers layered on top of the live-GPS marker below, e.g. a
   /// corrected-position pin from NavigationScreen. Empty for every other
@@ -116,16 +138,7 @@ class _SimpleMapWidgetState extends State<SimpleMapWidget> {
           ),
         MarkerLayer(
           markers: [
-            Marker(
-              point: _position,
-              width: 80,
-              height: 80,
-              child: const Icon(
-                Icons.location_pin,
-                color: Colors.blue,
-                size: 40,
-              ),
-            ),
+            locationPinMarker(_position, Colors.blue),
             ...widget.extraMarkers,
           ],
         ),

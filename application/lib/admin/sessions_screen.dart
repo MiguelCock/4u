@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'user_sessions_screen.dart';
 import '../services/api_error_messages.dart';
+import '../widgets/scrollable_message.dart';
 
 /// Admin-only: all navigation sessions (every status, not just active),
 /// grouped by user - fetches GET /sessions + GET /profiles once (same
@@ -48,10 +49,12 @@ class _SessionsScreenState extends State<SessionsScreen> {
     return _UserSessions(byUser: byUser, profilesById: profilesById);
   }
 
-  void _refresh() {
-    setState(() {
-      _dataFuture = _load();
-    });
+  /// Returns once the reload finishes, so the pull-to-refresh spinner
+  /// stays up until the data is actually back.
+  Future<void> _refresh() {
+    final future = _load();
+    setState(() => _dataFuture = future);
+    return future.then((_) {}, onError: (_) {});
   }
 
   @override
@@ -65,7 +68,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async => _refresh(),
+        onRefresh: _refresh,
         child: FutureBuilder<_UserSessions>(
           future: _dataFuture,
           builder: (context, snapshot) {
@@ -73,11 +76,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
-              return Center(
-                child: Text(
-                  l10n.sessionsErrorLoadFailed(
-                    friendlyApiErrorMessage(context, snapshot.error!),
-                  ),
+              return ScrollableMessage(
+                l10n.sessionsErrorLoadFailed(
+                  friendlyApiErrorMessage(context, snapshot.error!),
                 ),
               );
             }
@@ -91,9 +92,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
                 return nameA.compareTo(nameB);
               });
             if (userIds.isEmpty) {
-              return Center(child: Text(l10n.sessionsEmpty));
+              return ScrollableMessage(l10n.sessionsEmpty);
             }
             return ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
               itemCount: userIds.length,
               itemBuilder: (context, index) {
                 final userId = userIds[index];

@@ -7,7 +7,6 @@ import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../camera.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/camera_helper.dart';
@@ -18,6 +17,7 @@ import 'anchor_point_picker_screen.dart';
 import 'navigation_screen.dart';
 import 'settings_screen.dart';
 import '../services/api_error_messages.dart';
+import '../services/exit_guard.dart';
 
 /// The `user`-role home screen IS the trip-planning flow now (not a map,
 /// not a separate screen reached via a FAB): the user only picks a
@@ -51,6 +51,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   bool _finding = false;
   bool _locatingStart = false;
   String? _error;
+  final _exitGuard = ExitGuard();
 
   @override
   void initState() {
@@ -86,6 +87,27 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     } on ApiException {
       // Shown later by _findRoute if it's still failing then.
     }
+  }
+
+  /// How the Start row names the start point. Unnamed in-between points
+  /// (hallways...) have no description, so they're described by distance
+  /// instead of a raw id.
+  String _startLabel(AppLocalizations l10n, Map<String, dynamic> start) {
+    final description = (start['location_description'] as String? ?? '').trim();
+    if (description.isNotEmpty) {
+      return l10n.homeStartNearestSubtitle(description);
+    }
+    final position = _locationService.lastPosition;
+    final lat = (start['latitude'] as num?)?.toDouble();
+    final lng = (start['longitude'] as num?)?.toDouble();
+    if (position == null || lat == null || lng == null) {
+      return l10n.homeStartSubtitle;
+    }
+    final meters = haversineMeters(
+      LatLng(position.latitude, position.longitude),
+      LatLng(lat, lng),
+    ).round();
+    return l10n.homeStartUnnamedSubtitle(meters);
   }
 
   void _recomputeStart(Position position) {
@@ -247,25 +269,24 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    // Root screen for users (AuthGate's child, not a pushed route): back
+    // asks to press again instead of closing the app. The admin's "Test as
+    // user" preview is a pushed route, so there back just pops.
+    return PopScope(
+      canPop: widget.adminPreview,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _exitGuard.onBack(context);
+      },
+      child: _scaffold(l10n),
+    );
+  }
+
+  Widget _scaffold(AppLocalizations l10n) {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.appTitle),
         backgroundColor: Colors.blue,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.camera_alt_outlined),
-            tooltip: l10n.homeCameraTooltip,
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(title: Text(l10n.homeDataCollectionTitle)),
-                    body: const SimpleCameraWidget(),
-                  ),
-                ),
-              );
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: l10n.homeSettingsTooltip,
@@ -283,92 +304,95 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ],
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            if (widget.adminPreview)
-              Container(
-                width: double.infinity,
-                color: Colors.amber.shade100,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Text(
-                  l10n.adminPreviewBanner,
-                  // Explicit dark color - this background is a fixed light
-                  // amber regardless of theme, and in dark mode the ambient
-                  // text color defaults to near-white (same issue fixed for
-                  // LocationInfo's GPS row).
-                  style: const TextStyle(
-                    color: Colors.black87,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ListTile(
-              leading: const Icon(
-                Icons.radio_button_checked,
-                color: Colors.blue,
-              ),
-              title: Text(l10n.homeStartLabel),
-              subtitle: Semantics(
-                liveRegion: true,
-                child: Text(
-                  _locatingStart
-                      ? l10n.homeLocatingStart
-                      : _start != null
-                      ? l10n.homeStartNearestSubtitle(
-                          _start!['location_description'] as String? ??
-                              _start!['id'] as String,
-                        )
-                      : l10n.homeStartSubtitle,
-                ),
+        child: RefreshIndicator(
+          onRefresh: _loadAnchors,
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(child: _body(l10n)),
               ),
             ),
-            const Divider(height: 1),
-            ListTile(
-              leading: Icon(
-                _end == null ? Icons.radio_button_unchecked : Icons.location_on,
-                color: _end == null ? Colors.grey : Colors.blue,
-              ),
-              title: Text(l10n.homeWhereTo),
-              subtitle: Text(
-                _end == null
-                    ? l10n.homeTapToChooseDestination
-                    : (_end!['location_description'] as String? ??
-                          _end!['id'] as String),
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _pickEnd,
-            ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ),
-              ),
-            const Spacer(),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: ElevatedButton(
-                onPressed: (_end != null && !_finding) ? _findRoute : null,
-                child: _finding
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(l10n.homeFindRouteButton),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _body(AppLocalizations l10n) {
+    return Column(
+      children: [
+        if (widget.adminPreview)
+          Container(
+            width: double.infinity,
+            color: Colors.amber.shade100,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              l10n.adminPreviewBanner,
+              // Explicit dark color - this background is a fixed light
+              // amber regardless of theme, and in dark mode the ambient
+              // text color defaults to near-white (same issue fixed for
+              // LocationInfo's GPS row).
+              style: const TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ListTile(
+          leading: const Icon(Icons.radio_button_checked, color: Colors.blue),
+          title: Text(l10n.homeStartLabel),
+          subtitle: Semantics(
+            liveRegion: true,
+            child: Text(
+              _locatingStart
+                  ? l10n.homeLocatingStart
+                  : _start != null
+                  ? _startLabel(l10n, _start!)
+                  : l10n.homeStartSubtitle,
+            ),
+          ),
+        ),
+        const Divider(height: 1),
+        ListTile(
+          leading: Icon(
+            _end == null ? Icons.radio_button_unchecked : Icons.location_on,
+            color: _end == null ? Colors.grey : Colors.blue,
+          ),
+          title: Text(l10n.homeWhereTo),
+          subtitle: Text(
+            _end == null
+                ? l10n.homeTapToChooseDestination
+                : (_end!['location_description'] as String? ??
+                      _end!['id'] as String),
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _pickEnd,
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+            ),
+          ),
+        const Spacer(),
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: ElevatedButton(
+            onPressed: (_end != null && !_finding) ? _findRoute : null,
+            child: _finding
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(l10n.homeFindRouteButton),
+          ),
+        ),
+      ],
     );
   }
 }

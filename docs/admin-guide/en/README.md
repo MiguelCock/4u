@@ -26,7 +26,9 @@ The four sections aren't independent — each one builds on the last:
 3. **Anchor point** — one specific physical spot inside (or right outside) a building. You can't create one until its building exists.
 4. **Photos** — every anchor point needs at least one photo, ideally 4-8 taken facing different directions, before it's useful.
 5. **Verification** — after reviewing an anchor point's photos, you set its status to Verified. This is the step that actually makes it usable by the app — see [5.3](#53-reviewing-and-verifying) for why.
-6. **Connections** (optional) — once you have two or more verified anchor points, you can mark that people can walk directly between them.
+6. **Connections** (required for routes) — once you have two or more verified anchor points, mark which pairs people can walk directly between. Routes are computed only along connections, so a destination with no connections can't be reached.
+
+**Mark the important places first, then fill in between them.** Start with the places people actually want to go to: entrances, classrooms, offices, restrooms, the cafeteria, the auditorium. Give each one a clear description, because that's the name users pick and hear. Then add *in-between* points (hallways, intersections, stairs, ramps) wherever they're needed to connect those places with walkable connections. In-between points don't need a description, and they're never offered to users as destinations.
 
 If you try to skip ahead (e.g. add a building before its place exists), the corresponding dropdown will simply be empty, with a message telling you what to add first.
 
@@ -103,7 +105,7 @@ An **anchor point** is a specific physical spot — a doorway, an intersection o
 2. Tap the camera **+** button (bottom-right) — labeled "New anchor point."
 3. Choose the **Place**, then the **Building** (filtered to that place).
 4. Choose the **Location type** — what kind of spot this is (see the full list in [§8](#8-quick-reference)). For example, if you're standing at a building's main door, choose **entrance**.
-5. Fill in the **Description** — required, and important: this is the name you and other admins will see for this point everywhere in the app (search results, lists, dropdowns), so make it describe the actual spot rather than something generic. "Front door, north side" is far more useful later than "Point 1."
+5. Fill in the **Description**. It is **required for destination types** (entrance, classroom, office, restroom, cafeteria, parking, lobby, auditorium, bus stop), because it's the name users pick and hear, so describe the actual spot: "Front door, north side" is far more useful than "Point 1." For **in-between types** (hallway, intersection, stairwell, elevator, ramp, outdoor path, courtyard, crosswalk, other), it's optional. Leave it empty and the point still works for routes and position correction, but it won't appear in the user's destination list. Admin lists show unnamed points by type, for example "Hallway · 3f2a". New points start as **hallway**.
 6. Set **Indoor location** (on by default) — whether this spot is inside a building or outside. This matters because GPS accuracy is much worse indoors, which is exactly why indoor anchor points matter most for the position-correction system.
 7. Optionally set **Lighting** (Bright / Moderate / Dim) and **Surface** (free text, e.g. "tile", "carpet", "concrete", "grass") — see the field table below for why these are worth filling in.
 8. Confirm the position — either your device's current GPS location (shown automatically) or, if you tap **Pick on map**, a location you tap on a map instead. A manual pick always overrides GPS. Use this when GPS drift (common near tall buildings) would otherwise place the point in the wrong spot.
@@ -151,6 +153,8 @@ To edit an anchor point: tap the pencil icon on its row. You'll see the same fie
 | **Manage photos** button | Opens the same photo screen from [§5.2](#52-taking-photos) to add or delete photos. |
 | **Move on map** button | Lets you re-pick the point's position on a map, e.g. if it turns out to be in the wrong spot. |
 
+**If verifying shows an indexing error:** the point is saved as Verified, but the photo search didn't receive it, so the app can't recognize it yet. Once the server problem is fixed, open the drawer and tap **Re-index verified points**. It re-sends every verified point that has photos and tells you how many succeeded.
+
 ## 6. Connections
 
 A **connection** records that a person can walk directly between two anchor points — it's building up a walkability graph, not just an arbitrary link between two pins. This is meant to eventually support step-by-step route guidance.
@@ -163,9 +167,9 @@ Faster, and works especially well for connecting a whole sequence of points alon
 
 1. From the drawer, go to **Connections**, then tap the **+** button — labeled "Connect on map."
 2. Choose a **Place**, and optionally a **Building** to narrow the map down further.
-3. Tap an anchor point on the map to select it.
+3. Tap an anchor point on the map to select it. You don't need to hit the dot exactly: a tap near it counts, and the phone vibrates when it's selected.
 4. Tap a second anchor point — this creates the connection between them, and the second point **stays selected**, so you can immediately tap a third point to keep chaining connections along the same corridor without starting over each time.
-5. Existing connections between visible points are drawn as green lines on the map, so you can see at a glance what's already linked.
+5. Existing connections between visible points are drawn as green lines on the map, so you can see at a glance what's already linked. A new connection shows as a dotted grey line for a moment while it's being saved. You can keep tapping in the meantime.
 
 ### Dropdown form
 

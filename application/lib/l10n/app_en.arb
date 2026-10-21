@@ -42,19 +42,6 @@
   "signupErrorSignUpFailed": "Sign up failed: {error}",
   "@signupErrorSignUpFailed": {"placeholders": {"error": {"type": "String"}}},
 
-  "cameraLocationNotAvailable": "Location not available",
-  "cameraPhotoUploaded": "Photo uploaded!",
-  "cameraTakePhotoTooltip": "Take photo",
-  "cameraUploadFailedStatus": "Upload failed: {statusCode}",
-  "@cameraUploadFailedStatus": {
-    "placeholders": {"statusCode": {"type": "int"}}
-  },
-  "cameraPermissionDeniedError": "Camera permission denied. Grant camera access to take photos.",
-  "cameraUnavailableError": "Camera unavailable: {error}",
-  "@cameraUnavailableError": {
-    "placeholders": {"error": {"type": "String"}}
-  },
-
   "locationLat": "Lat: {value}",
   "@locationLat": {"placeholders": {"value": {"type": "String"}}},
   "locationLng": "Lng: {value}",
@@ -66,8 +53,6 @@
   "locationPermissionDeniedForeverError": "Location permission permanently denied.",
   "locationOpenLocationSettings": "Open location settings",
 
-  "homeCameraTooltip": "Data collection camera",
-  "homeDataCollectionTitle": "Data collection",
   "homeSettingsTooltip": "Settings",
   "homeStartLabel": "Start",
   "homeStartSubtitle": "Your current location",
@@ -84,7 +69,7 @@
   "@pickerErrorLoadFailed": {"placeholders": {"error": {"type": "String"}}},
   "pickerSelectBuilding": "Select a building",
   "pickerSelectAnchorPoint": "Select an anchor point",
-  "pickerNoUniversitiesYet": "No universities yet.",
+  "pickerNoUniversitiesYet": "No destinations are available yet.",
   "pickerNoBuildingsInUniversity": "No buildings in this university yet.",
   "pickerNoVerifiedAnchorsInBuilding": "No verified anchor points in this building yet.",
 
@@ -178,11 +163,11 @@
   "commonErrorSelectUniversity": "Select a university.",
   "commonErrorCodeNameLatLngRequired": "Code, name, latitude and longitude are required.",
   "commonErrorNameLatLngRequired": "Name, latitude and longitude are required.",
-  "commonErrorDescriptionRequired": "Description is required.",
+  "commonErrorDescriptionRequired": "Destinations (entrances, classrooms, restrooms...) need a description - it's the name users pick and hear.",
   "commonNoUniversitiesYetHint": "No universities exist yet - add one first (Add university).",
   "commonLocationTypeLabel": "Location type",
   "commonDescriptionLabel": "Description",
-  "commonDescriptionHelper": "Required - used as this point's name so it can be told apart from others.",
+  "commonDescriptionHelper": "Required for destinations - it's the name users pick and hear.",
   "commonIndoorLocationLabel": "Indoor location",
   "commonLightingLabel": "Lighting",
   "commonLightingNotSet": "Not set",
@@ -421,5 +406,19 @@
   "commonErrorNetworkUnreachable": "Couldn't reach the server. Check your internet connection and try again.",
   "commonErrorServerUnavailable": "The server had a problem. Please try again in a moment.",
   "commonErrorNotFoundGeneric": "That item no longer exists. Refresh and try again.",
-  "commonErrorUnexpected": "Something went wrong. Please try again."
+  "commonErrorUnexpected": "Something went wrong. Please try again.",
+  "commonDescriptionHelperOptional": "Optional for in-between points like hallways. Without one, the point is never offered as a destination.",
+  "commonPressBackAgainToExit": "Press back again to exit",
+  "adminAnchorOrderHint": "Mark the important places first (entrances, classrooms, restrooms...), then add in-between points where needed to connect them.",
+  "adminReindexMenu": "Re-index verified points",
+  "adminReindexNothing": "No verified points with photos to index.",
+  "adminReindexRunning": "Re-indexing {count} verified points...",
+  "@adminReindexRunning": {"placeholders": {"count": {"type": "int"}}},
+  "adminReindexDone": "{ok} of {total} verified points re-indexed.",
+  "@adminReindexDone": {"placeholders": {"ok": {"type": "int"}, "total": {"type": "int"}}},
+  "adminReindexDoneWithErrors": "{ok} of {total} verified points re-indexed. Last error: {error}",
+  "@adminReindexDoneWithErrors": {"placeholders": {"ok": {"type": "int"}, "total": {"type": "int"}, "error": {"type": "String"}}},
+  "navVoiceLanguageMissing": "This phone has no voice installed for the app's language, so directions may be read with the wrong accent. Install it in the phone's Settings > Text-to-speech output.",
+  "homeStartUnnamedSubtitle": "Starting from the nearest route point, about {meters} m away",
+  "@homeStartUnnamedSubtitle": {"placeholders": {"meters": {"type": "int"}}}
 }

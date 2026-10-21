@@ -2,10 +2,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from supabase import AuthApiError
 
 from app.main import app, get_caller_id
 
 client = TestClient(app)
+
+_BAD_JWT = AuthApiError("invalid JWT: token is expired", 403, "bad_jwt")
 
 
 @pytest.fixture(autouse=True)
@@ -40,7 +43,7 @@ def test_no_token_is_rejected():
 
 
 def test_garbage_token_is_rejected():
-    with patch("app.main.db.get_user_id_from_token", side_effect=Exception("bad")):
+    with patch("app.main.db.get_user_id_from_token", side_effect=_BAD_JWT):
         response = client.delete(
             "/index_photo/p1", headers={"Authorization": "Bearer garbage"}
         )

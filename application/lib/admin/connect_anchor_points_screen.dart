@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,6 +8,7 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/map_tile_config.dart';
 import '../services/api_error_messages.dart';
+import 'capture_screen.dart' show anchorDisplayName;
 
 /// Map-tap flow for building the anchor-point walkability graph: tap one
 /// anchor point, then another, to create a connection between them. The
@@ -47,8 +49,11 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
   String? _selectedBuildingId;
   String? _selectedAnchorPointId;
   bool _loading = true;
-  bool _connecting = false;
   String? _error;
+  final _mapController = MapController();
+
+  /// Pairs (see [_pairKey]) whose connection is still being saved.
+  final Set<String> _pendingPairs = {};
 
   @override
   void initState() {
@@ -57,6 +62,12 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
     _selectedBuildingId = widget.initialBuildingId;
     _selectedAnchorPointId = widget.initialAnchorPointId;
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -115,8 +126,54 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
         .toList();
   }
 
-  Future<void> _onMarkerTap(Map<String, dynamic> point) async {
+  /// A tap within this many logical pixels of a point's dot selects it -
+  /// far more forgiving than the dot itself, which is what made taps feel
+  /// missed.
+  static const double _kTapRadiusPx = 32;
+
+  /// Taps come from `MapOptions.onTap` instead of a GestureDetector per
+  /// marker: with double-tap zoom off, flutter_map fires it immediately,
+  /// where a marker's own detector waited out the double-tap timeout
+  /// (~300ms) first.
+  void _onMapTap(LatLng tapped) {
+    final point = _pointNear(tapped);
+    if (point != null) _onPointTap(point);
+  }
+
+  Map<String, dynamic>? _pointNear(LatLng tapped) {
+    final camera = _mapController.camera;
+    final tapOffset = camera.latLngToScreenOffset(tapped);
+    Map<String, dynamic>? nearest;
+    var nearestDistance = _kTapRadiusPx;
+    for (final point in _visibleAnchorPoints) {
+      final lat = (point['latitude'] as num?)?.toDouble();
+      final lng = (point['longitude'] as num?)?.toDouble();
+      if (lat == null || lng == null) continue;
+      final distance =
+          (camera.latLngToScreenOffset(LatLng(lat, lng)) - tapOffset).distance;
+      if (distance <= nearestDistance) {
+        nearestDistance = distance;
+        nearest = point;
+      }
+    }
+    return nearest;
+  }
+
+  static String _pairKey(String a, String b) =>
+      a.compareTo(b) < 0 ? '$a|$b' : '$b|$a';
+
+  bool _alreadyConnected(String a, String b) => _connections.any(
+    (c) =>
+        _pairKey(
+          c['anchor_point_a_id'] as String? ?? '',
+          c['anchor_point_b_id'] as String? ?? '',
+        ) ==
+        _pairKey(a, b),
+  );
+
+  Future<void> _onPointTap(Map<String, dynamic> point) async {
     final id = point['id'] as String;
+    HapticFeedback.selectionClick();
     if (_selectedAnchorPointId == null) {
       setState(() => _selectedAnchorPointId = id);
       return;
@@ -126,45 +183,85 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
       return;
     }
 
+    final l10n = AppLocalizations.of(context)!;
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) {
-      setState(() => _error = AppLocalizations.of(context)!.commonNotSignedIn);
+      setState(() => _error = l10n.commonNotSignedIn);
       return;
     }
 
     final fromId = _selectedAnchorPointId!;
+    final key = _pairKey(fromId, id);
+    if (_alreadyConnected(fromId, id)) {
+      // Nothing to send - just move on, so chaining along a corridor keeps
+      // working when it crosses an existing line.
+      setState(() => _selectedAnchorPointId = id);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(l10n.connectErrorAlreadyConnected)),
+        );
+      return;
+    }
+
+    // Optimistic: draw the line and move the selection right away, so the
+    // next tap works while this one is still being saved. Only a repeat of
+    // this same pair is ignored until it's done.
+    final pending = <String, dynamic>{
+      'id': 'pending-$key',
+      'anchor_point_a_id': fromId,
+      'anchor_point_b_id': id,
+      'pending': true,
+    };
     setState(() {
-      _connecting = true;
       _error = null;
+      _pendingPairs.add(key);
+      _connections = [..._connections, pending];
+      _selectedAnchorPointId = id;
     });
 
     try {
-      await _mapApi.post('/anchor-point-connections', {
+      final result = await _mapApi.post('/anchor-point-connections', {
         'anchor_point_a_id': fromId,
         'anchor_point_b_id': id,
         'created_by': userId,
       });
-      final fromDesc = _describePoint(fromId);
-      final toDesc = _describePoint(id);
-      final connectionsResult = await _mapApi.get('/anchor-point-connections');
+      if (!mounted) return;
+      final created = result is List && result.isNotEmpty
+          ? (result.first as Map).cast<String, dynamic>()
+          : null;
+      setState(() {
+        _connections = [
+          for (final c in _connections)
+            if (!identical(c, pending)) c,
+          created ?? {...pending, 'pending': false},
+        ];
+      });
+      HapticFeedback.lightImpact();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 2),
+            content: Text(
+              l10n.connectSnackbarConnected(
+                _describePoint(fromId),
+                _describePoint(id),
+              ),
+            ),
+          ),
+        );
+    } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _connections = (connectionsResult as List).cast<Map<String, dynamic>>();
-        _selectedAnchorPointId = id;
+        _connections = [
+          for (final c in _connections)
+            if (!identical(c, pending)) c,
+        ];
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLocalizations.of(
-              context,
-            )!.connectSnackbarConnected(fromDesc, toDesc),
-          ),
-        ),
-      );
-    } on ApiException catch (e) {
-      if (mounted) {
-        final l10n = AppLocalizations.of(context)!;
-        ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
           SnackBar(
             content: Text(
               e.statusCode == 500 || e.statusCode == 409
@@ -175,9 +272,8 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
             ),
           ),
         );
-      }
     } finally {
-      if (mounted) setState(() => _connecting = false);
+      if (mounted) setState(() => _pendingPairs.remove(key));
     }
   }
 
@@ -186,7 +282,7 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
       (p) => p['id'] == id,
       orElse: () => {'id': id},
     );
-    return point['location_description'] as String? ?? id;
+    return anchorDisplayName(AppLocalizations.of(context)!, point);
   }
 
   List<Polyline> _connectionLines() {
@@ -209,11 +305,15 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
       if (aLat == null || aLng == null || bLat == null || bLng == null) {
         continue;
       }
+      final pending = c['pending'] == true;
       lines.add(
         Polyline(
           points: [LatLng(aLat, aLng), LatLng(bLat, bLng)],
-          color: Colors.green,
-          strokeWidth: 3,
+          color: pending ? Colors.grey : Colors.green,
+          strokeWidth: pending ? 2 : 3,
+          pattern: pending
+              ? const StrokePattern.dotted()
+              : const StrokePattern.solid(),
         ),
       );
     }
@@ -229,17 +329,15 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
             return null;
           }
           final selected = point['id'] == _selectedAnchorPointId;
+          // Taps are handled by _onMapTap, not here - see its comment.
           return Marker(
             point: LatLng(lat, lng),
-            width: selected ? 50 : 36,
-            height: selected ? 50 : 36,
-            child: GestureDetector(
-              onTap: _connecting ? null : () => _onMarkerTap(point),
-              child: Icon(
-                selected ? Icons.radio_button_checked : Icons.circle,
-                color: selected ? Colors.blue : Colors.green,
-                size: selected ? 32 : 16,
-              ),
+            width: 48,
+            height: 48,
+            child: Icon(
+              selected ? Icons.radio_button_checked : Icons.circle,
+              color: selected ? Colors.blue : Colors.green,
+              size: selected ? 36 : 22,
             ),
           );
         })
@@ -353,9 +451,20 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
                     ),
                   ),
                 ),
+                if (_pendingPairs.isNotEmpty)
+                  const LinearProgressIndicator(minHeight: 2),
                 Expanded(
                   child: FlutterMap(
+                    mapController: _mapController,
                     options: MapOptions(
+                      // Double-tap zoom off: it made every single tap wait
+                      // for a possible second one. Pinch still zooms.
+                      interactionOptions: const InteractionOptions(
+                        flags:
+                            InteractiveFlag.all &
+                            ~InteractiveFlag.doubleTapZoom,
+                      ),
+                      onTap: (_, latLng) => _onMapTap(latLng),
                       initialCenter: _initialCenter(),
                       initialZoom: widget.initialAnchorPointId != null
                           ? 19.5

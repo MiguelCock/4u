@@ -17,7 +17,10 @@ import 'feedback_screen.dart';
 import 'sessions_screen.dart';
 import '../user/settings_screen.dart';
 import '../user/user_home_screen.dart';
+import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
+import '../services/exit_guard.dart';
+import '../widgets/scrollable_message.dart';
 
 /// `admin`-role home screen: four tabs (places / buildings / anchor points /
 /// connections), each searchable, with edit and delete (cascade-impact
@@ -61,13 +64,27 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   String? _buildingsPlaceFilterId;
   String? _anchorPointsBuildingFilterId;
 
+  /// Tabs visited before the current one, so system back walks back
+  /// through them instead of closing the app.
+  final List<int> _tabHistory = [];
+  int _lastTabIndex = 0;
+  bool _navigatingBack = false;
+  final _exitGuard = ExitGuard();
+  bool _reindexing = false;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this)
       ..addListener(() {
+        final index = _tabController.index;
+        if (index != _lastTabIndex) {
+          if (!_navigatingBack) _tabHistory.add(_lastTabIndex);
+          _lastTabIndex = index;
+          _navigatingBack = false;
+        }
         setState(() {});
-        if (_tabController.index == 4 && !_usersLoaded) _loadUsers();
+        if (index == 4 && !_usersLoaded) _loadUsers();
       });
     _placeSearchController.addListener(
       () => setState(
@@ -171,6 +188,92 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     }
   }
 
+  /// Pull-to-refresh: reloads the map data, plus the users list once it
+  /// has been opened.
+  Future<void> _refresh() async {
+    await Future.wait([_loadData(), if (_usersLoaded) _loadUsers()]);
+  }
+
+  /// System back: leave the current tab (dropping the filter a drill-down
+  /// set on it) for the previous one, then clear a remaining filter, then
+  /// go to the first tab, and only then ask to press again to exit.
+  void _handleBack() {
+    final index = _tabController.index;
+    void clearFilterOf(int tab) {
+      if (tab == 1) _buildingsPlaceFilterId = null;
+      if (tab == 2) _anchorPointsBuildingFilterId = null;
+    }
+
+    if (_tabHistory.isNotEmpty) {
+      setState(() => clearFilterOf(index));
+      _navigatingBack = true;
+      _tabController.animateTo(_tabHistory.removeLast());
+    } else if ((index == 1 && _buildingsPlaceFilterId != null) ||
+        (index == 2 && _anchorPointsBuildingFilterId != null)) {
+      setState(() => clearFilterOf(index));
+    } else if (index != 0) {
+      _navigatingBack = true;
+      _tabController.animateTo(0);
+    } else {
+      _exitGuard.onBack(context);
+    }
+  }
+
+  /// Re-sends every verified point with photos to the search index. Points
+  /// verified while indexing was failing were never searchable, and
+  /// re-saving each one by hand is slow.
+  Future<void> _reindexVerified() async {
+    final l10n = AppLocalizations.of(context)!;
+    final messenger = ScaffoldMessenger.of(context);
+    final targets = _anchorPoints
+        .where(
+          (p) =>
+              p['status'] == 'verified' &&
+              _photosOf(p['id'] as String).isNotEmpty,
+        )
+        .toList();
+    if (targets.isEmpty) {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.adminReindexNothing)));
+      return;
+    }
+    setState(() => _reindexing = true);
+    messenger.showSnackBar(
+      SnackBar(content: Text(l10n.adminReindexRunning(targets.length))),
+    );
+    var ok = 0;
+    Object? lastError;
+    for (final point in targets) {
+      try {
+        await indexAnchorPoint(
+          _aiTrainingApi,
+          point,
+          _photosOf(point['id'] as String),
+        );
+        ok++;
+      } on ApiException catch (e) {
+        lastError = e;
+      }
+    }
+    if (!mounted) return;
+    setState(() => _reindexing = false);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 8),
+          content: Text(
+            lastError == null
+                ? l10n.adminReindexDone(ok, targets.length)
+                : l10n.adminReindexDoneWithErrors(
+                    ok,
+                    targets.length,
+                    friendlyApiErrorMessage(context, lastError),
+                  ),
+          ),
+        ),
+      );
+  }
+
   Future<void> _setUserRole(Map<String, dynamic> user, int roleId) async {
     try {
       await _userApi.patch('/profiles/${user['id']}', {'role_id': roleId});
@@ -239,7 +342,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       return const Center(child: CircularProgressIndicator());
     }
     if (_usersError != null) {
-      return Center(child: Text(_usersError!));
+      return ScrollableMessage(_usersError!);
     }
     return Column(
       children: [
@@ -293,8 +396,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           ),
         Expanded(
           child: _users.isEmpty
-              ? Center(child: Text(l10n.adminUsersEmpty))
+              ? ScrollableMessage(l10n.adminUsersEmpty)
               : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   itemCount: _users.length,
                   itemBuilder: (context, index) {
                     final user = _users[index];
@@ -534,8 +638,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       MaterialPageRoute(
         builder: (_) => CapturePhotoScreen(
           anchorPointId: point['id'] as String,
-          anchorPointDescription:
-              point['location_description'] as String? ?? point['id'] as String,
+          anchorPointDescription: anchorDisplayName(
+            AppLocalizations.of(context)!,
+            point,
+          ),
         ),
       ),
     );
@@ -601,8 +707,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         _searchField(_placeSearchController, l10n.adminSearchPlacesHint),
         Expanded(
           child: filtered.isEmpty
-              ? Center(child: Text(l10n.adminPlacesEmpty))
+              ? ScrollableMessage(l10n.adminPlacesEmpty)
               : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  // Clears the FAB, which otherwise covers the last row's
+                  // trailing buttons.
+                  padding: const EdgeInsets.only(bottom: 88),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final place = filtered[index];
@@ -692,16 +802,18 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         _searchField(_buildingSearchController, l10n.adminSearchBuildingsHint),
         Expanded(
           child: filtered.isEmpty
-              ? Center(
-                  child: Text(
-                    scopedPlace != null
-                        ? l10n.adminBuildingsEmptyIn(
-                            scopedPlace['name'] as String? ?? scopedPlace['id'],
-                          )
-                        : l10n.adminBuildingsEmpty,
-                  ),
+              ? ScrollableMessage(
+                  scopedPlace != null
+                      ? l10n.adminBuildingsEmptyIn(
+                          scopedPlace['name'] as String? ?? scopedPlace['id'],
+                        )
+                      : l10n.adminBuildingsEmpty,
                 )
               : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  // Clears the FAB, which otherwise covers the last row's
+                  // trailing buttons.
+                  padding: const EdgeInsets.only(bottom: 88),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final building = filtered[index];
@@ -814,15 +926,17 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               (p) =>
                   (_anchorStatusFilter == null ||
                       p['status'] == _anchorStatusFilter) &&
-                  (p['location_description'] as String? ?? '')
-                      .toLowerCase()
-                      .contains(_anchorQuery),
+                  anchorDisplayName(
+                    l10n,
+                    p,
+                  ).toLowerCase().contains(_anchorQuery),
             )
             .toList()
           ..sort(
-            (a, b) => (a['location_description'] as String? ?? '').compareTo(
-              b['location_description'] as String? ?? '',
-            ),
+            (a, b) => anchorDisplayName(
+              l10n,
+              a,
+            ).compareTo(anchorDisplayName(l10n, b)),
           );
 
     return Column(
@@ -846,6 +960,22 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         _statusFilterChips(buildingScoped),
         _searchField(_anchorSearchController, l10n.adminSearchAnchorPointsHint),
         Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.lightbulb_outline, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  l10n.adminAnchorOrderHint,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
@@ -862,17 +992,19 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         ),
         Expanded(
           child: filtered.isEmpty
-              ? Center(
-                  child: Text(
-                    scopedBuilding != null
-                        ? l10n.adminAnchorsEmptyIn(
-                            scopedBuilding['name'] as String? ??
-                                scopedBuilding['id'],
-                          )
-                        : l10n.adminAnchorsEmpty,
-                  ),
+              ? ScrollableMessage(
+                  scopedBuilding != null
+                      ? l10n.adminAnchorsEmptyIn(
+                          scopedBuilding['name'] as String? ??
+                              scopedBuilding['id'],
+                        )
+                      : l10n.adminAnchorsEmpty,
                 )
               : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  // Clears the FAB, which otherwise covers the last row's
+                  // trailing buttons.
+                  padding: const EdgeInsets.only(bottom: 88),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final point = filtered[index];
@@ -894,10 +1026,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                               ),
                             )
                           : const Icon(Icons.location_pin, color: Colors.green),
-                      title: Text(
-                        point['location_description'] as String? ??
-                            point['id'] as String,
-                      ),
+                      title: Text(anchorDisplayName(l10n, point)),
                       subtitle: Text(
                         '${building?['name'] as String? ?? l10n.commonUnknownBuilding} · '
                         '${l10n.adminStatusLabel(anchorStatusLabel(l10n, point['status'] as String? ?? 'unknown'))} · '
@@ -940,7 +1069,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
     String describe(String? anchorPointId) {
       final point = anchorPointsById[anchorPointId];
-      return point?['location_description'] as String? ?? anchorPointId ?? '?';
+      return point == null
+          ? anchorPointId ?? '?'
+          : anchorDisplayName(l10n, point);
     }
 
     final filtered = _connections.where((c) {
@@ -958,8 +1089,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         ),
         Expanded(
           child: filtered.isEmpty
-              ? Center(child: Text(l10n.adminConnectionsEmpty))
+              ? ScrollableMessage(l10n.adminConnectionsEmpty)
               : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  // Clears the FAB, which otherwise covers the last row's
+                  // trailing buttons.
+                  padding: const EdgeInsets.only(bottom: 88),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final connection = filtered[index];
@@ -1146,6 +1281,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             },
           ),
           ListTile(
+            leading: const Icon(Icons.manage_search, color: Colors.teal),
+            title: Text(l10n.adminReindexMenu),
+            enabled: !_reindexing && !_loading,
+            onTap: () {
+              Navigator.of(context).pop();
+              _reindexVerified();
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.visibility_outlined, color: Colors.teal),
             title: Text(l10n.adminTestAsUser),
             onTap: () {
@@ -1165,6 +1309,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _handleBack();
+      },
+      child: _scaffold(l10n),
+    );
+  }
+
+  Widget _scaffold(AppLocalizations l10n) {
     return Scaffold(
       drawer: _drawer(),
       appBar: AppBar(
@@ -1186,7 +1340,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: l10n.commonRefresh,
-            onPressed: _loading ? null : _loadData,
+            onPressed: _loading ? null : _refresh,
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
@@ -1207,9 +1361,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-          ? Center(child: Text(_error!))
+          ? RefreshIndicator(
+              onRefresh: _refresh,
+              child: ScrollableMessage(_error!),
+            )
           : RefreshIndicator(
-              onRefresh: _loadData,
+              onRefresh: _refresh,
               child: TabBarView(
                 controller: _tabController,
                 physics: const NeverScrollableScrollPhysics(),

@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'user_sessions_screen.dart' show sessionStatusLabel;
 import '../services/api_error_messages.dart';
+import '../widgets/scrollable_message.dart';
 
 /// Admin-only: every submitted comment (`GET /navigation/feedback`, finally
 /// a real caller - previously write-only, see #89), newest first, with the
@@ -55,8 +56,12 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     );
   }
 
-  void _refresh() {
-    setState(() => _dataFuture = _load());
+  /// Returns once the reload finishes, so the pull-to-refresh spinner
+  /// stays up until the data is actually back.
+  Future<void> _refresh() {
+    final future = _load();
+    setState(() => _dataFuture = future);
+    return future.then((_) {}, onError: (_) {});
   }
 
   @override
@@ -70,7 +75,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async => _refresh(),
+        onRefresh: _refresh,
         child: FutureBuilder<_FeedbackData>(
           future: _dataFuture,
           builder: (context, snapshot) {
@@ -78,19 +83,18 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
-              return Center(
-                child: Text(
-                  l10n.feedbackErrorLoadFailed(
-                    friendlyApiErrorMessage(context, snapshot.error!),
-                  ),
+              return ScrollableMessage(
+                l10n.feedbackErrorLoadFailed(
+                  friendlyApiErrorMessage(context, snapshot.error!),
                 ),
               );
             }
             final data = snapshot.data!;
             if (data.feedback.isEmpty) {
-              return Center(child: Text(l10n.feedbackEmpty));
+              return ScrollableMessage(l10n.feedbackEmpty);
             }
             return ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
               itemCount: data.feedback.length,
               itemBuilder: (context, index) {
                 final item = data.feedback[index];
