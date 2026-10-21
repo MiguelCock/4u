@@ -183,7 +183,13 @@ def test_find_or_create_returns_existing_match():
     routes_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
         _ROUTE_ROW
     ]
-    mock_client = _mock_multi_table_client({"routes": routes_table})
+    connections_table = MagicMock()
+    connections_table.select.return_value.execute.return_value.data = [
+        {"anchor_point_a_id": "a1", "anchor_point_b_id": "a2", "distance_meters": 5.0},
+    ]
+    mock_client = _mock_multi_table_client(
+        {"routes": routes_table, "anchor_point_connections": connections_table}
+    )
     with patch("app.main.db.client", mock_client):
         response = client.post(
             "/routes/find_or_create",
@@ -252,5 +258,61 @@ def test_find_or_create_404_when_no_path_exists():
         response = client.post(
             "/routes/find_or_create",
             json={"start_anchor_id": "a1", "end_anchor_id": "a3"},
+        )
+    assert response.status_code == 404
+
+
+def test_find_or_create_recomputes_route_through_deleted_connection():
+    _as_caller("u1")
+    stale = {**_ROUTE_ROW, "end_anchor_id": "a3", "waypoint_anchor_ids": ["a2"]}
+    routes_table = MagicMock()
+    routes_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        stale
+    ]
+    routes_table.update.return_value.eq.return_value.execute.return_value.data = [
+        {**stale, "waypoint_anchor_ids": ["a4"]}
+    ]
+    connections_table = MagicMock()
+    # a2-a3 was deleted; a1-a4-a3 still connects the two ends.
+    connections_table.select.return_value.execute.return_value.data = [
+        {"anchor_point_a_id": "a1", "anchor_point_b_id": "a2", "distance_meters": 5.0},
+        {"anchor_point_a_id": "a1", "anchor_point_b_id": "a4", "distance_meters": 6.0},
+        {"anchor_point_a_id": "a3", "anchor_point_b_id": "a4", "distance_meters": 6.0},
+    ]
+    anchors_table = MagicMock()
+    anchors_table.select.return_value.in_.return_value.execute.return_value.data = []
+    mock_client = _mock_multi_table_client(
+        {
+            "routes": routes_table,
+            "anchor_point_connections": connections_table,
+            "anchor_points": anchors_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/routes/find_or_create",
+            json={"start_anchor_id": "a1", "end_anchor_id": "a3"},
+        )
+    assert response.status_code == 200
+    assert response.json()["waypoint_anchor_ids"] == ["a4"]
+    routes_table.update.assert_called_once_with({"waypoint_anchor_ids": ["a4"]})
+    routes_table.insert.assert_not_called()
+
+
+def test_find_or_create_404_when_cached_route_is_no_longer_connected():
+    _as_caller("u1")
+    routes_table = MagicMock()
+    routes_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        _ROUTE_ROW
+    ]
+    connections_table = MagicMock()
+    connections_table.select.return_value.execute.return_value.data = []
+    mock_client = _mock_multi_table_client(
+        {"routes": routes_table, "anchor_point_connections": connections_table}
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/routes/find_or_create",
+            json={"start_anchor_id": "a1", "end_anchor_id": "a2"},
         )
     assert response.status_code == 404

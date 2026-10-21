@@ -22,6 +22,26 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The release description comes from CHANGELOG.md's section for this
+      # version (written for the people who install the app). Done first,
+      # so a missing entry fails in seconds instead of after the APK build.
+      - name: Release notes from CHANGELOG.md
+        working-directory: .
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          awk -v heading="## [$VERSION]" '
+            index($0, heading) == 1 { found = 1; next }
+            found && (/^## \[/ || /^\[[^]]+\]: /) { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::CHANGELOG.md has no '## [$VERSION]' section. Add one in the release PR before tagging."
+            exit 1
+          fi
+          cat release-notes.md
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -78,4 +98,6 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           files: application/build/app/outputs/flutter-apk/app-release.apk
+          body_path: release-notes.md
+          # Appended below the CHANGELOG text: the list of merged PRs.
           generate_release_notes: true

@@ -84,3 +84,5 @@ Actively developed. See the repo's [Issues](https://github.com/MiguelCock/4u/iss
 ## Contributing
 
 Branch off `develop`, open a PR against it — CI runs the matching component's tests automatically. `main` tracks tagged releases only.
+
+Add a line under **Unreleased** in [`CHANGELOG.md`](CHANGELOG.md) describing what changed for the people using the app (Added / Changed / Fixed / Removed). When releasing, the release PR renames that heading to the new version and date. The release workflow publishes that section as the GitHub release description, and it refuses to publish a version that has no section.

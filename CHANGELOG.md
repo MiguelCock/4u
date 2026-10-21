@@ -1,0 +1,104 @@
+# Changelog
+
+What changed in each release of the Eyes4U app and its backend, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
+
+Each release's section becomes its GitHub release description (`.github/workflows/release.yml` extracts it), so write it for the people who install the app, not for developers. Add an entry under **Unreleased** in each PR. The release PR renames that heading to the new version and date.
+
+## [Unreleased]
+
+### Added
+- **Turn-by-turn voice guidance**: the app says which way to face and how far to turn ("Turn right about 90 degrees"), confirms when you're facing the right way ("Start walking forward, 15 meters"), and corrects you if you drift off course.
+- **Automatic arrival**: reaching the destination announces it and finishes the trip without pressing End.
+- **Voice destination search**: tap "Say where you want to go" and say the place, e.g. "quiero ir a la cafetería". If several places match, the app asks which one.
+- **Delete connections on the map**: tap a connection line on the Connect map to delete it. Saved routes that used it are recalculated.
+- **Re-index verified points** (admin menu): re-sends verified points to photo search, for points verified while indexing was failing.
+- **Pull down to refresh** on every list.
+- **Back button** steps back through admin sections and filters, then asks "press back again to exit".
+
+### Changed
+- **Destinations vs in-between points**: classrooms, entrances, restrooms and other destination types need a description. Hallways, intersections and similar points can be saved without one and never appear as destinations. New points start as "hallway".
+- Spoken directions are short and direction-only. Hallway points are never named.
+- Navigation speaks in the app's language with a native voice, even when the phone is set to another language.
+- Selecting points on the Connect map is instant and forgiving: a tap near a dot counts, with a vibration. Quick chains of taps are no longer lost.
+- Admin tips (order of work, row tap to connect) moved from the app into the admin guide.
+
+### Fixed
+- **"Session expired" when indexing a verified point**, even after signing in again. The server was reporting its own configuration problem as an expired session. It now gives an honest error, and the configuration is fixed.
+- **Coordinates lost precision when saved**: longitudes were rounded to about 0.85 m, so points lined up in parallel. Coordinates are now stored at full precision. Existing points keep their rounded position until moved.
+- Map pins were drawn about 17 pixels south of their real position.
+- The "+" button covered the last row's delete button in admin lists.
+- The destination list showed each place's description twice.
+
+### Removed
+- The old data-collection camera screen and its button in the user view.
+
+## [0.3.1] - 2026-10-21
+
+### Added
+- The route's starting point is shown on the home screen. It's confirmed with one camera photo (visual correction) when you tap Find route, instead of raw GPS alone.
+- Tap the map during navigation to hear the last instruction again.
+- Tapping an anchor point in the admin list opens the connection map, zoomed in with that point selected.
+- A confirmation appears when an anchor point is created.
+- Admins can find and repair accounts that signed up but have no profile, so they can be promoted.
+
+### Changed
+- Error messages are in plain language ("couldn't reach the server", "your session expired") instead of raw server text.
+- The destination picker no longer offers the starting point.
+- The navigation map zooms to the route when the trip starts.
+
+### Fixed
+- "Missing bearer token" / "invalid or expired token" errors after the phone was locked or the app was in the background. The app now refreshes the session and retries.
+- Spinners that never stopped when the connection dropped.
+
+## [0.3.0] - 2026-10-14
+
+### Added
+- Spoken announcements (text-to-speech) and haptic feedback during navigation, with a voice-guidance setting.
+- Camera use is announced at the start of navigation, and a covered camera is detected and announced.
+- Visual search only compares nearby anchor points (geo-scoped), which makes it faster and more accurate.
+
+### Changed
+- Admin building and anchor point screens are easier to use.
+- Screen-reader (TalkBack) support is extended across the user screens.
+
+## [0.2.1] - 2026-10-07
+
+### Fixed
+- Accounts whose profile wasn't created at signup are repaired automatically at the next sign-in, instead of being stuck unable to load settings or be promoted.
+
+## [0.2.0] - 2026-10-07
+
+### Added
+- **GPS correction during navigation**: the camera is matched against anchor-point photos and fused with GPS (Kalman filter) to correct your position.
+- **Trip planning**: pick only the destination. The nearest anchor point is chosen as the start and a walking route is computed from the connections.
+- Live tracking of navigation sessions for admins, with the route drawn on the map.
+- Settings: language (English/Spanish), high contrast, text size and verbosity.
+- Admin user management (promote/demote) and a "test as user" mode.
+- Feedback after each trip, visible to admins.
+- Clear screens for location-permission problems instead of an endless spinner.
+
+### Changed
+- Every backend service now checks who is calling. Only admins can change map data.
+
+### Fixed
+- When the server was unreachable, it looked like a login problem. The app now shows an error with a Retry button.
+- Backend services restart automatically after a crash.
+
+## [0.1.0] - 2026-10-02
+
+First release.
+
+### Added
+- Sign up and log in, with separate user and admin views.
+- Admins can create universities, buildings and anchor points (with photos facing several directions), review and verify them, and connect them into a walkable network.
+- Admin map picker showing existing places, buildings and anchor points.
+- Anchor-point photos are indexed for visual search (EfficientNet-B0 embeddings in Qdrant).
+- One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
+- Bilingual (English/Spanish) admin guide.
+
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.3.1...develop
+[0.3.1]: https://github.com/MiguelCock/4u/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/MiguelCock/4u/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/MiguelCock/4u/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/MiguelCock/4u/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/MiguelCock/4u/releases/tag/v0.1.0

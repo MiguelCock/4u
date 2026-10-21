@@ -335,5 +335,15 @@
   "navContinueStraight": "Sigue derecho {meters} metros.",
   "navAtPlace": "En {name}.",
   "navMetersAhead": "Faltan {meters} metros.",
-  "navArrivedFinished": "Llegaste a {name}. Navegación terminada."
+  "navArrivedFinished": "Llegaste a {name}. Navegación terminada.",
+  "connectSnackbarDeleted": "Conexión eliminada {from} ↔ {to}",
+  "connectDeleteContent": "{from} ↔ {to}\n\nLas rutas que la usaban se recalcularán. Esto no se puede deshacer.",
+  "homeSayDestinationButton": "Di a dónde quieres ir",
+  "homeListening": "Escuchando... di un lugar, por ejemplo \"cafetería\". Toca para detener.",
+  "homeVoiceDestinationSet": "Destino: {name}. Toca Buscar ruta para empezar.",
+  "homeVoiceSeveralMatches": "Encontré varios lugares: {options}. Elige uno.",
+  "homeVoiceNoMatch": "No encontré \"{heard}\". Inténtalo de nuevo o elige de la lista.",
+  "homeVoiceNothingHeard": "No escuché ningún lugar. Inténtalo de nuevo.",
+  "homeVoiceUnavailable": "La entrada por voz no está disponible en este teléfono. Elige el destino de la lista.",
+  "homeVoiceChooseTitle": "¿Cuál?"
 }

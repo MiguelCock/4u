@@ -1,4 +1,5 @@
 import os
+from itertools import pairwise
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
@@ -61,6 +62,21 @@ async def delete_route(id: str, caller_id: str = Depends(get_caller_id)):
     return "ok"
 
 
+def _route_still_walkable(route: dict, connections: list[dict]) -> bool:
+    """Whether every consecutive pair on a saved route is still connected.
+    Routes are cached by (start, end), so without this check a route kept
+    following a connection an admin had since deleted."""
+    edges = {
+        frozenset((c["anchor_point_a_id"], c["anchor_point_b_id"])) for c in connections
+    }
+    stops = [
+        route["start_anchor_id"],
+        *(route.get("waypoint_anchor_ids") or []),
+        route["end_anchor_id"],
+    ]
+    return all(frozenset(pair) in edges for pair in pairwise(stops))
+
+
 @app.post("/routes/find_or_create")
 async def find_or_create_route(
     request: RouteFindOrCreate, caller_id: str = Depends(get_caller_id)
@@ -77,8 +93,12 @@ async def find_or_create_route(
         .eq("end_anchor_id", request.end_anchor_id)
         .execute()
     )
-    if existing.data:
-        return existing.data[0]
+    # Fetched up front: needed both to re-check a cached route and to
+    # compute a new one.
+    connections = db.client.table("anchor_point_connections").select("*").execute()
+    cached = existing.data[0] if existing.data else None
+    if cached and _route_still_walkable(cached, connections.data):
+        return cached
 
     # anchor_point_connections/anchor_points are backend-map-management's
     # tables, not this service's - but every service shares one Supabase
@@ -87,7 +107,6 @@ async def find_or_create_route(
     # service-to-service HTTP call just to fetch rows this service's own
     # SupaBase client can already reach. First time this repo reads a
     # table outside the reading service's own domain.
-    connections = db.client.table("anchor_point_connections").select("*").execute()
     path = shortest_path(
         connections.data, request.start_anchor_id, request.end_anchor_id
     )
@@ -109,6 +128,18 @@ async def find_or_create_route(
         start_anchor["location_description"] if start_anchor else "start"
     ) or "start"
     end_desc = (end_anchor["location_description"] if end_anchor else "end") or "end"
+
+    if cached:
+        # A connection on the cached path was deleted since it was saved:
+        # recompute its waypoints in place rather than deleting the row -
+        # navigation_sessions.route_id references it with no ON DELETE.
+        result = (
+            db.client.table("routes")
+            .update({"waypoint_anchor_ids": path[1:-1]})
+            .eq("id", cached["id"])
+            .execute()
+        )
+        return result.data[0]
 
     payload = {
         "building_id": start_anchor["building_id"] if start_anchor else None,

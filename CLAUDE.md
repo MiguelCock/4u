@@ -71,6 +71,10 @@ adb devices
 
 Every component is expected to carry its own test suite: the Flutter app is tested with `flutter test`, and every Python component (`packages` and each backend service) is tested with `pytest` via `uv run pytest`. When adding a new backend service or extending `packages`, add tests alongside it rather than leaving it uncovered — CI (below) is wired to discover and run these per-component. For standing up every component together against one Supabase project and testing the real signup → admin capture → route → navigation flow end-to-end, see `docs/SETUP.md`.
 
+## Releases
+
+`CHANGELOG.md` (Keep a Changelog format) is the source of every GitHub release description. `.github/workflows/release.yml`, triggered by a `v*` tag, extracts the `## [x.y.z]` section matching the tag, publishes it as the release body with GitHub's auto-generated PR list appended, and fails before building if the section is missing. Each PR adds user-facing lines under `## [Unreleased]`. The release PR (version bump in `application/pubspec.yaml`) renames that heading to the version and date. Flow: version-bump PR into `develop`, then a `develop`→`main` squash merge (`main` requires linear history), then tag `vX.Y.Z` on `main`.
+
 ## CI
 
 `.github/workflows/ci.yml` uses `dorny/paths-filter` to detect which of `application/`, `packages/`, `backend-data-collection/`, `backend-map-management/`, `backend-route-management/`, `backend-user-management/`, `backend-navigation-management/`, `backend-ai-training/`, `backend-positioning/` changed, then runs only the matching test job (`flutter test` or `uv run pytest`) for each. New Python components must be added to both the `filters` and `components` arrays in that workflow to get CI coverage. Note the path filter only triggers a service's tests when that service's own files change — editing `packages/` does not currently re-run the consuming services' test jobs.
