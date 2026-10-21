@@ -1,21 +1,30 @@
+import 'dart:async';
+
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:path/path.dart' as path;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../camera.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/camera_helper.dart';
 import '../services/geo_utils.dart';
+import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import 'anchor_point_picker_screen.dart';
 import 'navigation_screen.dart';
 import 'settings_screen.dart';
+import '../services/api_error_messages.dart';
 
 /// The `user`-role home screen IS the trip-planning flow now (not a map,
 /// not a separate screen reached via a FAB): the user only picks a
 /// destination - the start point is auto-selected as the verified anchor
-/// point nearest their current GPS fix, Uber-pickup-pin style, rather than
-/// making them pick both ends.
+/// point nearest to them, Uber-pickup-pin style, rather than making them
+/// pick both ends. It's shown as soon as it's known (from raw GPS), and
+/// re-picked from a camera-corrected position when they tap Find route.
 class UserHomeScreen extends StatefulWidget {
   /// True when reached via AdminHomeScreen's "Test as user" drawer entry
   /// (#79) - purely cosmetic (shows a banner so an admin can't mistake this
@@ -32,21 +41,112 @@ class UserHomeScreen extends StatefulWidget {
 class _UserHomeScreenState extends State<UserHomeScreen> {
   final _mapApi = MapManagementApi();
   final _routeApi = RouteManagementApi();
+  final _positioningApi = PositioningApi();
   final _locationService = LocationService();
+  StreamSubscription<Position>? _positionSub;
 
+  List<Map<String, dynamic>> _verifiedAnchors = [];
+  Map<String, dynamic>? _start;
   Map<String, dynamic>? _end;
   bool _finding = false;
+  bool _locatingStart = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _positionSub = _locationService.positionStream.listen(_recomputeStart);
+    _loadAnchors();
+  }
+
+  @override
+  void dispose() {
+    _positionSub?.cancel();
+    super.dispose();
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchVerifiedAnchors() async {
+    final anchors = await _mapApi.get('/anchor-points');
+    return (anchors as List)
+        .cast<Map<String, dynamic>>()
+        .where((a) => a['status'] == 'verified')
+        .toList();
+  }
+
+  /// Best-effort early load so the Start row can show a real anchor point
+  /// before the user does anything - Find route re-fetches and surfaces
+  /// any real failure.
+  Future<void> _loadAnchors() async {
+    try {
+      final verified = await _fetchVerifiedAnchors();
+      if (!mounted) return;
+      _verifiedAnchors = verified;
+      final position = _locationService.lastPosition;
+      if (position != null) _recomputeStart(position);
+    } on ApiException {
+      // Shown later by _findRoute if it's still failing then.
+    }
+  }
+
+  void _recomputeStart(Position position) {
+    if (!mounted || _verifiedAnchors.isEmpty || _finding) return;
+    final nearest = _nearestAnchor(
+      _verifiedAnchors,
+      LatLng(position.latitude, position.longitude),
+    );
+    if (nearest?['id'] != _start?['id']) setState(() => _start = nearest);
+  }
 
   Future<void> _pickEnd() async {
     final picked = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
         builder: (_) => AnchorPointPickerScreen(
           title: AppLocalizations.of(context)!.homeWhereTo,
+          excludeAnchorId: _start?['id'] as String?,
         ),
       ),
     );
     if (picked != null) setState(() => _end = picked);
+  }
+
+  /// One camera frame + the GPS fix through backend-positioning's
+  /// stateless correction, so the starting anchor is picked from a
+  /// corrected position rather than raw GPS (5-20m off). Null on anything
+  /// going wrong (no camera/permission, covered lens, backend unreachable)
+  /// - callers fall back to raw GPS, this never blocks finding a route.
+  Future<LatLng?> _correctedPosition(Position position) async {
+    CameraController? controller;
+    try {
+      controller = await initCamera();
+      if (controller == null) return null;
+      final image = await controller.takePicture();
+      final bytes = await image.readAsBytes();
+      if (isFrameBlocked(bytes)) return null;
+      final result =
+          await _positioningApi
+                  .postMultipart(
+                    '/correct_position_once',
+                    fieldName: 'photo',
+                    bytes: bytes,
+                    filename: path.basename(image.path),
+                    fields: {
+                      'latitude': position.latitude.toString(),
+                      'longitude': position.longitude.toString(),
+                      'accuracy': position.accuracy.toString(),
+                      'heading': position.heading.toString(),
+                    },
+                  )
+                  .timeout(const Duration(seconds: 10))
+              as Map<String, dynamic>;
+      return LatLng(
+        (result['corrected_lat'] as num).toDouble(),
+        (result['corrected_long'] as num).toDouble(),
+      );
+    } catch (_) {
+      return null;
+    } finally {
+      await controller?.dispose();
+    }
   }
 
   Map<String, dynamic>? _nearestAnchor(
@@ -86,18 +186,33 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     }
 
     try {
-      final anchors = await _mapApi.get('/anchor-points');
-      final verified = (anchors as List)
-          .cast<Map<String, dynamic>>()
-          .where((a) => a['status'] == 'verified')
-          .toList();
+      final verified = await _fetchVerifiedAnchors();
+      _verifiedAnchors = verified;
+
+      if (!mounted) return;
+      setState(() => _locatingStart = true);
+      final corrected = await _correctedPosition(position);
+      if (!mounted) return;
       final start = _nearestAnchor(
         verified,
-        LatLng(position.latitude, position.longitude),
+        corrected ?? LatLng(position.latitude, position.longitude),
       );
+      setState(() {
+        _locatingStart = false;
+        _start = start;
+      });
       if (start == null) {
         setState(() {
           _error = AppLocalizations.of(context)!.homeErrorNoVerifiedAnchors;
+          _finding = false;
+        });
+        return;
+      }
+      if (start['id'] == end['id']) {
+        setState(() {
+          _error = AppLocalizations.of(context)!.homeErrorAlreadyAtDestination(
+            end['location_description'] as String? ?? end['id'] as String,
+          );
           _finding = false;
         });
         return;
@@ -118,11 +233,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
+        _locatingStart = false;
         _error = e.statusCode == 404
             ? AppLocalizations.of(context)!.homeErrorNoPath
-            : AppLocalizations.of(
-                context,
-              )!.homeErrorFailedToFindRoute(e.toString());
+            : AppLocalizations.of(context)!.homeErrorFailedToFindRoute(
+                friendlyApiErrorMessage(context, e),
+              );
         _finding = false;
       });
     }
@@ -195,7 +311,19 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 color: Colors.blue,
               ),
               title: Text(l10n.homeStartLabel),
-              subtitle: Text(l10n.homeStartSubtitle),
+              subtitle: Semantics(
+                liveRegion: true,
+                child: Text(
+                  _locatingStart
+                      ? l10n.homeLocatingStart
+                      : _start != null
+                      ? l10n.homeStartNearestSubtitle(
+                          _start!['location_description'] as String? ??
+                              _start!['id'] as String,
+                        )
+                      : l10n.homeStartSubtitle,
+                ),
+              ),
             ),
             const Divider(height: 1),
             ListTile(

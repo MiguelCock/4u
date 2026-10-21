@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/api_error_messages.dart';
 
 class _PhotoEntry {
   final String? id;
@@ -129,9 +130,10 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
       }
     } on ApiException catch (e) {
       setState(
-        () => _error = AppLocalizations.of(
-          context,
-        )!.capturePhotoErrorLoadExistingFailed(e.toString()),
+        () => _error = AppLocalizations.of(context)!
+            .capturePhotoErrorLoadExistingFailed(
+              friendlyApiErrorMessage(context, e),
+            ),
       );
     } finally {
       if (mounted) setState(() => _loadingExisting = false);
@@ -213,7 +215,9 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
                 content: Text(
                   AppLocalizations.of(
                     context,
-                  )!.capturePhotoSnackbarIndexingFailed(e.toString()),
+                  )!.capturePhotoSnackbarIndexingFailed(
+                    friendlyApiErrorMessage(context, e),
+                  ),
                 ),
               ),
             );
@@ -230,7 +234,7 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
           }
           _error = AppLocalizations.of(
             context,
-          )!.capturePhotoErrorSaveFailed(e.toString());
+          )!.capturePhotoErrorSaveFailed(friendlyApiErrorMessage(context, e));
         });
       }
     } finally {
@@ -266,7 +270,11 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.commonErrorDeleteFailed(e.toString()))),
+          SnackBar(
+            content: Text(
+              l10n.commonErrorDeleteFailed(friendlyApiErrorMessage(context, e)),
+            ),
+          ),
         );
       }
       return;

@@ -240,3 +240,137 @@ def test_get_role_404_when_missing():
     with patch("app.main.db.client", _mock_select_eq_result([])):
         response = client.get("/roles/99")
     assert response.status_code == 404
+
+
+# --- orphaned auth accounts (no profiles row) ---------------------------
+
+
+def _auth_user(user_id: str, email: str) -> MagicMock:
+    user = MagicMock()
+    user.id = user_id
+    user.email = email
+    user.created_at = "2026-10-01T00:00:00Z"
+    return user
+
+
+def test_list_orphaned_requires_admin():
+    _as_caller("u1")
+    with patch("app.main.db.is_admin", return_value=False):
+        response = client.get("/profiles/orphaned")
+    assert response.status_code == 403
+
+
+def test_list_orphaned_is_not_captured_as_a_profile_id():
+    _as_caller("admin1")
+    mock_client = MagicMock()
+    mock_client.table.return_value.select.return_value.execute.return_value.data = []
+    mock_client.auth.admin.list_users.return_value = []
+    with (
+        patch("app.main.db.is_admin", return_value=True),
+        patch("app.main.db.client", mock_client),
+    ):
+        response = client.get("/profiles/orphaned")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_list_orphaned_filters_out_users_with_profiles():
+    _as_caller("admin1")
+    mock_client = MagicMock()
+    mock_client.table.return_value.select.return_value.execute.return_value.data = [
+        {"id": "has-profile"}
+    ]
+    mock_client.auth.admin.list_users.return_value = [
+        _auth_user("has-profile", "a@example.com"),
+        _auth_user("orphan", "b@example.com"),
+    ]
+    with (
+        patch("app.main.db.is_admin", return_value=True),
+        patch("app.main.db.client", mock_client),
+    ):
+        response = client.get("/profiles/orphaned")
+    assert response.status_code == 200
+    body = response.json()
+    assert [u["id"] for u in body] == ["orphan"]
+    assert body[0]["email"] == "b@example.com"
+
+
+def test_list_orphaned_pages_through_all_auth_users():
+    _as_caller("admin1")
+    mock_client = MagicMock()
+    mock_client.table.return_value.select.return_value.execute.return_value.data = []
+    full_page = [_auth_user(f"u{i}", f"u{i}@example.com") for i in range(200)]
+    last_page = [_auth_user("last", "last@example.com")]
+    mock_client.auth.admin.list_users.side_effect = [full_page, last_page]
+    with (
+        patch("app.main.db.is_admin", return_value=True),
+        patch("app.main.db.client", mock_client),
+    ):
+        response = client.get("/profiles/orphaned")
+    assert response.status_code == 200
+    assert len(response.json()) == 201
+    assert mock_client.auth.admin.list_users.call_count == 2
+
+
+def test_repair_requires_admin():
+    _as_caller("u1")
+    with patch("app.main.db.is_admin", return_value=False):
+        response = client.post("/profiles/orphan/repair", json={})
+    assert response.status_code == 403
+
+
+def test_repair_404s_for_unknown_auth_user():
+    from supabase import AuthApiError
+
+    _as_caller("admin1")
+    mock_client = MagicMock()
+    mock_client.auth.admin.get_user_by_id.side_effect = AuthApiError(
+        "User not found", 404, None
+    )
+    with (
+        patch("app.main.db.is_admin", return_value=True),
+        patch("app.main.db.client", mock_client),
+    ):
+        response = client.post("/profiles/nobody/repair", json={})
+    assert response.status_code == 404
+    mock_client.table.return_value.insert.assert_not_called()
+
+
+def test_repair_409s_if_profile_already_exists():
+    _as_caller("admin1")
+    mock_client = _mock_client(select_rows=[{"id": "orphan"}])
+    with (
+        patch("app.main.db.is_admin", return_value=True),
+        patch("app.main.db.client", mock_client),
+    ):
+        response = client.post("/profiles/orphan/repair", json={})
+    assert response.status_code == 409
+    mock_client.table.return_value.insert.assert_not_called()
+
+
+def test_repair_creates_profile_with_default_role():
+    _as_caller("admin1")
+    mock_client = _mock_client(select_rows=[], insert_rows=[{"id": "orphan"}])
+    with (
+        patch("app.main.db.is_admin", return_value=True),
+        patch("app.main.db.client", mock_client),
+    ):
+        response = client.post("/profiles/orphan/repair", json={})
+    assert response.status_code == 200
+    mock_client.table.return_value.insert.assert_called_once_with(
+        {"id": "orphan", "role_id": 1}
+    )
+
+
+def test_repair_respects_an_explicit_role():
+    _as_caller("admin1")
+    mock_client = _mock_client(select_rows=[], insert_rows=[{"id": "orphan"}])
+    with (
+        patch("app.main.db.is_admin", return_value=True),
+        patch("app.main.db.client", mock_client),
+    ):
+        response = client.post("/profiles/orphan/repair", json={"role_id": 2})
+    assert response.status_code == 200
+    mock_client.table.return_value.insert.assert_called_once_with(
+        {"id": "orphan", "role_id": 2}
+    )

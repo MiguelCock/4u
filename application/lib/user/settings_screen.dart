@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
+import '../services/api_error_messages.dart';
 
 /// #85 + #107: lets the signed-in user configure verbosity, high contrast,
 /// language, and (#39/#40/#83) voice guidance, backed by the already-
@@ -78,7 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         _error = AppLocalizations.of(
           context,
-        )!.settingsErrorLoadFailed(e.toString());
+        )!.settingsErrorLoadFailed(friendlyApiErrorMessage(context, e));
         _loading = false;
       });
     }
@@ -126,7 +127,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(
         () => _error = AppLocalizations.of(
           context,
-        )!.settingsErrorSaveFailed(e.toString()),
+        )!.settingsErrorSaveFailed(friendlyApiErrorMessage(context, e)),
       );
     } finally {
       if (mounted) setState(() => _saving = false);

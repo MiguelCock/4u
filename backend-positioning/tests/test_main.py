@@ -160,3 +160,80 @@ async def test_search_similar_forwards_latitude_and_longitude():
     call = mock_client.post.call_args
     assert call.kwargs["data"]["latitude"] == "6.24"
     assert call.kwargs["data"]["longitude"] == "-75.58"
+
+
+# --- /correct_position_once: stateless, no session ----------------------
+
+
+def _post_once(lat=6.2, lng=-75.6, accuracy=5.0):
+    _as_caller("u1")
+    return client.post(
+        "/correct_position_once",
+        data={"latitude": lat, "longitude": lng, "accuracy": accuracy},
+        files={"photo": ("frame.jpg", b"fake-bytes", "image/jpeg")},
+    )
+
+
+def test_correct_position_once_rejects_missing_token():
+    response = client.post(
+        "/correct_position_once",
+        data={"latitude": 6.2, "longitude": -75.6, "accuracy": 5.0},
+        files={"photo": ("frame.jpg", b"fake-bytes", "image/jpeg")},
+    )
+    assert response.status_code == 401
+
+
+def test_correct_position_once_pulls_toward_a_confident_match():
+    # Match ~22m north of a fix with 20m GPS accuracy - an accepted visual
+    # match (3m sigma) should pull the result most of the way to it.
+    match = {
+        "anchor_point_id": "a1",
+        "latitude": 6.2002,
+        "longitude": -75.6,
+        "score": 0.95,
+    }
+    with patch("app.main._search_similar", AsyncMock(return_value=match)):
+        response = _post_once(accuracy=20.0)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["anchor_match_id"] == "a1"
+    assert body["confidence_score"] == 0.95
+    assert body["corrected_lat"] > 6.2 + 0.7 * 0.0002
+    assert body["corrected_long"] == pytest.approx(-75.6, abs=1e-6)
+
+
+def test_correct_position_once_ignores_a_low_score_match():
+    match = {
+        "anchor_point_id": "a1",
+        "latitude": 6.2002,
+        "longitude": -75.6,
+        "score": 0.1,
+    }
+    with patch("app.main._search_similar", AsyncMock(return_value=match)):
+        response = _post_once()
+
+    body = response.json()
+    assert body["anchor_match_id"] is None
+    assert body["corrected_lat"] == pytest.approx(6.2, abs=1e-6)
+
+
+def test_correct_position_once_returns_gps_fix_without_a_match():
+    with patch("app.main._search_similar", AsyncMock(return_value=None)):
+        response = _post_once()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["anchor_match_id"] is None
+    assert body["confidence_score"] is None
+    assert body["corrected_lat"] == pytest.approx(6.2, abs=1e-6)
+    assert body["corrected_long"] == pytest.approx(-75.6, abs=1e-6)
+
+
+def test_correct_position_once_keeps_no_session_state():
+    from app.main import _store
+
+    before = dict(_store._sessions)
+    with patch("app.main._search_similar", AsyncMock(return_value=None)):
+        _post_once()
+    assert _store._sessions == before

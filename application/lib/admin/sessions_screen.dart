@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'user_sessions_screen.dart';
+import '../services/api_error_messages.dart';
 
 /// Admin-only: all navigation sessions (every status, not just active),
 /// grouped by user - fetches GET /sessions + GET /profiles once (same
@@ -74,7 +75,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
             if (snapshot.hasError) {
               return Center(
                 child: Text(
-                  l10n.sessionsErrorLoadFailed(snapshot.error.toString()),
+                  l10n.sessionsErrorLoadFailed(
+                    friendlyApiErrorMessage(context, snapshot.error!),
+                  ),
                 ),
               );
             }

@@ -17,6 +17,7 @@ import 'feedback_screen.dart';
 import 'sessions_screen.dart';
 import '../user/settings_screen.dart';
 import '../user/user_home_screen.dart';
+import '../services/api_error_messages.dart';
 
 /// `admin`-role home screen: four tabs (places / buildings / anchor points /
 /// connections), each searchable, with edit and delete (cascade-impact
@@ -42,6 +43,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   List<Map<String, dynamic>> _photos = [];
   List<Map<String, dynamic>> _connections = [];
   List<Map<String, dynamic>> _users = [];
+  List<Map<String, dynamic>> _orphanedUsers = [];
   bool _loading = true;
   String? _error;
   bool _usersLoaded = false;
@@ -137,7 +139,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       setState(() {
         _error = AppLocalizations.of(
           context,
-        )!.commonErrorLoadDataFailed(e.toString());
+        )!.commonErrorLoadDataFailed(friendlyApiErrorMessage(context, e));
         _loading = false;
       });
     }
@@ -145,10 +147,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   Future<void> _loadUsers() async {
     try {
-      final result = await _userApi.get('/profiles');
+      final results = await Future.wait([
+        _userApi.get('/profiles'),
+        // Best-effort: a failure here shouldn't hide the real users list.
+        _userApi.get('/profiles/orphaned').catchError((_) => const []),
+      ]);
       if (!mounted) return;
       setState(() {
-        _users = (result as List? ?? []).cast<Map<String, dynamic>>();
+        _users = (results[0] as List? ?? []).cast<Map<String, dynamic>>();
+        _orphanedUsers = (results[1] as List? ?? [])
+            .cast<Map<String, dynamic>>();
         _usersLoaded = true;
         _usersError = null;
       });
@@ -157,7 +165,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       setState(() {
         _usersError = AppLocalizations.of(
           context,
-        )!.adminUsersErrorLoadFailed(e.toString());
+        )!.adminUsersErrorLoadFailed(friendlyApiErrorMessage(context, e));
         _usersLoaded = true;
       });
     }
@@ -174,7 +182,31 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           content: Text(
             AppLocalizations.of(
               context,
-            )!.adminUsersErrorUpdateFailed(e.toString()),
+            )!.adminUsersErrorUpdateFailed(friendlyApiErrorMessage(context, e)),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _repairProfile(Map<String, dynamic> orphan) async {
+    final l10n = AppLocalizations.of(context)!;
+    final label = orphan['email'] as String? ?? orphan['id'] as String;
+    try {
+      await _userApi.post('/profiles/${orphan['id']}/repair', {});
+      await _loadUsers();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.adminOrphanedRepairedSnackbar(label))),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            l10n.adminOrphanedErrorRepairFailed(
+              friendlyApiErrorMessage(context, e),
+            ),
           ),
         ),
       );
@@ -218,6 +250,47 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
+        if (_orphanedUsers.isNotEmpty)
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: ExpansionTile(
+              initiallyExpanded: true,
+              leading: Icon(
+                Icons.warning_amber_rounded,
+                color: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+              title: Text(
+                l10n.adminOrphanedSectionTitle(_orphanedUsers.length),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                ),
+              ),
+              subtitle: Text(
+                l10n.adminOrphanedSectionHint,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                ),
+              ),
+              children: [
+                for (final orphan in _orphanedUsers)
+                  ListTile(
+                    title: Text(
+                      orphan['email'] as String? ?? orphan['id'] as String,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onErrorContainer,
+                      ),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.person_add_alt_1),
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                      tooltip: l10n.adminOrphanedCreateProfileTooltip,
+                      onPressed: () => _repairProfile(orphan),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         Expanded(
           child: _users.isEmpty
               ? Center(child: Text(l10n.adminUsersEmpty))
@@ -315,7 +388,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             content: Text(
               AppLocalizations.of(
                 context,
-              )!.commonErrorDeleteFailed(e.toString()),
+              )!.commonErrorDeleteFailed(friendlyApiErrorMessage(context, e)),
             ),
           ),
         );
@@ -463,6 +536,29 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           anchorPointId: point['id'] as String,
           anchorPointDescription:
               point['location_description'] as String? ?? point['id'] as String,
+        ),
+      ),
+    );
+    _loadData();
+  }
+
+  /// Opens the map connection builder already scoped to this point's
+  /// university/building, zoomed in on it, and with it pre-selected as the
+  /// first point of the pair.
+  Future<void> _connectFromAnchorPoint(Map<String, dynamic> point) async {
+    final buildingId = point['building_id'] as String?;
+    final placeId =
+        _buildings.firstWhere(
+              (b) => b['id'] == buildingId,
+              orElse: () => const {},
+            )['place_id']
+            as String?;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ConnectAnchorPointsScreen(
+          initialPlaceId: placeId,
+          initialBuildingId: buildingId,
+          initialAnchorPointId: point['id'] as String?,
         ),
       ),
     );
@@ -749,6 +845,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           ),
         _statusFilterChips(buildingScoped),
         _searchField(_anchorSearchController, l10n.adminSearchAnchorPointsHint),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              const Icon(Icons.touch_app_outlined, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  l10n.adminAnchorTapToConnectHint,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ],
+          ),
+        ),
         Expanded(
           child: filtered.isEmpty
               ? Center(
@@ -771,6 +882,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         ? photos.first['image_url'] as String?
                         : null;
                     return ListTile(
+                      onTap: () => _connectFromAnchorPoint(point),
                       leading: thumbUrl != null
                           ? ClipRRect(
                               borderRadius: BorderRadius.circular(4),

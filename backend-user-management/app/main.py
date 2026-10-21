@@ -3,8 +3,15 @@ import os
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from packages.supabase import SupaBase
+from supabase import AuthError
 
-from .models import ProfileCreate, ProfileResponse, ProfileUpdate, RoleResponse
+from .models import (
+    OrphanedUser,
+    ProfileCreate,
+    ProfileResponse,
+    ProfileUpdate,
+    RoleResponse,
+)
 
 load_dotenv()
 
@@ -53,6 +60,71 @@ async def list_profiles(
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = db.client.table("profiles").select("*").execute()
+    return result.data
+
+
+_AUTH_USERS_PAGE_SIZE = 200
+
+
+# Must stay declared above GET /profiles/{id}, or "orphaned" would be
+# captured as an {id}.
+@app.get("/profiles/orphaned")
+async def list_orphaned_profiles(
+    caller_id: str = Depends(get_caller_id),
+) -> list[OrphanedUser]:
+    """Auth accounts with no profiles row - signup's POST /profiles can fail
+    after Supabase Auth already created the account (no rollback between
+    the two), leaving a user that's invisible to GET /profiles and so can't
+    be promoted or managed until it's repaired."""
+    if not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
+    existing_ids = {
+        row["id"] for row in db.client.table("profiles").select("id").execute().data
+    }
+    orphaned: list[OrphanedUser] = []
+    page = 1
+    while True:
+        users = db.client.auth.admin.list_users(
+            page=page, per_page=_AUTH_USERS_PAGE_SIZE
+        )
+        for user in users:
+            if user.id not in existing_ids:
+                orphaned.append(
+                    OrphanedUser(
+                        id=user.id,
+                        email=user.email,
+                        created_at=str(user.created_at) if user.created_at else None,
+                    )
+                )
+        if len(users) < _AUTH_USERS_PAGE_SIZE:
+            break
+        page += 1
+    return orphaned
+
+
+@app.post("/profiles/{user_id}/repair")
+async def repair_profile(
+    user_id: str,
+    profile: ProfileUpdate,
+    caller_id: str = Depends(get_caller_id),
+):
+    if not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
+    # profiles.id has no FK to auth.users, so this lookup is the only thing
+    # stopping an arbitrary id from getting a profiles row.
+    try:
+        auth_user = db.client.auth.admin.get_user_by_id(user_id).user
+    except AuthError:
+        auth_user = None
+    if auth_user is None:
+        raise HTTPException(status_code=404, detail="Auth user not found")
+    existing = db.client.table("profiles").select("id").eq("id", user_id).execute()
+    if existing.data:
+        raise HTTPException(status_code=409, detail="Profile already exists")
+    payload = profile.model_dump(exclude_unset=True)
+    payload["id"] = user_id
+    payload.setdefault("role_id", _USER_ROLE_ID)
+    result = db.client.table("profiles").insert(payload).execute()
     return result.data
 
 
