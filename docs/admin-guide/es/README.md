@@ -171,6 +171,8 @@ Más rápido, y funciona especialmente bien para conectar toda una secuencia de 
 4. Toca un segundo punto de anclaje — esto crea la conexión entre ambos, y el segundo punto **queda seleccionado**, así puedes tocar de inmediato un tercer punto para seguir encadenando conexiones a lo largo del mismo pasillo sin empezar de nuevo cada vez.
 5. Las conexiones existentes entre puntos visibles se dibujan como líneas verdes en el mapa, para que puedas ver de un vistazo qué ya está conectado. Una conexión nueva se ve un momento como línea gris punteada mientras se guarda. Puedes seguir tocando mientras tanto.
 
+**Atajo desde la lista de puntos de anclaje:** en la pantalla **Anchor points**, toca la fila de un punto (no sus íconos de foto, editar o eliminar). Se abre el mapa de conexiones ya ubicado en la universidad y el edificio de ese punto, con zoom sobre él y con el punto ya seleccionado. Tu siguiente toque en otro punto los conecta.
+
 ### Formulario con menús desplegables
 
 Más preciso — úsalo cuando no estés mirando un mapa, o cuando necesites corregir la distancia estimada automáticamente:

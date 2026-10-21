@@ -392,7 +392,6 @@
 
   "captureSnackbarCreated": "Anchor point \"{description}\" created. Now add its photos.",
   "@captureSnackbarCreated": {"placeholders": {"description": {"type": "String"}}},
-  "adminAnchorTapToConnectHint": "Tap to connect this point on the map",
 
   "homeStartNearestSubtitle": "Nearest point to you: {name}",
   "@homeStartNearestSubtitle": {"placeholders": {"name": {"type": "String"}}},
@@ -409,7 +408,6 @@
   "commonErrorUnexpected": "Something went wrong. Please try again.",
   "commonDescriptionHelperOptional": "Optional for in-between points like hallways. Without one, the point is never offered as a destination.",
   "commonPressBackAgainToExit": "Press back again to exit",
-  "adminAnchorOrderHint": "Mark the important places first (entrances, classrooms, restrooms...), then add in-between points where needed to connect them.",
   "adminReindexMenu": "Re-index verified points",
   "adminReindexNothing": "No verified points with photos to index.",
   "adminReindexRunning": "Re-indexing {count} verified points...",

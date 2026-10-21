@@ -959,37 +959,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           ),
         _statusFilterChips(buildingScoped),
         _searchField(_anchorSearchController, l10n.adminSearchAnchorPointsHint),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.lightbulb_outline, size: 16),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  l10n.adminAnchorOrderHint,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              const Icon(Icons.touch_app_outlined, size: 16),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  l10n.adminAnchorTapToConnectHint,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-            ],
-          ),
-        ),
         Expanded(
           child: filtered.isEmpty
               ? ScrollableMessage(

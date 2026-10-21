@@ -306,7 +306,6 @@
   "adminOrphanedRepairedSnackbar": "Perfil creado para {email}.",
 
   "captureSnackbarCreated": "Punto de referencia \"{description}\" creado. Ahora agrega sus fotos.",
-  "adminAnchorTapToConnectHint": "Toca para conectar este punto en el mapa",
 
   "homeStartNearestSubtitle": "Punto más cercano a ti: {name}",
   "homeLocatingStart": "Usando la cámara para confirmar tu punto de partida...",
@@ -321,7 +320,6 @@
   "commonErrorUnexpected": "Algo salió mal. Inténtalo de nuevo.",
   "commonDescriptionHelperOptional": "Opcional para puntos intermedios como pasillos. Sin descripción, el punto nunca se ofrece como destino.",
   "commonPressBackAgainToExit": "Presiona atrás de nuevo para salir",
-  "adminAnchorOrderHint": "Marca primero los lugares importantes (entradas, salones, baños...) y luego agrega puntos intermedios donde haga falta para conectarlos.",
   "adminReindexMenu": "Reindexar puntos verificados",
   "adminReindexNothing": "No hay puntos verificados con fotos para indexar.",
   "adminReindexRunning": "Reindexando {count} puntos verificados...",

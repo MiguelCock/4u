@@ -171,6 +171,8 @@ Faster, and works especially well for connecting a whole sequence of points alon
 4. Tap a second anchor point — this creates the connection between them, and the second point **stays selected**, so you can immediately tap a third point to keep chaining connections along the same corridor without starting over each time.
 5. Existing connections between visible points are drawn as green lines on the map, so you can see at a glance what's already linked. A new connection shows as a dotted grey line for a moment while it's being saved. You can keep tapping in the meantime.
 
+**Shortcut from the anchor point list:** on the **Anchor points** screen, tap an anchor point's row (not its photo, edit or delete icons). This opens the connection map already set to that point's university and building, zoomed in on it, with that point already selected. Your next tap on another point connects the two.
+
 ### Dropdown form
 
 More precise — use this when you're not looking at a map, or you need to correct the automatically estimated distance:
