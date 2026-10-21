@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'session_tracking_screen.dart';
+import '../services/api_error_messages.dart';
 
 /// `navigation_sessions.status`'s stable storage values - this maps one to
 /// its localized label without changing what's actually stored.
@@ -171,7 +172,9 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            AppLocalizations.of(context)!.commonErrorDeleteFailed(e.toString()),
+            AppLocalizations.of(
+              context,
+            )!.commonErrorDeleteFailed(friendlyApiErrorMessage(context, e)),
           ),
         ),
       );

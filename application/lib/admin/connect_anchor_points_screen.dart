@@ -6,14 +6,30 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/map_tile_config.dart';
+import '../services/api_error_messages.dart';
 
 /// Map-tap flow for building the anchor-point walkability graph: tap one
 /// anchor point, then another, to create a connection between them. The
 /// second point stays selected after each connection so an admin can keep
 /// tapping a third, fourth, etc. point to chain-connect along a corridor
 /// without re-entering the flow.
+///
+/// The `initial*` params let a caller jump straight in from a specific
+/// anchor point (admin_home_screen.dart's anchor-point row tap): its
+/// university/building are pre-selected, the map opens zoomed in on it, and
+/// it's already the first point of the pair - the next marker tapped
+/// connects to it.
 class ConnectAnchorPointsScreen extends StatefulWidget {
-  const ConnectAnchorPointsScreen({super.key});
+  final String? initialPlaceId;
+  final String? initialBuildingId;
+  final String? initialAnchorPointId;
+
+  const ConnectAnchorPointsScreen({
+    super.key,
+    this.initialPlaceId,
+    this.initialBuildingId,
+    this.initialAnchorPointId,
+  });
 
   @override
   State<ConnectAnchorPointsScreen> createState() =>
@@ -37,6 +53,9 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedPlaceId = widget.initialPlaceId;
+    _selectedBuildingId = widget.initialBuildingId;
+    _selectedAnchorPointId = widget.initialAnchorPointId;
     _loadData();
   }
 
@@ -54,6 +73,21 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
         _buildings = (results[1] as List).cast<Map<String, dynamic>>();
         _anchorPoints = (results[2] as List).cast<Map<String, dynamic>>();
         _connections = (results[3] as List).cast<Map<String, dynamic>>();
+        // Drop any seeded selection that no longer exists (e.g. deleted
+        // since the caller's list was loaded) before defaulting.
+        if (!_places.any((p) => p['id'] == _selectedPlaceId)) {
+          _selectedPlaceId = null;
+        }
+        if (!_buildings.any(
+          (b) =>
+              b['id'] == _selectedBuildingId &&
+              b['place_id'] == _selectedPlaceId,
+        )) {
+          _selectedBuildingId = null;
+        }
+        if (!_anchorPoints.any((p) => p['id'] == _selectedAnchorPointId)) {
+          _selectedAnchorPointId = null;
+        }
         if (_selectedPlaceId == null && _places.isNotEmpty) {
           _selectedPlaceId = _places.first['id'] as String?;
         }
@@ -62,7 +96,7 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
       setState(
         () => _error = AppLocalizations.of(
           context,
-        )!.commonErrorLoadDataFailed(e.toString()),
+        )!.commonErrorLoadDataFailed(friendlyApiErrorMessage(context, e)),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -135,7 +169,9 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
             content: Text(
               e.statusCode == 500 || e.statusCode == 409
                   ? l10n.connectErrorAlreadyConnected
-                  : l10n.connectErrorConnectFailed(e.toString()),
+                  : l10n.connectErrorConnectFailed(
+                      friendlyApiErrorMessage(context, e),
+                    ),
             ),
           ),
         );
@@ -212,6 +248,15 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
   }
 
   LatLng _initialCenter() {
+    final focused = _anchorPoints.where(
+      (p) => p['id'] == widget.initialAnchorPointId,
+    );
+    if (focused.isNotEmpty) {
+      return LatLng(
+        (focused.first['latitude'] as num).toDouble(),
+        (focused.first['longitude'] as num).toDouble(),
+      );
+    }
     final points = _visibleAnchorPoints;
     if (points.isEmpty) return const LatLng(0, 0);
     final lat = (points.first['latitude'] as num).toDouble();
@@ -312,7 +357,9 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
                   child: FlutterMap(
                     options: MapOptions(
                       initialCenter: _initialCenter(),
-                      initialZoom: 18,
+                      initialZoom: widget.initialAnchorPointId != null
+                          ? 19.5
+                          : 18,
                     ),
                     children: [
                       TileLayer(

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'user_sessions_screen.dart' show sessionStatusLabel;
+import '../services/api_error_messages.dart';
 
 /// Admin-only: every submitted comment (`GET /navigation/feedback`, finally
 /// a real caller - previously write-only, see #89), newest first, with the
@@ -79,7 +80,9 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
             if (snapshot.hasError) {
               return Center(
                 child: Text(
-                  l10n.feedbackErrorLoadFailed(snapshot.error.toString()),
+                  l10n.feedbackErrorLoadFailed(
+                    friendlyApiErrorMessage(context, snapshot.error!),
+                  ),
                 ),
               );
             }

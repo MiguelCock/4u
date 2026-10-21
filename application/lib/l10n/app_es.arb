@@ -28,7 +28,7 @@
   "signupFullNameOptional": "Nombre completo (opcional)",
   "signupButton": "Registrarse",
   "signupErrorNoUser": "El registro no devolvió un usuario.",
-  "signupErrorProfileSetupFailed": "Cuenta creada, pero la configuración del perfil falló: {error}",
+  "signupErrorProfileSetupFailed": "Tu cuenta fue creada, pero tu perfil no se pudo terminar ({error}). Inicia sesión para completarlo; se arregla automáticamente.",
   "signupErrorSignUpFailed": "Error al registrarse: {error}",
 
   "cameraLocationNotAvailable": "Ubicación no disponible",
@@ -305,5 +305,26 @@
   "feedbackScreenTitle": "Comentarios",
   "feedbackEmpty": "Todavía no hay comentarios.",
   "feedbackErrorLoadFailed": "Error al cargar los comentarios: {error}",
-  "feedbackSessionDeleted": "Sesión eliminada"
+  "feedbackSessionDeleted": "Sesión eliminada",
+
+  "adminOrphanedSectionTitle": "Cuentas sin perfil ({count})",
+  "adminOrphanedSectionHint": "Estas cuentas se registraron pero su perfil nunca se creó, así que no pueden usar Configuración ni ser promovidas. Crea uno para arreglarlo.",
+  "adminOrphanedCreateProfileTooltip": "Crear perfil",
+  "adminOrphanedErrorRepairFailed": "No se pudo crear el perfil: {error}",
+  "adminOrphanedRepairedSnackbar": "Perfil creado para {email}.",
+
+  "captureSnackbarCreated": "Punto de referencia \"{description}\" creado. Ahora agrega sus fotos.",
+  "adminAnchorTapToConnectHint": "Toca para conectar este punto en el mapa",
+
+  "homeStartNearestSubtitle": "Punto más cercano a ti: {name}",
+  "homeLocatingStart": "Usando la cámara para confirmar tu punto de partida...",
+  "homeErrorAlreadyAtDestination": "Ya estás en {name}. Elige otro destino.",
+  "navTapToRepeatHint": "Toca el mapa para volver a escuchar la última instrucción",
+
+  "commonErrorSessionExpired": "Tu sesión expiró. Cierra sesión y vuelve a iniciarla.",
+  "commonErrorForbidden": "No tienes permiso para hacer esto.",
+  "commonErrorNetworkUnreachable": "No se pudo conectar con el servidor. Revisa tu conexión a internet e inténtalo de nuevo.",
+  "commonErrorServerUnavailable": "El servidor tuvo un problema. Inténtalo de nuevo en un momento.",
+  "commonErrorNotFoundGeneric": "Ese elemento ya no existe. Actualiza e inténtalo de nuevo.",
+  "commonErrorUnexpected": "Algo salió mal. Inténtalo de nuevo."
 }

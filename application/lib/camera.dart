@@ -8,6 +8,7 @@ import 'package:path/path.dart' as path;
 import 'l10n/app_localizations.dart';
 import 'services/api_service.dart';
 import 'services/location_service.dart';
+import 'services/api_error_messages.dart';
 
 class SimpleCameraWidget extends StatefulWidget {
   const SimpleCameraWidget({super.key});
@@ -75,7 +76,7 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
       setState(
         () => _error = AppLocalizations.of(
           context,
-        )!.cameraUnavailableError(e.toString()),
+        )!.cameraUnavailableError(friendlyApiErrorMessage(context, e)),
       );
     }
   }
@@ -152,7 +153,7 @@ class _SimpleCameraWidgetState extends State<SimpleCameraWidget> {
             content: Text(
               AppLocalizations.of(
                 context,
-              )!.cameraUnavailableError(e.toString()),
+              )!.cameraUnavailableError(friendlyApiErrorMessage(context, e)),
             ),
           ),
         );

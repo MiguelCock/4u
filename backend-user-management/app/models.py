@@ -27,6 +27,12 @@ class ProfileResponse(ProfileCreate):
     updated_at: str
 
 
+class OrphanedUser(BaseModel):
+    id: str
+    email: str | None = None
+    created_at: str | None = None
+
+
 class RoleResponse(BaseModel):
     id: int
     name: str

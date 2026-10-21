@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/location_service.dart';
 import 'capture_photo_screen.dart';
 import 'location_picker_screen.dart';
+import '../services/api_error_messages.dart';
 
 /// Matches db_schema/location_type.sql's seeded values — static reference
 /// data with no CRUD endpoint anywhere, so hardcoded here rather than
@@ -124,7 +125,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       setState(
         () => _error = AppLocalizations.of(
           context,
-        )!.captureErrorLoadFailed(e.toString()),
+        )!.captureErrorLoadFailed(friendlyApiErrorMessage(context, e)),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -211,6 +212,27 @@ class _CaptureScreenState extends State<CaptureScreen> {
       final id = (result as List).first['id'] as String;
 
       if (!mounted) return;
+      // The root ScaffoldMessenger keeps this visible over the photo screen
+      // pushed right after, so the confirmation isn't lost in the transition.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.green.shade700,
+          duration: const Duration(seconds: 5),
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  l10n.captureSnackbarCreated(description),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => CapturePhotoScreen(
@@ -224,13 +246,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
       setState(
         () => _error = AppLocalizations.of(
           context,
-        )!.captureErrorSaveFailed(e.toString()),
+        )!.captureErrorSaveFailed(friendlyApiErrorMessage(context, e)),
       );
     } catch (e) {
       setState(
         () => _error = AppLocalizations.of(
           context,
-        )!.captureErrorSaveFailed(e.toString()),
+        )!.captureErrorSaveFailed(friendlyApiErrorMessage(context, e)),
       );
     } finally {
       if (mounted) setState(() => _submitting = false);

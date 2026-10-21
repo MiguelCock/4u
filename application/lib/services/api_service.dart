@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -5,10 +6,29 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiException implements Exception {
+  /// Used as [statusCode] when no HTTP response came back at all (no
+  /// connection, DNS failure, timeout).
+  static const int networkError = 0;
+
   final int statusCode;
   final String body;
 
   ApiException(this.statusCode, this.body);
+
+  bool get isNetworkError => statusCode == networkError;
+
+  /// The backend's FastAPI `{"detail": "..."}` message, when the body is
+  /// shaped that way and `detail` is a plain string (FastAPI's own
+  /// validation errors use a list there instead - those return null).
+  String? get detail {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map && decoded['detail'] is String) {
+        return decoded['detail'] as String;
+      }
+    } catch (_) {}
+    return null;
+  }
 
   @override
   String toString() => 'ApiException($statusCode): $body';
@@ -19,8 +39,26 @@ class ApiException implements Exception {
 /// `Uri.parse`/`http.get`/`jsonDecode` everywhere.
 class ApiService {
   final String baseUrl;
+  final http.Client _client;
+  final String? Function() _getAccessToken;
+  final Future<void> Function() _refreshSession;
 
-  ApiService(this.baseUrl);
+  /// [client]/[getAccessToken]/[refreshSession] exist for tests - every
+  /// real caller uses the defaults (a plain client and the live Supabase
+  /// session). The defaults are closures, so constructing an ApiService
+  /// never touches Supabase until a request is actually made.
+  ApiService(
+    this.baseUrl, {
+    http.Client? client,
+    String? Function()? getAccessToken,
+    Future<void> Function()? refreshSession,
+  }) : _client = client ?? http.Client(),
+       _getAccessToken =
+           getAccessToken ??
+           (() => Supabase.instance.client.auth.currentSession?.accessToken),
+       _refreshSession =
+           refreshSession ??
+           (() => Supabase.instance.client.auth.refreshSession());
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
@@ -30,35 +68,85 @@ class ApiService {
   /// endpoints that require auth then 401 instead of silently acting as
   /// nobody).
   Map<String, String> _authHeaders([Map<String, String>? extra]) {
-    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    final token = _getAccessToken();
     return {if (token != null) 'Authorization': 'Bearer $token', ...?extra};
   }
 
+  /// Sends a request built by [sender], and on a 401 refreshes the session
+  /// and retries exactly once with freshly-read headers.
+  ///
+  /// supabase_flutter's own auto-refresh timer is paused while the app is
+  /// backgrounded (screen locked, app switched), so a token can expire in
+  /// that gap and the first request after resuming can race the async
+  /// refresh and go out with the stale token. Retrying here makes that
+  /// invisible to every screen instead of surfacing "Invalid or expired
+  /// token" mid-workflow. If there's no session to refresh (signed out),
+  /// the original 401 is returned as-is.
+  Future<http.Response> _send(
+    Future<http.Response> Function(Map<String, String> headers) sender, [
+    Map<String, String>? extraHeaders,
+  ]) async {
+    final response = await _attempt(sender, extraHeaders);
+    if (response.statusCode != 401) return response;
+    try {
+      await _refreshSession();
+    } catch (_) {
+      return response;
+    }
+    return _attempt(sender, extraHeaders);
+  }
+
+  /// One request, with a timeout, and with transport failures (no
+  /// connection, DNS, timeout) turned into an [ApiException] - every screen
+  /// already catches `ApiException`, so this way a dropped connection is
+  /// handled like any other failed request instead of escaping and leaving
+  /// a spinner running forever.
+  Future<http.Response> _attempt(
+    Future<http.Response> Function(Map<String, String> headers) sender,
+    Map<String, String>? extraHeaders,
+  ) async {
+    try {
+      return await sender(_authHeaders(extraHeaders)).timeout(requestTimeout);
+    } on TimeoutException catch (e) {
+      throw ApiException(ApiException.networkError, e.toString());
+    } on http.ClientException catch (e) {
+      throw ApiException(ApiException.networkError, e.message);
+    }
+  }
+
+  /// Generous enough for a photo upload on a slow connection, matching the
+  /// gateway's own 60s proxy timeout.
+  static const requestTimeout = Duration(seconds: 60);
+
   Future<dynamic> get(String path) async {
-    final response = await http.get(_uri(path), headers: _authHeaders());
+    final response = await _send(
+      (headers) => _client.get(_uri(path), headers: headers),
+    );
     return _handle(response);
   }
 
   Future<dynamic> post(String path, Map<String, dynamic> body) async {
-    final response = await http.post(
-      _uri(path),
-      headers: _authHeaders({'Content-Type': 'application/json'}),
-      body: jsonEncode(body),
+    final response = await _send(
+      (headers) =>
+          _client.post(_uri(path), headers: headers, body: jsonEncode(body)),
+      {'Content-Type': 'application/json'},
     );
     return _handle(response);
   }
 
   Future<dynamic> patch(String path, Map<String, dynamic> body) async {
-    final response = await http.patch(
-      _uri(path),
-      headers: _authHeaders({'Content-Type': 'application/json'}),
-      body: jsonEncode(body),
+    final response = await _send(
+      (headers) =>
+          _client.patch(_uri(path), headers: headers, body: jsonEncode(body)),
+      {'Content-Type': 'application/json'},
     );
     return _handle(response);
   }
 
   Future<dynamic> delete(String path) async {
-    final response = await http.delete(_uri(path), headers: _authHeaders());
+    final response = await _send(
+      (headers) => _client.delete(_uri(path), headers: headers),
+    );
     return _handle(response);
   }
 
@@ -71,14 +159,17 @@ class ApiService {
     required String filename,
     Map<String, String>? fields,
   }) async {
-    final request = http.MultipartRequest('POST', _uri(path))
-      ..headers.addAll(_authHeaders())
-      ..files.add(
-        http.MultipartFile.fromBytes(fieldName, bytes, filename: filename),
-      );
-    if (fields != null) request.fields.addAll(fields);
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
+    // A MultipartRequest can only be sent once, so a fresh one is built
+    // per attempt.
+    final response = await _send((headers) async {
+      final request = http.MultipartRequest('POST', _uri(path))
+        ..headers.addAll(headers)
+        ..files.add(
+          http.MultipartFile.fromBytes(fieldName, bytes, filename: filename),
+        );
+      if (fields != null) request.fields.addAll(fields);
+      return http.Response.fromStream(await _client.send(request));
+    });
     return _handle(response);
   }
 

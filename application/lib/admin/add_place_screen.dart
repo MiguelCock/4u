@@ -5,6 +5,7 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import 'location_picker_screen.dart';
+import '../services/api_error_messages.dart';
 
 /// Admin form to create a `places` row - the root of the place -> building ->
 /// anchor point chain, previously only creatable by hand via SQL.
@@ -90,7 +91,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       setState(
         () => _error = AppLocalizations.of(
           context,
-        )!.addPlaceErrorSaveFailed(e.toString()),
+        )!.addPlaceErrorSaveFailed(friendlyApiErrorMessage(context, e)),
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
