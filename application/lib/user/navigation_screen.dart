@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -17,27 +18,46 @@ import '../map.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
 import '../services/camera_helper.dart';
+import '../services/destinations.dart';
 import '../services/geo_utils.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import '../services/speech_voice.dart';
+import '../services/turn_guidance.dart';
 import '../services/api_error_messages.dart';
 
-/// A resolved checkpoint along the planned route - an anchor point's
-/// coordinates plus its description, used for proximity announcements
-/// (#40). Deliberately distance-based only, not compass-bearing turn
-/// detection ("turn left") - see this file's `_checkProximity` doc comment.
+/// A resolved checkpoint along the planned route: an anchor point's
+/// coordinates, plus its name only when it's a named destination-type
+/// point. Unnamed in-between points (hallways...) are never spoken, so
+/// guidance is just directions: "turn left about 45 degrees, then walk 12
+/// meters".
 class _Waypoint {
   final LatLng point;
-  final String description;
+  final String? name;
 
-  const _Waypoint({required this.point, required this.description});
+  const _Waypoint({required this.point, this.name});
 }
+
+/// A corrected position older than this is ignored in favour of raw GPS,
+/// e.g. when the camera loop has stalled.
+const Duration _kCorrectionFreshness = Duration(seconds: 5);
+
+/// Below this GPS speed (m/s), GPS heading is meaningless (standing still),
+/// so it's only used as a fallback for a missing compass when walking.
+const double _kMinSpeedForGpsHeading = 0.7;
+
+/// How often turn guidance re-evaluates heading vs bearing. Independent of
+/// the ~1s camera-correction loop, which can run slower.
+const Duration _kGuidanceInterval = Duration(milliseconds: 500);
 
 /// How close (meters) the live GPS fix needs to be to a waypoint before
 /// it's announced as "approaching"/"arrived" - roughly in line with GPS's
 /// own typical accuracy, so it doesn't fire too early or never fire at all.
 const double _kProximityThresholdMeters = 20.0;
+
+/// The periodic "N meters ahead" update is skipped if anything else was
+/// said this recently, so it never piles onto a turn instruction.
+const Duration _kQuietBeforePeriodic = Duration(seconds: 10);
 
 /// How often (while still outside `_kProximityThresholdMeters` of the next
 /// waypoint) to speak an ongoing distance update - real on-device testing
@@ -80,6 +100,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
   // just running slightly slower.
   Timer? _pendingTickTimer;
   Timer? _periodicAnnouncementTimer;
+  Timer? _guidanceTimer;
+  StreamSubscription<CompassEvent>? _compassSub;
+  final _heading = HeadingSmoother();
+  final _guidance = TurnGuidance();
+  final _pathLoaded = Completer<void>();
+  bool _guiding = false;
+  bool _arrived = false;
+  DateTime? _correctedAt;
+  DateTime? _lastSpokenAt;
   bool _stopped = false;
 
   bool _starting = true;
@@ -135,6 +164,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
       _kPeriodicAnnouncementInterval,
       (_) => _announcePeriodicDistance(),
     );
+    _compassSub = FlutterCompass.events?.listen((event) {
+      // Android only fills `heading` (see capture_photo_screen.dart).
+      final heading = event.heading;
+      if (heading != null) _heading.add(heading);
+    });
+    _guidanceTimer = Timer.periodic(_kGuidanceInterval, (_) => _guide());
   }
 
   /// Speaks [text] if the user has voice guidance on (#39/#40/#85) -
@@ -152,6 +187,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// stopping whatever's queued first so they're not buried behind it.
   Future<void> _speak(String text, {bool assertive = false}) async {
     _lastAnnouncement = text;
+    _lastSpokenAt = DateTime.now();
     if (!voiceGuidanceNotifier.value) return;
     await _ttsReady;
     if (assertive) await _tts.stop();
@@ -197,12 +233,16 @@ class _NavigationScreenState extends State<NavigationScreen> {
         final point = LatLng(lat, lng);
         points.add(point);
         if (i > 0) {
+          final description = (anchor['location_description'] as String? ?? '')
+              .trim();
+          // The final point is always named when spoken (falling back to
+          // "your destination"); in-between ones only if they're a real
+          // destination-type place.
+          final named =
+              description.isNotEmpty &&
+              (i == anchorIds.length - 1 || isDestinationAnchor(anchor));
           waypoints.add(
-            _Waypoint(
-              point: point,
-              description:
-                  anchor['location_description'] as String? ?? anchorIds[i],
-            ),
+            _Waypoint(point: point, name: named ? description : null),
           );
         }
       } on ApiException {
@@ -217,57 +257,159 @@ class _NavigationScreenState extends State<NavigationScreen> {
         _waypoints = waypoints;
       });
     }
+    if (!_pathLoaded.isCompleted) _pathLoaded.complete();
   }
 
-  /// Distance-based proximity announcements, not full compass-bearing
-  /// turn-by-turn ("turn left in 20 meters") - #40's literal ask - that
-  /// would need comparing the device's compass heading against the bearing
-  /// to the next waypoint, a deliberate scope cut for a follow-up. This
-  /// announces each waypoint in order once the live GPS fix comes within
-  /// `_kProximityThresholdMeters` of it, skipping ahead past any waypoint
-  /// never reached within range (e.g. a noisy fix overshot it) rather than
-  /// getting stuck waiting for an exact hit.
-  void _checkProximity(Position position) {
-    if (_nextWaypointIndex >= _waypoints.length) return;
-    final here = LatLng(position.latitude, position.longitude);
-    final target = _waypoints[_nextWaypointIndex];
-    if (haversineMeters(here, target.point) > _kProximityThresholdMeters) {
-      return;
+  String _destinationName(AppLocalizations l10n) =>
+      (_waypoints.isNotEmpty ? _waypoints.last.name : null) ??
+      l10n.navYourDestination;
+
+  /// Where guidance thinks the user is: the camera-corrected position when
+  /// it's fresh, raw GPS otherwise.
+  LatLng? _currentPosition() {
+    final correctedAt = _correctedAt;
+    if (_correctedLat != null &&
+        _correctedLong != null &&
+        correctedAt != null &&
+        DateTime.now().difference(correctedAt) < _kCorrectionFreshness) {
+      return LatLng(_correctedLat!, _correctedLong!);
     }
-    final isLast = _nextWaypointIndex == _waypoints.length - 1;
-    final l10n = AppLocalizations.of(context)!;
-    _speak(
-      isLast
-          ? l10n.navAnnouncementArrived(target.description)
-          : l10n.navAnnouncementApproaching(target.description),
-    );
-    _nextWaypointIndex++;
+    final position = _locationService.lastPosition;
+    return position == null
+        ? null
+        : LatLng(position.latitude, position.longitude);
   }
 
-  /// Fills the gap between arrival-based announcements with an ongoing
-  /// "N meters to X" update, every `_kPeriodicAnnouncementInterval` - only
-  /// while still outside `_kProximityThresholdMeters`, so this never
-  /// doubles up with `_checkProximity`'s own announcement right at the
-  /// threshold. Distance is rounded to the nearest 10m since a raw GPS
-  /// distance jitters tick to tick - an exact-looking number would be
-  /// misleadingly precise.
-  void _announcePeriodicDistance() {
-    if (_stopped || !mounted) return;
-    if (_nextWaypointIndex >= _waypoints.length) return;
+  /// Compass heading, or GPS direction of travel while actually moving if
+  /// the phone has no compass. Null when neither is usable.
+  double? _currentHeading() {
+    final compass = _heading.value;
+    if (compass != null) return compass;
     final position = _locationService.lastPosition;
-    if (position == null) return;
-    final target = _waypoints[_nextWaypointIndex];
-    final distance = haversineMeters(
-      LatLng(position.latitude, position.longitude),
-      target.point,
+    if (position != null && position.speed >= _kMinSpeedForGpsHeading) {
+      return position.heading;
+    }
+    return null;
+  }
+
+  /// One guidance step: waypoint progress, then face-then-walk cues toward
+  /// the next waypoint (see TurnGuidance).
+  void _guide() {
+    if (!_guiding || _stopped || _arrived || !mounted) return;
+    if (_nextWaypointIndex >= _waypoints.length) return;
+    final here = _currentPosition();
+    if (here == null) return;
+    if (_checkProximity(here)) return;
+
+    final heading = _currentHeading();
+    if (heading == null) return;
+    final target = _waypoints[_nextWaypointIndex].point;
+    final cue = _guidance.update(
+      turn: signedTurn(heading, bearingDegrees(here, target)),
+      metersToTarget: haversineMeters(here, target),
+      now: DateTime.now(),
     );
-    if (distance <= _kProximityThresholdMeters) return;
-    final rounded = (distance / 10).round() * 10;
+    final l10n = AppLocalizations.of(context)!;
+    switch (cue) {
+      case TurnCue(turnAround: true):
+        _speak(l10n.navTurnAround);
+      case TurnCue(:final degrees, :final right):
+        _speak(right ? l10n.navTurnRight(degrees) : l10n.navTurnLeft(degrees));
+      case StartWalkingCue(:final meters):
+        _speak(l10n.navStartWalking(meters));
+      case null:
+        break;
+    }
+  }
+
+  /// Waypoint progress. Reaching any upcoming waypoint counts, not only
+  /// the next one, so a noisy fix that skips past a point doesn't leave
+  /// guidance stuck waiting for it. Reaching the last one finishes the trip.
+  /// Returns true when something was announced.
+  bool _checkProximity(LatLng here) {
+    var reached = -1;
+    for (var i = _nextWaypointIndex; i < _waypoints.length; i++) {
+      if (haversineMeters(here, _waypoints[i].point) <=
+          _kProximityThresholdMeters) {
+        reached = i;
+      }
+    }
+    if (reached == -1) return false;
+    if (reached == _waypoints.length - 1) {
+      _arrive();
+      return true;
+    }
+    _nextWaypointIndex = reached + 1;
+    _announceNextLeg(_waypoints[reached], _waypoints[_nextWaypointIndex]);
+    return true;
+  }
+
+  /// At a waypoint: one sentence for what to do next. "At the cafeteria,
+  /// turn right about 90 degrees, then walk 12 meters", or "continue
+  /// straight for 20 meters". The distance is the leg's length, point to
+  /// point.
+  void _announceNextLeg(_Waypoint from, _Waypoint to) {
+    final l10n = AppLocalizations.of(context)!;
+    final meters = roundMeters(haversineMeters(from.point, to.point));
+    final heading = _currentHeading();
+    final turn = heading == null
+        ? null
+        : signedTurn(heading, bearingDegrees(from.point, to.point));
+    final straight = turn == null || turn.abs() <= TurnGuidance.alignedDegrees;
+    final String action;
+    if (straight) {
+      action = l10n.navContinueStraight(meters);
+    } else {
+      final cue = TurnCue.from(turn);
+      action = cue.turnAround
+          ? l10n.navTurnAroundThenWalk(meters)
+          : cue.right
+          ? l10n.navTurnRightThenWalk(cue.degrees, meters)
+          : l10n.navTurnLeftThenWalk(cue.degrees, meters);
+    }
+    final name = from.name;
+    _speak(name == null ? action : '${l10n.navAtPlace(name)} $action');
+    _guidance.reset(
+      now: DateTime.now(),
+      announcedTurn: straight ? null : turn,
+      walking: straight,
+    );
+  }
+
+  /// Within range of the destination: say so and finish the trip on its
+  /// own - no need to find the End button.
+  void _arrive() {
+    if (_arrived) return;
+    _arrived = true;
     _speak(
       AppLocalizations.of(
         context,
-      )!.navAnnouncementDistanceToNext(rounded, target.description),
+      )!.navArrivedFinished(_destinationName(AppLocalizations.of(context)!)),
+      assertive: true,
     );
+    _endSession(arrived: true);
+  }
+
+  /// While walking a leg, a short "N meters ahead" every
+  /// `_kPeriodicAnnouncementInterval` fills long silent stretches - but
+  /// only if nothing else was said recently, and never while the user is
+  /// still turning.
+  void _announcePeriodicDistance() {
+    if (!_guiding || _stopped || _arrived || !mounted) return;
+    if (!_guidance.walking || _nextWaypointIndex >= _waypoints.length) return;
+    final lastSpoken = _lastSpokenAt;
+    if (lastSpoken != null &&
+        DateTime.now().difference(lastSpoken) < _kQuietBeforePeriodic) {
+      return;
+    }
+    final here = _currentPosition();
+    if (here == null) return;
+    final distance = haversineMeters(
+      here,
+      _waypoints[_nextWaypointIndex].point,
+    );
+    if (distance <= _kProximityThresholdMeters) return;
+    _speak(AppLocalizations.of(context)!.navMetersAhead(roundMeters(distance)));
   }
 
   Future<void> _initCamera() async {
@@ -312,11 +454,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
         _sessionId = sessionData['id'] as String?;
         _starting = false;
       });
+      // The destination's own name (not the backend's English "A to B"
+      // route name) needs the planned path, which loads in parallel.
+      await _pathLoaded.future.timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {},
+      );
       if (mounted) {
         final l10n = AppLocalizations.of(context)!;
-        _speak(
-          l10n.navAnnouncementStarting(widget.route['name'] as String? ?? ''),
-        );
+        _speak(l10n.navStartingTo(_destinationName(l10n)));
         // Camera-use transparency: said every time, not just once ever -
         // simplest way to stay always-honest about it without persisting
         // a "seen it once" flag. Spoken (politely, after the route-start
@@ -328,6 +474,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
           SnackBar(content: Text(l10n.navAnnouncementCameraDisclosure)),
         );
       }
+      // Face-then-walk guidance toward the first waypoint starts now.
+      _guidance.reset(now: DateTime.now());
+      _guiding = true;
       _runTick();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -346,7 +495,6 @@ class _NavigationScreenState extends State<NavigationScreen> {
     final position = _locationService.lastPosition;
     try {
       if (sessionId == null || position == null) return;
-      if (mounted) _checkProximity(position);
       final controller = _cameraController;
       if (controller == null || !controller.value.isInitialized) {
         await _logRawTick(sessionId, position);
@@ -429,6 +577,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
           _correctedLat = (result['corrected_lat'] as num).toDouble();
           _correctedLong = (result['corrected_long'] as num).toDouble();
           _correctionError = (result['correction_error'] as num).toDouble();
+          _correctedAt = DateTime.now();
         });
       }
 
@@ -461,10 +610,16 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
   }
 
-  Future<void> _endSession() async {
+  /// [arrived]: finished by reaching the destination (which already said
+  /// so), rather than the End button.
+  Future<void> _endSession({bool arrived = false}) async {
     final sessionId = _sessionId;
     _stopped = true;
+    _guiding = false;
     _pendingTickTimer?.cancel();
+    _guidanceTimer?.cancel();
+    _periodicAnnouncementTimer?.cancel();
+    _compassSub?.cancel();
     if (sessionId == null) {
       if (mounted) Navigator.of(context).pop();
       return;
@@ -484,7 +639,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     } on ApiException catch (_) {
       // Session end best-effort too - still let the user leave the screen.
     }
-    if (mounted) {
+    if (mounted && !arrived) {
       await _speak(AppLocalizations.of(context)!.navAnnouncementEnded);
     }
     if (mounted) await _showFeedbackDialog(sessionId);
@@ -538,6 +693,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _stopped = true;
     _pendingTickTimer?.cancel();
     _periodicAnnouncementTimer?.cancel();
+    _guidanceTimer?.cancel();
+    _compassSub?.cancel();
     _cameraController?.dispose();
     _tts.stop();
     super.dispose();
@@ -555,7 +712,11 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.route['name'] as String? ?? l10n.navDefaultTitle),
+        title: Text(
+          _waypoints.isNotEmpty && _waypoints.last.name != null
+              ? _waypoints.last.name!
+              : l10n.navDefaultTitle,
+        ),
       ),
       body: SafeArea(
         child: _starting
@@ -631,7 +792,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
                       Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: ElevatedButton(
-                          onPressed: _ending ? null : _endSession,
+                          onPressed: _ending ? null : () => _endSession(),
                           child: _ending
                               ? const SizedBox(
                                   width: 20,
