@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/api_error_messages.dart';
 
 /// Dropdown-based fallback/precision flow for creating an anchor-point
 /// connection - mirrors the map-tap flow in `ConnectAnchorPointsScreen` but
@@ -58,7 +59,7 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
       setState(
         () => _error = AppLocalizations.of(
           context,
-        )!.commonErrorLoadDataFailed(e.toString()),
+        )!.commonErrorLoadDataFailed(friendlyApiErrorMessage(context, e)),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -114,7 +115,11 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      setState(() => _error = l10n.addConnectionErrorSaveFailed(e.toString()));
+      setState(
+        () => _error = l10n.addConnectionErrorSaveFailed(
+          friendlyApiErrorMessage(context, e),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import 'capture_photo_screen.dart';
 import 'capture_screen.dart' show kLocationTypes, locationTypeLabel;
 import 'location_picker_screen.dart';
+import '../services/api_error_messages.dart';
 
 const List<String> kAnchorPointStatuses = ['pending', 'verified', 'rejected'];
 
@@ -147,7 +148,9 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
       });
     } on ApiException catch (e) {
       setState(() {
-        _error = l10n.editAnchorErrorUpdateFailed(e.toString());
+        _error = l10n.editAnchorErrorUpdateFailed(
+          friendlyApiErrorMessage(context, e),
+        );
         _submitting = false;
       });
       return;
@@ -177,7 +180,9 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
         });
       } on ApiException catch (e) {
         setState(() {
-          _error = l10n.editAnchorErrorIndexingFailed(e.toString());
+          _error = l10n.editAnchorErrorIndexingFailed(
+            friendlyApiErrorMessage(context, e),
+          );
           _submitting = false;
         });
         return;
@@ -195,7 +200,9 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
         );
       } on ApiException catch (e) {
         setState(() {
-          _error = l10n.editAnchorErrorUnindexFailed(e.toString());
+          _error = l10n.editAnchorErrorUnindexFailed(
+            friendlyApiErrorMessage(context, e),
+          );
           _submitting = false;
         });
         return;

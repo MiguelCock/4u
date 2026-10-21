@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../admin/admin_home_screen.dart';
 import '../l10n/app_localizations.dart';
+import '../services/api_error_messages.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
 import '../user/user_home_screen.dart';
@@ -114,6 +115,7 @@ class _AuthGateState extends State<AuthGate> {
               );
             }
             if (profileSnapshot.hasError) {
+              final l10n = AppLocalizations.of(context)!;
               return Scaffold(
                 body: Center(
                   child: Padding(
@@ -121,17 +123,30 @@ class _AuthGateState extends State<AuthGate> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          AppLocalizations.of(context)!.authGateUnreachable,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.red),
+                        Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            friendlyApiErrorMessage(
+                              context,
+                              profileSnapshot.error!,
+                              fallback: l10n.authGateUnreachable,
+                            ),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.red),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         ElevatedButton(
                           onPressed: () => _retry(session.user.id),
-                          child: Text(
-                            AppLocalizations.of(context)!.commonRetry,
-                          ),
+                          child: Text(l10n.commonRetry),
+                        ),
+                        // A way out if retrying keeps failing (e.g. a
+                        // session that can't be refreshed) - otherwise this
+                        // screen is a dead end.
+                        TextButton(
+                          onPressed: () =>
+                              Supabase.instance.client.auth.signOut(),
+                          child: Text(l10n.commonLogOut),
                         ),
                       ],
                     ),

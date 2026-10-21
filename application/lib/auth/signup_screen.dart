@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/api_error_messages.dart';
 
 /// Matches roles.sql's seeded values (`db_schema/roles.sql`) — this is
 /// static reference data with no CRUD anywhere, so it's hardcoded here
@@ -59,22 +60,23 @@ class _SignupScreenState extends State<SignupScreen> {
         // it but don't block the auth flow itself on the backend being up.
         if (mounted) {
           setState(
-            () => _error = AppLocalizations.of(
-              context,
-            )!.signupErrorProfileSetupFailed(e.toString()),
+            () => _error = AppLocalizations.of(context)!
+                .signupErrorProfileSetupFailed(
+                  friendlyApiErrorMessage(context, e),
+                ),
           );
         }
         return;
       }
       // On success, AuthGate's onAuthStateChange listener takes over.
     } on AuthException catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _error = friendlyApiErrorMessage(context, e));
     } catch (e) {
       if (mounted) {
         setState(
           () => _error = AppLocalizations.of(
             context,
-          )!.signupErrorSignUpFailed(e.toString()),
+          )!.signupErrorSignUpFailed(friendlyApiErrorMessage(context, e)),
         );
       }
     } finally {

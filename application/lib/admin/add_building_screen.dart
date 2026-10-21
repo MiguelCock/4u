@@ -5,6 +5,7 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import 'location_picker_screen.dart';
+import '../services/api_error_messages.dart';
 
 /// Admin form to create a `buildings` row under an existing place - the
 /// building dropdown in `capture_screen.dart` is populated from these.
@@ -66,9 +67,10 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
       }
     } on ApiException catch (e) {
       setState(
-        () => _error = AppLocalizations.of(
-          context,
-        )!.addBuildingErrorLoadUniversitiesFailed(e.toString()),
+        () => _error = AppLocalizations.of(context)!
+            .addBuildingErrorLoadUniversitiesFailed(
+              friendlyApiErrorMessage(context, e),
+            ),
       );
     } finally {
       if (mounted) setState(() => _loadingPlaces = false);
@@ -144,7 +146,7 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
       setState(
         () => _error = AppLocalizations.of(
           context,
-        )!.addBuildingErrorSaveFailed(e.toString()),
+        )!.addBuildingErrorSaveFailed(friendlyApiErrorMessage(context, e)),
       );
     } finally {
       if (mounted) setState(() => _submitting = false);

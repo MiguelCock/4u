@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/api_error_messages.dart';
 
 /// University -> Building -> anchor-point drill-down list, for picking a
 /// destination anchor point (see UserHomeScreen - the start point is
@@ -13,7 +14,15 @@ import '../services/api_service.dart';
 class AnchorPointPickerScreen extends StatefulWidget {
   final String title;
 
-  const AnchorPointPickerScreen({super.key, required this.title});
+  /// Left out of the list entirely - UserHomeScreen passes the auto-picked
+  /// start point here, so a user can't choose it as the destination too.
+  final String? excludeAnchorId;
+
+  const AnchorPointPickerScreen({
+    super.key,
+    required this.title,
+    this.excludeAnchorId,
+  });
 
   @override
   State<AnchorPointPickerScreen> createState() =>
@@ -53,7 +62,11 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
         _buildings = (results[1] as List).cast<Map<String, dynamic>>();
         _anchorPoints = (results[2] as List)
             .cast<Map<String, dynamic>>()
-            .where((a) => a['status'] == 'verified')
+            .where(
+              (a) =>
+                  a['status'] == 'verified' &&
+                  a['id'] != widget.excludeAnchorId,
+            )
             .toList();
         _loading = false;
       });
@@ -62,7 +75,7 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
       setState(() {
         _error = AppLocalizations.of(
           context,
-        )!.pickerErrorLoadFailed(e.toString());
+        )!.pickerErrorLoadFailed(friendlyApiErrorMessage(context, e));
         _loading = false;
       });
     }

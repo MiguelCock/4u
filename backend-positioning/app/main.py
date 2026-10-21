@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, UploadFile
 from packages.supabase import SupaBase
 
+from . import kalman
 from .models import CorrectPositionResponse
 from .session_store import SessionStore
 
@@ -124,5 +125,51 @@ async def correct_position(
         correction_error=result.correction_error,
         anchor_match_id=result.anchor_match_id,
         confidence_score=result.confidence_score,
+        raw_image_url=None,
+    )
+
+
+@app.post("/correct_position_once")
+async def correct_position_once(
+    latitude: Annotated[float, Form()],
+    longitude: Annotated[float, Form()],
+    accuracy: Annotated[float, Form()],
+    heading: Annotated[float | None, Form()] = None,
+    photo: UploadFile = File(...),
+    caller_id: str = Depends(get_caller_id),
+) -> CorrectPositionResponse:
+    """A single, stateless GPS + visual correction - for picking a route's
+    starting anchor point before any navigation session (and so any
+    session_id/filter state) exists. Same math as /correct_position, via a
+    throwaway filter seeded at the raw fix itself, so it shares the same
+    MIN_MATCH_SCORE gate and confidence clamping; a weak or missing visual
+    match just returns the GPS fix."""
+    photo_bytes = await photo.read()
+    match = await _search_similar(
+        photo_bytes, photo.filename or "frame.jpg", latitude, longitude
+    )
+
+    ukf = kalman.make_filter(0.0, 0.0)
+    kalman.gps_update(ukf, 0.0, 0.0, accuracy)
+
+    anchor_match_id: str | None = None
+    confidence_score: float | None = None
+    if match is not None:
+        vx, vy = kalman.latlng_to_local(
+            match["latitude"], match["longitude"], latitude, longitude
+        )
+        if kalman.visual_update(ukf, vx, vy, match["score"]):
+            anchor_match_id = match["anchor_point_id"]
+            confidence_score = kalman.clamp_confidence(match["score"])
+
+    corrected_lat, corrected_long = kalman.local_to_latlng(
+        float(ukf.x[0]), float(ukf.x[1]), latitude, longitude
+    )
+    return CorrectPositionResponse(
+        corrected_lat=corrected_lat,
+        corrected_long=corrected_long,
+        correction_error=kalman.correction_error_meters(ukf),
+        anchor_match_id=anchor_match_id,
+        confidence_score=confidence_score,
         raw_image_url=None,
     )

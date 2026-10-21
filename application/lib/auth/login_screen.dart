@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import 'signup_screen.dart';
+import '../services/api_error_messages.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -29,13 +30,13 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       // On success, AuthGate's onAuthStateChange listener takes over.
     } on AuthException catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _error = friendlyApiErrorMessage(context, e));
     } catch (e) {
       if (mounted) {
         setState(
           () => _error = AppLocalizations.of(
             context,
-          )!.loginErrorSignInFailed(e.toString()),
+          )!.loginErrorSignInFailed(friendlyApiErrorMessage(context, e)),
         );
       }
     } finally {

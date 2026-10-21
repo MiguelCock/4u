@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'location_picker_screen.dart';
+import '../services/api_error_messages.dart';
 
 /// Admin form to edit an existing `places` row (`PATCH /places/{id}`) -
 /// mirrors `AddPlaceScreen` but pre-filled and without a code field (code is
@@ -98,7 +99,7 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
       setState(
         () => _error = AppLocalizations.of(
           context,
-        )!.editPlaceErrorUpdateFailed(e.toString()),
+        )!.editPlaceErrorUpdateFailed(friendlyApiErrorMessage(context, e)),
       );
     } finally {
       if (mounted) setState(() => _submitting = false);

@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'location_picker_screen.dart';
+import '../services/api_error_messages.dart';
 
 /// Admin form to edit an existing `buildings` row (`PATCH /buildings/{id}`) -
 /// mirrors `AddBuildingScreen` but pre-filled, plus a university picker so
@@ -139,7 +140,7 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
       setState(
         () => _error = AppLocalizations.of(
           context,
-        )!.editBuildingErrorUpdateFailed(e.toString()),
+        )!.editBuildingErrorUpdateFailed(friendlyApiErrorMessage(context, e)),
       );
     } finally {
       if (mounted) setState(() => _submitting = false);

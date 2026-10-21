@@ -37,7 +37,7 @@
   "signupFullNameOptional": "Full name (optional)",
   "signupButton": "Sign up",
   "signupErrorNoUser": "Sign up did not return a user.",
-  "signupErrorProfileSetupFailed": "Account created, but profile setup failed: {error}",
+  "signupErrorProfileSetupFailed": "Your account was created, but your profile couldn't be finished ({error}). Sign in to complete it - it's fixed automatically.",
   "@signupErrorProfileSetupFailed": {"placeholders": {"error": {"type": "String"}}},
   "signupErrorSignUpFailed": "Sign up failed: {error}",
   "@signupErrorSignUpFailed": {"placeholders": {"error": {"type": "String"}}},
@@ -394,5 +394,32 @@
   "feedbackEmpty": "No feedback yet.",
   "feedbackErrorLoadFailed": "Failed to load feedback: {error}",
   "@feedbackErrorLoadFailed": {"placeholders": {"error": {"type": "String"}}},
-  "feedbackSessionDeleted": "Session deleted"
+  "feedbackSessionDeleted": "Session deleted",
+
+  "adminOrphanedSectionTitle": "Accounts without a profile ({count})",
+  "@adminOrphanedSectionTitle": {"placeholders": {"count": {"type": "int"}}},
+  "adminOrphanedSectionHint": "These signed up but their profile was never created, so they can't use Settings or be promoted. Create one to fix it.",
+  "adminOrphanedCreateProfileTooltip": "Create profile",
+  "adminOrphanedErrorRepairFailed": "Failed to create profile: {error}",
+  "@adminOrphanedErrorRepairFailed": {"placeholders": {"error": {"type": "String"}}},
+  "adminOrphanedRepairedSnackbar": "Profile created for {email}.",
+  "@adminOrphanedRepairedSnackbar": {"placeholders": {"email": {"type": "String"}}},
+
+  "captureSnackbarCreated": "Anchor point \"{description}\" created. Now add its photos.",
+  "@captureSnackbarCreated": {"placeholders": {"description": {"type": "String"}}},
+  "adminAnchorTapToConnectHint": "Tap to connect this point on the map",
+
+  "homeStartNearestSubtitle": "Nearest point to you: {name}",
+  "@homeStartNearestSubtitle": {"placeholders": {"name": {"type": "String"}}},
+  "homeLocatingStart": "Using the camera to confirm your starting point...",
+  "homeErrorAlreadyAtDestination": "You are already at {name}. Choose a different destination.",
+  "@homeErrorAlreadyAtDestination": {"placeholders": {"name": {"type": "String"}}},
+  "navTapToRepeatHint": "Tap the map to hear the last instruction again",
+
+  "commonErrorSessionExpired": "Your session expired. Please sign out and sign in again.",
+  "commonErrorForbidden": "You don't have permission to do that.",
+  "commonErrorNetworkUnreachable": "Couldn't reach the server. Check your internet connection and try again.",
+  "commonErrorServerUnavailable": "The server had a problem. Please try again in a moment.",
+  "commonErrorNotFoundGeneric": "That item no longer exists. Refresh and try again.",
+  "commonErrorUnexpected": "Something went wrong. Please try again."
 }

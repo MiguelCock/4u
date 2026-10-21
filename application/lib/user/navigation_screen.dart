@@ -10,7 +10,6 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
-import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
@@ -18,9 +17,11 @@ import '../location.dart';
 import '../map.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
+import '../services/camera_helper.dart';
 import '../services/geo_utils.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
+import '../services/api_error_messages.dart';
 
 /// A resolved checkpoint along the planned route - an anchor point's
 /// coordinates plus its description, used for proximity announcements
@@ -94,6 +95,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   String? _lastHapticAnchorId;
   int _consecutiveBlockedTicks = 0;
   bool _blockedAnnounced = false;
+  String? _lastAnnouncement;
 
   @override
   void initState() {
@@ -121,9 +123,22 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// just queue; safety-relevant ones (a blocked camera) are assertive,
   /// stopping whatever's queued first so they're not buried behind it.
   Future<void> _speak(String text, {bool assertive = false}) async {
+    _lastAnnouncement = text;
     if (!voiceGuidanceNotifier.value) return;
     if (assertive) await _tts.stop();
     await _tts.speak(text);
+  }
+
+  /// Re-speaks the most recent announcement on demand (a tap on the map) -
+  /// assertive, since the user is explicitly asking to hear it right now.
+  /// Also shown as a SnackBar, for anyone with voice guidance or sound off.
+  void _repeatLastAnnouncement() {
+    final text = _lastAnnouncement;
+    if (text == null) return;
+    _speak(text, assertive: true);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
   }
 
   /// Resolves the route's anchor ids (already in hand from find_or_create,
@@ -227,26 +242,16 @@ class _NavigationScreenState extends State<NavigationScreen> {
   }
 
   Future<void> _initCamera() async {
-    if (await Permission.camera.request() != PermissionStatus.granted) return;
-    try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) return;
-      final controller = CameraController(
-        cameras.first,
-        ResolutionPreset.medium,
-        enableAudio: false,
-      );
-      await controller.initialize();
-      if (_stopped) {
-        await controller.dispose();
-        return;
-      }
-      _cameraController = controller;
-      if (mounted) setState(() {});
-    } catch (_) {
-      // Camera unavailable (no hardware, denied mid-flow, etc.) -
-      // correction ticks below fall back to raw-GPS-only logging.
+    // Null when unavailable (no hardware, permission denied, etc.) -
+    // correction ticks below then fall back to raw-GPS-only logging.
+    final controller = await initCamera();
+    if (controller == null) return;
+    if (_stopped) {
+      await controller.dispose();
+      return;
     }
+    _cameraController = controller;
+    if (mounted) setState(() {});
   }
 
   Future<void> _startSession() async {
@@ -300,7 +305,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       setState(() {
         _error = AppLocalizations.of(
           context,
-        )!.navFailedToStartSession(e.toString());
+        )!.navFailedToStartSession(friendlyApiErrorMessage(context, e));
         _starting = false;
       });
     }
@@ -556,24 +561,51 @@ class _NavigationScreenState extends State<NavigationScreen> {
                             style: const TextStyle(color: Colors.green),
                           ),
                         ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                        child: ExcludeSemantics(
+                          child: Row(
+                            children: [
+                              const Icon(Icons.touch_app_outlined, size: 18),
+                              const SizedBox(width: 6),
+                              Expanded(child: Text(l10n.navTapToRepeatHint)),
+                            ],
+                          ),
+                        ),
+                      ),
                       Expanded(
-                        child: SimpleMapWidget(
-                          plannedPath: _plannedPath,
-                          extraMarkers:
-                              correctedLat != null && correctedLong != null
-                              ? [
-                                  Marker(
-                                    point: LatLng(correctedLat, correctedLong),
-                                    width: 80,
-                                    height: 80,
-                                    child: const Icon(
-                                      Icons.location_pin,
-                                      color: Colors.green,
-                                      size: 40,
-                                    ),
-                                  ),
-                                ]
-                              : const [],
+                        // The map itself means nothing to a screen reader -
+                        // it's exposed as one large button that repeats the
+                        // last instruction (TalkBack: double-tap it).
+                        child: Semantics(
+                          container: true,
+                          button: true,
+                          label: l10n.navTapToRepeatHint,
+                          onTap: _repeatLastAnnouncement,
+                          child: ExcludeSemantics(
+                            child: SimpleMapWidget(
+                              onTap: _repeatLastAnnouncement,
+                              plannedPath: _plannedPath,
+                              extraMarkers:
+                                  correctedLat != null && correctedLong != null
+                                  ? [
+                                      Marker(
+                                        point: LatLng(
+                                          correctedLat,
+                                          correctedLong,
+                                        ),
+                                        width: 80,
+                                        height: 80,
+                                        child: const Icon(
+                                          Icons.location_pin,
+                                          color: Colors.green,
+                                          size: 40,
+                                        ),
+                                      ),
+                                    ]
+                                  : const [],
+                            ),
+                          ),
                         ),
                       ),
                       Padding(

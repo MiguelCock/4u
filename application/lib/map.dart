@@ -17,10 +17,14 @@ class SimpleMapWidget extends StatefulWidget {
   /// Empty for every other call site, so this is purely additive too.
   final List<LatLng> plannedPath;
 
+  /// Called on a tap anywhere on the map (not a drag/zoom gesture).
+  final VoidCallback? onTap;
+
   const SimpleMapWidget({
     super.key,
     this.extraMarkers = const [],
     this.plannedPath = const [],
+    this.onTap,
   });
 
   @override
@@ -29,8 +33,10 @@ class SimpleMapWidget extends StatefulWidget {
 
 class _SimpleMapWidgetState extends State<SimpleMapWidget> {
   final _service = LocationService();
+  final _mapController = MapController();
   StreamSubscription<Position>? _subscription;
   late LatLng _position;
+  bool _mapReady = false;
 
   @override
   void initState() {
@@ -50,15 +56,49 @@ class _SimpleMapWidgetState extends State<SimpleMapWidget> {
   }
 
   @override
+  void didUpdateWidget(SimpleMapWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // plannedPath arrives asynchronously (NavigationScreen resolves it
+    // after the first build), so the fit has to react to it changing.
+    if (oldWidget.plannedPath.length != widget.plannedPath.length) {
+      _fitToPlannedPath();
+    }
+  }
+
+  @override
   void dispose() {
     _subscription?.cancel();
+    _mapController.dispose();
     super.dispose();
+  }
+
+  /// Frames the whole route, plus the user's own position when it's known,
+  /// so they can see both where they are and where they're going.
+  void _fitToPlannedPath() {
+    if (!_mapReady || widget.plannedPath.length < 2) return;
+    final hasPosition = _position.latitude != 0 || _position.longitude != 0;
+    _mapController.fitCamera(
+      CameraFit.coordinates(
+        coordinates: [...widget.plannedPath, if (hasPosition) _position],
+        padding: const EdgeInsets.all(48),
+        maxZoom: 19,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return FlutterMap(
-      options: MapOptions(initialCenter: _position, initialZoom: 13),
+      mapController: _mapController,
+      options: MapOptions(
+        initialCenter: _position,
+        initialZoom: 17,
+        onTap: widget.onTap == null ? null : (_, _) => widget.onTap!(),
+        onMapReady: () {
+          _mapReady = true;
+          _fitToPlannedPath();
+        },
+      ),
       children: [
         TileLayer(
           urlTemplate: kMapTileUrlTemplate,
