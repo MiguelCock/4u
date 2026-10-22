@@ -14,7 +14,8 @@ import 'capture_screen.dart' show anchorDisplayName;
 /// anchor point, then another, to create a connection between them. The
 /// second point stays selected after each connection so an admin can keep
 /// tapping a third, fourth, etc. point to chain-connect along a corridor
-/// without re-entering the flow.
+/// without re-entering the flow. Tapping a connection line (away from any
+/// point) offers to delete that connection.
 ///
 /// The `initial*` params let a caller jump straight in from a specific
 /// anchor point (admin_home_screen.dart's anchor-point row tap): its
@@ -137,7 +138,103 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
   /// (~300ms) first.
   void _onMapTap(LatLng tapped) {
     final point = _pointNear(tapped);
-    if (point != null) _onPointTap(point);
+    if (point != null) {
+      _onPointTap(point);
+      return;
+    }
+    final connection = _connectionNear(tapped);
+    if (connection != null) _confirmDeleteConnection(connection);
+  }
+
+  /// A tap within this many logical pixels of a connection line (and not
+  /// near a point, which wins) offers to delete that connection.
+  static const double _kLineTapRadiusPx = 16;
+
+  Map<String, dynamic>? _connectionNear(LatLng tapped) {
+    final camera = _mapController.camera;
+    final tap = camera.latLngToScreenOffset(tapped);
+    final byId = {for (final p in _visibleAnchorPoints) p['id'] as String: p};
+    Offset? screen(Map<String, dynamic>? point) {
+      final lat = (point?['latitude'] as num?)?.toDouble();
+      final lng = (point?['longitude'] as num?)?.toDouble();
+      if (lat == null || lng == null) return null;
+      return camera.latLngToScreenOffset(LatLng(lat, lng));
+    }
+
+    Map<String, dynamic>? nearest;
+    var nearestDistance = _kLineTapRadiusPx;
+    for (final c in _connections) {
+      if (c['pending'] == true) continue;
+      final a = screen(byId[c['anchor_point_a_id']]);
+      final b = screen(byId[c['anchor_point_b_id']]);
+      if (a == null || b == null) continue;
+      final distance = _distanceToSegment(tap, a, b);
+      if (distance <= nearestDistance) {
+        nearestDistance = distance;
+        nearest = c;
+      }
+    }
+    return nearest;
+  }
+
+  static double _distanceToSegment(Offset p, Offset a, Offset b) {
+    final ab = b - a;
+    final lengthSquared = ab.dx * ab.dx + ab.dy * ab.dy;
+    if (lengthSquared == 0) return (p - a).distance;
+    final ap = p - a;
+    final t = ((ap.dx * ab.dx + ap.dy * ab.dy) / lengthSquared).clamp(0.0, 1.0);
+    return (p - (a + ab * t)).distance;
+  }
+
+  Future<void> _confirmDeleteConnection(Map<String, dynamic> connection) async {
+    final l10n = AppLocalizations.of(context)!;
+    final fromDesc = _describePoint(connection['anchor_point_a_id'] as String);
+    final toDesc = _describePoint(connection['anchor_point_b_id'] as String);
+    HapticFeedback.selectionClick();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.adminDeleteConnectionTitle),
+        content: Text(l10n.connectDeleteContent(fromDesc, toDesc)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.commonCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.commonDelete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _mapApi.delete('/anchor-point-connections/${connection['id']}');
+      if (!mounted) return;
+      setState(() {
+        _connections = [
+          for (final c in _connections)
+            if (c['id'] != connection['id']) c,
+        ];
+      });
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(l10n.connectSnackbarDeleted(fromDesc, toDesc)),
+          ),
+        );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            l10n.commonErrorDeleteFailed(friendlyApiErrorMessage(context, e)),
+          ),
+        ),
+      );
+    }
   }
 
   Map<String, dynamic>? _pointNear(LatLng tapped) {

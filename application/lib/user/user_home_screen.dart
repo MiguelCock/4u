@@ -2,14 +2,19 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
+import 'package:speech_to_text/speech_to_text.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/app_preferences.dart';
 import '../services/camera_helper.dart';
+import '../services/destination_matcher.dart';
+import '../services/destinations.dart';
 import '../services/geo_utils.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
@@ -18,6 +23,7 @@ import 'navigation_screen.dart';
 import 'settings_screen.dart';
 import '../services/api_error_messages.dart';
 import '../services/exit_guard.dart';
+import '../services/speech_voice.dart';
 
 /// The `user`-role home screen IS the trip-planning flow now (not a map,
 /// not a separate screen reached via a FAB): the user only picks a
@@ -53,6 +59,17 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   String? _error;
   final _exitGuard = ExitGuard();
 
+  // Saying the destination out loud (speech_to_text) instead of drilling
+  // down University -> Building -> place.
+  final _speech = SpeechToText();
+  final _tts = FlutterTts();
+  Future<bool>? _ttsReady;
+  String? _ttsLanguage;
+  bool _listening = false;
+  String _heard = '';
+  String? _voiceStatus;
+  Map<String, String> _buildingNames = {};
+
   @override
   void initState() {
     super.initState();
@@ -61,9 +78,184 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final language = Localizations.localeOf(context).languageCode;
+    if (language != _ttsLanguage) {
+      _ttsLanguage = language;
+      _ttsReady = configureTts(_tts, language);
+    }
+  }
+
+  @override
   void dispose() {
     _positionSub?.cancel();
+    _speech.cancel();
+    _tts.stop();
     super.dispose();
+  }
+
+  /// Shows [text] as the voice-search status (a live region) and, unless a
+  /// screen reader is already reading that live region aloud, speaks it.
+  Future<void> _say(String text) async {
+    setState(() => _voiceStatus = text);
+    if (!voiceGuidanceNotifier.value ||
+        MediaQuery.of(context).accessibleNavigation) {
+      return;
+    }
+    await _ttsReady;
+    await _tts.stop();
+    await _tts.speak(text);
+  }
+
+  List<Map<String, dynamic>> get _destinationCandidates => _verifiedAnchors
+      .where((a) => isDestinationAnchor(a) && a['id'] != _start?['id'])
+      .toList();
+
+  String _destinationLabel(Map<String, dynamic> anchor) {
+    final name = anchor['location_description'] as String? ?? '';
+    final building = _buildingNames[anchor['building_id']];
+    return building == null || building.isEmpty ? name : '$name · $building';
+  }
+
+  /// The recognizer locale for the app language (es-CO first, like the
+  /// voice), or null to let the phone use its default.
+  Future<String?> _speechLocale(String language) async {
+    final available = {
+      for (final l in await _speech.locales())
+        l.localeId.replaceAll('_', '-').toLowerCase(): l.localeId,
+    };
+    for (final candidate in ttsLanguageCandidates(language)) {
+      final match = available[candidate.toLowerCase()];
+      if (match != null) return match;
+    }
+    for (final entry in available.entries) {
+      if (entry.key.startsWith(language)) return entry.value;
+    }
+    return null;
+  }
+
+  Future<void> _listenForDestination() async {
+    final l10n = AppLocalizations.of(context)!;
+    final language = Localizations.localeOf(context).languageCode;
+    if (_listening) {
+      await _speech.stop();
+      return;
+    }
+    if (_verifiedAnchors.isEmpty) await _loadAnchors();
+    if (_buildingNames.isEmpty) {
+      try {
+        final buildings = await _mapApi.get('/buildings') as List;
+        _buildingNames = {
+          for (final b in buildings.cast<Map<String, dynamic>>())
+            b['id'] as String: b['name'] as String? ?? '',
+        };
+      } on ApiException {
+        // Building names only help tell same-named places apart.
+      }
+    }
+    if (!mounted) return;
+    final available = await _speech.initialize(
+      onStatus: (status) {
+        if ((status == 'done' || status == 'notListening') && mounted) {
+          setState(() => _listening = false);
+        }
+      },
+      onError: (_) {
+        if (!mounted) return;
+        setState(() => _listening = false);
+        _say(l10n.homeVoiceNothingHeard);
+      },
+    );
+    if (!mounted) return;
+    if (!available) {
+      await _say(l10n.homeVoiceUnavailable);
+      return;
+    }
+    await _tts.stop(); // so the recognizer doesn't hear the app itself
+    final localeId = await _speechLocale(language);
+    if (!mounted) return;
+    setState(() {
+      _listening = true;
+      _heard = '';
+      _voiceStatus = null;
+    });
+    await _speech.listen(
+      onResult: (result) {
+        if (!mounted) return;
+        setState(() => _heard = result.recognizedWords);
+        if (result.finalResult) _handleSpoken(result.recognizedWords);
+      },
+      listenOptions: SpeechListenOptions(
+        localeId: localeId,
+        listenFor: const Duration(seconds: 10),
+        pauseFor: const Duration(seconds: 3),
+        partialResults: true,
+        cancelOnError: true,
+      ),
+    );
+  }
+
+  Future<void> _handleSpoken(String heard) async {
+    final l10n = AppLocalizations.of(context)!;
+    setState(() => _listening = false);
+    if (heard.trim().isEmpty) {
+      await _say(l10n.homeVoiceNothingHeard);
+      return;
+    }
+    final matches = matchDestinations(
+      heard,
+      _destinationCandidates,
+      buildingNames: _buildingNames,
+    );
+    final winner = clearWinner(matches);
+    if (winner != null) {
+      _chooseVoiceDestination(winner.anchor);
+      return;
+    }
+    if (matches.isEmpty) {
+      await _say(l10n.homeVoiceNoMatch(heard));
+      return;
+    }
+    final options = matches.take(3).map((m) => m.anchor).toList();
+    _say(
+      l10n.homeVoiceSeveralMatches(options.map(_destinationLabel).join(', ')),
+    );
+    final picked = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(
+                l10n.homeVoiceChooseTitle,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            for (final option in options)
+              ListTile(
+                leading: const Icon(Icons.location_on, color: Colors.blue),
+                title: Text(_destinationLabel(option)),
+                onTap: () => Navigator.of(context).pop(option),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && mounted) _chooseVoiceDestination(picked);
+  }
+
+  void _chooseVoiceDestination(Map<String, dynamic> anchor) {
+    setState(() {
+      _end = anchor;
+      _error = null;
+    });
+    _say(
+      AppLocalizations.of(
+        context,
+      )!.homeVoiceDestinationSet(_destinationLabel(anchor)),
+    );
   }
 
   Future<List<Map<String, dynamic>>> _fetchVerifiedAnchors() async {
@@ -370,6 +562,33 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           trailing: const Icon(Icons.chevron_right),
           onTap: _pickEnd,
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(56),
+            ),
+            onPressed: _finding ? null : _listenForDestination,
+            icon: Icon(_listening ? Icons.stop_circle_outlined : Icons.mic),
+            label: Text(
+              _listening ? l10n.homeListening : l10n.homeSayDestinationButton,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+        if (_listening && _heard.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(
+              '"$_heard"',
+              style: const TextStyle(fontStyle: FontStyle.italic),
+            ),
+          ),
+        if (!_listening && _voiceStatus != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Semantics(liveRegion: true, child: Text(_voiceStatus!)),
+          ),
         if (_error != null)
           Padding(
             padding: const EdgeInsets.all(16.0),

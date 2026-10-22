@@ -429,5 +429,20 @@
   "navMetersAhead": "{meters} meters ahead.",
   "@navMetersAhead": {"placeholders": {"meters": {"type": "int"}}},
   "navArrivedFinished": "You have arrived at {name}. Navigation finished.",
-  "@navArrivedFinished": {"placeholders": {"name": {"type": "String"}}}
+  "@navArrivedFinished": {"placeholders": {"name": {"type": "String"}}},
+  "connectSnackbarDeleted": "Deleted connection {from} ↔ {to}",
+  "@connectSnackbarDeleted": {"placeholders": {"from": {"type": "String"}, "to": {"type": "String"}}},
+  "connectDeleteContent": "{from} ↔ {to}\n\nRoutes that used it will be recalculated. This can't be undone.",
+  "@connectDeleteContent": {"placeholders": {"from": {"type": "String"}, "to": {"type": "String"}}},
+  "homeSayDestinationButton": "Say where you want to go",
+  "homeListening": "Listening... say a place, for example \"cafeteria\". Tap to stop.",
+  "homeVoiceDestinationSet": "Destination: {name}. Tap Find route to start.",
+  "@homeVoiceDestinationSet": {"placeholders": {"name": {"type": "String"}}},
+  "homeVoiceSeveralMatches": "I found several places: {options}. Choose one.",
+  "@homeVoiceSeveralMatches": {"placeholders": {"options": {"type": "String"}}},
+  "homeVoiceNoMatch": "I couldn't find \"{heard}\". Try again or choose from the list.",
+  "@homeVoiceNoMatch": {"placeholders": {"heard": {"type": "String"}}},
+  "homeVoiceNothingHeard": "I didn't hear a place. Try again.",
+  "homeVoiceUnavailable": "Voice input isn't available on this phone. Choose the destination from the list.",
+  "homeVoiceChooseTitle": "Which one?"
 }

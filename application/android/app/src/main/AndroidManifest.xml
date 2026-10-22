@@ -13,6 +13,9 @@
     <!-- Camera -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Microphone: saying the destination out loud (speech_to_text) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <application
         android:label="Eyes4U"
         android:name="${applicationName}"
@@ -54,6 +57,14 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Android 11+ package visibility: the speech recognizer
+             (speech_to_text) and the text-to-speech engine (flutter_tts). -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
         </intent>
     </queries>
 </manifest>

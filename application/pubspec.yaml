@@ -24,6 +24,7 @@ dependencies:
   latlong2: ^0.10.1
   path: ^1.9.1
   permission_handler: ^13.0.0
+  speech_to_text: ^7.5.0
   supabase_flutter: ^2.8.0
 
 dev_dependencies:

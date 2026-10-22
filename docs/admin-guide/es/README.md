@@ -191,7 +191,12 @@ Más preciso — úsalo cuando no estés mirando un mapa, o cuando necesites cor
 | **Distance in meters (optional)** | Opcional | Cuánto caminaría realmente una persona entre los dos puntos. Si se deja en blanco, la aplicación la estima como una línea recta entre sus coordenadas — lo cual es incorrecto si el camino real tiene curvas (por ejemplo, al doblar una esquina) o no es un trayecto directo (por ejemplo, vía ascensor o escaleras en vez de un camino directo). Complétalo siempre que la estimación en línea recta no sea precisa. | `12.5` |
 | **Notes (optional)** | Opcional | Texto libre para anotar cualquier cosa relevante sobre esta conexión en particular. | `via elevator, not stairs`, `blocked during exam periods` |
 
-Eliminar una conexión (ícono de basura, sin opción de editar — elimina y vuelve a crearla si necesitas cambiarla) no tiene efecto en cascada — no afecta a los dos puntos de anclaje en sí.
+Eliminar una conexión no tiene efecto en cascada: no afecta a los dos puntos de anclaje en sí. No hay opción de editar, así que elimínala y vuelve a crearla si necesitas cambiarla. Hay dos formas de eliminarla:
+
+- En la lista **Connections**, toca su ícono de basura.
+- En la pantalla **Connect on map**, toca la línea verde (lejos de los puntos, porque tocar cerca de un punto lo selecciona) y confirma.
+
+Cualquier ruta guardada que pasaba por una conexión eliminada se recalcula automáticamente la próxima vez que alguien la pida.
 
 ## 7. Eliminar datos
 

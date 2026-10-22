@@ -191,7 +191,12 @@ More precise — use this when you're not looking at a map, or you need to corre
 | **Distance in meters (optional)** | Optional | How far someone would actually walk between the two points. If you leave this blank, the app estimates it as a straight line between their coordinates — which is wrong if the real path bends (around a corner, say) or isn't a straight walk (via an elevator or stairs instead of a direct route). Fill this in whenever the straight-line guess wouldn't be accurate. | `12.5` |
 | **Notes (optional)** | Optional | Free text for anything worth flagging about this specific link. | `via elevator, not stairs`, `blocked during exam periods` |
 
-Deleting a connection (trash icon, no edit option — delete and recreate if you need to change it) has no cascade — it doesn't affect the two anchor points themselves.
+Deleting a connection has no cascade: it doesn't affect the two anchor points themselves. There's no edit option, so delete it and recreate it if you need to change it. There are two ways to delete one:
+
+- In the **Connections** list, tap its trash icon.
+- On the **Connect on map** screen, tap the green line itself (away from the dots, since tapping near a dot selects the point) and confirm.
+
+Any saved route that went through a deleted connection is recalculated automatically the next time someone asks for it.
 
 ## 7. Deleting things
 
