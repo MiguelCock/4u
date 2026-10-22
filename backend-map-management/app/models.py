@@ -4,11 +4,14 @@ from pydantic import BaseModel, Field, field_validator
 
 # location_type ids (db_schema/location_type.sql) that are places people go
 # *to* - entrance, classroom, office, restroom, cafeteria, parking, lobby,
-# auditorium, bus stop. An anchor point of one of these types must have a
+# auditorium, bus stop, and every type from 19 on (shops, library,
+# infirmary, exit...). An anchor point of one of these types must have a
 # description (it's the name users pick and hear); in-between types
 # (hallway, intersection, stairs...) may leave it empty. Mirrored by
 # kDestinationLocationTypes in application/lib/services/destinations.dart.
-DESTINATION_LOCATION_TYPE_IDS = frozenset({1, 5, 6, 7, 8, 13, 14, 15, 18})
+DESTINATION_LOCATION_TYPE_IDS = frozenset(
+    {1, 5, 6, 7, 8, 13, 14, 15, 18, *range(19, 34)}
+)
 
 
 Latitude = Field(ge=-90, le=90)

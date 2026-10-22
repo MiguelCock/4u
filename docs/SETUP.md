@@ -8,7 +8,7 @@ Create one at [supabase.com](https://supabase.com) (or use an existing project).
 
 ## 2. Apply the schema
 
-In the Supabase SQL editor, run the files in `db_schema/` **in this order** (later tables reference earlier ones by foreign key). The files always describe the current schema, so a fresh project needs nothing else. An **existing** project created from older versions of these files also needs any newer scripts in `db_schema/migrations/`, run once in date order (today: `2026-10-21_coordinates_double_precision.sql`, then `2026-10-22_delete_rules.sql`, then `2026-10-22_data_integrity.sql`):
+In the Supabase SQL editor, run the files in `db_schema/` **in this order** (later tables reference earlier ones by foreign key). The files always describe the current schema, so a fresh project needs nothing else. An **existing** project created from older versions of these files also needs any newer scripts in `db_schema/migrations/`, run once in date order (today: `2026-10-21_coordinates_double_precision.sql`, then `2026-10-22_delete_rules.sql`, `2026-10-22_data_integrity.sql`, then `2026-10-22_more_location_types.sql`):
 
 ```
 places.sql

@@ -1,10 +1,36 @@
 /// Location types (db_schema/location_type.sql ids) that are places people
 /// go *to*: entrance, classroom, office, restroom, cafeteria, parking,
-/// lobby, auditorium, bus stop. The rest (hallway, intersection, stairs,
+/// lobby, auditorium, bus stop, plus every type from 19 on (shops,
+/// library, infirmary, exit...). The rest (hallway, intersection, stairs,
 /// ramp...) are in-between points that only exist so routes can be
 /// connected. Mirrored by `DESTINATION_LOCATION_TYPE_IDS` in
 /// backend-map-management/app/models.py - keep the two in sync.
-const Set<int> kDestinationLocationTypes = {1, 5, 6, 7, 8, 13, 14, 15, 18};
+const Set<int> kDestinationLocationTypes = {
+  1,
+  5,
+  6,
+  7,
+  8,
+  13,
+  14,
+  15,
+  18,
+  19,
+  20,
+  21,
+  22,
+  23,
+  24,
+  25,
+  26,
+  27,
+  28,
+  29,
+  30,
+  31,
+  32,
+  33,
+};
 
 bool isDestinationType(int? locationTypeId) =>
     kDestinationLocationTypes.contains(locationTypeId);
