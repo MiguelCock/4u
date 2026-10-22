@@ -66,13 +66,9 @@
   "navEndButton": "Terminar navegación",
   "navFailedToStartSession": "Error al iniciar la sesión de navegación: {error}",
   "navCorrectedPosition": "Corregido: {lat}, {lng}{errorSuffix}",
-  "navAnnouncementStarting": "Navegando hacia {name}",
-  "navAnnouncementApproaching": "Acercándote a {name}",
-  "navAnnouncementArrived": "Llegaste a {name}",
   "navAnnouncementEnded": "Navegación finalizada",
   "navAnnouncementCameraDisclosure": "Tu cámara se usará periódicamente para ayudar a corregir tu posición.",
   "navAnnouncementCameraBlocked": "La cámara parece estar bloqueada. Por favor descúbrela.",
-  "navAnnouncementDistanceToNext": "{distance} metros hasta {name}",
 
   "settingsTitle": "Configuración",
   "settingsVerbosityLabel": "Nivel de detalle",
@@ -326,5 +322,18 @@
   "adminReindexDone": "{ok} de {total} puntos verificados reindexados.",
   "adminReindexDoneWithErrors": "{ok} de {total} puntos verificados reindexados. Último error: {error}",
   "navVoiceLanguageMissing": "Este teléfono no tiene instalada una voz para el idioma de la app, así que las indicaciones pueden leerse con otro acento. Instálala en Ajustes del teléfono > Salida de texto a voz.",
-  "homeStartUnnamedSubtitle": "Partiendo del punto de ruta más cercano, a unos {meters} m"
+  "homeStartUnnamedSubtitle": "Partiendo del punto de ruta más cercano, a unos {meters} m",
+  "navStartingTo": "Iniciando ruta hacia {destination}.",
+  "navYourDestination": "tu destino",
+  "navTurnLeft": "Gira a la izquierda unos {degrees} grados.",
+  "navTurnRight": "Gira a la derecha unos {degrees} grados.",
+  "navTurnAround": "Date la vuelta.",
+  "navStartWalking": "Vas en la dirección correcta. Empieza a caminar hacia adelante, {meters} metros.",
+  "navTurnLeftThenWalk": "Gira a la izquierda unos {degrees} grados y camina {meters} metros.",
+  "navTurnRightThenWalk": "Gira a la derecha unos {degrees} grados y camina {meters} metros.",
+  "navTurnAroundThenWalk": "Date la vuelta y camina {meters} metros.",
+  "navContinueStraight": "Sigue derecho {meters} metros.",
+  "navAtPlace": "En {name}.",
+  "navMetersAhead": "Faltan {meters} metros.",
+  "navArrivedFinished": "Llegaste a {name}. Navegación terminada."
 }

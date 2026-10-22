@@ -89,22 +89,9 @@
       "errorSuffix": {"type": "String"}
     }
   },
-  "navAnnouncementStarting": "Navigating to {name}",
-  "@navAnnouncementStarting": {"placeholders": {"name": {"type": "String"}}},
-  "navAnnouncementApproaching": "Approaching {name}",
-  "@navAnnouncementApproaching": {"placeholders": {"name": {"type": "String"}}},
-  "navAnnouncementArrived": "Arrived at {name}",
-  "@navAnnouncementArrived": {"placeholders": {"name": {"type": "String"}}},
   "navAnnouncementEnded": "Navigation ended",
   "navAnnouncementCameraDisclosure": "Your camera will be used periodically to help correct your position.",
   "navAnnouncementCameraBlocked": "Camera appears to be blocked. Please uncover it.",
-  "navAnnouncementDistanceToNext": "{distance} meters to {name}",
-  "@navAnnouncementDistanceToNext": {
-    "placeholders": {
-      "distance": {"type": "int"},
-      "name": {"type": "String"}
-    }
-  },
 
   "settingsTitle": "Settings",
   "settingsVerbosityLabel": "Verbosity",
@@ -418,5 +405,29 @@
   "@adminReindexDoneWithErrors": {"placeholders": {"ok": {"type": "int"}, "total": {"type": "int"}, "error": {"type": "String"}}},
   "navVoiceLanguageMissing": "This phone has no voice installed for the app's language, so directions may be read with the wrong accent. Install it in the phone's Settings > Text-to-speech output.",
   "homeStartUnnamedSubtitle": "Starting from the nearest route point, about {meters} m away",
-  "@homeStartUnnamedSubtitle": {"placeholders": {"meters": {"type": "int"}}}
+  "@homeStartUnnamedSubtitle": {"placeholders": {"meters": {"type": "int"}}},
+  "navStartingTo": "Starting route to {destination}.",
+  "@navStartingTo": {"placeholders": {"destination": {"type": "String"}}},
+  "navYourDestination": "your destination",
+  "navTurnLeft": "Turn left about {degrees} degrees.",
+  "@navTurnLeft": {"placeholders": {"degrees": {"type": "int"}}},
+  "navTurnRight": "Turn right about {degrees} degrees.",
+  "@navTurnRight": {"placeholders": {"degrees": {"type": "int"}}},
+  "navTurnAround": "Turn around.",
+  "navStartWalking": "You're facing the right way. Start walking forward, {meters} meters.",
+  "@navStartWalking": {"placeholders": {"meters": {"type": "int"}}},
+  "navTurnLeftThenWalk": "Turn left about {degrees} degrees, then walk {meters} meters.",
+  "@navTurnLeftThenWalk": {"placeholders": {"degrees": {"type": "int"}, "meters": {"type": "int"}}},
+  "navTurnRightThenWalk": "Turn right about {degrees} degrees, then walk {meters} meters.",
+  "@navTurnRightThenWalk": {"placeholders": {"degrees": {"type": "int"}, "meters": {"type": "int"}}},
+  "navTurnAroundThenWalk": "Turn around, then walk {meters} meters.",
+  "@navTurnAroundThenWalk": {"placeholders": {"meters": {"type": "int"}}},
+  "navContinueStraight": "Continue straight for {meters} meters.",
+  "@navContinueStraight": {"placeholders": {"meters": {"type": "int"}}},
+  "navAtPlace": "At {name}.",
+  "@navAtPlace": {"placeholders": {"name": {"type": "String"}}},
+  "navMetersAhead": "{meters} meters ahead.",
+  "@navMetersAhead": {"placeholders": {"meters": {"type": "int"}}},
+  "navArrivedFinished": "You have arrived at {name}. Navigation finished.",
+  "@navArrivedFinished": {"placeholders": {"name": {"type": "String"}}}
 }
