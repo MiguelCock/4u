@@ -26,7 +26,9 @@ Las cuatro secciones no son independientes — cada una se construye sobre la an
 3. **Anchor point (punto de anclaje)** — un punto físico específico dentro de (o justo afuera de) un edificio. No se puede crear uno hasta que exista su edificio.
 4. **Fotos** — todo punto de anclaje necesita al menos una foto, idealmente entre 4 y 8 tomadas en direcciones distintas, antes de que sea útil.
 5. **Verificación** — después de revisar las fotos de un punto de anclaje, se cambia su estado (Status) a Verified. Este es el paso que realmente lo hace utilizable por la aplicación — ver la explicación en [5.3](#53-revisar-y-verificar).
-6. **Connections (conexiones)** (opcional) — una vez que tienes dos o más puntos de anclaje verificados, puedes marcar que se puede caminar directamente entre ellos.
+6. **Connections (conexiones)** (necesarias para las rutas) — una vez que tienes dos o más puntos de anclaje verificados, marca entre qué pares se puede caminar directamente. Las rutas solo se calculan a lo largo de conexiones, así que un destino sin conexiones no se puede alcanzar.
+
+**Marca primero los lugares importantes y luego rellena entre ellos.** Empieza por los lugares a los que la gente realmente quiere ir: entradas, salones, oficinas, baños, la cafetería, el auditorio. Dale a cada uno una descripción clara, porque es el nombre que los usuarios eligen y escuchan. Después agrega puntos *intermedios* (pasillos, intersecciones, escaleras, rampas) donde hagan falta para unir esos lugares con conexiones caminables. Los puntos intermedios no necesitan descripción y nunca se ofrecen a los usuarios como destino.
 
 Si intentas saltarte un paso (por ejemplo, agregar un edificio antes de que exista su lugar), el menú desplegable correspondiente simplemente estará vacío, con un mensaje indicando qué agregar primero.
 
@@ -103,7 +105,7 @@ Un **anchor point** es un punto físico específico — una puerta, una intersec
 2. Toca el botón **+** con ícono de cámara (abajo a la derecha) — etiquetado "New anchor point".
 3. Elige el **Place**, luego el **Building** (filtrado según ese lugar).
 4. Elige el **Location type** — qué tipo de lugar es este (ver la lista completa en [§8](#8-referencia-rápida)). Por ejemplo, si estás parado en la puerta principal de un edificio, elige **entrance**.
-5. Completa la **Description** — obligatoria, e importante: este es el nombre que tú y otros administradores verán para este punto en toda la aplicación (resultados de búsqueda, listas, menús desplegables), así que debe describir el lugar real en vez de algo genérico. "Front door, north side" es mucho más útil después que "Point 1".
+5. Completa la **Description**. Es **obligatoria para los tipos de destino** (entrance, classroom, office, restroom, cafeteria, parking, lobby, auditorium, bus_stop), porque es el nombre que los usuarios eligen y escuchan, así que describe el lugar real: "Puerta principal, lado norte" es mucho más útil que "Punto 1". Para los **tipos intermedios** (hallway, intersection, stairwell, elevator, ramp, outdoor_path, courtyard, crosswalk, other) es opcional. Si la dejas vacía, el punto sigue sirviendo para rutas y para corregir la posición, pero no aparece en la lista de destinos del usuario. En las listas de administración los puntos sin nombre se muestran por su tipo, por ejemplo "Pasillo · 3f2a". Los puntos nuevos empiezan como **hallway**.
 6. Configura **Indoor location** (activado por defecto) — si el punto está dentro de un edificio o afuera. Esto importa porque la precisión del GPS es mucho peor en interiores, que es exactamente por qué los puntos de anclaje interiores son los más importantes para el sistema de corrección de posición.
 7. Opcionalmente configura **Lighting** (Bright / Moderate / Dim) y **Surface** (texto libre, ej. "tile", "carpet", "concrete", "grass") — ver la tabla de campos abajo para entender por qué vale la pena completarlos.
 8. Confirma la posición — ya sea la ubicación GPS actual del dispositivo (se muestra automáticamente) o, si tocas **Pick on map**, una ubicación que toques en un mapa. Una ubicación elegida manualmente siempre tiene prioridad sobre el GPS. Úsalo cuando la deriva del GPS (común cerca de edificios altos) ubicaría el punto en el lugar equivocado.
@@ -151,6 +153,8 @@ Para editar un punto de anclaje: toca el ícono de lápiz en su fila. Verás los
 | Botón **Manage photos** | Abre la misma pantalla de fotos de [§5.2](#52-tomar-fotos) para agregar o eliminar fotos. |
 | Botón **Move on map** | Permite volver a elegir la posición del punto en un mapa, por ejemplo si resulta estar en el lugar equivocado. |
 
+**Si al verificar aparece un error de indexación:** el punto queda guardado como Verified, pero la búsqueda por fotos no lo recibió, así que la app todavía no puede reconocerlo. Cuando se arregle el problema del servidor, abre el menú y toca **Reindexar puntos verificados**. Vuelve a enviar todos los puntos verificados que tengan fotos e indica cuántos se enviaron bien.
+
 ## 6. Connections (conexiones)
 
 Una **connection** registra que una persona puede caminar directamente entre dos puntos de anclaje — va construyendo el grafo de transitabilidad que la aplicación podrá usar más adelante para dar indicaciones de ruta paso a paso, no es solo un enlace arbitrario entre dos pines.
@@ -163,9 +167,11 @@ Más rápido, y funciona especialmente bien para conectar toda una secuencia de 
 
 1. Desde el menú, ve a **Connections**, luego toca el botón **+** — etiquetado "Connect on map".
 2. Elige un **Place**, y opcionalmente un **Building** para acotar más el mapa.
-3. Toca un punto de anclaje en el mapa para seleccionarlo.
+3. Toca un punto de anclaje en el mapa para seleccionarlo. No hace falta acertar exactamente en el punto: un toque cerca también cuenta, y el teléfono vibra al seleccionarlo.
 4. Toca un segundo punto de anclaje — esto crea la conexión entre ambos, y el segundo punto **queda seleccionado**, así puedes tocar de inmediato un tercer punto para seguir encadenando conexiones a lo largo del mismo pasillo sin empezar de nuevo cada vez.
-5. Las conexiones existentes entre puntos visibles se dibujan como líneas verdes en el mapa, para que puedas ver de un vistazo qué ya está conectado.
+5. Las conexiones existentes entre puntos visibles se dibujan como líneas verdes en el mapa, para que puedas ver de un vistazo qué ya está conectado. Una conexión nueva se ve un momento como línea gris punteada mientras se guarda. Puedes seguir tocando mientras tanto.
+
+**Atajo desde la lista de puntos de anclaje:** en la pantalla **Anchor points**, toca la fila de un punto (no sus íconos de foto, editar o eliminar). Se abre el mapa de conexiones ya ubicado en la universidad y el edificio de ese punto, con zoom sobre él y con el punto ya seleccionado. Tu siguiente toque en otro punto los conecta.
 
 ### Formulario con menús desplegables
 
@@ -185,7 +191,12 @@ Más preciso — úsalo cuando no estés mirando un mapa, o cuando necesites cor
 | **Distance in meters (optional)** | Opcional | Cuánto caminaría realmente una persona entre los dos puntos. Si se deja en blanco, la aplicación la estima como una línea recta entre sus coordenadas — lo cual es incorrecto si el camino real tiene curvas (por ejemplo, al doblar una esquina) o no es un trayecto directo (por ejemplo, vía ascensor o escaleras en vez de un camino directo). Complétalo siempre que la estimación en línea recta no sea precisa. | `12.5` |
 | **Notes (optional)** | Opcional | Texto libre para anotar cualquier cosa relevante sobre esta conexión en particular. | `via elevator, not stairs`, `blocked during exam periods` |
 
-Eliminar una conexión (ícono de basura, sin opción de editar — elimina y vuelve a crearla si necesitas cambiarla) no tiene efecto en cascada — no afecta a los dos puntos de anclaje en sí.
+Eliminar una conexión no tiene efecto en cascada: no afecta a los dos puntos de anclaje en sí. No hay opción de editar, así que elimínala y vuelve a crearla si necesitas cambiarla. Hay dos formas de eliminarla:
+
+- En la lista **Connections**, toca su ícono de basura.
+- En la pantalla **Connect on map**, toca la línea verde (lejos de los puntos, porque tocar cerca de un punto lo selecciona) y confirma.
+
+Cualquier ruta guardada que pasaba por una conexión eliminada se recalcula automáticamente la próxima vez que alguien la pida.
 
 ## 7. Eliminar datos
 

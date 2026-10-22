@@ -67,6 +67,26 @@ async def list_sessions(
     return result.data
 
 
+# Declared above /sessions/{id} so "active" isn't captured as an id.
+@app.get("/sessions/active")
+async def list_my_active_sessions(
+    caller_id: str = Depends(get_caller_id),
+) -> list[NavigationSessionResponse]:
+    """The caller's own sessions still marked active, newest first - a
+    route left open by closing the app mid-trip. The app offers to resume
+    or finish it on the next launch, instead of it staying active forever.
+    Any user, but only ever their own sessions."""
+    result = (
+        db.client.table("navigation_sessions")
+        .select("*")
+        .eq("user_id", caller_id)
+        .eq("status", "active")
+        .order("start_time", desc=True)
+        .execute()
+    )
+    return result.data
+
+
 @app.get("/sessions/{id}")
 async def get_session(
     id: str, caller_id: str = Depends(get_caller_id)

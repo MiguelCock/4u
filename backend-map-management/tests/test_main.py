@@ -2,10 +2,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from supabase import AuthApiError
 
 from app.main import app, get_caller_id
 
 client = TestClient(app)
+
+_BAD_JWT = AuthApiError("invalid JWT: token is expired", 403, "bad_jwt")
 
 
 @pytest.fixture(autouse=True)
@@ -40,7 +43,7 @@ def test_no_token_is_rejected():
 
 
 def test_garbage_token_is_rejected():
-    with patch("app.main.db.get_user_id_from_token", side_effect=Exception("bad")):
+    with patch("app.main.db.get_user_id_from_token", side_effect=_BAD_JWT):
         response = client.get(
             "/anchor-points", headers={"Authorization": "Bearer garbage"}
         )
@@ -157,16 +160,37 @@ def test_create_anchor_point_returns_created_row():
     assert response.json() == [{**payload, "id": "1"}]
 
 
-def test_create_anchor_point_requires_description():
+def test_create_anchor_point_allows_unnamed_in_between_point():
     _as_caller("admin1")
     payload = {
         "building_id": "b1",
         "latitude": 6.24,
         "longitude": -75.58,
+        "location_type_id": 10,  # hallway
+        "location_description": "   ",
     }
-    with patch("app.main.db.client", _mock_insert_result([])):
+    mock_client = _mock_insert_result([{**payload, "id": "1"}])
+    with patch("app.main.db.client", mock_client):
         response = client.post("/anchor-points", json=payload)
-    assert response.status_code == 422
+    assert response.status_code == 200
+    insert_payload = mock_client.table.return_value.insert.call_args.args[0]
+    assert insert_payload["location_description"] is None
+
+
+def test_create_anchor_point_requires_description_for_destination_type():
+    _as_caller("admin1")
+    payload = {
+        "building_id": "b1",
+        "latitude": 6.24,
+        "longitude": -75.58,
+        "location_type_id": 5,  # classroom
+    }
+    mock_client = _mock_insert_result([])
+    with patch("app.main.db.client", mock_client):
+        response = client.post("/anchor-points", json=payload)
+    assert response.status_code == 400
+    assert "description" in response.json()["detail"]
+    mock_client.table.return_value.insert.assert_not_called()
 
 
 def test_create_anchor_point_passes_metadata_through():
@@ -937,3 +961,67 @@ def test_upload_anchor_point_image_returns_public_url():
     args = mock.call_args.args
     assert args[0] == "anchor-points"
     assert args[2] == "a.jpg"
+
+
+def _mock_current_then_update(current_row, updated_rows):
+    mock_client = MagicMock()
+    # select().eq().execute() serves both is_admin (role_id) and the
+    # current-row lookup, so return a row that satisfies both.
+    mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"role_id": 2, **current_row}
+    ]
+    mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value.data = updated_rows
+    return mock_client
+
+
+def test_update_anchor_point_rejects_destination_type_on_unnamed_point():
+    _as_caller("admin1")
+    mock_client = _mock_current_then_update(
+        {"location_type_id": 10, "location_description": None}, []
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/1", json={"location_type_id": 7})
+    assert response.status_code == 400
+    mock_client.table.return_value.update.assert_not_called()
+
+
+def test_update_anchor_point_rejects_clearing_a_destination_description():
+    _as_caller("admin1")
+    mock_client = _mock_current_then_update(
+        {"location_type_id": 5, "location_description": "Room 101"}, []
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/1", json={"location_description": ""})
+    assert response.status_code == 400
+
+
+def test_update_anchor_point_allows_clearing_an_in_between_description():
+    _as_caller("admin1")
+    mock_client = _mock_current_then_update(
+        {"location_type_id": 10, "location_description": "Hall"},
+        [{**_ANCHOR_POINT_ROW, "location_description": None}],
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/1", json={"location_description": ""})
+    assert response.status_code == 200
+    mock_client.table.return_value.update.assert_called_once_with(
+        {"location_description": None}
+    )
+
+
+def test_destination_types_match_the_app():
+    # The app enforces the same rule client-side (and filters the user's
+    # destination list with it) - the two sets must not drift apart.
+    import re
+    from pathlib import Path
+
+    from app.models import DESTINATION_LOCATION_TYPE_IDS
+
+    dart = (
+        Path(__file__).resolve().parents[2]
+        / "application/lib/services/destinations.dart"
+    ).read_text()
+    match = re.search(r"kDestinationLocationTypes = \{([^}]*)\}", dart)
+    assert match
+    app_ids = {int(x) for x in match.group(1).split(",") if x.strip()}
+    assert app_ids == DESTINATION_LOCATION_TYPE_IDS

@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'session_tracking_screen.dart';
 import '../services/api_error_messages.dart';
+import '../widgets/scrollable_message.dart';
 
 /// `navigation_sessions.status`'s stable storage values - this maps one to
 /// its localized label without changing what's actually stored.
@@ -50,14 +51,44 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
   @override
   void initState() {
     super.initState();
-    _sessions = List.of(widget.sessions)
-      ..sort(
-        (a, b) => (b['start_time'] as String? ?? '').compareTo(
-          a['start_time'] as String? ?? '',
-        ),
-      );
+    _sessions = _sortedNewestFirst(widget.sessions);
     _loadRoutes();
     _loadFeedback();
+  }
+
+  static List<Map<String, dynamic>> _sortedNewestFirst(
+    Iterable<Map<String, dynamic>> sessions,
+  ) {
+    return List.of(sessions)..sort(
+      (a, b) => (b['start_time'] as String? ?? '').compareTo(
+        a['start_time'] as String? ?? '',
+      ),
+    );
+  }
+
+  /// Pull-to-refresh: the sessions came in through the constructor, so
+  /// re-fetch this user's own ones along with routes and comments.
+  Future<void> _refresh() async {
+    try {
+      final result = await _navigationApi.get('/sessions');
+      final sessions = (result as List? ?? [])
+          .cast<Map<String, dynamic>>()
+          .where((s) => s['user_id'] == widget.userId);
+      if (!mounted) return;
+      setState(() => _sessions = _sortedNewestFirst(sessions));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(
+              context,
+            )!.sessionsErrorLoadFailed(friendlyApiErrorMessage(context, e)),
+          ),
+        ),
+      );
+    }
+    await Future.wait([_loadRoutes(), _loadFeedback()]);
   }
 
   Future<void> _loadRoutes() async {
@@ -186,62 +217,66 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
     final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(title: Text(widget.userName)),
-      body: _sessions.isEmpty
-          ? Center(child: Text(l10n.userSessionsEmpty))
-          : ListView.builder(
-              itemCount: _sessions.length,
-              itemBuilder: (context, index) {
-                final session = _sessions[index];
-                final routeId = session['route_id'] as String?;
-                final routeName = _loadingRoutes || routeId == null
-                    ? null
-                    : _routesById[routeId]?['name'] as String?;
-                final comments = _feedbackBySessionId[session['id']];
-                return ListTile(
-                  leading: Icon(
-                    Icons.my_location,
-                    color: session['status'] == 'active'
-                        ? Colors.teal
-                        : Colors.grey,
-                  ),
-                  title: Text(l10n.userSessionsSessionLabel(session['id'])),
-                  subtitle: Text(
-                    l10n.userSessionsSubtitle(
-                      sessionStatusLabel(l10n, session['status'] as String?),
-                      session['start_time'] as String? ?? '?',
-                      routeName != null ? ' · $routeName' : '',
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: _sessions.isEmpty
+            ? ScrollableMessage(l10n.userSessionsEmpty)
+            : ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: _sessions.length,
+                itemBuilder: (context, index) {
+                  final session = _sessions[index];
+                  final routeId = session['route_id'] as String?;
+                  final routeName = _loadingRoutes || routeId == null
+                      ? null
+                      : _routesById[routeId]?['name'] as String?;
+                  final comments = _feedbackBySessionId[session['id']];
+                  return ListTile(
+                    leading: Icon(
+                      Icons.my_location,
+                      color: session['status'] == 'active'
+                          ? Colors.teal
+                          : Colors.grey,
                     ),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  SessionTrackingScreen(session: session),
-                            ),
-                          );
-                        },
-                        child: Text(l10n.userSessionsWatchButton),
+                    title: Text(l10n.userSessionsSessionLabel(session['id'])),
+                    subtitle: Text(
+                      l10n.userSessionsSubtitle(
+                        sessionStatusLabel(l10n, session['status'] as String?),
+                        session['start_time'] as String? ?? '?',
+                        routeName != null ? ' · $routeName' : '',
                       ),
-                      if (comments != null && comments.isNotEmpty)
-                        IconButton(
-                          icon: const Icon(Icons.comment_outlined),
-                          tooltip: l10n.userSessionsFeedbackTooltip,
-                          onPressed: () => _showFeedback(comments),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    SessionTrackingScreen(session: session),
+                              ),
+                            );
+                          },
+                          child: Text(l10n.userSessionsWatchButton),
                         ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: l10n.commonDelete,
-                        onPressed: () => _deleteSession(session),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                        if (comments != null && comments.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.comment_outlined),
+                            tooltip: l10n.userSessionsFeedbackTooltip,
+                            onPressed: () => _showFeedback(comments),
+                          ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: l10n.commonDelete,
+                          onPressed: () => _deleteSession(session),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+      ),
     );
   }
 }

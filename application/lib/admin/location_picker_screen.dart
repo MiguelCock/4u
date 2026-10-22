@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../l10n/app_localizations.dart';
+import '../map.dart' show locationPinMarker;
 import '../services/api_service.dart';
 import '../services/map_tile_config.dart';
 
@@ -98,9 +99,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   }
 
   Widget _badge(String label, {required Color color}) {
+    // On the top-right corner of the centred 30px icon in a 60px marker.
     return Positioned(
-      right: 0,
-      top: 0,
+      right: 8,
+      top: 8,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
         constraints: const BoxConstraints(minWidth: 16),
@@ -149,7 +151,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           point: LatLng(lat, lng),
           width: 60,
           height: 60,
+          // Centred, so the icon (not the Stack's top-left corner) sits on
+          // the coordinate.
           child: Stack(
+            alignment: Alignment.center,
             clipBehavior: Clip.none,
             children: [
               const Icon(Icons.flag, color: Colors.purple, size: 30),
@@ -170,7 +175,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           point: LatLng(lat, lng),
           width: 60,
           height: 60,
+          // Centred, so the icon (not the Stack's top-left corner) sits on
+          // the coordinate.
           child: Stack(
+            alignment: Alignment.center,
             clipBehavior: Clip.none,
             children: [
               const Icon(Icons.apartment, color: Colors.orange, size: 30),
@@ -229,20 +237,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             userAgentPackageName: kMapUserAgentPackageName,
           ),
           MarkerLayer(markers: _overlayMarkers()),
-          MarkerLayer(
-            markers: [
-              Marker(
-                point: _picked,
-                width: 80,
-                height: 80,
-                child: const Icon(
-                  Icons.location_pin,
-                  color: Colors.red,
-                  size: 40,
-                ),
-              ),
-            ],
-          ),
+          MarkerLayer(markers: [locationPinMarker(_picked, Colors.red)]),
         ],
       ),
     );

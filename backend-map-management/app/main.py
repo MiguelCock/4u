@@ -9,6 +9,7 @@ from packages.supabase import SupaBase
 logger = logging.getLogger(__name__)
 
 from .models import (
+    DESTINATION_LOCATION_TYPE_IDS,
     AnchorPointConnectionCreate,
     AnchorPointConnectionResponse,
     AnchorPointCreate,
@@ -104,12 +105,30 @@ async def upload_anchor_point_image(
     return {"url": url}
 
 
+def _require_description_for_destinations(
+    location_type_id: int | None, description: str | None
+) -> None:
+    # 400 (not a pydantic 422) so the app shows this sentence as-is.
+    if (
+        location_type_id in DESTINATION_LOCATION_TYPE_IDS
+        and not (description or "").strip()
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Destinations (entrances, classrooms, restrooms...) need a "
+            "description - it's the name users pick and hear.",
+        )
+
+
 @app.post("/anchor-points")
 async def create_anchor_point(
     anchor_point: AnchorPointCreate, caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
+    _require_description_for_destinations(
+        anchor_point.location_type_id, anchor_point.location_description
+    )
     result = (
         db.client.table("anchor_points").insert(anchor_point.model_dump()).execute()
     )
@@ -140,12 +159,24 @@ async def update_anchor_point(
 ):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    result = (
-        db.client.table("anchor_points")
-        .update(anchor_point.model_dump(exclude_unset=True))
-        .eq("id", id)
-        .execute()
-    )
+    changes = anchor_point.model_dump(exclude_unset=True)
+    if "location_type_id" in changes or "location_description" in changes:
+        # Check the row as it will be after this PATCH, not just the
+        # payload - changing only the type to "classroom" on an unnamed
+        # point must still be rejected.
+        current = (
+            db.client.table("anchor_points")
+            .select("location_type_id, location_description")
+            .eq("id", id)
+            .execute()
+        )
+        if not current.data:
+            raise HTTPException(status_code=404, detail="Anchor point not found")
+        merged = {**current.data[0], **changes}
+        _require_description_for_destinations(
+            merged.get("location_type_id"), merged.get("location_description")
+        )
+    result = db.client.table("anchor_points").update(changes).eq("id", id).execute()
     return result.data
 
 

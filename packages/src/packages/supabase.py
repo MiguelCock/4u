@@ -1,8 +1,22 @@
+import logging
 import mimetypes
 from typing import BinaryIO
 
 from fastapi import Header, HTTPException
-from supabase import Client, create_client
+from supabase import AuthApiError, Client, create_client
+
+logger = logging.getLogger(__name__)
+
+# Supabase Auth error codes that mean the *caller's* token is bad (expired,
+# malformed, revoked session, deleted user) - only these are a real 401.
+_TOKEN_ERROR_CODES = {
+    "bad_jwt",
+    "no_authorization",
+    "session_expired",
+    "session_not_found",
+    "user_not_found",
+    "user_banned",
+}
 
 
 class SupaBase:
@@ -138,9 +152,29 @@ class SupaBase:
             raise HTTPException(status_code=401, detail="Missing bearer token")
         try:
             return self.get_user_id_from_token(token)
-        except Exception as e:
+        except AuthApiError as e:
+            if e.code in _TOKEN_ERROR_CODES:
+                raise HTTPException(
+                    status_code=401, detail="Invalid or expired token"
+                ) from e
+            # No token-specific code: Supabase rejected *this service's own*
+            # credentials (e.g. Kong's "Invalid API key" for a wrong
+            # SUPABASE_SERVICE_ROLE_KEY), not the caller's token. Reporting
+            # that as a 401 made the app say "session expired" forever, and
+            # signing in again could never fix it.
+            logger.error(
+                "Supabase rejected token verification (status=%s code=%s): %s",
+                e.status,
+                e.code,
+                e.message,
+            )
             raise HTTPException(
-                status_code=401, detail="Invalid or expired token"
+                status_code=503, detail="Authentication service unavailable"
+            ) from e
+        except Exception as e:
+            logger.exception("Token verification failed unexpectedly")
+            raise HTTPException(
+                status_code=503, detail="Authentication service unavailable"
             ) from e
 
     def is_admin(self, caller_id: str) -> bool:

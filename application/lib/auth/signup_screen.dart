@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -9,6 +11,13 @@ import '../services/api_error_messages.dart';
 /// static reference data with no CRUD anywhere, so it's hardcoded here
 /// rather than fetched.
 const int kUserRoleId = 1;
+
+/// Where Supabase's confirmation email sends the user: this app, via the
+/// intent-filter for this scheme in AndroidManifest.xml. supabase_flutter
+/// picks the link up and signs the user in. Must also be listed under
+/// Authentication > URL Configuration > Redirect URLs in the Supabase
+/// dashboard, or Supabase ignores it and falls back to the Site URL.
+const String kAuthRedirectUrl = 'io.github.miguelcock.eyes4u://login-callback';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -25,15 +34,35 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _submitting = false;
   String? _error;
 
+  /// Set once signup succeeded but needs the emailed link (no session yet).
+  String? _confirmationSentTo;
+  StreamSubscription<AuthState>? _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // This screen is pushed over AuthGate's login screen, and AuthGate only
+    // swaps what's under it - so once the user is signed in (straight away,
+    // or later through the confirmation link), get out of the way.
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((state) {
+      if (state.event == AuthChangeEvent.signedIn && mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    });
+  }
+
   Future<void> _signUp() async {
     setState(() {
       _submitting = true;
       _error = null;
     });
     try {
+      final fullName = _fullNameController.text.trim();
       final response = await Supabase.instance.client.auth.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
+        emailRedirectTo: kAuthRedirectUrl,
+        data: {if (fullName.isNotEmpty) 'full_name': fullName},
       );
       final user = response.user;
       if (user == null) {
@@ -41,6 +70,17 @@ class _SignupScreenState extends State<SignupScreen> {
           setState(
             () => _error = AppLocalizations.of(context)!.signupErrorNoUser,
           );
+        }
+        return;
+      }
+
+      // Email confirmation on: no session until the emailed link is
+      // opened, so there's no token to create the profile with yet (this
+      // used to fail with "Missing bearer token"). AuthGate creates it on
+      // the first sign-in instead.
+      if (response.session == null) {
+        if (mounted) {
+          setState(() => _confirmationSentTo = _emailController.text.trim());
         }
         return;
       }
@@ -86,6 +126,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   void dispose() {
+    _authSub?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     _fullNameController.dispose();
@@ -95,6 +136,34 @@ class _SignupScreenState extends State<SignupScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final sentTo = _confirmationSentTo;
+    if (sentTo != null) {
+      return Scaffold(
+        appBar: AppBar(title: Text(l10n.signupCheckEmailTitle)),
+        body: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.mark_email_unread_outlined, size: 64),
+              const SizedBox(height: 16),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  l10n.signupCheckEmailContent(sentTo),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 24),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(l10n.signupBackToLogin),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: Text(l10n.signupTitle)),
       body: Padding(

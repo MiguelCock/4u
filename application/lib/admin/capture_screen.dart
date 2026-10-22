@@ -7,6 +7,7 @@ import '../services/location_service.dart';
 import 'capture_photo_screen.dart';
 import 'location_picker_screen.dart';
 import '../services/api_error_messages.dart';
+import '../services/destinations.dart';
 
 /// Matches db_schema/location_type.sql's seeded values — static reference
 /// data with no CRUD endpoint anywhere, so hardcoded here rather than
@@ -31,6 +32,18 @@ const Map<int, String> kLocationTypes = {
   18: 'bus_stop',
   9: 'other',
 };
+
+/// What admin screens call an anchor point: its description, or, for an
+/// unnamed in-between point, its location type plus a short id so several
+/// "Hallway" points can still be told apart.
+String anchorDisplayName(AppLocalizations l10n, Map<String, dynamic>? point) {
+  final description = (point?['location_description'] as String? ?? '').trim();
+  if (description.isNotEmpty) return description;
+  final id = point?['id'] as String? ?? '?';
+  final type = kLocationTypes[point?['location_type_id'] as int?];
+  final shortId = id.length > 4 ? id.substring(0, 4) : id;
+  return type == null ? shortId : '${locationTypeLabel(l10n, type)} · $shortId';
+}
 
 /// `kLocationTypes`' values are the stable storage keys sent to/from the
 /// backend - this maps one to the localized label shown in dropdowns,
@@ -88,7 +101,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
   List<Map<String, dynamic>> _buildings = [];
   String? _selectedPlaceId;
   String? _selectedBuildingId;
-  int _selectedLocationTypeId = kLocationTypes.keys.first;
+  // Hallway: most points an admin adds while filling in a route are
+  // in-between ones, which don't need a description.
+  int _selectedLocationTypeId = 10;
   LatLng? _pickedPosition;
   bool _indoor = true;
   String? _lighting;
@@ -180,7 +195,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
       setState(() => _error = l10n.captureErrorSelectBuilding);
       return;
     }
-    if (description.isEmpty) {
+    if (description.isEmpty &&
+        descriptionRequiredFor(_selectedLocationTypeId)) {
       setState(() => _error = l10n.commonErrorDescriptionRequired);
       return;
     }
@@ -202,7 +218,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
         'latitude': _pickedPosition?.latitude ?? position!.latitude,
         'longitude': _pickedPosition?.longitude ?? position!.longitude,
         'altitude': position?.altitude,
-        'location_description': description,
+        'location_description': description.isEmpty ? null : description,
         'metadata': {
           'indoor': _indoor,
           'lighting': _lighting,
@@ -210,6 +226,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
         },
       });
       final id = (result as List).first['id'] as String;
+      // Unnamed in-between points are announced by their type instead.
+      final displayName = description.isNotEmpty
+          ? description
+          : locationTypeLabel(l10n, kLocationTypes[_selectedLocationTypeId]!);
 
       if (!mounted) return;
       // The root ScaffoldMessenger keeps this visible over the photo screen
@@ -225,7 +245,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  l10n.captureSnackbarCreated(description),
+                  l10n.captureSnackbarCreated(displayName),
                   style: const TextStyle(color: Colors.white),
                 ),
               ),
@@ -237,7 +257,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
         MaterialPageRoute(
           builder: (_) => CapturePhotoScreen(
             anchorPointId: id,
-            anchorPointDescription: description,
+            anchorPointDescription: displayName,
           ),
         ),
       );
@@ -352,7 +372,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       controller: _descriptionController,
                       decoration: InputDecoration(
                         labelText: l10n.commonDescriptionLabel,
-                        helperText: l10n.commonDescriptionHelper,
+                        helperText:
+                            descriptionRequiredFor(_selectedLocationTypeId)
+                            ? l10n.commonDescriptionHelper
+                            : l10n.commonDescriptionHelperOptional,
+                        helperMaxLines: 3,
                       ),
                     ),
                     const SizedBox(height: 12),

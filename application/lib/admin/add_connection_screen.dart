@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/api_error_messages.dart';
+import 'capture_screen.dart' show anchorDisplayName;
 
 /// Dropdown-based fallback/precision flow for creating an anchor-point
 /// connection - mirrors the map-tap flow in `ConnectAnchorPointsScreen` but
@@ -79,7 +80,7 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
   }
 
   String _label(Map<String, dynamic> point) =>
-      point['location_description'] as String? ?? point['id'] as String;
+      anchorDisplayName(AppLocalizations.of(context)!, point);
 
   Future<void> _submit() async {
     final l10n = AppLocalizations.of(context)!;

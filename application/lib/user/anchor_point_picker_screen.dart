@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/api_error_messages.dart';
+import '../services/destinations.dart';
+import '../widgets/scrollable_message.dart';
 
 /// University -> Building -> anchor-point drill-down list, for picking a
 /// destination anchor point (see UserHomeScreen - the start point is
@@ -57,18 +59,35 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
         _mapApi.get('/buildings'),
         _mapApi.get('/anchor-points'),
       ]);
+      if (!mounted) return;
+      // Only real destinations (an important type with a name) are offered;
+      // unnamed hallway/intersection points exist just to connect routes.
+      // Universities and buildings with no destinations are hidden too, so
+      // the drill-down never leads to an empty list.
+      final anchors = (results[2] as List)
+          .cast<Map<String, dynamic>>()
+          .where(
+            (a) =>
+                a['status'] == 'verified' &&
+                isDestinationAnchor(a) &&
+                a['id'] != widget.excludeAnchorId,
+          )
+          .toList();
+      final buildingIds = anchors.map((a) => a['building_id']).toSet();
+      final buildings = (results[1] as List)
+          .cast<Map<String, dynamic>>()
+          .where((b) => buildingIds.contains(b['id']))
+          .toList();
+      final placeIds = buildings.map((b) => b['place_id']).toSet();
       setState(() {
-        _places = (results[0] as List).cast<Map<String, dynamic>>();
-        _buildings = (results[1] as List).cast<Map<String, dynamic>>();
-        _anchorPoints = (results[2] as List)
+        _places = (results[0] as List)
             .cast<Map<String, dynamic>>()
-            .where(
-              (a) =>
-                  a['status'] == 'verified' &&
-                  a['id'] != widget.excludeAnchorId,
-            )
+            .where((p) => placeIds.contains(p['id']))
             .toList();
+        _buildings = buildings;
+        _anchorPoints = anchors;
         _loading = false;
+        _error = null;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -129,9 +148,12 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
-            : _error != null
-            ? Center(child: Semantics(liveRegion: true, child: Text(_error!)))
-            : _buildStep(),
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: _error != null
+                    ? ScrollableMessage(_error!, liveRegion: true)
+                    : _buildStep(),
+              ),
       ),
     );
   }
@@ -167,7 +189,6 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
           icon: Icons.location_pin,
           color: Colors.green,
           emptyText: l10n.pickerNoVerifiedAnchorsInBuilding,
-          subtitleKey: 'location_description',
           onTap: (anchor) => Navigator.of(context).pop(anchor),
         );
     }
@@ -179,27 +200,21 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
     required Color color,
     required String emptyText,
     required void Function(Map<String, dynamic>) onTap,
-    String? subtitleKey,
   }) {
     if (items.isEmpty) {
-      return Center(child: Text(emptyText));
+      return ScrollableMessage(emptyText);
     }
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       itemCount: items.length,
       itemBuilder: (context, index) {
         final item = items[index];
-        final subtitle = subtitleKey != null
-            ? item[subtitleKey] as String?
-            : null;
         return ListTile(
           leading: Icon(icon, color: color),
           title: Text(
             (item['name'] ?? item['location_description'] ?? item['id'])
                 as String,
           ),
-          subtitle: subtitle != null && subtitle != item['name']
-              ? Text(subtitle)
-              : null,
           onTap: () => onTap(item),
         );
       },

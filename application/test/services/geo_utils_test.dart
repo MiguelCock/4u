@@ -23,4 +23,32 @@ void main() {
     const b = LatLng(6.2500, -75.5900);
     expect(haversineMeters(a, b), closeTo(haversineMeters(b, a), 0.001));
   });
+
+  test('bearing is clockwise from north', () {
+    const origin = LatLng(6.2442, -75.5812);
+    expect(
+      bearingDegrees(origin, const LatLng(6.2452, -75.5812)),
+      closeTo(0, 0.5),
+    );
+    expect(
+      bearingDegrees(origin, const LatLng(6.2442, -75.5802)),
+      closeTo(90, 0.5),
+    );
+    expect(
+      bearingDegrees(origin, const LatLng(6.2432, -75.5812)),
+      closeTo(180, 0.5),
+    );
+    expect(
+      bearingDegrees(origin, const LatLng(6.2442, -75.5822)),
+      closeTo(270, 0.5),
+    );
+  });
+
+  test('signed turn picks the short way round', () {
+    expect(signedTurn(0, 90), 90);
+    expect(signedTurn(90, 0), -90);
+    expect(signedTurn(350, 10), 20);
+    expect(signedTurn(10, 350), -20);
+    expect(signedTurn(0, 180).abs(), 180);
+  });
 }
