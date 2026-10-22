@@ -6,6 +6,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-22
+
 ### Added
 - **Anchor points map** (admin): switch the Anchor points list to a map, tap a point to see it and edit, move, verify, connect or add photos. Moving shows exactly where the point will land.
 - **Verify / unverify from the list** with one button on each anchor point row.
@@ -123,7 +125,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.4.0...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.0...develop
+[0.5.0]: https://github.com/MiguelCock/4u/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MiguelCock/4u/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/MiguelCock/4u/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/MiguelCock/4u/compare/v0.2.1...v0.3.0
