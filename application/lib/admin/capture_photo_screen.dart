@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
 
 class _PhotoEntry {
@@ -199,15 +200,18 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
       // instead of only re-indexing on the next edit-screen save.
       if (_anchorPoint?['status'] == 'verified') {
         try {
-          await _aiTrainingApi.post('/index_anchor', {
-            'anchor_point_id': widget.anchorPointId,
-            'latitude': _anchorPoint!['latitude'],
-            'longitude': _anchorPoint!['longitude'],
-            'building_id': _anchorPoint!['building_id'],
-            'photos': [
-              {'photo_id': id, 'image_url': imageUrl, 'heading': heading},
-            ],
-          });
+          await _aiTrainingApi.post(
+            '/index_anchor',
+            indexAnchorPayload(
+              anchorPointId: widget.anchorPointId,
+              latitude: _anchorPoint!['latitude'] as num,
+              longitude: _anchorPoint!['longitude'] as num,
+              buildingId: _anchorPoint!['building_id'] as String?,
+              photos: [
+                {'id': id, 'image_url': imageUrl, 'heading': heading},
+              ],
+            ),
+          );
         } on ApiException catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(

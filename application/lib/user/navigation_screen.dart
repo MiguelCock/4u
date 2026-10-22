@@ -5,7 +5,6 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -21,6 +20,7 @@ import '../services/camera_helper.dart';
 import '../services/geo_utils.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
+import '../services/speech_voice.dart';
 import '../services/api_error_messages.dart';
 
 /// A resolved checkpoint along the planned route - an anchor point's
@@ -97,6 +97,34 @@ class _NavigationScreenState extends State<NavigationScreen> {
   bool _blockedAnnounced = false;
   String? _lastAnnouncement;
 
+  /// Completes once [_tts] is set to the app language's voice; [_speak]
+  /// waits on it so the first announcement isn't read in the phone's
+  /// default voice.
+  Future<bool>? _ttsReady;
+  String? _ttsLanguage;
+  bool _voiceMissingShown = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final language = Localizations.localeOf(context).languageCode;
+    if (language != _ttsLanguage) {
+      _ttsLanguage = language;
+      _ttsReady = configureTts(_tts, language)..then(_onTtsConfigured);
+    }
+  }
+
+  void _onTtsConfigured(bool hasVoice) {
+    if (hasVoice || _voiceMissingShown || !mounted) return;
+    _voiceMissingShown = true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 10),
+        content: Text(AppLocalizations.of(context)!.navVoiceLanguageMissing),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -125,6 +153,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   Future<void> _speak(String text, {bool assertive = false}) async {
     _lastAnnouncement = text;
     if (!voiceGuidanceNotifier.value) return;
+    await _ttsReady;
     if (assertive) await _tts.stop();
     await _tts.speak(text);
   }
@@ -589,18 +618,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
                               extraMarkers:
                                   correctedLat != null && correctedLong != null
                                   ? [
-                                      Marker(
-                                        point: LatLng(
-                                          correctedLat,
-                                          correctedLong,
-                                        ),
-                                        width: 80,
-                                        height: 80,
-                                        child: const Icon(
-                                          Icons.location_pin,
-                                          color: Colors.green,
-                                          size: 40,
-                                        ),
+                                      locationPinMarker(
+                                        LatLng(correctedLat, correctedLong),
+                                        Colors.green,
                                       ),
                                     ]
                                   : const [],

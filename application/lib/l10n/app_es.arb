@@ -31,12 +31,6 @@
   "signupErrorProfileSetupFailed": "Tu cuenta fue creada, pero tu perfil no se pudo terminar ({error}). Inicia sesión para completarlo; se arregla automáticamente.",
   "signupErrorSignUpFailed": "Error al registrarse: {error}",
 
-  "cameraLocationNotAvailable": "Ubicación no disponible",
-  "cameraPhotoUploaded": "¡Foto subida!",
-  "cameraTakePhotoTooltip": "Tomar foto",
-  "cameraUploadFailedStatus": "Error al subir: {statusCode}",
-  "cameraPermissionDeniedError": "Permiso de cámara denegado. Concede acceso a la cámara para tomar fotos.",
-  "cameraUnavailableError": "Cámara no disponible: {error}",
 
   "locationLat": "Lat: {value}",
   "locationLng": "Long: {value}",
@@ -46,8 +40,6 @@
   "locationPermissionDeniedForeverError": "Permiso de ubicación denegado permanentemente.",
   "locationOpenLocationSettings": "Abrir configuración de ubicación",
 
-  "homeCameraTooltip": "Cámara de recolección de datos",
-  "homeDataCollectionTitle": "Recolección de datos",
   "homeSettingsTooltip": "Configuración",
   "homeStartLabel": "Inicio",
   "homeStartSubtitle": "Tu ubicación actual",
@@ -62,7 +54,7 @@
   "pickerErrorLoadFailed": "Error al cargar ubicaciones: {error}",
   "pickerSelectBuilding": "Selecciona un edificio",
   "pickerSelectAnchorPoint": "Selecciona un punto de referencia",
-  "pickerNoUniversitiesYet": "Todavía no hay universidades.",
+  "pickerNoUniversitiesYet": "Todavía no hay destinos disponibles.",
   "pickerNoBuildingsInUniversity": "Todavía no hay edificios en esta universidad.",
   "pickerNoVerifiedAnchorsInBuilding": "Todavía no hay puntos de referencia verificados en este edificio.",
 
@@ -134,11 +126,11 @@
   "commonErrorSelectUniversity": "Selecciona una universidad.",
   "commonErrorCodeNameLatLngRequired": "Se requieren código, nombre, latitud y longitud.",
   "commonErrorNameLatLngRequired": "Se requieren nombre, latitud y longitud.",
-  "commonErrorDescriptionRequired": "La descripción es obligatoria.",
+  "commonErrorDescriptionRequired": "Los destinos (entradas, salones, baños...) necesitan una descripción: es el nombre que los usuarios eligen y escuchan.",
   "commonNoUniversitiesYetHint": "Todavía no hay universidades - agrega una primero (Agregar universidad).",
   "commonLocationTypeLabel": "Tipo de lugar",
   "commonDescriptionLabel": "Descripción",
-  "commonDescriptionHelper": "Obligatorio - se usa como el nombre de este punto para diferenciarlo de los demás.",
+  "commonDescriptionHelper": "Obligatoria para destinos: es el nombre que los usuarios eligen y escuchan.",
   "commonIndoorLocationLabel": "Ubicación en interior",
   "commonLightingLabel": "Iluminación",
   "commonLightingNotSet": "Sin definir",
@@ -314,7 +306,6 @@
   "adminOrphanedRepairedSnackbar": "Perfil creado para {email}.",
 
   "captureSnackbarCreated": "Punto de referencia \"{description}\" creado. Ahora agrega sus fotos.",
-  "adminAnchorTapToConnectHint": "Toca para conectar este punto en el mapa",
 
   "homeStartNearestSubtitle": "Punto más cercano a ti: {name}",
   "homeLocatingStart": "Usando la cámara para confirmar tu punto de partida...",
@@ -326,5 +317,14 @@
   "commonErrorNetworkUnreachable": "No se pudo conectar con el servidor. Revisa tu conexión a internet e inténtalo de nuevo.",
   "commonErrorServerUnavailable": "El servidor tuvo un problema. Inténtalo de nuevo en un momento.",
   "commonErrorNotFoundGeneric": "Ese elemento ya no existe. Actualiza e inténtalo de nuevo.",
-  "commonErrorUnexpected": "Algo salió mal. Inténtalo de nuevo."
+  "commonErrorUnexpected": "Algo salió mal. Inténtalo de nuevo.",
+  "commonDescriptionHelperOptional": "Opcional para puntos intermedios como pasillos. Sin descripción, el punto nunca se ofrece como destino.",
+  "commonPressBackAgainToExit": "Presiona atrás de nuevo para salir",
+  "adminReindexMenu": "Reindexar puntos verificados",
+  "adminReindexNothing": "No hay puntos verificados con fotos para indexar.",
+  "adminReindexRunning": "Reindexando {count} puntos verificados...",
+  "adminReindexDone": "{ok} de {total} puntos verificados reindexados.",
+  "adminReindexDoneWithErrors": "{ok} de {total} puntos verificados reindexados. Último error: {error}",
+  "navVoiceLanguageMissing": "Este teléfono no tiene instalada una voz para el idioma de la app, así que las indicaciones pueden leerse con otro acento. Instálala en Ajustes del teléfono > Salida de texto a voz.",
+  "homeStartUnnamedSubtitle": "Partiendo del punto de ruta más cercano, a unos {meters} m"
 }

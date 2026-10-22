@@ -1,6 +1,21 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, field_validator
+
+# location_type ids (db_schema/location_type.sql) that are places people go
+# *to* - entrance, classroom, office, restroom, cafeteria, parking, lobby,
+# auditorium, bus stop. An anchor point of one of these types must have a
+# description (it's the name users pick and hear); in-between types
+# (hallway, intersection, stairs...) may leave it empty. Mirrored by
+# kDestinationLocationTypes in application/lib/services/destinations.dart.
+DESTINATION_LOCATION_TYPE_IDS = frozenset({1, 5, 6, 7, 8, 13, 14, 15, 18})
+
+
+def _blank_to_none(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
 
 
 class AnchorPointMetadata(BaseModel):
@@ -16,13 +31,14 @@ class AnchorPointCreate(BaseModel):
     latitude: float
     longitude: float
     altitude: float | None = None
-    location_description: str = Field(min_length=1)
+    location_description: str | None = None
     metadata: AnchorPointMetadata = AnchorPointMetadata()
 
+    _normalize_description = field_validator("location_description")(_blank_to_none)
 
-# Deliberately NOT `AnchorPointResponse(AnchorPointCreate)` - existing rows
-# captured before location_description became required can still have a
-# null value, and a required response field would 500 on those on GET.
+
+# Deliberately NOT `AnchorPointResponse(AnchorPointCreate)` - kept as its own
+# loose model so older rows (null description, `{}` metadata) never 500.
 class AnchorPointResponse(BaseModel):
     id: str
     building_id: str
@@ -47,6 +63,8 @@ class AnchorPointUpdate(BaseModel):
     floor: int | None = None
     status: str | None = None
     metadata: AnchorPointMetadata | None = None
+
+    _normalize_description = field_validator("location_description")(_blank_to_none)
 
 
 class AnchorPointPhotoCreate(BaseModel):

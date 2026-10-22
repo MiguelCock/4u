@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException
+from supabase import AuthApiError
 
 from packages.supabase import SupaBase
 
@@ -42,10 +43,32 @@ async def test_get_caller_id_rejects_blank_token():
 @pytest.mark.asyncio
 async def test_get_caller_id_rejects_invalid_token():
     db = _make_supabase()
-    db.client.auth.get_user.side_effect = Exception("bad token")
+    db.client.auth.get_user.side_effect = AuthApiError(
+        "invalid JWT: token is expired", 403, "bad_jwt"
+    )
     with pytest.raises(HTTPException) as exc_info:
         await db.get_caller_id("Bearer garbage")
     assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_caller_id_reports_bad_service_key_as_503():
+    # Kong's "Invalid API key" carries no auth error code - it's this
+    # service's own credentials that are wrong, not the caller's token.
+    db = _make_supabase()
+    db.client.auth.get_user.side_effect = AuthApiError("Invalid API key", 401, None)
+    with pytest.raises(HTTPException) as exc_info:
+        await db.get_caller_id("Bearer a-valid-token")
+    assert exc_info.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_get_caller_id_reports_network_failure_as_503():
+    db = _make_supabase()
+    db.client.auth.get_user.side_effect = ConnectionError("unreachable")
+    with pytest.raises(HTTPException) as exc_info:
+        await db.get_caller_id("Bearer a-valid-token")
+    assert exc_info.value.status_code == 503
 
 
 @pytest.mark.asyncio

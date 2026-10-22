@@ -4,9 +4,12 @@ import 'package:latlong2/latlong.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'capture_photo_screen.dart';
-import 'capture_screen.dart' show kLocationTypes, locationTypeLabel;
+import 'capture_screen.dart'
+    show anchorDisplayName, kLocationTypes, locationTypeLabel;
 import 'location_picker_screen.dart';
+import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
+import '../services/destinations.dart';
 
 const List<String> kAnchorPointStatuses = ['pending', 'verified', 'rejected'];
 
@@ -96,9 +99,10 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
       MaterialPageRoute(
         builder: (_) => CapturePhotoScreen(
           anchorPointId: widget.anchorPoint['id'] as String,
-          anchorPointDescription:
-              widget.anchorPoint['location_description'] as String? ??
-              widget.anchorPoint['id'] as String,
+          anchorPointDescription: anchorDisplayName(
+            AppLocalizations.of(context)!,
+            widget.anchorPoint,
+          ),
         ),
       ),
     );
@@ -122,7 +126,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
   Future<void> _submit() async {
     final l10n = AppLocalizations.of(context)!;
     final description = _descriptionController.text.trim();
-    if (description.isEmpty) {
+    if (description.isEmpty && descriptionRequiredFor(_locationTypeId)) {
       setState(() => _error = l10n.commonErrorDescriptionRequired);
       return;
     }
@@ -135,7 +139,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
     try {
       final surface = _surfaceController.text.trim();
       await _mapApi.patch('/anchor-points/${widget.anchorPoint['id']}', {
-        'location_description': description,
+        'location_description': description.isEmpty ? null : description,
         'latitude': _position.latitude,
         'longitude': _position.longitude,
         'location_type_id': _locationTypeId,
@@ -163,21 +167,16 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
     // Save safely retries (Qdrant upserts by photo id are idempotent).
     if (_status == 'verified' && _photos.isNotEmpty) {
       try {
-        await _aiTrainingApi.post('/index_anchor', {
-          'anchor_point_id': widget.anchorPoint['id'],
-          'latitude': _position.latitude,
-          'longitude': _position.longitude,
-          'building_id': widget.anchorPoint['building_id'],
-          'photos': _photos
-              .map(
-                (p) => {
-                  'photo_id': p['id'],
-                  'image_url': p['image_url'],
-                  'heading': p['heading'],
-                },
-              )
-              .toList(),
-        });
+        await _aiTrainingApi.post(
+          '/index_anchor',
+          indexAnchorPayload(
+            anchorPointId: widget.anchorPoint['id'] as String,
+            latitude: _position.latitude,
+            longitude: _position.longitude,
+            buildingId: widget.anchorPoint['building_id'] as String?,
+            photos: _photos,
+          ),
+        );
       } on ApiException catch (e) {
         setState(() {
           _error = l10n.editAnchorErrorIndexingFailed(
@@ -234,7 +233,10 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
                 controller: _descriptionController,
                 decoration: InputDecoration(
                   labelText: l10n.commonDescriptionLabel,
-                  helperText: l10n.commonDescriptionHelper,
+                  helperText: descriptionRequiredFor(_locationTypeId)
+                      ? l10n.commonDescriptionHelper
+                      : l10n.commonDescriptionHelperOptional,
+                  helperMaxLines: 3,
                 ),
               ),
               const SizedBox(height: 12),
