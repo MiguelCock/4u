@@ -58,6 +58,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 
   /// Returns once the reload finishes, so the pull-to-refresh spinner
   /// stays up until the data is actually back.
+  final _refreshKey = GlobalKey<RefreshIndicatorState>();
+
   Future<void> _refresh() {
     final future = _load();
     setState(() => _dataFuture = future);
@@ -71,10 +73,15 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       appBar: AppBar(
         title: Text(l10n.feedbackScreenTitle),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            // Shows the pull-down spinner, same as pulling the list.
+            onPressed: () => _refreshKey.currentState?.show(),
+          ),
         ],
       ),
       body: RefreshIndicator(
+        key: _refreshKey,
         onRefresh: _refresh,
         child: FutureBuilder<_FeedbackData>(
           future: _dataFuture,

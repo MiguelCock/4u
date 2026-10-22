@@ -70,6 +70,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   int _lastTabIndex = 0;
   bool _navigatingBack = false;
   final _exitGuard = ExitGuard();
+  final _refreshKey = GlobalKey<RefreshIndicatorState>();
   bool _reindexing = false;
 
   @override
@@ -1309,7 +1310,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: l10n.commonRefresh,
-            onPressed: _loading ? null : _refresh,
+            // Same pull-down spinner as a pull, so a reload is visible.
+            onPressed: _loading ? null : () => _refreshKey.currentState?.show(),
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
@@ -1329,24 +1331,26 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       floatingActionButton: _fab(),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? RefreshIndicator(
-              onRefresh: _refresh,
-              child: ScrollableMessage(_error!),
-            )
           : RefreshIndicator(
+              key: _refreshKey,
               onRefresh: _refresh,
-              child: TabBarView(
-                controller: _tabController,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  _placesTab(),
-                  _buildingsTab(),
-                  _anchorPointsTab(),
-                  _connectionsTab(),
-                  _usersTab(),
-                ],
-              ),
+              // The tabs' lists sit inside TabBarView's horizontal pager,
+              // so their scroll notifications arrive at depth 1 - the
+              // default predicate (depth 0 only) made pulling do nothing.
+              notificationPredicate: (n) => n.metrics.axis == Axis.vertical,
+              child: _error != null
+                  ? ScrollableMessage(_error!)
+                  : TabBarView(
+                      controller: _tabController,
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: [
+                        _placesTab(),
+                        _buildingsTab(),
+                        _anchorPointsTab(),
+                        _connectionsTab(),
+                        _usersTab(),
+                      ],
+                    ),
             ),
     );
   }
