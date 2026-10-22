@@ -377,3 +377,59 @@ def test_repair_respects_an_explicit_role():
     mock_client.table.return_value.insert.assert_called_once_with(
         {"id": "orphan", "role_id": 2}
     )
+
+
+# --- CRUD audit fixes -------------------------------------------------------
+
+
+def test_create_profile_without_id_uses_the_caller():
+    # AuthGate's missing-profile self-heal posts no id; it used to 422.
+    _as_caller("u7")
+    mock_client = _mock_client(select_rows=_USER_ROW, insert_rows=[_PROFILE_ROW])
+    with patch("app.main.db.client", mock_client):
+        response = client.post("/profiles", json={"full_name": "Ana"})
+    assert response.status_code == 200
+    inserted = mock_client.table.return_value.insert.call_args.args[0]
+    assert inserted["id"] == "u7"
+    assert inserted["full_name"] == "Ana"
+
+
+def test_update_unknown_profile_is_404():
+    _as_caller("99")
+    with patch(
+        "app.main.db.client", _mock_client(select_rows=_ADMIN_ROW, update_rows=[])
+    ):
+        response = client.patch("/profiles/nobody", json={"full_name": "x"})
+    assert response.status_code == 404
+
+
+def test_admin_cannot_delete_own_account():
+    _as_caller("99")
+    with patch("app.main.db.client", _mock_client(select_rows=_ADMIN_ROW)):
+        response = client.delete("/profiles/99")
+    assert response.status_code == 400
+
+
+def test_last_admin_cannot_be_demoted():
+    _as_caller("99")
+    mock_client = _mock_client(update_rows=[_PROFILE_ROW])
+    # is_admin(caller) and the admin list both read select().eq().execute().
+    mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"id": "1", "role_id": 2}
+    ]
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/profiles/1", json={"role_id": 1})
+    assert response.status_code == 400
+    mock_client.table.return_value.update.assert_not_called()
+
+
+def test_deleting_a_profile_also_deletes_the_sign_in_account():
+    _as_caller("99")
+    mock_client = _mock_client(select_rows=_ADMIN_ROW)
+    mock_client.table.return_value.delete.return_value.eq.return_value.execute.return_value.data = [
+        _PROFILE_ROW
+    ]
+    with patch("app.main.db.client", mock_client):
+        response = client.delete("/profiles/1")
+    assert response.status_code == 200
+    mock_client.auth.admin.delete_user.assert_called_once_with("1")

@@ -1,8 +1,9 @@
 CREATE TABLE navigation_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    building_id UUID NOT NULL REFERENCES buildings(id),
-    route_id UUID REFERENCES routes(id),
+    -- Nullable + SET NULL: deleting a building keeps its trip history.
+    building_id UUID REFERENCES buildings(id) ON DELETE SET NULL,
+    route_id UUID REFERENCES routes(id) ON DELETE SET NULL,
     start_time TIMESTAMPTZ DEFAULT NOW(),
     end_time TIMESTAMPTZ,
     status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'abandoned', 'failed')),

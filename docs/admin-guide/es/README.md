@@ -137,6 +137,9 @@ Siempre puedes volver más adelante a agregar o quitar fotos desde el botón **M
 
 ### 5.3 Revisar y verificar
 
+**Verificación rápida desde la lista o el mapa:** cada fila de punto de anclaje tiene un botón ✔ que lo verifica (o, en un punto verificado, lo devuelve a pendiente). Un punto necesita al menos una foto antes de poder verificarse. El selector **Lista / Mapa** encima de la lista muestra los mismos puntos en un mapa, coloreados por estado: verde verificado, gris pendiente, rojo rechazado. Toca un punto en el mapa para ver sus datos y para **Editar**, **Mover**, verificar, **Conectar** o agregar fotos. **Mover** te pide tocar la nueva posición; la punta del pin marca exactamente dónde quedará, y **Guardar nueva posición** la guarda. Mover un punto verificado también actualiza la búsqueda por fotos y las distancias de sus conexiones.
+
+
 La pantalla de edición de un punto de anclaje es también donde lo revisas y decides si está listo para uso real. Esto es más que solo cambiar una etiqueta:
 
 - **Status: Verified** — al guardar con este estado, las fotos del punto se indexan automáticamente en el sistema de búsqueda de la aplicación, convirtiéndose en datos reales y activos que la aplicación puede usar para comparar con la cámara de un usuario. Este es el paso que hace que un punto de anclaje realmente *sirva* para algo.
@@ -200,6 +203,10 @@ Cualquier ruta guardada que pasaba por una conexión eliminada se recalcula auto
 
 ## 7. Eliminar datos
 
+Las universidades y los edificios tienen un ícono de basura en su fila. En la fila de un punto de anclaje, **Agregar foto** y **Eliminar** están en el menú ⋮, junto a los botones de verificar y editar.
+
+Se puede eliminar cualquier cosa que se haya usado en viajes. Las rutas guardadas que pasan por los puntos eliminados se eliminan con ellos, y el historial de viajes se conserva. Si algo aún no se puede eliminar, el mensaje dice por qué.
+
 Eliminar un place, building o anchor point siempre muestra un cuadro de confirmación que indica exactamente qué más se eliminará junto con él, porque los datos son jerárquicos (place → building → anchor point → fotos/conexiones):
 
 - **Eliminar un place** también elimina sus buildings, los anchor points de esos buildings, las fotos de esos puntos, y cualquier connection que los involucre.
@@ -213,26 +220,16 @@ La confirmación siempre muestra los números reales (por ejemplo, "will also de
 
 ### Location types (tipos de lugar)
 
-| Opción mostrada en la aplicación | Significado |
+Toca el campo **Location type** para abrir el selector de tipos. Los tipos están agrupados por categorías, y el buscador de arriba encuentra uno por su nombre (por ejemplo "biblioteca"). Los tipos marcados con ★ son **destinos**: necesitan descripción y aparecen en la lista de destinos de los usuarios. Los demás son puntos intermedios para conectar rutas.
+
+| Categoría | Tipos |
 |---|---|
-| entrance | Entrada o puerta principal de un edificio |
-| intersection | Intersección de pasillos |
-| elevator | Zona de ascensor |
-| stairwell | Zona de escaleras |
-| classroom | Ubicación de un salón de clases |
-| office | Ubicación de una oficina |
-| restroom | Ubicación de un baño |
-| cafeteria | Cafetería o zona de comedor |
-| hallway | Un tramo de pasillo — no una intersección, solo un tramo (útil como punto de referencia entre dos intersecciones) |
-| ramp | Una rampa de accesibilidad |
-| outdoor_path | Un camino o sendero exterior entre edificios |
-| parking | Una zona o lote de estacionamiento |
-| lobby | El lobby o atrio de un edificio |
-| auditorium | Un auditorio o aula magna |
-| courtyard | Un patio o plaza exterior |
-| crosswalk | Un cruce peatonal o cruce de calle |
-| bus_stop | Una parada de bus o transporte del campus |
-| other | Cualquier cosa que no encaje en las anteriores |
+| Caminos y conexiones | Pasillo, Camino exterior, Intersección, Escaleras, Ascensor, Rampa, Paso peatonal, Patio |
+| Entradas y desplazamiento | Entrada ★, Salida / portería ★, Vestíbulo ★, Parqueadero ★, Parqueadero de bicicletas ★, Paradero de bus ★, Zona de espera / bancas ★ |
+| Académico | Salón ★, Laboratorio ★, Biblioteca ★, Sala de cómputo ★, Zona de estudio ★, Auditorio ★, Oficina ★ |
+| Comida, tiendas y servicios | Cafetería ★, Papelería ★, Centro de copias ★, Tienda ★, Cajero / banco ★, Baño ★, Bebedero ★ |
+| Bienestar y deporte | Enfermería / servicio médico ★, Gimnasio / zona deportiva ★, Capilla ★ |
+| Otro | Otro |
 
 ### Status del anchor point
 

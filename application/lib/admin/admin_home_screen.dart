@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
@@ -6,6 +7,7 @@ import '../services/api_service.dart';
 import 'add_building_screen.dart';
 import 'add_connection_screen.dart';
 import 'add_place_screen.dart';
+import 'anchor_points_map.dart';
 import 'capture_photo_screen.dart';
 import 'capture_screen.dart';
 import 'connect_anchor_points_screen.dart';
@@ -20,6 +22,8 @@ import '../user/user_home_screen.dart';
 import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
 import '../services/exit_guard.dart';
+import '../services/location_types.dart';
+import '../services/map_tap.dart';
 import '../widgets/scrollable_message.dart';
 
 /// `admin`-role home screen: four tabs (places / buildings / anchor points /
@@ -72,6 +76,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   final _exitGuard = ExitGuard();
   final _refreshKey = GlobalKey<RefreshIndicatorState>();
   bool _reindexing = false;
+
+  /// Anchor points tab: map instead of list, and the point being moved on it.
+  bool _anchorMapView = false;
+  Map<String, dynamic>? _movingPoint;
+  LatLng? _moveTarget;
 
   @override
   void initState() {
@@ -152,7 +161,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         _loading = false;
         _error = null;
       });
-    } on ApiException catch (e) {
+    } catch (e) {
+      // Not only ApiException: a malformed response must end the spinner too.
       if (!mounted) return;
       setState(() {
         _error = AppLocalizations.of(
@@ -482,9 +492,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     return confirmed == true;
   }
 
-  Future<void> _runDelete(Future<void> Function() action) async {
+  /// Deletes in the database first; [afterSuccess] (removing the points
+  /// from photo search) runs only once that worked. The other way round, a
+  /// delete that failed left points listed but no longer recognisable.
+  Future<void> _runDelete(
+    Future<void> Function() action, {
+    Future<void> Function()? afterSuccess,
+  }) async {
     try {
       await action();
+      if (afterSuccess != null) await _bestEffort(afterSuccess);
       await _loadData();
     } on ApiException catch (e) {
       if (mounted) {
@@ -534,23 +551,25 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final l10n = AppLocalizations.of(context)!;
     final confirmed = await _confirm(
       title: l10n.adminDeletePlaceTitle,
-      content: l10n.adminDeletePlaceContent(
-        place['name'] as String? ?? place['id'] as String,
-        buildings.length,
-        anchors.length,
-        photoCount,
-        connectionCount,
-      ),
+      content:
+          l10n.adminDeletePlaceContent(
+            place['name'] as String? ?? place['id'] as String,
+            buildings.length,
+            anchors.length,
+            photoCount,
+            connectionCount,
+          ) +
+          l10n.adminDeleteKeepsHistoryNote,
     );
     if (!confirmed) return;
-    await _bestEffort(
-      () => Future.wait(
+    await _runDelete(
+      () => _mapApi.delete('/places/${place['id']}'),
+      afterSuccess: () => Future.wait(
         buildings.map(
           (b) => _aiTrainingApi.delete('/index_building/${b['id']}'),
         ),
       ),
     );
-    await _runDelete(() => _mapApi.delete('/places/${place['id']}'));
   }
 
   Future<void> _deleteBuilding(Map<String, dynamic> building) async {
@@ -570,18 +589,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final l10n = AppLocalizations.of(context)!;
     final confirmed = await _confirm(
       title: l10n.adminDeleteBuildingTitle,
-      content: l10n.adminDeleteBuildingContent(
-        building['name'] as String? ?? building['id'] as String,
-        anchors.length,
-        photoCount,
-        connectionCount,
-      ),
+      content:
+          l10n.adminDeleteBuildingContent(
+            building['name'] as String? ?? building['id'] as String,
+            anchors.length,
+            photoCount,
+            connectionCount,
+          ) +
+          l10n.adminDeleteKeepsHistoryNote,
     );
     if (!confirmed) return;
-    await _bestEffort(
-      () => _aiTrainingApi.delete('/index_building/${building['id']}'),
+    await _runDelete(
+      () => _mapApi.delete('/buildings/${building['id']}'),
+      afterSuccess: () =>
+          _aiTrainingApi.delete('/index_building/${building['id']}'),
     );
-    await _runDelete(() => _mapApi.delete('/buildings/${building['id']}'));
   }
 
   Future<void> _deleteAnchorPoint(Map<String, dynamic> point) async {
@@ -590,13 +612,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final l10n = AppLocalizations.of(context)!;
     final confirmed = await _confirm(
       title: l10n.adminDeleteAnchorTitle,
-      content: l10n.adminDeleteAnchorContent(photoCount, connectionCount),
+      content:
+          l10n.adminDeleteAnchorContent(photoCount, connectionCount) +
+          l10n.adminDeleteKeepsHistoryNote,
     );
     if (!confirmed) return;
-    await _bestEffort(
-      () => _aiTrainingApi.delete('/index_anchor/${point['id']}'),
+    await _runDelete(
+      () => _mapApi.delete('/anchor-points/${point['id']}'),
+      afterSuccess: () => _aiTrainingApi.delete('/index_anchor/${point['id']}'),
     );
-    await _runDelete(() => _mapApi.delete('/anchor-points/${point['id']}'));
   }
 
   Future<void> _deleteConnection(Map<String, dynamic> connection) async {
@@ -615,7 +639,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => EditPlaceScreen(place: place)),
     );
-    if (changed == true) _loadData();
+    if (changed == true) await _loadData();
   }
 
   Future<void> _editBuilding(Map<String, dynamic> building) async {
@@ -626,12 +650,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   Future<void> _editAnchorPoint(Map<String, dynamic> point) async {
-    final changed = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => EditAnchorPointScreen(anchorPoint: point),
       ),
     );
-    if (changed == true) _loadData();
+    // Always reload: photos added or deleted from the edit screen count
+    // even when the admin backs out without saving.
+    await _loadData();
   }
 
   Future<void> _addPhoto(Map<String, dynamic> point) async {
@@ -908,6 +934,318 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  /// Verify or unverify straight from the list or the map. Verifying needs
+  /// at least one photo (the backend enforces it too) and adds the point to
+  /// photo search; unverifying puts it back to pending and removes it.
+  Future<void> _setAnchorStatus(
+    Map<String, dynamic> point,
+    String status,
+  ) async {
+    final l10n = AppLocalizations.of(context)!;
+    final messenger = ScaffoldMessenger.of(context);
+    final id = point['id'] as String;
+    final name = anchorDisplayName(l10n, point);
+    final photos = _photosOf(id);
+    void show(String text) => messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+
+    if (status == 'verified' && photos.isEmpty) {
+      show(l10n.editAnchorErrorVerifyNeedsPhoto);
+      return;
+    }
+    try {
+      await _mapApi.patch('/anchor-points/$id', {'status': status});
+    } on ApiException catch (e) {
+      if (mounted) {
+        show(
+          l10n.editAnchorErrorUpdateFailed(friendlyApiErrorMessage(context, e)),
+        );
+      }
+      return;
+    }
+    try {
+      if (status == 'verified') {
+        await indexAnchorPoint(_aiTrainingApi, point, photos);
+      } else {
+        await _aiTrainingApi.delete('/index_anchor/$id');
+      }
+      show(
+        status == 'verified'
+            ? l10n.adminAnchorVerifiedSnackbar(name)
+            : l10n.adminAnchorUnverifiedSnackbar(name),
+      );
+    } on ApiException catch (e) {
+      if (mounted) {
+        final reason = friendlyApiErrorMessage(context, e);
+        show(
+          status == 'verified'
+              ? l10n.editAnchorErrorIndexingFailed(reason)
+              : l10n.editAnchorErrorUnindexFailed(reason),
+        );
+      }
+    }
+    await _loadData();
+  }
+
+  Widget _statusToggleButton(Map<String, dynamic> point) {
+    final l10n = AppLocalizations.of(context)!;
+    final verified = point['status'] == 'verified';
+    return IconButton(
+      icon: Icon(
+        verified ? Icons.remove_done : Icons.verified_outlined,
+        color: verified ? null : Colors.green,
+      ),
+      tooltip: verified
+          ? l10n.adminAnchorUnverifyTooltip
+          : l10n.adminAnchorVerifyTooltip,
+      onPressed: () =>
+          _setAnchorStatus(point, verified ? 'pending' : 'verified'),
+    );
+  }
+
+  /// Details and actions for a point tapped on the Anchor points map.
+  Future<void> _showAnchorSheet(Map<String, dynamic> point) async {
+    final l10n = AppLocalizations.of(context)!;
+    final photos = _photosOf(point['id'] as String);
+    final building = _buildings.firstWhere(
+      (b) => b['id'] == point['building_id'],
+      orElse: () => const {},
+    );
+    final type = kLocationTypes[point['location_type_id'] as int?];
+    final thumbUrl = photos.isNotEmpty
+        ? photos.first['image_url'] as String?
+        : null;
+    final verified = point['status'] == 'verified';
+
+    Widget action(IconData icon, String label, VoidCallback onTap) {
+      return TextButton.icon(
+        icon: Icon(icon),
+        label: Text(label),
+        onPressed: () {
+          Navigator.of(context).pop();
+          onTap();
+        },
+      );
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (thumbUrl != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.network(
+                          thumbUrl,
+                          width: 64,
+                          height: 64,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          anchorDisplayName(l10n, point),
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        Text(
+                          [
+                            if (type != null) locationTypeLabel(l10n, type),
+                            building['name'] as String? ??
+                                l10n.commonUnknownBuilding,
+                            l10n.adminStatusLabel(
+                              anchorStatusLabel(
+                                l10n,
+                                point['status'] as String? ?? 'unknown',
+                              ),
+                            ),
+                            l10n.adminPhotoCountLabel(photos.length),
+                          ].join(' · '),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 4,
+                children: [
+                  action(
+                    Icons.edit_outlined,
+                    l10n.commonEdit,
+                    () => _editAnchorPoint(point),
+                  ),
+                  action(
+                    Icons.open_with,
+                    l10n.adminAnchorMoveAction,
+                    () => setState(() {
+                      _movingPoint = point;
+                      _moveTarget = null;
+                    }),
+                  ),
+                  action(
+                    verified ? Icons.remove_done : Icons.verified_outlined,
+                    verified
+                        ? l10n.adminAnchorUnverifyTooltip
+                        : l10n.adminAnchorVerifyTooltip,
+                    () => _setAnchorStatus(
+                      point,
+                      verified ? 'pending' : 'verified',
+                    ),
+                  ),
+                  action(
+                    Icons.timeline,
+                    l10n.adminAnchorConnectAction,
+                    () => _connectFromAnchorPoint(point),
+                  ),
+                  action(
+                    Icons.add_a_photo_outlined,
+                    l10n.adminAddPhotoTooltip,
+                    () => _addPhoto(point),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Saves the position picked in move mode. A verified point is re-sent
+  /// to photo search with the new coordinates; the backend recomputes its
+  /// connections' distances.
+  Future<void> _confirmMove() async {
+    final point = _movingPoint;
+    final target = _moveTarget;
+    if (point == null || target == null) return;
+    final l10n = AppLocalizations.of(context)!;
+    final messenger = ScaffoldMessenger.of(context);
+    final name = anchorDisplayName(l10n, point);
+    try {
+      await _mapApi.patch('/anchor-points/${point['id']}', {
+        'latitude': target.latitude,
+        'longitude': target.longitude,
+        // The phone's GPS altitude was for where it was first captured.
+        'altitude': null,
+      });
+      if (point['status'] == 'verified') {
+        final photos = _photosOf(point['id'] as String);
+        if (photos.isNotEmpty) {
+          await indexAnchorPoint(_aiTrainingApi, {
+            ...point,
+            'latitude': target.latitude,
+            'longitude': target.longitude,
+          }, photos);
+        }
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.adminAnchorMovedSnackbar(name))),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            l10n.editAnchorErrorUpdateFailed(
+              friendlyApiErrorMessage(context, e),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _movingPoint = null;
+      _moveTarget = null;
+    });
+    await _loadData();
+  }
+
+  Widget _buildAnchorMap(List<Map<String, dynamic>> points) {
+    final l10n = AppLocalizations.of(context)!;
+    final moving = _movingPoint;
+    if (!points.any((p) => anchorPosition(p) != null)) {
+      return ScrollableMessage(l10n.adminAnchorMapEmpty);
+    }
+    return Stack(
+      children: [
+        AnchorPointsMap(
+          // A new scope (building filter) fits the camera again.
+          key: ValueKey(_anchorPointsBuildingFilterId),
+          points: points,
+          connections: _connections,
+          movingPointId: moving?['id'] as String?,
+          moveTarget: _moveTarget,
+          onPointTapped: _showAnchorSheet,
+          onMoveTargetTapped: (target) => setState(() => _moveTarget = target),
+        ),
+        if (moving != null)
+          Positioned(
+            left: 8,
+            right: 8,
+            top: 8,
+            child: Material(
+              elevation: 2,
+              borderRadius: BorderRadius.circular(8),
+              color: Theme.of(context).colorScheme.primaryContainer,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          l10n.adminAnchorMoveBanner(
+                            anchorDisplayName(l10n, moving),
+                          ),
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _movingPoint = null;
+                        _moveTarget = null;
+                      }),
+                      child: Text(l10n.commonCancel),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        if (moving != null && _moveTarget != null)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 96,
+            child: FilledButton.icon(
+              icon: const Icon(Icons.check),
+              label: Text(l10n.adminAnchorMoveConfirm),
+              onPressed: _confirmMove,
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _anchorPointsTab() {
     final l10n = AppLocalizations.of(context)!;
     final buildingsById = {for (final b in _buildings) b['id'] as String: b};
@@ -960,8 +1298,33 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           ),
         _statusFilterChips(buildingScoped),
         _searchField(_anchorSearchController, l10n.adminSearchAnchorPointsHint),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          child: SegmentedButton<bool>(
+            segments: [
+              ButtonSegment(
+                value: false,
+                icon: const Icon(Icons.list),
+                label: Text(l10n.adminAnchorViewList),
+              ),
+              ButtonSegment(
+                value: true,
+                icon: const Icon(Icons.map_outlined),
+                label: Text(l10n.adminAnchorViewMap),
+              ),
+            ],
+            selected: {_anchorMapView},
+            onSelectionChanged: (selection) => setState(() {
+              _anchorMapView = selection.first;
+              _movingPoint = null;
+              _moveTarget = null;
+            }),
+          ),
+        ),
         Expanded(
-          child: filtered.isEmpty
+          child: _anchorMapView
+              ? _buildAnchorMap(filtered)
+              : filtered.isEmpty
               ? ScrollableMessage(
                   scopedBuilding != null
                       ? l10n.adminAnchorsEmptyIn(
@@ -1005,20 +1368,35 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.add_a_photo_outlined),
-                            tooltip: l10n.adminAddPhotoTooltip,
-                            onPressed: () => _addPhoto(point),
-                          ),
+                          _statusToggleButton(point),
                           IconButton(
                             icon: const Icon(Icons.edit_outlined),
                             tooltip: l10n.commonEdit,
                             onPressed: () => _editAnchorPoint(point),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            tooltip: l10n.commonDelete,
-                            onPressed: () => _deleteAnchorPoint(point),
+                          PopupMenuButton<String>(
+                            tooltip: l10n.adminMoreActionsTooltip,
+                            onSelected: (choice) => choice == 'photo'
+                                ? _addPhoto(point)
+                                : _deleteAnchorPoint(point),
+                            itemBuilder: (_) => [
+                              PopupMenuItem(
+                                value: 'photo',
+                                child: ListTile(
+                                  leading: const Icon(
+                                    Icons.add_a_photo_outlined,
+                                  ),
+                                  title: Text(l10n.adminAddPhotoTooltip),
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: ListTile(
+                                  leading: const Icon(Icons.delete_outline),
+                                  title: Text(l10n.commonDelete),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),

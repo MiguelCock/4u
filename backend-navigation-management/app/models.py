@@ -1,9 +1,15 @@
+from typing import Literal
+
 from pydantic import BaseModel
+
+SessionStatus = Literal["active", "completed", "abandoned", "failed"]
 
 
 class NavigationSessionCreate(BaseModel):
     user_id: str
-    building_id: str
+    # Nullable: a route can start outside any building, and deleting a
+    # building keeps its trip history with building_id set to null.
+    building_id: str | None = None
     route_id: str | None = None
     start_position: dict | None = None
     device_info: dict | None = None
@@ -11,7 +17,7 @@ class NavigationSessionCreate(BaseModel):
 
 class NavigationSessionUpdate(BaseModel):
     end_time: str | None = None
-    status: str | None = None
+    status: SessionStatus | None = None
     end_position: dict | None = None
 
 

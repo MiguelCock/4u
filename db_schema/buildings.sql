@@ -15,3 +15,6 @@ CREATE TABLE buildings (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(place_id, code)
 );
+
+CREATE TRIGGER buildings_set_updated_at BEFORE UPDATE ON buildings
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();

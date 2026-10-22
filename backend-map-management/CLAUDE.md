@@ -68,3 +68,19 @@ There's no service-to-service HTTP call here — only shared-table relationships
 5. **`GET /buildings`** / **`GET /buildings/{id}`** — same pattern over the `buildings` table. **`POST /buildings`** (`BuildingCreate`: `place_id`, `code`, `name`, `latitude`, `longitude`, plus optional `address`/`floors`/`has_elevator`/`has_stairs`) creates one under an existing place, via the app's `AddBuildingScreen`. **`PATCH /buildings/{id}`** / **`DELETE /buildings/{id}`** — edit/delete, same `exclude_unset` PATCH pattern; delete cascades to that building's anchor points (and their photos) in Postgres, and best-effort deletes those photos' files from Storage.
 6. **`POST /places`** / **`GET /places`** / **`GET /places/{id}`** — same CRUD pattern over `places` (`PlaceCreate`: `code`, `name`, `latitude`, `longitude`, plus optional `address`), via the app's `AddPlaceScreen`. **`PATCH /places/{id}`** / **`DELETE /places/{id}`** — edit/delete; delete cascades through buildings all the way to anchor points, photos, and connections in Postgres (so the app warns with counts before calling it), and best-effort deletes every affected photo's file from Storage.
 7. **`POST /anchor-point-connections`** — `AnchorPointConnectionCreate` (`anchor_point_a_id`, `anchor_point_b_id`, optional `distance_meters`, optional `notes`, `created_by`); 400s if the two ids are equal, normalizes their order, and computes `distance_meters` server-side when omitted (see the schema section above). **`GET /anchor-point-connections`** — every connection, flat, same "fetch all, join client-side" pattern as `anchor-point-photos`, via the app's Connections tab. **`GET /anchor-points/{id}/connections`** — connections touching one point (an `.or_()` filter, since the point could be on either side of the edge). **`DELETE /anchor-point-connections/{id}`** — no `PATCH`; fixing a wrong connection is delete-and-recreate (mirrors `backend-route-management`'s `routes`, which also has no `PATCH`).
+
+## Validation and integrity (CRUD audit)
+
+- **Errors and validation:**
+  - Database errors go through `packages`' `install_db_error_handlers`. Deleting something other data still uses is a 409 with a readable `detail`, a bad reference on a write is a 400, and a duplicate is a 409.
+  - Since `db_schema/migrations/2026-10-22_delete_rules.sql`, deleting a point used by routes or trips works: routes cascade, and sessions and logs keep their rows with the reference set to null.
+  - PATCH and DELETE on an unknown id return 404, not `[]`/`"ok"`.
+  - Lat/lng are range-checked, and `status` is a `Literal`.
+  - Creating a photo for a missing point is a 404.
+  - `captured_by`/`created_by` in request bodies are optional and ignored (always the caller).
+- **Verify needs a photo:** `PATCH` to `verified` returns 400 unless the point has at least one photo.
+- **Moving a point:** `_recompute_connection_distances` updates the straight-line distance of its connections. It skips ones whose `distance_manual` is true, which is set when the distance was typed on create. `altitude` is settable, so a moved point can drop a stale GPS altitude.
+- **Lists:** every list endpoint pages with `select_all` (Supabase returns at most 1000 rows per request). Photo and point lookups for cascade deletes send ids in chunks of 150, so a big university can't overflow the URL.
+- **`is_active`:** it's part of `PlaceResponse`/`BuildingResponse`. Before, the API dropped it, so the app never saw a deactivation and saving an edit reactivated it.
+- **`DELETE /anchor-points/upload-image?url=`:** removes an uploaded file whose photo record was never saved. It returns 409 if a photo row still uses the file, and is declared before `DELETE /anchor-points/{id}`.
+

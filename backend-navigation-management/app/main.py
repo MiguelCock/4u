@@ -2,6 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
+from packages.db_errors import install_db_error_handlers, select_all
 from packages.supabase import SupaBase
 
 from .models import (
@@ -17,6 +18,7 @@ from .models import (
 load_dotenv()
 
 app = FastAPI()
+install_db_error_handlers(app)
 
 db = SupaBase(
     os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -41,6 +43,21 @@ def _session_owner(session_id: str) -> str | None:
     return result.data[0]["user_id"] if result.data else None
 
 
+def _session_row(session_id: str) -> dict | None:
+    result = (
+        db.client.table("navigation_sessions")
+        .select("user_id,status")
+        .eq("id", session_id)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def _anchor_exists(anchor_id: str) -> bool:
+    result = db.client.table("anchor_points").select("id").eq("id", anchor_id).execute()
+    return bool(result.data)
+
+
 @app.get("/")
 async def root():
     return {"service": "backend-navigation-management", "status": "ok"}
@@ -63,8 +80,9 @@ async def list_sessions(
 ) -> list[NavigationSessionResponse]:
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    result = db.client.table("navigation_sessions").select("*").execute()
-    return result.data
+    return select_all(
+        lambda: db.client.table("navigation_sessions").select("*").order("id")
+    )
 
 
 # Declared above /sessions/{id} so "active" isn't captured as an id.
@@ -111,11 +129,13 @@ async def update_session(
         raise HTTPException(status_code=404, detail="Session not found")
     if existing.data[0]["user_id"] != caller_id and not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Forbidden")
+    changes = session.model_dump(exclude_unset=True)
+    if changes.get("status") == "active" and not db.is_admin(caller_id):
+        # A finished trip is resumed by continuing its active session, not by
+        # reopening a closed one.
+        raise HTTPException(status_code=400, detail="A finished trip can't be reopened")
     result = (
-        db.client.table("navigation_sessions")
-        .update(session.model_dump(exclude_unset=True))
-        .eq("id", id)
-        .execute()
+        db.client.table("navigation_sessions").update(changes).eq("id", id).execute()
     )
     return result.data
 
@@ -137,23 +157,52 @@ async def delete_session(id: str, caller_id: str = Depends(get_caller_id)):
 
 @app.post("/logs")
 async def create_log(log: NavigationLogCreate, caller_id: str = Depends(get_caller_id)):
-    owner_id = _session_owner(log.session_id)
-    if owner_id is None:
+    session = _session_row(log.session_id)
+    if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    if owner_id != caller_id and not db.is_admin(caller_id):
+    if session["user_id"] != caller_id and not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Forbidden")
-    result = db.client.table("navigation_logs").insert(log.model_dump()).execute()
+    if session.get("status") != "active":
+        raise HTTPException(status_code=409, detail="This trip has already ended")
+    payload = log.model_dump()
+    # A camera match on an anchor point deleted since it was indexed would
+    # fail the whole log on the foreign key; keep the GPS data instead.
+    if payload.get("anchor_match_id") and not _anchor_exists(
+        payload["anchor_match_id"]
+    ):
+        payload["anchor_match_id"] = None
+    result = db.client.table("navigation_logs").insert(payload).execute()
     return result.data
 
 
 @app.get("/logs")
 async def list_logs(
+    session_id: str | None = None,
     caller_id: str = Depends(get_caller_id),
 ) -> list[NavigationLogResponse]:
+    """With `session_id`: that session's logs in time order, for its owner
+    or an admin (session tracking used to download every log in the system
+    and filter client-side). Without it: every log, admin only."""
+    if session_id is not None:
+        owner_id = _session_owner(session_id)
+        if owner_id is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if owner_id != caller_id and not db.is_admin(caller_id):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return select_all(
+            lambda: (
+                db.client.table("navigation_logs")
+                .select("*")
+                .eq("session_id", session_id)
+                .order("timestamp")
+                .order("id")
+            )
+        )
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    result = db.client.table("navigation_logs").select("*").execute()
-    return result.data
+    return select_all(
+        lambda: db.client.table("navigation_logs").select("*").order("id")
+    )
 
 
 @app.get("/logs/{id}")
@@ -174,6 +223,12 @@ async def get_log(
 async def create_feedback(
     feedback: UserFeedbackCreate, caller_id: str = Depends(get_caller_id)
 ):
+    if feedback.session_id is not None:
+        owner_id = _session_owner(feedback.session_id)
+        if owner_id is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if owner_id != caller_id and not db.is_admin(caller_id):
+            raise HTTPException(status_code=403, detail="Forbidden")
     payload = {**feedback.model_dump(), "user_id": caller_id}
     result = db.client.table("user_feedback").insert(payload).execute()
     return result.data
@@ -185,8 +240,7 @@ async def list_feedback(
 ) -> list[UserFeedbackResponse]:
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    result = db.client.table("user_feedback").select("*").execute()
-    return result.data
+    return select_all(lambda: db.client.table("user_feedback").select("*").order("id"))
 
 
 @app.get("/feedback/{id}")

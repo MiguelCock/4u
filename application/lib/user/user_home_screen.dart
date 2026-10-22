@@ -264,11 +264,27 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     );
   }
 
+  /// Verified points in active buildings of active universities - the only
+  /// ones offered as a start or a destination.
   Future<List<Map<String, dynamic>>> _fetchVerifiedAnchors() async {
-    final anchors = await _mapApi.get('/anchor-points');
-    return (anchors as List)
+    final results = await Future.wait([
+      _mapApi.get('/places'),
+      _mapApi.get('/buildings'),
+      _mapApi.get('/anchor-points'),
+    ]);
+    final buildings = (results[1] as List).cast<Map<String, dynamic>>();
+    _buildingNames = {
+      for (final b in buildings) b['id'] as String: b['name'] as String? ?? '',
+    };
+    final active = activeBuildingIds(
+      (results[0] as List).cast<Map<String, dynamic>>(),
+      buildings,
+    );
+    return (results[2] as List)
         .cast<Map<String, dynamic>>()
-        .where((a) => a['status'] == 'verified')
+        .where(
+          (a) => a['status'] == 'verified' && active.contains(a['building_id']),
+        )
         .toList();
   }
 

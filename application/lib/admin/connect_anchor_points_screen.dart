@@ -8,7 +8,8 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/map_tile_config.dart';
 import '../services/api_error_messages.dart';
-import 'capture_screen.dart' show anchorDisplayName;
+import '../services/location_types.dart' show anchorDisplayName;
+import '../services/map_tap.dart';
 
 /// Map-tap flow for building the anchor-point walkability graph: tap one
 /// anchor point, then another, to create a connection between them. The
@@ -105,6 +106,7 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
         }
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(
         () => _error = AppLocalizations.of(
           context,
@@ -237,24 +239,13 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
     }
   }
 
-  Map<String, dynamic>? _pointNear(LatLng tapped) {
-    final camera = _mapController.camera;
-    final tapOffset = camera.latLngToScreenOffset(tapped);
-    Map<String, dynamic>? nearest;
-    var nearestDistance = _kTapRadiusPx;
-    for (final point in _visibleAnchorPoints) {
-      final lat = (point['latitude'] as num?)?.toDouble();
-      final lng = (point['longitude'] as num?)?.toDouble();
-      if (lat == null || lng == null) continue;
-      final distance =
-          (camera.latLngToScreenOffset(LatLng(lat, lng)) - tapOffset).distance;
-      if (distance <= nearestDistance) {
-        nearestDistance = distance;
-        nearest = point;
-      }
-    }
-    return nearest;
-  }
+  Map<String, dynamic>? _pointNear(LatLng tapped) => nearestOnScreen(
+    camera: _mapController.camera,
+    tapped: tapped,
+    items: _visibleAnchorPoints,
+    positionOf: anchorPosition,
+    radiusPx: _kTapRadiusPx,
+  );
 
   static String _pairKey(String a, String b) =>
       a.compareTo(b) < 0 ? '$a|$b' : '$b|$a';
@@ -361,7 +352,9 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text(
-              e.statusCode == 500 || e.statusCode == 409
+              // Only a real duplicate; a 500 used to read as "already
+              // connected" too, hiding outages.
+              e.statusCode == 409
                   ? l10n.connectErrorAlreadyConnected
                   : l10n.connectErrorConnectFailed(
                       friendlyApiErrorMessage(context, e),
@@ -442,6 +435,16 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
         .toList();
   }
 
+  /// The map's initialCenter only applies once, so switching university or
+  /// building used to leave the map showing the previous one.
+  void _recentre() {
+    try {
+      _mapController.move(_initialCenter(), _mapController.camera.zoom);
+    } catch (_) {
+      // Map not built yet; it starts at _initialCenter() anyway.
+    }
+  }
+
   LatLng _initialCenter() {
     final focused = _anchorPoints.where(
       (p) => p['id'] == widget.initialAnchorPointId,
@@ -489,11 +492,14 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
                                 ),
                               )
                               .toList(),
-                          onChanged: (value) => setState(() {
-                            _selectedPlaceId = value;
-                            _selectedBuildingId = null;
-                            _selectedAnchorPointId = null;
-                          }),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedPlaceId = value;
+                              _selectedBuildingId = null;
+                              _selectedAnchorPointId = null;
+                            });
+                            _recentre();
+                          },
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -518,10 +524,13 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
                               ),
                             ),
                           ],
-                          onChanged: (value) => setState(() {
-                            _selectedBuildingId = value;
-                            _selectedAnchorPointId = null;
-                          }),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedBuildingId = value;
+                              _selectedAnchorPointId = null;
+                            });
+                            _recentre();
+                          },
                         ),
                       ),
                     ],

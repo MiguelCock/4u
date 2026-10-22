@@ -1,10 +1,36 @@
 /// Location types (db_schema/location_type.sql ids) that are places people
 /// go *to*: entrance, classroom, office, restroom, cafeteria, parking,
-/// lobby, auditorium, bus stop. The rest (hallway, intersection, stairs,
+/// lobby, auditorium, bus stop, plus every type from 19 on (shops,
+/// library, infirmary, exit...). The rest (hallway, intersection, stairs,
 /// ramp...) are in-between points that only exist so routes can be
 /// connected. Mirrored by `DESTINATION_LOCATION_TYPE_IDS` in
 /// backend-map-management/app/models.py - keep the two in sync.
-const Set<int> kDestinationLocationTypes = {1, 5, 6, 7, 8, 13, 14, 15, 18};
+const Set<int> kDestinationLocationTypes = {
+  1,
+  5,
+  6,
+  7,
+  8,
+  13,
+  14,
+  15,
+  18,
+  19,
+  20,
+  21,
+  22,
+  23,
+  24,
+  25,
+  26,
+  27,
+  28,
+  29,
+  30,
+  31,
+  32,
+  33,
+};
 
 bool isDestinationType(int? locationTypeId) =>
     kDestinationLocationTypes.contains(locationTypeId);
@@ -20,3 +46,21 @@ bool descriptionRequiredFor(int? locationTypeId) =>
 bool isDestinationAnchor(Map<String, dynamic> anchor) =>
     isDestinationType(anchor['location_type_id'] as int?) &&
     (anchor['location_description'] as String? ?? '').trim().isNotEmpty;
+
+/// Ids of buildings users may navigate in: the building and its university
+/// are both active. An admin deactivating either hides its points from the
+/// destination list and from start-point selection.
+Set<String> activeBuildingIds(
+  Iterable<Map<String, dynamic>> places,
+  Iterable<Map<String, dynamic>> buildings,
+) {
+  final activePlaces = {
+    for (final p in places)
+      if (p['is_active'] != false) p['id'],
+  };
+  return {
+    for (final b in buildings)
+      if (b['is_active'] != false && activePlaces.contains(b['place_id']))
+        b['id'] as String,
+  };
+}

@@ -1,6 +1,6 @@
 CREATE TABLE profiles (
     id UUID PRIMARY KEY DEFAULT auth.uid(),
-    place_id UUID REFERENCES places(id),
+    place_id UUID REFERENCES places(id) ON DELETE SET NULL,
     role_id SMALLINT REFERENCES roles(id),
     full_name TEXT,
     avatar_url TEXT,

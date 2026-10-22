@@ -6,6 +6,28 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-22
+
+### Added
+- **Anchor points map** (admin): switch the Anchor points list to a map, tap a point to see it and edit, move, verify, connect or add photos. Moving shows exactly where the point will land.
+- **Verify / unverify from the list** with one button on each anchor point row.
+- **15 new place types**: stationery shop, copy center, store, ATM / bank, library, laboratory, computer room, study area, infirmary, gym / sports area, chapel, exit / gate, bike parking, waiting area and drinking fountain.
+- The place type picker is grouped into categories, with a search box. Hallway and outdoor path, the most used, come first.
+- A **Floor** field when creating or editing an anchor point (every point used to be saved on the ground floor).
+
+### Changed
+- Errors explain what actually happened, for example "this is still used by other data", instead of always saying the server had a problem.
+- An anchor point can only be verified once it has at least one photo. Deleting a verified point's last photo puts it back to pending.
+- Deactivated universities and buildings are hidden from users.
+
+### Fixed
+- **Universities, buildings and anchor points used in a trip could not be deleted**, and a failed delete left the points listed but no longer recognised by the camera. Saved routes through them are now removed with them, and trip history is kept.
+- Deactivating a university or building didn't stick: the next edit reactivated it, and the "(inactive)" label never showed.
+- Accounts whose profile was missing still couldn't sign in properly. The automatic repair failed.
+- Moving an anchor point didn't update the distances used to plan routes.
+- Route planning could wrongly say there was no walkable path once there were many connections, and trip trails could be cut short.
+- Small form fixes: a distance typed as "12,5", a building's floor count, the map picker following the selected university, and the Connect map recentring when the university changes.
+
 ## [0.4.0] - 2026-10-22
 
 ### Added
@@ -103,7 +125,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.4.0...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.0...develop
+[0.5.0]: https://github.com/MiguelCock/4u/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MiguelCock/4u/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/MiguelCock/4u/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/MiguelCock/4u/compare/v0.2.1...v0.3.0

@@ -137,6 +137,9 @@ You can always come back to add or remove photos later from an anchor point's **
 
 ### 5.3 Reviewing and verifying
 
+**Quick verify from the list or the map:** each anchor point row has a ✔ button that verifies it (or, on a verified point, puts it back to pending). A point needs at least one photo before it can be verified. The **List / Map** switch above the list shows the same points on a map, coloured by status: green verified, grey pending, red rejected. Tap a point on the map to see its details and to **Edit**, **Move**, verify, **Connect** or add photos. **Move** asks you to tap the new position; the pin's tip marks exactly where it will go, and **Save new position** stores it. Moving a verified point also updates photo search and the distances of its connections.
+
+
 The edit screen for an anchor point is also where you review it and decide whether it's ready for real use. This is more than just changing a label:
 
 - **Status: Verified** — saving with this status automatically indexes the point's photos into the app's search system, making it real, live data that the app can actually match a user's camera against. This is the step that makes an anchor point *do* anything.
@@ -200,6 +203,10 @@ Any saved route that went through a deleted connection is recalculated automatic
 
 ## 7. Deleting things
 
+Universities and buildings have a trash icon on their row. On an anchor point row, **Add photo** and **Delete** are in the ⋮ menu, next to the verify and edit buttons.
+
+Anything that was used in trips can be deleted. Saved routes through deleted points are removed with them, and trip history is kept. If something still can't be deleted, the message says why.
+
 Deleting a place, building, or anchor point always shows a confirmation dialog stating exactly what else will be deleted with it, because the data is hierarchical (place → building → anchor point → photos/connections):
 
 - **Deleting a place** also deletes its buildings, their anchor points, those points' photos, and any connections involving them.
@@ -213,26 +220,16 @@ The confirmation always shows the real counts (e.g. "will also delete 3 building
 
 ### Location types
 
-| Option shown in the app | Meaning |
+Tap the **Location type** field to open the type picker. Types are grouped into categories, and the search box at the top finds one by name (for example "library"). Types marked ★ are **destinations**: they need a description and appear in users' destination list. The others are in-between points for connecting routes.
+
+| Category | Types |
 |---|---|
-| entrance | Building entrance or main door |
-| intersection | Hallway intersection |
-| elevator | Elevator area |
-| stairwell | Staircase area |
-| classroom | Classroom location |
-| office | Office location |
-| restroom | Restroom location |
-| cafeteria | Cafeteria or dining area |
-| hallway | A hallway or corridor segment — not an intersection, just a stretch of hallway (useful as a waypoint between two intersections) |
-| ramp | An accessibility ramp |
-| outdoor_path | An outdoor walkway or path between buildings |
-| parking | A parking area or lot |
-| lobby | A building lobby or atrium |
-| auditorium | An auditorium or large lecture hall |
-| courtyard | An outdoor courtyard or plaza |
-| crosswalk | A pedestrian crosswalk or road crossing |
-| bus_stop | A campus bus or shuttle stop |
-| other | Anything that doesn't fit the above |
+| Paths and connections | Hallway, Outdoor path, Intersection, Stairs, Elevator, Ramp, Crosswalk, Courtyard |
+| Entrances and getting around | Entrance ★, Exit / gate ★, Lobby ★, Parking ★, Bike parking ★, Bus stop ★, Waiting area / benches ★ |
+| Academic | Classroom ★, Laboratory ★, Library ★, Computer room ★, Study area ★, Auditorium ★, Office ★ |
+| Food, shops and services | Cafeteria ★, Stationery shop ★, Copy / print center ★, Store ★, ATM / bank ★, Restroom ★, Drinking fountain ★ |
+| Wellbeing and sports | Infirmary / medical service ★, Gym / sports area ★, Chapel ★ |
+| Other | Other |
 
 ### Anchor point status
 

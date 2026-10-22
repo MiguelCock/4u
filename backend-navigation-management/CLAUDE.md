@@ -55,3 +55,15 @@ There is no service-to-service HTTP call anywhere in this codebase — every bac
 
 - No FK-existence checks before insert — if `user_id`/`building_id`/`route_id`/`session_id`/`anchor_match_id` don't exist, Supabase will reject the insert with a raw Postgres FK-violation error rather than a friendly 4xx.
 - `NavigationSessionUpdate`/`NavigationLogCreate`/`UserFeedbackCreate` type timestamps and JSON position fields loosely (`str`/`dict`) to match the rest of the codebase's minimal-typing style — no validation that `start_position`/`end_position` actually contain lat/lng keys.
+
+## Integrity rules (CRUD audit)
+
+- **Logs:**
+  - `POST /logs` requires the session to still be `active` (409 otherwise).
+  - It drops an `anchor_match_id` whose point no longer exists instead of failing the whole log; the camera match may be for a point deleted since it was indexed.
+  - `GET /logs?session_id=` returns one session's logs in time order, for its owner or an admin. Without the filter, it's admin-only and returns every log. Session tracking uses the filtered form, so it never fetches every log in the system.
+- **Feedback** may only be attached to the caller's own session (403/404).
+- **Status:** `NavigationSessionUpdate.status` is a `Literal` of the four DB values. A non-admin can't set a session back to `active`; a trip is resumed by continuing its still-active session.
+- **Nullable references:** `building_id` and `route_id` are nullable. They're set to null when the building or route is deleted (`ON DELETE SET NULL`), so trip history survives.
+- **Lists** page with `select_all`.
+
