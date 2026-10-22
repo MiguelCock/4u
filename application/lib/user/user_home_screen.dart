@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -48,6 +49,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   final _mapApi = MapManagementApi();
   final _routeApi = RouteManagementApi();
   final _positioningApi = PositioningApi();
+  final _navigationApi = NavigationManagementApi();
   final _locationService = LocationService();
   StreamSubscription<Position>? _positionSub;
 
@@ -56,6 +58,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Map<String, dynamic>? _end;
   bool _finding = false;
   bool _locatingStart = false;
+  int _startCheckProgress = 0;
+  DateTime? _startCheckedAt;
+  LatLng? _startCheckedFrom;
   String? _error;
   final _exitGuard = ExitGuard();
 
@@ -75,6 +80,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     super.initState();
     _positionSub = _locationService.positionStream.listen(_recomputeStart);
     _loadAnchors();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkUnfinishedTrip());
   }
 
   @override
@@ -303,7 +309,21 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }
 
   void _recomputeStart(Position position) {
-    if (!mounted || _verifiedAnchors.isEmpty || _finding) return;
+    if (!mounted || _verifiedAnchors.isEmpty || _finding || _locatingStart) {
+      return;
+    }
+    // Keep a camera-checked start until the user has actually moved away.
+    final checkedFrom = _startCheckedFrom;
+    if (checkedFrom != null &&
+        haversineMeters(
+              checkedFrom,
+              LatLng(position.latitude, position.longitude),
+            ) <
+            _kStartCheckRadiusMeters) {
+      return;
+    }
+    _startCheckedAt = null;
+    _startCheckedFrom = null;
     final nearest = _nearestAnchor(
       _verifiedAnchors,
       LatLng(position.latitude, position.longitude),
@@ -323,43 +343,260 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     if (picked != null) setState(() => _end = picked);
   }
 
-  /// One camera frame + the GPS fix through backend-positioning's
-  /// stateless correction, so the starting anchor is picked from a
-  /// corrected position rather than raw GPS (5-20m off). Null on anything
-  /// going wrong (no camera/permission, covered lens, backend unreachable)
-  /// - callers fall back to raw GPS, this never blocks finding a route.
-  Future<LatLng?> _correctedPosition(Position position) async {
+  /// Photos taken by the start-point check, and the minimum gap between
+  /// them. Each one goes through the same Kalman filter, so later photos
+  /// refine earlier ones; one photo alone barely moved the position.
+  static const int _kStartCheckPhotos = 6;
+  static const Duration _kStartCheckInterval = Duration(milliseconds: 900);
+
+  /// A checked start is kept (not replaced by the raw-GPS nearest point)
+  /// until the user moves this far from where it was checked...
+  static const double _kStartCheckRadiusMeters = 15;
+
+  /// ...and Find route reuses it for this long instead of checking again.
+  static const Duration _kStartCheckFreshFor = Duration(seconds: 60);
+
+  /// Multi-photo position check for the start point. Each photo plus the
+  /// current GPS fix goes to backend-positioning's session
+  /// `POST /correct_position` under a throwaway key: that endpoint only
+  /// uses session_id to key its in-memory filter (no DB lookup), so the
+  /// photos accumulate in one filter and the result is the fused position.
+  /// The filter expires on its own (the positioning service's session TTL).
+  /// Without a camera, or if every photo fails, falls back to raw GPS.
+  Future<({LatLng? position, int matched, int taken})>
+  _checkStartPosition() async {
+    final key =
+        'start-check-${DateTime.now().microsecondsSinceEpoch}-'
+        '${Random().nextInt(1 << 32)}';
     CameraController? controller;
+    LatLng? fused;
+    var matched = 0;
+    var taken = 0;
     try {
       controller = await initCamera();
-      if (controller == null) return null;
-      final image = await controller.takePicture();
-      final bytes = await image.readAsBytes();
-      if (isFrameBlocked(bytes)) return null;
-      final result =
-          await _positioningApi
-                  .postMultipart(
-                    '/correct_position_once',
-                    fieldName: 'photo',
-                    bytes: bytes,
-                    filename: path.basename(image.path),
-                    fields: {
-                      'latitude': position.latitude.toString(),
-                      'longitude': position.longitude.toString(),
-                      'accuracy': position.accuracy.toString(),
-                      'heading': position.heading.toString(),
-                    },
-                  )
-                  .timeout(const Duration(seconds: 10))
-              as Map<String, dynamic>;
-      return LatLng(
-        (result['corrected_lat'] as num).toDouble(),
-        (result['corrected_long'] as num).toDouble(),
-      );
-    } catch (_) {
-      return null;
+      if (controller != null) {
+        for (var i = 0; i < _kStartCheckPhotos; i++) {
+          if (!mounted) break;
+          setState(() => _startCheckProgress = i + 1);
+          final started = DateTime.now();
+          final position = _locationService.lastPosition;
+          if (position != null) {
+            try {
+              final image = await controller.takePicture();
+              final bytes = await image.readAsBytes();
+              if (!isFrameBlocked(bytes)) {
+                final result =
+                    await _positioningApi
+                            .postMultipart(
+                              '/correct_position',
+                              fieldName: 'photo',
+                              bytes: bytes,
+                              filename: path.basename(image.path),
+                              fields: {
+                                'session_id': key,
+                                'latitude': position.latitude.toString(),
+                                'longitude': position.longitude.toString(),
+                                'accuracy': position.accuracy.toString(),
+                                'heading': position.heading.toString(),
+                              },
+                            )
+                            .timeout(const Duration(seconds: 10))
+                        as Map<String, dynamic>;
+                fused = LatLng(
+                  (result['corrected_lat'] as num).toDouble(),
+                  (result['corrected_long'] as num).toDouble(),
+                );
+                taken++;
+                if (result['anchor_match_id'] != null) matched++;
+              }
+            } catch (_) {
+              // One bad photo or request just doesn't count.
+            }
+          }
+          final elapsed = DateTime.now().difference(started);
+          if (elapsed < _kStartCheckInterval) {
+            await Future<void>.delayed(_kStartCheckInterval - elapsed);
+          }
+        }
+      }
     } finally {
       await controller?.dispose();
+    }
+    final raw = _locationService.lastPosition;
+    return (
+      position:
+          fused ?? (raw == null ? null : LatLng(raw.latitude, raw.longitude)),
+      matched: matched,
+      taken: taken,
+    );
+  }
+
+  /// Runs the start-point check and picks the verified anchor nearest the
+  /// result. Shared by Find route and tapping the Start row. Throws
+  /// ApiException if the anchors can't be loaded.
+  Future<Map<String, dynamic>?> _locateStart() async {
+    final l10n = AppLocalizations.of(context)!;
+    _verifiedAnchors = await _fetchVerifiedAnchors();
+    if (!mounted) return null;
+    setState(() {
+      _locatingStart = true;
+      _startCheckProgress = 0;
+    });
+    _say(l10n.homeCheckingStartPrompt);
+    final check = await _checkStartPosition();
+    if (!mounted) return null;
+    final position = check.position;
+    final start = position == null
+        ? null
+        : _nearestAnchor(_verifiedAnchors, position);
+    setState(() {
+      _locatingStart = false;
+      _start = start;
+      if (start != null) {
+        _startCheckedAt = DateTime.now();
+        _startCheckedFrom = position;
+      }
+    });
+    if (start != null) {
+      final description = (start['location_description'] as String? ?? '')
+          .trim();
+      _say(
+        l10n.homeStartChecked(
+          description.isNotEmpty ? description : l10n.homeStartNearestPoint,
+          check.matched,
+          _kStartCheckPhotos,
+        ),
+      );
+    }
+    return start;
+  }
+
+  /// Whether the last start check can be reused instead of running again.
+  bool get _startCheckIsFresh {
+    final checkedAt = _startCheckedAt;
+    final from = _startCheckedFrom;
+    final position = _locationService.lastPosition;
+    if (_start == null || checkedAt == null || from == null) return false;
+    if (DateTime.now().difference(checkedAt) > _kStartCheckFreshFor) {
+      return false;
+    }
+    return position == null ||
+        haversineMeters(from, LatLng(position.latitude, position.longitude)) <
+            _kStartCheckRadiusMeters;
+  }
+
+  /// Tapping the Start row: run the check on demand.
+  Future<void> _relocateStart() async {
+    if (_locatingStart || _finding) return;
+    setState(() => _error = null);
+    try {
+      await _locateStart();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _locatingStart = false;
+        _error = AppLocalizations.of(
+          context,
+        )!.commonErrorLoadDataFailed(friendlyApiErrorMessage(context, e));
+      });
+    }
+  }
+
+  /// A trip left open by closing the app mid-route: offer to continue it
+  /// or finish it, instead of it staying "active" forever.
+  Future<void> _checkUnfinishedTrip() async {
+    List<Map<String, dynamic>> sessions;
+    try {
+      sessions = (await _navigationApi.get('/sessions/active') as List)
+          .cast<Map<String, dynamic>>();
+    } on ApiException {
+      return; // Best effort - never blocks the home screen.
+    }
+    if (sessions.isEmpty || !mounted) return;
+    final latest = sessions.first;
+    // Only the newest is offered; any older leftovers are just closed.
+    for (final old in sessions.skip(1)) {
+      _finishSession(old);
+    }
+
+    Map<String, dynamic>? route;
+    final routeId = latest['route_id'] as String?;
+    if (routeId != null) {
+      try {
+        route = await _routeApi.get('/routes/$routeId') as Map<String, dynamic>;
+      } on ApiException {
+        route = null;
+      }
+    }
+    if (route == null) {
+      // Nothing to resume onto.
+      await _finishSession(latest);
+      return;
+    }
+    if (_verifiedAnchors.isEmpty) await _loadAnchors();
+    if (!mounted) return;
+
+    final l10n = AppLocalizations.of(context)!;
+    final end = _verifiedAnchors.where(
+      (a) => a['id'] == route!['end_anchor_id'],
+    );
+    final destination =
+        (end.isEmpty ? null : end.first['location_description'] as String?) ??
+        l10n.navYourDestination;
+    final startedAt = DateTime.tryParse(latest['start_time'] as String? ?? '');
+    final time = startedAt == null
+        ? '?'
+        : TimeOfDay.fromDateTime(startedAt.toLocal()).format(context);
+
+    final resume = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.homeUnfinishedTripTitle),
+        content: Text(l10n.homeUnfinishedTripContent(destination, time)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.homeUnfinishedTripFinish),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.homeUnfinishedTripResume),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (resume == true) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => NavigationScreen(
+            route: route!,
+            resumeSessionId: latest['id'] as String,
+          ),
+        ),
+      );
+    } else {
+      await _finishSession(latest);
+    }
+  }
+
+  /// Closes a session the user didn't finish as `abandoned` (not
+  /// `completed` - they never arrived), so admins can tell them apart.
+  Future<void> _finishSession(Map<String, dynamic> session) async {
+    final position = _locationService.lastPosition;
+    try {
+      await _navigationApi.patch('/sessions/${session['id']}', {
+        'status': 'abandoned',
+        'end_time': DateTime.now().toUtc().toIso8601String(),
+        if (position != null)
+          'end_position': {
+            'latitude': position.latitude,
+            'longitude': position.longitude,
+          },
+      });
+    } on ApiException {
+      // Best effort; it will be offered again next launch.
     }
   }
 
@@ -400,21 +637,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     }
 
     try {
-      final verified = await _fetchVerifiedAnchors();
-      _verifiedAnchors = verified;
-
+      // A start checked moments ago (tapping Start) isn't checked again.
+      final start = _startCheckIsFresh ? _start : await _locateStart();
       if (!mounted) return;
-      setState(() => _locatingStart = true);
-      final corrected = await _correctedPosition(position);
-      if (!mounted) return;
-      final start = _nearestAnchor(
-        verified,
-        corrected ?? LatLng(position.latitude, position.longitude),
-      );
-      setState(() {
-        _locatingStart = false;
-        _start = start;
-      });
       if (start == null) {
         setState(() {
           _error = AppLocalizations.of(context)!.homeErrorNoVerifiedAnchors;
@@ -539,12 +764,28 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             liveRegion: true,
             child: Text(
               _locatingStart
-                  ? l10n.homeLocatingStart
+                  ? (_startCheckProgress > 0
+                        ? l10n.homeCheckingStartProgress(
+                            _startCheckProgress,
+                            _kStartCheckPhotos,
+                          )
+                        : l10n.homeLocatingStart)
                   : _start != null
                   ? _startLabel(l10n, _start!)
                   : l10n.homeStartSubtitle,
             ),
           ),
+          trailing: _locatingStart
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(
+                  Icons.my_location,
+                  semanticLabel: l10n.homeCheckStartTooltip,
+                ),
+          onTap: (_locatingStart || _finding) ? null : _relocateStart,
         ),
         const Divider(height: 1),
         ListTile(

@@ -486,3 +486,38 @@ def test_get_feedback_allowed_for_admin():
     with patch("app.main.db.client", mock_client):
         response = client.get("/feedback/1")
     assert response.status_code == 200
+
+
+_ACTIVE_ROW = {
+    "id": "s1",
+    "user_id": "u1",
+    "building_id": "b1",
+    "route_id": "r1",
+    "status": "active",
+    "start_time": "2026-10-22T10:00:00+00:00",
+}
+
+
+def test_active_sessions_requires_a_token():
+    response = client.get("/sessions/active")
+    assert response.status_code == 401
+
+
+def test_active_sessions_are_the_callers_own_newest_first():
+    _as_caller("u1")
+    mock_client = MagicMock()
+    query = mock_client.table.return_value.select.return_value
+    query.eq.return_value.eq.return_value.order.return_value.execute.return_value.data = [
+        _ACTIVE_ROW
+    ]
+    with patch("app.main.db.client", mock_client):
+        response = client.get("/sessions/active")
+    assert response.status_code == 200
+    assert [r["id"] for r in response.json()] == ["s1"]
+    query.eq.assert_called_once_with("user_id", "u1")
+    query.eq.return_value.eq.assert_called_once_with("status", "active")
+    query.eq.return_value.eq.return_value.order.assert_called_once_with(
+        "start_time", desc=True
+    )
+    # Not admin-gated, and never mistaken for GET /sessions/{id}.
+    mock_client.table.assert_called_once_with("navigation_sessions")
