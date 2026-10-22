@@ -6,6 +6,22 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+### Added
+- A **Floor** field when creating or editing an anchor point (every point used to be saved on the ground floor).
+
+### Changed
+- Errors explain what actually happened, for example "this is still used by other data", instead of always saying the server had a problem.
+- An anchor point can only be verified once it has at least one photo. Deleting a verified point's last photo puts it back to pending.
+- Deactivated universities and buildings are hidden from users.
+
+### Fixed
+- **Universities, buildings and anchor points used in a trip could not be deleted**, and a failed delete left the points listed but no longer recognised by the camera. Saved routes through them are now removed with them, and trip history is kept.
+- Deactivating a university or building didn't stick: the next edit reactivated it, and the "(inactive)" label never showed.
+- Accounts whose profile was missing still couldn't sign in properly. The automatic repair failed.
+- Moving an anchor point didn't update the distances used to plan routes.
+- Route planning could wrongly say there was no walkable path once there were many connections, and trip trails could be cut short.
+- Small form fixes: a distance typed as "12,5", a building's floor count, the map picker following the selected university, and the Connect map recentring when the university changes.
+
 ## [0.4.0] - 2026-10-22
 
 ### Added

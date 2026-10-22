@@ -152,7 +152,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         _loading = false;
         _error = null;
       });
-    } on ApiException catch (e) {
+    } catch (e) {
+      // Not only ApiException: a malformed response must end the spinner too.
       if (!mounted) return;
       setState(() {
         _error = AppLocalizations.of(
@@ -482,9 +483,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     return confirmed == true;
   }
 
-  Future<void> _runDelete(Future<void> Function() action) async {
+  /// Deletes in the database first; [afterSuccess] (removing the points
+  /// from photo search) runs only once that worked. The other way round, a
+  /// delete that failed left points listed but no longer recognisable.
+  Future<void> _runDelete(
+    Future<void> Function() action, {
+    Future<void> Function()? afterSuccess,
+  }) async {
     try {
       await action();
+      if (afterSuccess != null) await _bestEffort(afterSuccess);
       await _loadData();
     } on ApiException catch (e) {
       if (mounted) {
@@ -534,23 +542,25 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final l10n = AppLocalizations.of(context)!;
     final confirmed = await _confirm(
       title: l10n.adminDeletePlaceTitle,
-      content: l10n.adminDeletePlaceContent(
-        place['name'] as String? ?? place['id'] as String,
-        buildings.length,
-        anchors.length,
-        photoCount,
-        connectionCount,
-      ),
+      content:
+          l10n.adminDeletePlaceContent(
+            place['name'] as String? ?? place['id'] as String,
+            buildings.length,
+            anchors.length,
+            photoCount,
+            connectionCount,
+          ) +
+          l10n.adminDeleteKeepsHistoryNote,
     );
     if (!confirmed) return;
-    await _bestEffort(
-      () => Future.wait(
+    await _runDelete(
+      () => _mapApi.delete('/places/${place['id']}'),
+      afterSuccess: () => Future.wait(
         buildings.map(
           (b) => _aiTrainingApi.delete('/index_building/${b['id']}'),
         ),
       ),
     );
-    await _runDelete(() => _mapApi.delete('/places/${place['id']}'));
   }
 
   Future<void> _deleteBuilding(Map<String, dynamic> building) async {
@@ -570,18 +580,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final l10n = AppLocalizations.of(context)!;
     final confirmed = await _confirm(
       title: l10n.adminDeleteBuildingTitle,
-      content: l10n.adminDeleteBuildingContent(
-        building['name'] as String? ?? building['id'] as String,
-        anchors.length,
-        photoCount,
-        connectionCount,
-      ),
+      content:
+          l10n.adminDeleteBuildingContent(
+            building['name'] as String? ?? building['id'] as String,
+            anchors.length,
+            photoCount,
+            connectionCount,
+          ) +
+          l10n.adminDeleteKeepsHistoryNote,
     );
     if (!confirmed) return;
-    await _bestEffort(
-      () => _aiTrainingApi.delete('/index_building/${building['id']}'),
+    await _runDelete(
+      () => _mapApi.delete('/buildings/${building['id']}'),
+      afterSuccess: () =>
+          _aiTrainingApi.delete('/index_building/${building['id']}'),
     );
-    await _runDelete(() => _mapApi.delete('/buildings/${building['id']}'));
   }
 
   Future<void> _deleteAnchorPoint(Map<String, dynamic> point) async {
@@ -590,13 +603,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final l10n = AppLocalizations.of(context)!;
     final confirmed = await _confirm(
       title: l10n.adminDeleteAnchorTitle,
-      content: l10n.adminDeleteAnchorContent(photoCount, connectionCount),
+      content:
+          l10n.adminDeleteAnchorContent(photoCount, connectionCount) +
+          l10n.adminDeleteKeepsHistoryNote,
     );
     if (!confirmed) return;
-    await _bestEffort(
-      () => _aiTrainingApi.delete('/index_anchor/${point['id']}'),
+    await _runDelete(
+      () => _mapApi.delete('/anchor-points/${point['id']}'),
+      afterSuccess: () => _aiTrainingApi.delete('/index_anchor/${point['id']}'),
     );
-    await _runDelete(() => _mapApi.delete('/anchor-points/${point['id']}'));
   }
 
   Future<void> _deleteConnection(Map<String, dynamic> connection) async {
@@ -615,7 +630,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => EditPlaceScreen(place: place)),
     );
-    if (changed == true) _loadData();
+    if (changed == true) await _loadData();
   }
 
   Future<void> _editBuilding(Map<String, dynamic> building) async {
@@ -626,12 +641,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   Future<void> _editAnchorPoint(Map<String, dynamic> point) async {
-    final changed = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => EditAnchorPointScreen(anchorPoint: point),
       ),
     );
-    if (changed == true) _loadData();
+    // Always reload: photos added or deleted from the edit screen count
+    // even when the admin backs out without saving.
+    await _loadData();
   }
 
   Future<void> _addPhoto(Map<String, dynamic> point) async {

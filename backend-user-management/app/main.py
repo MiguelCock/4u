@@ -2,6 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
+from packages.db_errors import install_db_error_handlers
 from packages.supabase import SupaBase
 from supabase import AuthError
 
@@ -16,6 +17,7 @@ from .models import (
 load_dotenv()
 
 app = FastAPI()
+install_db_error_handlers(app)
 
 db = SupaBase(
     os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -152,15 +154,43 @@ async def update_profile(
         raise HTTPException(
             status_code=403, detail="Only admins can change role or active status"
         )
+    if payload.get("role_id") not in (None, SupaBase.ADMIN_ROLE_ID):
+        _ensure_not_last_admin(id)
     result = db.client.table("profiles").update(payload).eq("id", id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Profile not found")
     return result.data
+
+
+def _ensure_not_last_admin(profile_id: str) -> None:
+    """Refuses to remove the last admin (by demotion or deletion): with no
+    admin left, nobody could promote anyone again from the app."""
+    admins = (
+        db.client.table("profiles")
+        .select("id")
+        .eq("role_id", SupaBase.ADMIN_ROLE_ID)
+        .execute()
+    ).data
+    if [a.get("id") for a in admins] == [profile_id]:
+        raise HTTPException(status_code=400, detail="There must be at least one admin")
 
 
 @app.delete("/profiles/{id}")
 async def delete_profile(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    db.client.table("profiles").delete().eq("id", id).execute()
+    if id == caller_id:
+        raise HTTPException(status_code=400, detail="You can't delete your own account")
+    _ensure_not_last_admin(id)
+    result = db.client.table("profiles").delete().eq("id", id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    # The sign-in account goes too; otherwise it would linger as an
+    # "account without a profile". Best effort: the profile is already gone.
+    try:
+        db.client.auth.admin.delete_user(id)
+    except AuthError:
+        pass
     return "ok"
 
 

@@ -3,7 +3,9 @@ from itertools import pairwise
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
+from packages.db_errors import install_db_error_handlers, select_all
 from packages.supabase import SupaBase
+from postgrest.exceptions import APIError
 
 from .models import RouteCreate, RouteFindOrCreate, RouteResponse
 from .pathfinding import shortest_path
@@ -11,6 +13,7 @@ from .pathfinding import shortest_path
 load_dotenv()
 
 app = FastAPI()
+install_db_error_handlers(app)
 
 db = SupaBase(
     os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -42,8 +45,7 @@ async def create_route(route: RouteCreate, caller_id: str = Depends(get_caller_i
 async def list_routes(
     caller_id: str = Depends(get_caller_id),
 ) -> list[RouteResponse]:
-    result = db.client.table("routes").select("*").execute()
-    return result.data
+    return select_all(lambda: db.client.table("routes").select("*").order("id"))
 
 
 @app.get("/routes/{id}")
@@ -58,7 +60,9 @@ async def get_route(id: str, caller_id: str = Depends(get_caller_id)) -> RouteRe
 async def delete_route(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    db.client.table("routes").delete().eq("id", id).execute()
+    result = db.client.table("routes").delete().eq("id", id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Route not found")
     return "ok"
 
 
@@ -95,9 +99,13 @@ async def find_or_create_route(
     )
     # Fetched up front: needed both to re-check a cached route and to
     # compute a new one.
-    connections = db.client.table("anchor_point_connections").select("*").execute()
+    # Every connection, paged: a graph silently truncated at Supabase's
+    # 1000-row cap gave false "no walkable path" errors.
+    connections = select_all(
+        lambda: db.client.table("anchor_point_connections").select("*").order("id")
+    )
     cached = existing.data[0] if existing.data else None
-    if cached and _route_still_walkable(cached, connections.data):
+    if cached and _route_still_walkable(cached, connections):
         return cached
 
     # anchor_point_connections/anchor_points are backend-map-management's
@@ -107,9 +115,7 @@ async def find_or_create_route(
     # service-to-service HTTP call just to fetch rows this service's own
     # SupaBase client can already reach. First time this repo reads a
     # table outside the reading service's own domain.
-    path = shortest_path(
-        connections.data, request.start_anchor_id, request.end_anchor_id
-    )
+    path = shortest_path(connections, request.start_anchor_id, request.end_anchor_id)
     if path is None:
         raise HTTPException(
             status_code=404, detail="No walkable path found between these points"
@@ -149,5 +155,18 @@ async def find_or_create_route(
         "waypoint_anchor_ids": path[1:-1],
         "created_by": caller_id,
     }
-    result = db.client.table("routes").insert(payload).execute()
+    try:
+        result = db.client.table("routes").insert(payload).execute()
+    except APIError as error:
+        # Two requests for the same pair raced past the lookup above; the
+        # unique (start, end) index kept just one - use that one.
+        if error.code != "23505":
+            raise
+        result = (
+            db.client.table("routes")
+            .select("*")
+            .eq("start_anchor_id", request.start_anchor_id)
+            .eq("end_anchor_id", request.end_anchor_id)
+            .execute()
+        )
     return result.data[0]

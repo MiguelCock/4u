@@ -57,6 +57,7 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
         }
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(
         () => _error = AppLocalizations.of(
           context,
@@ -98,7 +99,16 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
       return;
     }
 
-    final distance = double.tryParse(_distanceController.text.trim());
+    // Accept a decimal comma ("12,5") too; a typo used to silently fall
+    // back to the computed distance.
+    final distanceText = _distanceController.text.trim().replaceAll(',', '.');
+    final distance = distanceText.isEmpty
+        ? null
+        : double.tryParse(distanceText);
+    if (distanceText.isNotEmpty && (distance == null || distance <= 0)) {
+      setState(() => _error = l10n.addConnectionErrorBadDistance);
+      return;
+    }
 
     setState(() {
       _submitting = true;
@@ -116,10 +126,13 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(
-        () => _error = l10n.addConnectionErrorSaveFailed(
-          friendlyApiErrorMessage(context, e),
-        ),
+        () => _error = e.statusCode == 409
+            ? l10n.connectErrorAlreadyConnected
+            : l10n.addConnectionErrorSaveFailed(
+                friendlyApiErrorMessage(context, e),
+              ),
       );
     } finally {
       if (mounted) setState(() => _submitting = false);

@@ -3,11 +3,13 @@ from typing import Annotated
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from packages.db_errors import install_db_error_handlers
 from packages.supabase import SupaBase
 
 load_dotenv()
 
 app = FastAPI()
+install_db_error_handlers(app)
 
 db = SupaBase(
     os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")

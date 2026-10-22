@@ -105,6 +105,7 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
         }
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(
         () => _error = AppLocalizations.of(
           context,
@@ -361,7 +362,9 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text(
-              e.statusCode == 500 || e.statusCode == 409
+              // Only a real duplicate; a 500 used to read as "already
+              // connected" too, hiding outages.
+              e.statusCode == 409
                   ? l10n.connectErrorAlreadyConnected
                   : l10n.connectErrorConnectFailed(
                       friendlyApiErrorMessage(context, e),
@@ -442,6 +445,16 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
         .toList();
   }
 
+  /// The map's initialCenter only applies once, so switching university or
+  /// building used to leave the map showing the previous one.
+  void _recentre() {
+    try {
+      _mapController.move(_initialCenter(), _mapController.camera.zoom);
+    } catch (_) {
+      // Map not built yet; it starts at _initialCenter() anyway.
+    }
+  }
+
   LatLng _initialCenter() {
     final focused = _anchorPoints.where(
       (p) => p['id'] == widget.initialAnchorPointId,
@@ -489,11 +502,14 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
                                 ),
                               )
                               .toList(),
-                          onChanged: (value) => setState(() {
-                            _selectedPlaceId = value;
-                            _selectedBuildingId = null;
-                            _selectedAnchorPointId = null;
-                          }),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedPlaceId = value;
+                              _selectedBuildingId = null;
+                              _selectedAnchorPointId = null;
+                            });
+                            _recentre();
+                          },
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -518,10 +534,13 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
                               ),
                             ),
                           ],
-                          onChanged: (value) => setState(() {
-                            _selectedBuildingId = value;
-                            _selectedAnchorPointId = null;
-                          }),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedBuildingId = value;
+                              _selectedAnchorPointId = null;
+                            });
+                            _recentre();
+                          },
                         ),
                       ),
                     ],

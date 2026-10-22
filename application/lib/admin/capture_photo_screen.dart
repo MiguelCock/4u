@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -130,6 +131,7 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
         });
       }
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(
         () => _error = AppLocalizations.of(context)!
             .capturePhotoErrorLoadExistingFailed(
@@ -156,6 +158,8 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
 
     final heading = _liveHeading;
     File? localFile;
+    // Set once the file is in Storage; cleared once its photo row exists.
+    String? unrecordedUpload;
     try {
       final image = await _controller!.takePicture();
       localFile = File(image.path);
@@ -170,15 +174,21 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
         '/anchor-points/upload-image',
         fieldName: 'file',
         bytes: bytes,
-        filename: '${DateTime.now().millisecondsSinceEpoch}.jpg',
+        // Random suffix: two admins in the same millisecond used to collide
+        // on the file name and fail the upload.
+        filename:
+            '${DateTime.now().microsecondsSinceEpoch}-'
+            '${Random().nextInt(1 << 32).toRadixString(16)}.jpg',
       );
       final imageUrl = (uploadResult as Map<String, dynamic>)['url'] as String;
+      unrecordedUpload = imageUrl;
 
       final photoResult = await _mapApi.post(
         '/anchor-points/${widget.anchorPointId}/photos',
         {'image_url': imageUrl, 'heading': heading, 'captured_by': userId},
       );
       final id = (photoResult as List).first['id'] as String;
+      unrecordedUpload = null;
 
       if (!mounted) return;
       setState(() {
@@ -198,6 +208,9 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
       // Only confirmed-good anchor points are searchable - if this point is
       // already verified, keep it that way by indexing the new photo too,
       // instead of only re-indexing on the next edit-screen save.
+      // Its details may have failed to load at first; without them a new
+      // photo on a verified point was silently never indexed.
+      if (_anchorPoint == null) await _loadAnchorPoint();
       if (_anchorPoint?['status'] == 'verified') {
         try {
           await _aiTrainingApi.post(
@@ -229,6 +242,15 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
         }
       }
     } catch (e) {
+      final orphan = unrecordedUpload;
+      if (orphan != null) {
+        // Uploaded but never recorded: don't leave it in Storage forever.
+        _mapApi
+            .delete(
+              '/anchor-points/upload-image?url=${Uri.encodeQueryComponent(orphan)}',
+            )
+            .then((_) {}, onError: (_) {});
+      }
       if (mounted) {
         setState(() {
           if (localFile != null) {
@@ -290,6 +312,24 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
       await _aiTrainingApi.delete('/index_photo/${photo.id}');
     } on ApiException {
       // Nothing to show the admin - the photo is already gone either way.
+    }
+
+    // A verified point with no photos can never be recognised: put it back
+    // to pending so it isn't offered as if it worked.
+    final noPhotosLeft = !_photos.any((p) => p.id != null);
+    if (noPhotosLeft && _anchorPoint?['status'] == 'verified') {
+      try {
+        await _mapApi.patch('/anchor-points/${widget.anchorPointId}', {
+          'status': 'pending',
+        });
+        if (!mounted) return;
+        setState(() => _anchorPoint = {..._anchorPoint!, 'status': 'pending'});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.capturePhotoSnackbarBackToPending)),
+        );
+      } on ApiException {
+        // The photo is gone; the status can still be fixed in the edit screen.
+      }
     }
   }
 

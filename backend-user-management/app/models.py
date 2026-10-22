@@ -2,7 +2,10 @@ from pydantic import BaseModel
 
 
 class ProfileCreate(BaseModel):
-    id: str
+    # Optional: create_profile always forces it to the verified caller, and
+    # AuthGate's missing-profile self-heal sends no id at all. Required, it
+    # made that self-heal fail with a 422.
+    id: str | None = None
     place_id: str | None = None
     role_id: int | None = None
     full_name: str | None = None
