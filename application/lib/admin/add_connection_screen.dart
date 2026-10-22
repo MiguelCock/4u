@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/api_error_messages.dart';
-import 'capture_screen.dart' show anchorDisplayName;
+import '../services/location_types.dart' show anchorDisplayName;
 
 /// Dropdown-based fallback/precision flow for creating an anchor-point
 /// connection - mirrors the map-tap flow in `ConnectAnchorPointsScreen` but

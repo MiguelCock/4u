@@ -8,70 +8,9 @@ import 'capture_photo_screen.dart';
 import 'location_picker_screen.dart';
 import '../services/api_error_messages.dart';
 import '../services/destinations.dart';
+import '../services/location_types.dart';
 import '../widgets/floor_field.dart';
-
-/// Matches db_schema/location_type.sql's seeded values — static reference
-/// data with no CRUD endpoint anywhere, so hardcoded here rather than
-/// fetched (same reasoning as roles.sql in auth/signup_screen.dart).
-const Map<int, String> kLocationTypes = {
-  1: 'entrance',
-  2: 'intersection',
-  3: 'elevator',
-  4: 'stairwell',
-  5: 'classroom',
-  6: 'office',
-  7: 'restroom',
-  8: 'cafeteria',
-  10: 'hallway',
-  11: 'ramp',
-  12: 'outdoor_path',
-  13: 'parking',
-  14: 'lobby',
-  15: 'auditorium',
-  16: 'courtyard',
-  17: 'crosswalk',
-  18: 'bus_stop',
-  9: 'other',
-};
-
-/// What admin screens call an anchor point: its description, or, for an
-/// unnamed in-between point, its location type plus a short id so several
-/// "Hallway" points can still be told apart.
-String anchorDisplayName(AppLocalizations l10n, Map<String, dynamic>? point) {
-  final description = (point?['location_description'] as String? ?? '').trim();
-  if (description.isNotEmpty) return description;
-  final id = point?['id'] as String? ?? '?';
-  final type = kLocationTypes[point?['location_type_id'] as int?];
-  final shortId = id.length > 4 ? id.substring(0, 4) : id;
-  return type == null ? shortId : '${locationTypeLabel(l10n, type)} · $shortId';
-}
-
-/// `kLocationTypes`' values are the stable storage keys sent to/from the
-/// backend - this maps one to the localized label shown in dropdowns,
-/// without changing what's actually stored.
-String locationTypeLabel(AppLocalizations l10n, String type) {
-  return switch (type) {
-    'entrance' => l10n.locationTypeEntrance,
-    'intersection' => l10n.locationTypeIntersection,
-    'elevator' => l10n.locationTypeElevator,
-    'stairwell' => l10n.locationTypeStairwell,
-    'classroom' => l10n.locationTypeClassroom,
-    'office' => l10n.locationTypeOffice,
-    'restroom' => l10n.locationTypeRestroom,
-    'cafeteria' => l10n.locationTypeCafeteria,
-    'hallway' => l10n.locationTypeHallway,
-    'ramp' => l10n.locationTypeRamp,
-    'outdoor_path' => l10n.locationTypeOutdoorPath,
-    'parking' => l10n.locationTypeParking,
-    'lobby' => l10n.locationTypeLobby,
-    'auditorium' => l10n.locationTypeAuditorium,
-    'courtyard' => l10n.locationTypeCourtyard,
-    'crosswalk' => l10n.locationTypeCrosswalk,
-    'bus_stop' => l10n.locationTypeBusStop,
-    'other' => l10n.locationTypeOther,
-    _ => type,
-  };
-}
+import '../widgets/location_type_field.dart';
 
 /// Creates a new `anchor_points` row (position + description only — no
 /// photos live here anymore, since one physical point ends up with ~4-8
@@ -375,21 +314,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       onChanged: (floor) => setState(() => _floor = floor),
                     ),
                     const SizedBox(height: 12),
-                    DropdownButtonFormField<int>(
-                      initialValue: _selectedLocationTypeId,
-                      decoration: InputDecoration(
-                        labelText: l10n.commonLocationTypeLabel,
-                      ),
-                      items: kLocationTypes.entries
-                          .map(
-                            (e) => DropdownMenuItem(
-                              value: e.key,
-                              child: Text(locationTypeLabel(l10n, e.value)),
-                            ),
-                          )
-                          .toList(),
+                    LocationTypeField(
+                      value: _selectedLocationTypeId,
                       onChanged: (value) =>
-                          setState(() => _selectedLocationTypeId = value!),
+                          setState(() => _selectedLocationTypeId = value),
                     ),
                     const SizedBox(height: 12),
                     TextField(

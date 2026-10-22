@@ -127,6 +127,12 @@ The fast path — AWS CLI, credentials, the key pair, security group, and Elasti
   ssh ec2-user@<instance-id> "cd ~/4u && sudo docker compose up -d"
   ```
 - **Pulled new code and want it live**: repeat step 3's `rsync`/`scp` commands, then step 4's `sudo docker compose up --build -d` again, on the already-running instance - followed by `sudo docker compose up -d --force-recreate gateway` every time (see step 4's note above), not only when `gateway/nginx.conf` itself changed. Every health check can return `200 OK` and the routing still be silently wrong otherwise.
+- **Redeploys: keep the server's `.env` files**: add `--exclude '.env'` to step 3's `rsync` on every redeploy. Otherwise your local copies of each service's `.env` overwrite the server's, undoing any fix made directly on the instance. This happened with `backend-ai-training/.env`'s Supabase key. Only the first deploy needs to copy them.
+- **Free disk space after redeploys**: every `--build` leaves the previous images behind. After about a dozen redeploys the 32 GB disk was 95% full (22 GB of unused images), and the next build failed partway with `No space left on device`. Confirmed live, and it left most services running the old code. After each redeploy, once the stack is up, run:
+  ```
+  ssh ec2-user@<instance-id> "sudo docker image prune -af && sudo docker builder prune -f && df -h /"
+  ```
+  It removes only images no container is using and the build cache. Running containers and volumes are untouched, including `caddy_data` with the HTTPS certificate. If a build already failed with `No space left on device`, run this first and then repeat step 4's `up --build -d`.
 - **Done testing for now**: `./stop.sh` — pauses compute billing, everything on disk (and the Elastic IP) survives.
 
 ## Tearing down completely

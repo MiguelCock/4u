@@ -4,13 +4,13 @@ import 'package:latlong2/latlong.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'capture_photo_screen.dart';
-import 'capture_screen.dart'
-    show anchorDisplayName, kLocationTypes, locationTypeLabel;
+import '../services/location_types.dart';
 import 'location_picker_screen.dart';
 import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
 import '../services/destinations.dart';
 import '../widgets/floor_field.dart';
+import '../widgets/location_type_field.dart';
 
 const List<String> kAnchorPointStatuses = ['pending', 'verified', 'rejected'];
 
@@ -288,19 +288,8 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
                 onChanged: (floor) => setState(() => _floor = floor),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<int>(
-                initialValue: _locationTypeId,
-                decoration: InputDecoration(
-                  labelText: l10n.commonLocationTypeLabel,
-                ),
-                items: kLocationTypes.entries
-                    .map(
-                      (e) => DropdownMenuItem(
-                        value: e.key,
-                        child: Text(locationTypeLabel(l10n, e.value)),
-                      ),
-                    )
-                    .toList(),
+              LocationTypeField(
+                value: _locationTypeId,
                 onChanged: (value) => setState(() => _locationTypeId = value),
               ),
               const SizedBox(height: 12),

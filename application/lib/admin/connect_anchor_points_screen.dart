@@ -8,7 +8,8 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/map_tile_config.dart';
 import '../services/api_error_messages.dart';
-import 'capture_screen.dart' show anchorDisplayName;
+import '../services/location_types.dart' show anchorDisplayName;
+import '../services/map_tap.dart';
 
 /// Map-tap flow for building the anchor-point walkability graph: tap one
 /// anchor point, then another, to create a connection between them. The
@@ -238,24 +239,13 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
     }
   }
 
-  Map<String, dynamic>? _pointNear(LatLng tapped) {
-    final camera = _mapController.camera;
-    final tapOffset = camera.latLngToScreenOffset(tapped);
-    Map<String, dynamic>? nearest;
-    var nearestDistance = _kTapRadiusPx;
-    for (final point in _visibleAnchorPoints) {
-      final lat = (point['latitude'] as num?)?.toDouble();
-      final lng = (point['longitude'] as num?)?.toDouble();
-      if (lat == null || lng == null) continue;
-      final distance =
-          (camera.latLngToScreenOffset(LatLng(lat, lng)) - tapOffset).distance;
-      if (distance <= nearestDistance) {
-        nearestDistance = distance;
-        nearest = point;
-      }
-    }
-    return nearest;
-  }
+  Map<String, dynamic>? _pointNear(LatLng tapped) => nearestOnScreen(
+    camera: _mapController.camera,
+    tapped: tapped,
+    items: _visibleAnchorPoints,
+    positionOf: anchorPosition,
+    radiusPx: _kTapRadiusPx,
+  );
 
   static String _pairKey(String a, String b) =>
       a.compareTo(b) < 0 ? '$a|$b' : '$b|$a';

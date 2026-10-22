@@ -7,6 +7,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 ## [Unreleased]
 
 ### Added
+- **Anchor points map** (admin): switch the Anchor points list to a map, tap a point to see it and edit, move, verify, connect or add photos. Moving shows exactly where the point will land.
+- **Verify / unverify from the list** with one button on each anchor point row.
+- **15 new place types**: stationery shop, copy center, store, ATM / bank, library, laboratory, computer room, study area, infirmary, gym / sports area, chapel, exit / gate, bike parking, waiting area and drinking fountain.
+- The place type picker is grouped into categories, with a search box. Hallway and outdoor path, the most used, come first.
 - A **Floor** field when creating or editing an anchor point (every point used to be saved on the ground floor).
 
 ### Changed
