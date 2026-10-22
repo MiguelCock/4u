@@ -462,5 +462,14 @@
   "signupCheckEmailTitle": "Check your email",
   "signupCheckEmailContent": "We sent a confirmation link to {email}. Open it on this phone to finish creating your account. The app will open and sign you in.",
   "@signupCheckEmailContent": {"placeholders": {"email": {"type": "String"}}},
-  "signupBackToLogin": "Back to log in"
+  "signupBackToLogin": "Back to log in",
+  "adminDeleteKeepsHistoryNote": "\n\nSaved routes that use these points are removed too. Trip history is kept.",
+  "addConnectionErrorBadDistance": "Enter the distance as a number of meters greater than 0, for example 12.5.",
+  "commonFloorLabel": "Floor",
+  "commonFloorOption": "Floor {number}",
+  "@commonFloorOption": {"placeholders": {"number": {"type": "int"}}},
+  "editAnchorErrorVerifyNeedsPhoto": "Add at least one photo before verifying this point - without photos the camera can never recognise it.",
+  "editAnchorErrorPhotosUnavailable": "This point's photos couldn't be loaded, so it can't be sent to photo search. Check the connection and try again.",
+  "capturePhotoSnackbarBackToPending": "That was this point's last photo, so it's back to pending. Add photos and verify it again so the camera can recognise it.",
+  "commonErrorFloorsInvalid": "Floors must be a whole number of at least 1."
 }

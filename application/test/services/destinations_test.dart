@@ -35,4 +35,17 @@ void main() {
     );
     expect(isDestinationAnchor({'location_type_id': null}), isFalse);
   });
+
+  test('inactive buildings and universities are hidden from users', () {
+    final places = [
+      {'id': 'u1'},
+      {'id': 'u2', 'is_active': false},
+    ];
+    final buildings = [
+      {'id': 'b1', 'place_id': 'u1'},
+      {'id': 'b2', 'place_id': 'u1', 'is_active': false},
+      {'id': 'b3', 'place_id': 'u2'},
+    ];
+    expect(activeBuildingIds(places, buildings), {'b1'});
+  });
 }

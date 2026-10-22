@@ -66,6 +66,7 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
         });
       }
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(
         () => _error = AppLocalizations.of(context)!
             .addBuildingErrorLoadUniversitiesFailed(
@@ -106,7 +107,14 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
     final name = _nameController.text.trim();
     final lat = double.tryParse(_latController.text.trim());
     final lng = double.tryParse(_lngController.text.trim());
-    final floors = int.tryParse(_floorsController.text.trim()) ?? 1;
+    // An unparsable or zero value used to be saved as 1 without a word.
+    final floors = int.tryParse(_floorsController.text.trim());
+    if (floors == null || floors < 1) {
+      setState(
+        () => _error = AppLocalizations.of(context)!.commonErrorFloorsInvalid,
+      );
+      return;
+    }
     if (_selectedPlaceId == null) {
       setState(
         () =>
@@ -143,6 +151,7 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(
         () => _error = AppLocalizations.of(
           context,

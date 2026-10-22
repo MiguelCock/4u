@@ -5,6 +5,7 @@ from typing import Annotated
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, UploadFile
+from packages.db_errors import install_db_error_handlers
 from packages.supabase import SupaBase
 
 from . import kalman
@@ -14,6 +15,7 @@ from .session_store import SessionStore
 load_dotenv()
 
 app = FastAPI()
+install_db_error_handlers(app)
 
 # Added in the app-integration follow-up to #24 - the app is this
 # endpoint's first real end-user caller, so it needs the same per-request

@@ -10,6 +10,7 @@ import 'location_picker_screen.dart';
 import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
 import '../services/destinations.dart';
+import '../widgets/floor_field.dart';
 
 const List<String> kAnchorPointStatuses = ['pending', 'verified', 'rejected'];
 
@@ -45,6 +46,10 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
   late final TextEditingController _descriptionController;
   late final TextEditingController _surfaceController;
   late LatLng _position;
+  late final LatLng _originalPosition;
+  late int _floor;
+  int _buildingFloors = 1;
+  bool _photosLoadFailed = false;
   int? _locationTypeId;
   late String _status;
   bool _indoor = true;
@@ -65,6 +70,8 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
       (widget.anchorPoint['latitude'] as num).toDouble(),
       (widget.anchorPoint['longitude'] as num).toDouble(),
     );
+    _originalPosition = _position;
+    _floor = widget.anchorPoint['floor'] as int? ?? 0;
     _locationTypeId = widget.anchorPoint['location_type_id'] as int?;
     _status = widget.anchorPoint['status'] as String? ?? 'pending';
     final metadata =
@@ -75,6 +82,21 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
       text: metadata['surface'] as String? ?? '',
     );
     _loadPhotos();
+    _loadBuildingFloors();
+  }
+
+  /// For the floor dropdown; best effort (the point's own floor is always
+  /// offered).
+  Future<void> _loadBuildingFloors() async {
+    try {
+      final building = await _mapApi.get(
+        '/buildings/${widget.anchorPoint['building_id']}',
+      );
+      if (!mounted || building is! Map) return;
+      setState(() => _buildingFloors = building['floors'] as int? ?? 1);
+    } on ApiException {
+      // Keep the default.
+    }
   }
 
   Future<void> _loadPhotos() async {
@@ -87,8 +109,9 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
         setState(() => _photos = result.cast<Map<String, dynamic>>());
       }
     } on ApiException {
-      // Photo preview is a convenience for the verify decision, not
-      // required to edit the rest of the form - fail silently.
+      // Not needed to edit the rest of the form, but saving a *verified*
+      // point re-sends its photos to search, so _submit checks this.
+      if (mounted) setState(() => _photosLoadFailed = true);
     } finally {
       if (mounted) setState(() => _loadingPhotos = false);
     }
@@ -130,6 +153,19 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
       setState(() => _error = l10n.commonErrorDescriptionRequired);
       return;
     }
+    if (_status == 'verified') {
+      // Silently skipping indexing used to leave a "verified" point the
+      // camera could never recognise.
+      if (_photosLoadFailed) {
+        setState(() => _error = l10n.editAnchorErrorPhotosUnavailable);
+        return;
+      }
+      if (!_loadingPhotos && _photos.isEmpty) {
+        setState(() => _error = l10n.editAnchorErrorVerifyNeedsPhoto);
+        return;
+      }
+    }
+    final moved = _position != _originalPosition;
 
     setState(() {
       _submitting = true;
@@ -142,6 +178,9 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
         'location_description': description.isEmpty ? null : description,
         'latitude': _position.latitude,
         'longitude': _position.longitude,
+        // The phone's GPS altitude was for where the point was captured.
+        if (moved) 'altitude': null,
+        'floor': _floor,
         'location_type_id': _locationTypeId,
         'status': _status,
         'metadata': {
@@ -151,6 +190,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
         },
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = l10n.editAnchorErrorUpdateFailed(
           friendlyApiErrorMessage(context, e),
@@ -178,6 +218,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
           ),
         );
       } on ApiException catch (e) {
+        if (!mounted) return;
         setState(() {
           _error = l10n.editAnchorErrorIndexingFailed(
             friendlyApiErrorMessage(context, e),
@@ -198,6 +239,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
           '/index_anchor/${widget.anchorPoint['id']}',
         );
       } on ApiException catch (e) {
+        if (!mounted) return;
         setState(() {
           _error = l10n.editAnchorErrorUnindexFailed(
             friendlyApiErrorMessage(context, e),
@@ -238,6 +280,12 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
                       : l10n.commonDescriptionHelperOptional,
                   helperMaxLines: 3,
                 ),
+              ),
+              const SizedBox(height: 12),
+              FloorField(
+                value: _floor,
+                buildingFloors: _buildingFloors,
+                onChanged: (floor) => setState(() => _floor = floor),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<int>(

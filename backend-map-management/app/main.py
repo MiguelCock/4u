@@ -4,6 +4,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from packages.db_errors import install_db_error_handlers, select_all
 from packages.supabase import SupaBase
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ from .models import (
 load_dotenv()
 
 app = FastAPI()
+install_db_error_handlers(app)
 
 db = SupaBase(
     os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -52,25 +54,92 @@ def _haversine_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> flo
     return _EARTH_RADIUS_METERS * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+# An `in_` filter puts every id in the request URL; a big university could
+# exceed URL limits, so ids are sent in chunks.
+_IN_CHUNK = 150
+
+
+def _chunks(ids: list[str]) -> list[list[str]]:
+    return [ids[i : i + _IN_CHUNK] for i in range(0, len(ids), _IN_CHUNK)]
+
+
 def _photo_urls_for_anchor_points(ids: list[str]) -> list[str]:
-    if not ids:
-        return []
-    result = (
-        db.client.table("anchor_point_photos")
-        .select("image_url")
-        .in_("anchor_point_id", ids)
-        .execute()
-    )
-    return [row["image_url"] for row in result.data]
+    urls: list[str] = []
+    for chunk in _chunks(ids):
+        rows = select_all(
+            lambda chunk=chunk: (
+                db.client.table("anchor_point_photos")
+                .select("id,image_url")
+                .in_("anchor_point_id", chunk)
+                .order("id")
+            )
+        )
+        urls.extend(row["image_url"] for row in rows)
+    return urls
 
 
 def _anchor_point_ids_for_buildings(ids: list[str]) -> list[str]:
-    if not ids:
-        return []
-    result = (
-        db.client.table("anchor_points").select("id").in_("building_id", ids).execute()
+    found: list[str] = []
+    for chunk in _chunks(ids):
+        rows = select_all(
+            lambda chunk=chunk: (
+                db.client.table("anchor_points")
+                .select("id")
+                .in_("building_id", chunk)
+                .order("id")
+            )
+        )
+        found.extend(row["id"] for row in rows)
+    return found
+
+
+def _list_all(table: str) -> list[dict]:
+    """Every row, past Supabase's 1000-row-per-request cap."""
+    return select_all(lambda: db.client.table(table).select("*").order("id"))
+
+
+def _recompute_connection_distances(anchor_id: str) -> None:
+    """After a point moves, its connections' straight-line distances are
+    stale (they weight the route search). Distances an admin typed by hand
+    (distance_manual) are kept."""
+    connections = (
+        db.client.table("anchor_point_connections")
+        .select("id,anchor_point_a_id,anchor_point_b_id,distance_manual")
+        .or_(f"anchor_point_a_id.eq.{anchor_id},anchor_point_b_id.eq.{anchor_id}")
+        .execute()
+        .data
     )
-    return [row["id"] for row in result.data]
+    automatic = [c for c in connections if not c.get("distance_manual")]
+    if not automatic:
+        return
+    ids = {anchor_id}
+    for c in automatic:
+        ids.update((c["anchor_point_a_id"], c["anchor_point_b_id"]))
+    points = (
+        db.client.table("anchor_points")
+        .select("id,latitude,longitude")
+        .in_("id", sorted(ids))
+        .execute()
+        .data
+    )
+    by_id = {p["id"]: p for p in points}
+    for c in automatic:
+        a = by_id.get(c["anchor_point_a_id"])
+        b = by_id.get(c["anchor_point_b_id"])
+        if a is None or b is None:
+            continue
+        distance = _haversine_meters(
+            a["latitude"], a["longitude"], b["latitude"], b["longitude"]
+        )
+        db.client.table("anchor_point_connections").update(
+            {"distance_meters": distance}
+        ).eq("id", c["id"]).execute()
+
+
+def _require_found(result, what: str):
+    if not result.data:
+        raise HTTPException(status_code=404, detail=f"{what} not found")
+    return result.data
 
 
 def _building_ids_for_place(id: str) -> list[str]:
@@ -103,6 +172,30 @@ async def upload_anchor_point_image(
         raise HTTPException(status_code=403, detail="Admin only")
     url = db.upload_image("anchor-points", file.file, file.filename)
     return {"url": url}
+
+
+# Declared before DELETE /anchor-points/{id}, which would otherwise capture
+# "upload-image" as an id.
+@app.delete("/anchor-points/upload-image")
+async def delete_uploaded_anchor_point_image(
+    url: str, caller_id: str = Depends(get_caller_id)
+):
+    """Removes a file uploaded by the step above whose photo record was
+    never saved (the app's second request failed), so it doesn't sit in
+    Storage forever. Refuses files a photo row still uses."""
+    if not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
+    used = (
+        db.client.table("anchor_point_photos")
+        .select("id")
+        .eq("image_url", url)
+        .limit(1)
+        .execute()
+    )
+    if used.data:
+        raise HTTPException(status_code=409, detail="This photo is still in use")
+    _delete_photo_files([url])
+    return "ok"
 
 
 def _require_description_for_destinations(
@@ -139,8 +232,7 @@ async def create_anchor_point(
 async def list_anchor_points(
     caller_id: str = Depends(get_caller_id),
 ) -> list[AnchorPointResponse]:
-    result = db.client.table("anchor_points").select("*").execute()
-    return result.data
+    return _list_all("anchor_points")
 
 
 @app.get("/anchor-points/{id}")
@@ -160,23 +252,41 @@ async def update_anchor_point(
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     changes = anchor_point.model_dump(exclude_unset=True)
-    if "location_type_id" in changes or "location_description" in changes:
-        # Check the row as it will be after this PATCH, not just the
-        # payload - changing only the type to "classroom" on an unnamed
-        # point must still be rejected.
-        current = (
-            db.client.table("anchor_points")
-            .select("location_type_id, location_description")
-            .eq("id", id)
+    current = _require_found(
+        db.client.table("anchor_points")
+        .select("location_type_id,location_description,latitude,longitude,status")
+        .eq("id", id)
+        .execute(),
+        "Anchor point",
+    )[0]
+    # Check the row as it will be after this PATCH, not just the payload -
+    # changing only the type to "classroom" on an unnamed point must still
+    # be rejected.
+    merged = {**current, **changes}
+    _require_description_for_destinations(
+        merged.get("location_type_id"), merged.get("location_description")
+    )
+    if changes.get("status") == "verified" and current.get("status") != "verified":
+        photos = (
+            db.client.table("anchor_point_photos")
+            .select("id")
+            .eq("anchor_point_id", id)
+            .limit(1)
             .execute()
         )
-        if not current.data:
-            raise HTTPException(status_code=404, detail="Anchor point not found")
-        merged = {**current.data[0], **changes}
-        _require_description_for_destinations(
-            merged.get("location_type_id"), merged.get("location_description")
-        )
+        if not photos.data:
+            raise HTTPException(
+                status_code=400,
+                detail="Add at least one photo before verifying this point - "
+                "without photos the camera can never recognise it.",
+            )
     result = db.client.table("anchor_points").update(changes).eq("id", id).execute()
+    moved = any(
+        key in changes and changes[key] != current.get(key)
+        for key in ("latitude", "longitude")
+    )
+    if moved:
+        _recompute_connection_distances(id)
     return result.data
 
 
@@ -185,7 +295,10 @@ async def delete_anchor_point(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     urls = _photo_urls_for_anchor_points([id])
-    db.client.table("anchor_points").delete().eq("id", id).execute()
+    _require_found(
+        db.client.table("anchor_points").delete().eq("id", id).execute(),
+        "Anchor point",
+    )
     _delete_photo_files(urls)
     return "ok"
 
@@ -200,6 +313,10 @@ async def create_anchor_point_photo(
     # the verified caller rather than trusting whatever the body sent, same
     # "don't trust a client-supplied identity field" principle #111 applied
     # to profiles.id.
+    _require_found(
+        db.client.table("anchor_points").select("id").eq("id", id).execute(),
+        "Anchor point",
+    )
     payload = {**photo.model_dump(), "anchor_point_id": id, "captured_by": caller_id}
     result = db.client.table("anchor_point_photos").insert(payload).execute()
     return result.data
@@ -222,8 +339,7 @@ async def list_anchor_point_photos(
 async def list_all_anchor_point_photos(
     caller_id: str = Depends(get_caller_id),
 ) -> list[AnchorPointPhotoResponse]:
-    result = db.client.table("anchor_point_photos").select("*").execute()
-    return result.data
+    return _list_all("anchor_point_photos")
 
 
 @app.delete("/anchor-point-photos/{id}")
@@ -236,7 +352,7 @@ async def delete_anchor_point_photo(id: str, caller_id: str = Depends(get_caller
         .eq("id", id)
         .execute()
     )
-    url = result.data[0]["image_url"] if result.data else None
+    url = _require_found(result, "Photo")[0]["image_url"]
     db.client.table("anchor_point_photos").delete().eq("id", id).execute()
     _delete_photo_files([url] if url else [])
     return "ok"
@@ -264,6 +380,7 @@ async def create_anchor_point_connection(
     payload["anchor_point_a_id"] = a_id
     payload["anchor_point_b_id"] = b_id
 
+    payload["distance_manual"] = payload["distance_meters"] is not None
     if payload["distance_meters"] is None:
         points = (
             db.client.table("anchor_points")
@@ -273,6 +390,8 @@ async def create_anchor_point_connection(
             .data
         )
         by_id = {p["id"]: p for p in points}
+        if a_id not in by_id or b_id not in by_id:
+            raise HTTPException(status_code=404, detail="Anchor point not found")
         if a_id in by_id and b_id in by_id:
             payload["distance_meters"] = _haversine_meters(
                 by_id[a_id]["latitude"],
@@ -289,8 +408,7 @@ async def create_anchor_point_connection(
 async def list_anchor_point_connections(
     caller_id: str = Depends(get_caller_id),
 ) -> list[AnchorPointConnectionResponse]:
-    result = db.client.table("anchor_point_connections").select("*").execute()
-    return result.data
+    return _list_all("anchor_point_connections")
 
 
 @app.get("/anchor-points/{id}/connections")
@@ -312,7 +430,10 @@ async def delete_anchor_point_connection(
 ):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    db.client.table("anchor_point_connections").delete().eq("id", id).execute()
+    _require_found(
+        db.client.table("anchor_point_connections").delete().eq("id", id).execute(),
+        "Connection",
+    )
     return "ok"
 
 
@@ -320,8 +441,7 @@ async def delete_anchor_point_connection(
 async def list_buildings(
     caller_id: str = Depends(get_caller_id),
 ) -> list[BuildingResponse]:
-    result = db.client.table("buildings").select("*").execute()
-    return result.data
+    return _list_all("buildings")
 
 
 @app.get("/buildings/{id}")
@@ -356,7 +476,7 @@ async def update_building(
         .eq("id", id)
         .execute()
     )
-    return result.data
+    return _require_found(result, "Building")
 
 
 @app.delete("/buildings/{id}")
@@ -364,7 +484,9 @@ async def delete_building(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     urls = _photo_urls_for_anchor_points(_anchor_point_ids_for_buildings([id]))
-    db.client.table("buildings").delete().eq("id", id).execute()
+    _require_found(
+        db.client.table("buildings").delete().eq("id", id).execute(), "Building"
+    )
     _delete_photo_files(urls)
     return "ok"
 
@@ -381,8 +503,7 @@ async def create_place(place: PlaceCreate, caller_id: str = Depends(get_caller_i
 async def list_places(
     caller_id: str = Depends(get_caller_id),
 ) -> list[PlaceResponse]:
-    result = db.client.table("places").select("*").execute()
-    return result.data
+    return _list_all("places")
 
 
 @app.get("/places/{id}")
@@ -405,7 +526,7 @@ async def update_place(
         .eq("id", id)
         .execute()
     )
-    return result.data
+    return _require_found(result, "University")
 
 
 @app.delete("/places/{id}")
@@ -414,6 +535,8 @@ async def delete_place(id: str, caller_id: str = Depends(get_caller_id)):
         raise HTTPException(status_code=403, detail="Admin only")
     building_ids = _building_ids_for_place(id)
     urls = _photo_urls_for_anchor_points(_anchor_point_ids_for_buildings(building_ids))
-    db.client.table("places").delete().eq("id", id).execute()
+    _require_found(
+        db.client.table("places").delete().eq("id", id).execute(), "University"
+    )
     _delete_photo_files(urls)
     return "ok"

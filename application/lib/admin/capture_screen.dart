@@ -8,6 +8,7 @@ import 'capture_photo_screen.dart';
 import 'location_picker_screen.dart';
 import '../services/api_error_messages.dart';
 import '../services/destinations.dart';
+import '../widgets/floor_field.dart';
 
 /// Matches db_schema/location_type.sql's seeded values — static reference
 /// data with no CRUD endpoint anywhere, so hardcoded here rather than
@@ -104,6 +105,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   // Hallway: most points an admin adds while filling in a route are
   // in-between ones, which don't need a description.
   int _selectedLocationTypeId = 10;
+  int _floor = 0;
   LatLng? _pickedPosition;
   bool _indoor = true;
   String? _lighting;
@@ -137,6 +139,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
         _applyBuildingFilter(preferredBuildingId: widget.initialBuildingId);
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(
         () => _error = AppLocalizations.of(
           context,
@@ -146,6 +149,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  int get _selectedBuildingFloors =>
+      _buildings.firstWhere(
+            (b) => b['id'] == _selectedBuildingId,
+            orElse: () => const {},
+          )['floors']
+          as int? ??
+      1;
 
   void _applyBuildingFilter({String? preferredBuildingId}) {
     _buildings = _buildingsAll
@@ -217,7 +228,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
         'location_type_id': _selectedLocationTypeId,
         'latitude': _pickedPosition?.latitude ?? position!.latitude,
         'longitude': _pickedPosition?.longitude ?? position!.longitude,
-        'altitude': position?.altitude,
+        // The phone's GPS altitude only means something when the point is
+        // where the phone is, not a spot picked on the map.
+        'altitude': _pickedPosition == null ? position?.altitude : null,
+        'floor': _floor,
         'location_description': description.isEmpty ? null : description,
         'metadata': {
           'indoor': _indoor,
@@ -263,12 +277,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
       );
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(
         () => _error = AppLocalizations.of(
           context,
         )!.captureErrorSaveFailed(friendlyApiErrorMessage(context, e)),
       );
     } catch (e) {
+      if (!mounted) return;
       setState(
         () => _error = AppLocalizations.of(
           context,
@@ -347,9 +363,17 @@ class _CaptureScreenState extends State<CaptureScreen> {
                               ),
                             )
                             .toList(),
-                        onChanged: (value) =>
-                            setState(() => _selectedBuildingId = value),
+                        onChanged: (value) => setState(() {
+                          _selectedBuildingId = value;
+                          _floor = 0;
+                        }),
                       ),
+                    const SizedBox(height: 12),
+                    FloorField(
+                      value: _floor,
+                      buildingFloors: _selectedBuildingFloors,
+                      onChanged: (floor) => setState(() => _floor = floor),
+                    ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
                       initialValue: _selectedLocationTypeId,

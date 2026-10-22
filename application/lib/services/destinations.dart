@@ -20,3 +20,21 @@ bool descriptionRequiredFor(int? locationTypeId) =>
 bool isDestinationAnchor(Map<String, dynamic> anchor) =>
     isDestinationType(anchor['location_type_id'] as int?) &&
     (anchor['location_description'] as String? ?? '').trim().isNotEmpty;
+
+/// Ids of buildings users may navigate in: the building and its university
+/// are both active. An admin deactivating either hides its points from the
+/// destination list and from start-point selection.
+Set<String> activeBuildingIds(
+  Iterable<Map<String, dynamic>> places,
+  Iterable<Map<String, dynamic>> buildings,
+) {
+  final activePlaces = {
+    for (final p in places)
+      if (p['is_active'] != false) p['id'],
+  };
+  return {
+    for (final b in buildings)
+      if (b['is_active'] != false && activePlaces.contains(b['place_id']))
+        b['id'] as String,
+  };
+}

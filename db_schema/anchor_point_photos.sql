@@ -3,7 +3,7 @@ CREATE TABLE anchor_point_photos (
     anchor_point_id UUID NOT NULL REFERENCES anchor_points(id) ON DELETE CASCADE,
     image_url TEXT NOT NULL,
     heading FLOAT4,
-    captured_by UUID NOT NULL REFERENCES profiles(id),
+    captured_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
     captured_at TIMESTAMPTZ DEFAULT NOW()
 );
 

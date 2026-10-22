@@ -2,6 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from packages.db_errors import install_db_error_handlers
 from packages.qdrant import Qdrant
 from packages.supabase import SupaBase
 from qdrant_client.models import (
@@ -19,6 +20,7 @@ from .models import IndexAnchorRequest, IndexAnchorResponse, SearchSimilarRespon
 load_dotenv()
 
 app = FastAPI()
+install_db_error_handlers(app)
 
 qdrant = Qdrant(os.environ.get("QDRANT_URL"), os.environ.get("QDRANT_KEY"))
 # Only needed to verify caller bearer tokens / admin role for the write

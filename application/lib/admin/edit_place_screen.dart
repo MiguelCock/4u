@@ -96,6 +96,7 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(
         () => _error = AppLocalizations.of(
           context,

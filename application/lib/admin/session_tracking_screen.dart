@@ -78,19 +78,13 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
   Future<void> _pollLogs() async {
     if (_stopped) return;
     try {
-      final result = await _navigationApi.get('/logs');
+      // Server-side filter, already in time order: fetching every log in
+      // the system and filtering here broke past Supabase's 1000-row cap.
+      final result = await _navigationApi.get(
+        '/logs?session_id=${widget.session['id']}',
+      );
       if (result is! List || _stopped) return;
-      final sessionId = widget.session['id'];
-      final logs =
-          result
-              .cast<Map<String, dynamic>>()
-              .where((log) => log['session_id'] == sessionId)
-              .toList()
-            ..sort(
-              (a, b) => (a['timestamp'] as String).compareTo(
-                b['timestamp'] as String,
-              ),
-            );
+      final logs = result.cast<Map<String, dynamic>>();
       final trail = <LatLng>[];
       for (final log in logs) {
         final lat =

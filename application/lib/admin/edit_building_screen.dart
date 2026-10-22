@@ -90,7 +90,8 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
           initialPosition: initial,
           showPlaces: true,
           showBuildings: true,
-          buildingsPlaceId: widget.building['place_id'] as String?,
+          // The university selected above, which may differ from the saved one.
+          buildingsPlaceId: _selectedPlaceId,
         ),
       ),
     );
@@ -106,7 +107,14 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
     final name = _nameController.text.trim();
     final lat = double.tryParse(_latController.text.trim());
     final lng = double.tryParse(_lngController.text.trim());
-    final floors = int.tryParse(_floorsController.text.trim()) ?? 1;
+    // An unparsable or zero value used to be saved as 1 without a word.
+    final floors = int.tryParse(_floorsController.text.trim());
+    if (floors == null || floors < 1) {
+      setState(
+        () => _error = AppLocalizations.of(context)!.commonErrorFloorsInvalid,
+      );
+      return;
+    }
     if (name.isEmpty || lat == null || lng == null) {
       setState(
         () => _error = AppLocalizations.of(
@@ -137,6 +145,7 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(
         () => _error = AppLocalizations.of(
           context,

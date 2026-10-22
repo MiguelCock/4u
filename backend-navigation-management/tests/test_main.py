@@ -298,7 +298,9 @@ def test_create_log_self_allowed():
     _as_caller("u1")
     mock_client = _mock_multi_table_client(
         {
-            "navigation_sessions": _sessions_table(select_rows=[{"user_id": "u1"}]),
+            "navigation_sessions": _sessions_table(
+                select_rows=[{"user_id": "u1", "status": "active"}]
+            ),
             "navigation_logs": MagicMock(
                 **{"insert.return_value.execute.return_value.data": [_LOG_ROW]}
             ),
@@ -330,7 +332,9 @@ def test_create_log_allowed_for_admin():
     _as_caller("admin1")
     mock_client = _mock_multi_table_client(
         {
-            "navigation_sessions": _sessions_table(select_rows=[{"user_id": "u1"}]),
+            "navigation_sessions": _sessions_table(
+                select_rows=[{"user_id": "u1", "status": "active"}]
+            ),
             "profiles": _profiles_table(admin=True),
             "navigation_logs": MagicMock(
                 **{"insert.return_value.execute.return_value.data": [_LOG_ROW]}
@@ -521,3 +525,127 @@ def test_active_sessions_are_the_callers_own_newest_first():
     )
     # Not admin-gated, and never mistaken for GET /sessions/{id}.
     mock_client.table.assert_called_once_with("navigation_sessions")
+
+
+# --- CRUD audit fixes -------------------------------------------------------
+
+
+def test_logs_are_refused_once_the_trip_has_ended():
+    _as_caller("u1")
+    logs_table = MagicMock()
+    mock_client = _mock_multi_table_client(
+        {
+            "navigation_sessions": _sessions_table(
+                select_rows=[{"user_id": "u1", "status": "completed"}]
+            ),
+            "navigation_logs": logs_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/logs", json={"session_id": "s1", "gps_lat": 6.24, "gps_long": -75.58}
+        )
+    assert response.status_code == 409
+    logs_table.insert.assert_not_called()
+
+
+def test_a_match_on_a_deleted_anchor_is_dropped_not_fatal():
+    _as_caller("u1")
+    logs_table = MagicMock(
+        **{"insert.return_value.execute.return_value.data": [_LOG_ROW]}
+    )
+    anchors_table = MagicMock()
+    anchors_table.select.return_value.eq.return_value.execute.return_value.data = []
+    mock_client = _mock_multi_table_client(
+        {
+            "navigation_sessions": _sessions_table(
+                select_rows=[{"user_id": "u1", "status": "active"}]
+            ),
+            "navigation_logs": logs_table,
+            "anchor_points": anchors_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/logs",
+            json={
+                "session_id": "s1",
+                "gps_lat": 6.24,
+                "gps_long": -75.58,
+                "anchor_match_id": "gone",
+            },
+        )
+    assert response.status_code == 200
+    assert logs_table.insert.call_args.args[0]["anchor_match_id"] is None
+
+
+def test_logs_for_one_session_for_its_owner():
+    _as_caller("u1")
+    logs_table = MagicMock()
+    ordered = logs_table.select.return_value.eq.return_value.order.return_value.order
+    ordered.return_value.range.return_value.execute.return_value.data = [_LOG_ROW]
+    mock_client = _mock_multi_table_client(
+        {
+            "navigation_sessions": _sessions_table(select_rows=[{"user_id": "u1"}]),
+            "navigation_logs": logs_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.get("/logs?session_id=s1")
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    logs_table.select.return_value.eq.assert_called_once_with("session_id", "s1")
+
+
+def test_logs_for_someone_elses_session_are_forbidden():
+    _as_caller("u2")
+    mock_client = _mock_multi_table_client(
+        {
+            "navigation_sessions": _sessions_table(select_rows=[{"user_id": "u1"}]),
+            "profiles": _profiles_table(admin=False),
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.get("/logs?session_id=s1")
+    assert response.status_code == 403
+
+
+def test_feedback_on_someone_elses_session_is_forbidden():
+    _as_caller("u2")
+    feedback_table = MagicMock()
+    mock_client = _mock_multi_table_client(
+        {
+            "navigation_sessions": _sessions_table(select_rows=[{"user_id": "u1"}]),
+            "profiles": _profiles_table(admin=False),
+            "user_feedback": feedback_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post("/feedback", json={"user_id": "u2", "session_id": "s1"})
+    assert response.status_code == 403
+    feedback_table.insert.assert_not_called()
+
+
+def test_a_finished_trip_cannot_be_reopened_by_its_user():
+    _as_caller("u1")
+    mock_client = _mock_multi_table_client(
+        {
+            "navigation_sessions": _sessions_table(select_rows=[{"user_id": "u1"}]),
+            "profiles": _profiles_table(admin=False),
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/sessions/s1", json={"status": "active"})
+    assert response.status_code == 400
+
+
+def test_invalid_session_status_is_rejected():
+    _as_caller("u1")
+    with patch(
+        "app.main.db.client",
+        _mock_multi_table_client(
+            {"navigation_sessions": _sessions_table(select_rows=[{"user_id": "u1"}])}
+        ),
+    ):
+        response = client.patch("/sessions/s1", json={"status": "done"})
+    assert response.status_code == 422

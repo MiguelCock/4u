@@ -64,11 +64,16 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
       // unnamed hallway/intersection points exist just to connect routes.
       // Universities and buildings with no destinations are hidden too, so
       // the drill-down never leads to an empty list.
+      final active = activeBuildingIds(
+        (results[0] as List).cast<Map<String, dynamic>>(),
+        (results[1] as List).cast<Map<String, dynamic>>(),
+      );
       final anchors = (results[2] as List)
           .cast<Map<String, dynamic>>()
           .where(
             (a) =>
                 a['status'] == 'verified' &&
+                active.contains(a['building_id']) &&
                 isDestinationAnchor(a) &&
                 a['id'] != widget.excludeAnchorId,
           )

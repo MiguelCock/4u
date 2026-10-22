@@ -69,13 +69,19 @@ def _mock_insert_result(rows):
 
 def _mock_select_result(rows):
     mock_client = MagicMock()
-    mock_client.table.return_value.select.return_value.execute.return_value.data = rows
+    select = mock_client.table.return_value.select.return_value
+    select.execute.return_value.data = rows
+    # List endpoints page through select_all: select().order().range().
+    select.order.return_value.range.return_value.execute.return_value.data = rows
     return mock_client
 
 
 def _mock_delete_eq_result():
     mock_client = MagicMock()
-    mock_client.table.return_value.delete.return_value.eq.return_value.execute.return_value.data = []
+    # One row deleted - an empty result now means "not found" (404).
+    mock_client.table.return_value.delete.return_value.eq.return_value.execute.return_value.data = [
+        {"id": "deleted"}
+    ]
     mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = _ADMIN_ROW
     return mock_client
 
@@ -324,8 +330,14 @@ def test_delete_anchor_point_returns_ok():
         {"image_url": "https://example.com/a.jpg"},
         {"image_url": "https://example.com/b.jpg"},
     ]
+    photos_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = [
+        {"image_url": "https://example.com/a.jpg"},
+        {"image_url": "https://example.com/b.jpg"},
+    ]
     anchor_points_table = MagicMock()
-    anchor_points_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    anchor_points_table.delete.return_value.eq.return_value.execute.return_value.data = [
+        {"id": "1"}
+    ]
     mock_client = _mock_multi_table_client(
         {
             "anchor_point_photos": photos_table,
@@ -354,8 +366,11 @@ def test_delete_anchor_point_does_not_call_storage_when_no_photos():
     _as_caller("admin1")
     photos_table = MagicMock()
     photos_table.select.return_value.in_.return_value.execute.return_value.data = []
+    photos_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = []
     anchor_points_table = MagicMock()
-    anchor_points_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    anchor_points_table.delete.return_value.eq.return_value.execute.return_value.data = [
+        {"id": "1"}
+    ]
     mock_client = _mock_multi_table_client(
         {
             "anchor_point_photos": photos_table,
@@ -378,8 +393,13 @@ def test_delete_anchor_point_succeeds_even_if_storage_cleanup_fails():
     photos_table.select.return_value.in_.return_value.execute.return_value.data = [
         {"image_url": "https://example.com/a.jpg"}
     ]
+    photos_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = [
+        {"image_url": "https://example.com/a.jpg"}
+    ]
     anchor_points_table = MagicMock()
-    anchor_points_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    anchor_points_table.delete.return_value.eq.return_value.execute.return_value.data = [
+        {"id": "1"}
+    ]
     mock_client = _mock_multi_table_client(
         {
             "anchor_point_photos": photos_table,
@@ -473,7 +493,9 @@ def test_delete_anchor_point_photo_returns_ok():
     photos_table.select.return_value.eq.return_value.execute.return_value.data = [
         _ANCHOR_POINT_PHOTO_ROW
     ]
-    photos_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    photos_table.delete.return_value.eq.return_value.execute.return_value.data = [
+        {"id": "1"}
+    ]
     mock_client = _mock_multi_table_client(
         {
             "anchor_point_photos": photos_table,
@@ -509,6 +531,7 @@ _CONNECTION_ROW = {
     "notes": None,
     "created_by": "u1",
     "created_at": "2026-01-01T00:00:00Z",
+    "distance_manual": False,
 }
 
 
@@ -599,6 +622,10 @@ def test_create_anchor_point_connection_computes_distance_when_omitted():
     _as_caller("admin1")
     anchor_points_table = MagicMock()
     anchor_points_table.select.return_value.in_.return_value.execute.return_value.data = [
+        {"id": "a1", "latitude": 6.2442, "longitude": -75.5812},
+        {"id": "a2", "latitude": 6.2445, "longitude": -75.5810},
+    ]
+    anchor_points_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = [
         {"id": "a1", "latitude": 6.2442, "longitude": -75.5812},
         {"id": "a2", "latitude": 6.2445, "longitude": -75.5810},
     ]
@@ -777,12 +804,21 @@ def test_delete_building_returns_ok():
         {"id": "a1"},
         {"id": "a2"},
     ]
+    anchor_points_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = [
+        {"id": "a1"},
+        {"id": "a2"},
+    ]
     photos_table = MagicMock()
     photos_table.select.return_value.in_.return_value.execute.return_value.data = [
         {"image_url": "https://example.com/a.jpg"}
     ]
+    photos_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = [
+        {"image_url": "https://example.com/a.jpg"}
+    ]
     buildings_table = MagicMock()
-    buildings_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    buildings_table.delete.return_value.eq.return_value.execute.return_value.data = [
+        {"id": "1"}
+    ]
     mock_client = _mock_multi_table_client(
         {
             "anchor_points": anchor_points_table,
@@ -851,7 +887,7 @@ def test_list_places():
     with patch("app.main.db.client", _mock_select_result([_PLACE_ROW])):
         response = client.get("/places")
     assert response.status_code == 200
-    assert response.json() == [{**_PLACE_ROW, "address": None}]
+    assert response.json() == [{**_PLACE_ROW, "address": None, "is_active": True}]
 
 
 def test_get_place_404_when_missing():
@@ -901,12 +937,20 @@ def test_delete_place_returns_ok():
     anchor_points_table.select.return_value.in_.return_value.execute.return_value.data = [
         {"id": "a1"}
     ]
+    anchor_points_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = [
+        {"id": "a1"}
+    ]
     photos_table = MagicMock()
     photos_table.select.return_value.in_.return_value.execute.return_value.data = [
         {"image_url": "https://example.com/a.jpg"}
     ]
+    photos_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = [
+        {"image_url": "https://example.com/a.jpg"}
+    ]
     places_table = MagicMock()
-    places_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    places_table.delete.return_value.eq.return_value.execute.return_value.data = [
+        {"id": "1"}
+    ]
     mock_client = _mock_multi_table_client(
         {
             "buildings": buildings_table,
@@ -1025,3 +1069,263 @@ def test_destination_types_match_the_app():
     assert match
     app_ids = {int(x) for x in match.group(1).split(",") if x.strip()}
     assert app_ids == DESTINATION_LOCATION_TYPE_IDS
+
+
+# --- CRUD audit fixes -------------------------------------------------------
+
+
+def _anchor_patch_client(current, photos=None, connections=None, points=None):
+    """profiles (admin), anchor_points (current row + update), photos and
+    connections as separate tables, so each query is checked on its own."""
+    anchors = MagicMock()
+    anchors.select.return_value.eq.return_value.execute.return_value.data = (
+        [current] if current else []
+    )
+    anchors.update.return_value.eq.return_value.execute.return_value.data = [
+        {**(current or {}), "id": "p1"}
+    ]
+    anchors.select.return_value.in_.return_value.execute.return_value.data = (
+        points or []
+    )
+    photos_table = MagicMock()
+    photos_table.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = (
+        photos or []
+    )
+    connections_table = MagicMock()
+    connections_table.select.return_value.or_.return_value.execute.return_value.data = (
+        connections or []
+    )
+    return (
+        _mock_multi_table_client(
+            {
+                "profiles": _profiles_table(admin=True),
+                "anchor_points": anchors,
+                "anchor_point_photos": photos_table,
+                "anchor_point_connections": connections_table,
+            }
+        ),
+        anchors,
+        connections_table,
+    )
+
+
+_CURRENT = {
+    "location_type_id": 10,
+    "location_description": None,
+    "latitude": 6.2,
+    "longitude": -75.58,
+    "status": "pending",
+}
+
+
+def test_update_unknown_anchor_point_is_404():
+    _as_caller("admin1")
+    mock_client, _, _ = _anchor_patch_client(None)
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/nope", json={"floor": 1})
+    assert response.status_code == 404
+
+
+def test_verify_without_photos_is_rejected():
+    _as_caller("admin1")
+    mock_client, anchors, _ = _anchor_patch_client(_CURRENT, photos=[])
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/p1", json={"status": "verified"})
+    assert response.status_code == 400
+    assert "photo" in response.json()["detail"]
+    anchors.update.assert_not_called()
+
+
+def test_verify_with_a_photo_is_allowed():
+    _as_caller("admin1")
+    mock_client, anchors, _ = _anchor_patch_client(_CURRENT, photos=[{"id": "ph"}])
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/p1", json={"status": "verified"})
+    assert response.status_code == 200
+    anchors.update.assert_called_once_with({"status": "verified"})
+
+
+def test_invalid_status_is_rejected_before_the_database():
+    _as_caller("admin1")
+    mock_client, anchors, _ = _anchor_patch_client(_CURRENT)
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/p1", json={"status": "approved"})
+    assert response.status_code == 422
+    anchors.update.assert_not_called()
+
+
+def test_out_of_range_latitude_is_rejected():
+    _as_caller("admin1")
+    mock_client, _, _ = _anchor_patch_client(_CURRENT)
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/p1", json={"latitude": 123})
+    assert response.status_code == 422
+
+
+def test_moving_a_point_recomputes_automatic_distances_only():
+    _as_caller("admin1")
+    connections = [
+        {"id": "auto", "anchor_point_a_id": "p1", "anchor_point_b_id": "p2"},
+        {
+            "id": "manual",
+            "anchor_point_a_id": "p1",
+            "anchor_point_b_id": "p3",
+            "distance_manual": True,
+        },
+    ]
+    points = [
+        {"id": "p1", "latitude": 6.2001, "longitude": -75.58},
+        {"id": "p2", "latitude": 6.2, "longitude": -75.58},
+    ]
+    mock_client, _, connections_table = _anchor_patch_client(
+        _CURRENT, connections=connections, points=points
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/p1", json={"latitude": 6.2001})
+    assert response.status_code == 200
+    connections_table.update.assert_called_once()
+    distance = connections_table.update.call_args.args[0]["distance_meters"]
+    assert 10 < distance < 12  # 0.0001 deg of latitude is ~11.1 m
+    connections_table.update.return_value.eq.assert_called_once_with("id", "auto")
+
+
+def test_editing_without_moving_leaves_distances_alone():
+    _as_caller("admin1")
+    mock_client, _, connections_table = _anchor_patch_client(_CURRENT)
+    with patch("app.main.db.client", mock_client):
+        client.patch("/anchor-points/p1", json={"floor": 2})
+    connections_table.select.assert_not_called()
+
+
+def test_photo_for_missing_anchor_point_is_404():
+    _as_caller("admin1")
+    anchors = MagicMock()
+    anchors.select.return_value.eq.return_value.execute.return_value.data = []
+    photos_table = MagicMock()
+    mock_client = _mock_multi_table_client(
+        {
+            "profiles": _profiles_table(admin=True),
+            "anchor_points": anchors,
+            "anchor_point_photos": photos_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/anchor-points/gone/photos", json={"image_url": "https://x/a.jpg"}
+        )
+    assert response.status_code == 404
+    photos_table.insert.assert_not_called()
+
+
+def test_deleting_something_that_does_not_exist_is_404():
+    _as_caller("admin1")
+    connections_table = MagicMock()
+    connections_table.delete.return_value.eq.return_value.execute.return_value.data = []
+    mock_client = _mock_multi_table_client(
+        {
+            "profiles": _profiles_table(admin=True),
+            "anchor_point_connections": connections_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.delete("/anchor-point-connections/gone")
+    assert response.status_code == 404
+
+
+def test_a_typed_distance_is_marked_manual():
+    _as_caller("admin1")
+    connections_table = MagicMock()
+    connections_table.insert.return_value.execute.return_value.data = [{"id": "c"}]
+    mock_client = _mock_multi_table_client(
+        {
+            "profiles": _profiles_table(admin=True),
+            "anchor_point_connections": connections_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/anchor-point-connections",
+            json={
+                "anchor_point_a_id": "a",
+                "anchor_point_b_id": "b",
+                "distance_meters": 30,
+            },
+        )
+    assert response.status_code == 200
+    assert connections_table.insert.call_args.args[0]["distance_manual"] is True
+
+
+def test_still_referenced_delete_is_a_clear_409():
+    from postgrest.exceptions import APIError
+
+    _as_caller("admin1")
+    buildings_table = MagicMock()
+    buildings_table.delete.return_value.eq.return_value.execute.side_effect = APIError(
+        {"code": "23503", "message": "violates foreign key constraint"}
+    )
+    mock_client = _mock_multi_table_client(
+        {
+            "profiles": _profiles_table(admin=True),
+            "buildings": buildings_table,
+            "anchor_points": MagicMock(),
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = TestClient(app, raise_server_exceptions=False).delete(
+            "/buildings/b1"
+        )
+    assert response.status_code == 409
+    assert "still used" in response.json()["detail"]
+
+
+def test_orphaned_upload_can_be_cleaned_up():
+    _as_caller("admin1")
+    photos_table = MagicMock()
+    photos_table.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
+    mock_client = _mock_multi_table_client(
+        {"profiles": _profiles_table(admin=True), "anchor_point_photos": photos_table}
+    )
+    with (
+        patch("app.main.db.client", mock_client),
+        patch("app.main.db.delete_images_by_url") as delete_images,
+    ):
+        response = client.delete(
+            "/anchor-points/upload-image", params={"url": "https://x/a.jpg"}
+        )
+    assert response.status_code == 200
+    delete_images.assert_called_once_with("anchor-points", ["https://x/a.jpg"])
+
+
+def test_upload_still_used_by_a_photo_is_kept():
+    _as_caller("admin1")
+    photos_table = MagicMock()
+    photos_table.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+        {"id": "ph"}
+    ]
+    mock_client = _mock_multi_table_client(
+        {"profiles": _profiles_table(admin=True), "anchor_point_photos": photos_table}
+    )
+    with (
+        patch("app.main.db.client", mock_client),
+        patch("app.main.db.delete_images_by_url") as delete_images,
+    ):
+        response = client.delete(
+            "/anchor-points/upload-image", params={"url": "https://x/a.jpg"}
+        )
+    assert response.status_code == 409
+    delete_images.assert_not_called()
+
+
+def test_list_places_includes_is_active():
+    _as_caller("u1")
+    row = {
+        "id": "p1",
+        "code": "U",
+        "name": "Uni",
+        "latitude": 6.2,
+        "longitude": -75.5,
+        "is_active": False,
+    }
+    with patch("app.main.db.client", _mock_select_result([row])):
+        response = client.get("/places")
+    assert response.json()[0]["is_active"] is False

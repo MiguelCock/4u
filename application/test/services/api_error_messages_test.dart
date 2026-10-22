@@ -63,6 +63,18 @@ void main() {
     expect(message(ApiException(400, 'not json')), en.commonErrorUnexpected);
   });
 
+  test('409 passes through why the backend refused', () {
+    expect(
+      message(
+        ApiException(
+          409,
+          '{"detail":"This is still used by other data, so it can\'t be deleted yet."}',
+        ),
+      ),
+      "This is still used by other data, so it can't be deleted yet.",
+    );
+  });
+
   test('Supabase Auth messages are already human-readable', () {
     expect(
       message(const AuthException('Invalid login credentials')),

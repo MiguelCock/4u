@@ -51,6 +51,7 @@ def _mock_select_eq_result(rows):
 def _mock_select_result(rows):
     mock_client = MagicMock()
     mock_client.table.return_value.select.return_value.execute.return_value.data = rows
+    mock_client.table.return_value.select.return_value.order.return_value.range.return_value.execute.return_value.data = rows
     return mock_client
 
 
@@ -62,7 +63,10 @@ def _mock_insert_result(rows):
 
 def _mock_delete_eq_result():
     mock_client = MagicMock()
-    mock_client.table.return_value.delete.return_value.eq.return_value.execute.return_value.data = []
+    # One row deleted - an empty result means "not found" (404).
+    mock_client.table.return_value.delete.return_value.eq.return_value.execute.return_value.data = [
+        {"id": "1"}
+    ]
     mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = _ADMIN_ROW
     return mock_client
 
@@ -187,6 +191,9 @@ def test_find_or_create_returns_existing_match():
     connections_table.select.return_value.execute.return_value.data = [
         {"anchor_point_a_id": "a1", "anchor_point_b_id": "a2", "distance_meters": 5.0},
     ]
+    connections_table.select.return_value.order.return_value.range.return_value.execute.return_value.data = [
+        {"anchor_point_a_id": "a1", "anchor_point_b_id": "a2", "distance_meters": 5.0},
+    ]
     mock_client = _mock_multi_table_client(
         {"routes": routes_table, "anchor_point_connections": connections_table}
     )
@@ -217,6 +224,10 @@ def test_find_or_create_computes_and_inserts_new_route():
     ]
     connections_table = MagicMock()
     connections_table.select.return_value.execute.return_value.data = [
+        {"anchor_point_a_id": "a1", "anchor_point_b_id": "a2", "distance_meters": 5.0},
+        {"anchor_point_a_id": "a2", "anchor_point_b_id": "a3", "distance_meters": 5.0},
+    ]
+    connections_table.select.return_value.order.return_value.range.return_value.execute.return_value.data = [
         {"anchor_point_a_id": "a1", "anchor_point_b_id": "a2", "distance_meters": 5.0},
         {"anchor_point_a_id": "a2", "anchor_point_b_id": "a3", "distance_meters": 5.0},
     ]
@@ -251,6 +262,7 @@ def test_find_or_create_404_when_no_path_exists():
     routes_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
     connections_table = MagicMock()
     connections_table.select.return_value.execute.return_value.data = []
+    connections_table.select.return_value.order.return_value.range.return_value.execute.return_value.data = []
     mock_client = _mock_multi_table_client(
         {"routes": routes_table, "anchor_point_connections": connections_table}
     )
@@ -275,6 +287,11 @@ def test_find_or_create_recomputes_route_through_deleted_connection():
     connections_table = MagicMock()
     # a2-a3 was deleted; a1-a4-a3 still connects the two ends.
     connections_table.select.return_value.execute.return_value.data = [
+        {"anchor_point_a_id": "a1", "anchor_point_b_id": "a2", "distance_meters": 5.0},
+        {"anchor_point_a_id": "a1", "anchor_point_b_id": "a4", "distance_meters": 6.0},
+        {"anchor_point_a_id": "a3", "anchor_point_b_id": "a4", "distance_meters": 6.0},
+    ]
+    connections_table.select.return_value.order.return_value.range.return_value.execute.return_value.data = [
         {"anchor_point_a_id": "a1", "anchor_point_b_id": "a2", "distance_meters": 5.0},
         {"anchor_point_a_id": "a1", "anchor_point_b_id": "a4", "distance_meters": 6.0},
         {"anchor_point_a_id": "a3", "anchor_point_b_id": "a4", "distance_meters": 6.0},
@@ -307,6 +324,7 @@ def test_find_or_create_404_when_cached_route_is_no_longer_connected():
     ]
     connections_table = MagicMock()
     connections_table.select.return_value.execute.return_value.data = []
+    connections_table.select.return_value.order.return_value.range.return_value.execute.return_value.data = []
     mock_client = _mock_multi_table_client(
         {"routes": routes_table, "anchor_point_connections": connections_table}
     )
@@ -315,4 +333,47 @@ def test_find_or_create_404_when_cached_route_is_no_longer_connected():
             "/routes/find_or_create",
             json={"start_anchor_id": "a1", "end_anchor_id": "a2"},
         )
+    assert response.status_code == 404
+
+
+def test_find_or_create_returns_the_winner_of_a_concurrent_insert():
+    from postgrest.exceptions import APIError
+
+    _as_caller("u1")
+    winner = {**_ROUTE_ROW, "id": "winner", "end_anchor_id": "a3"}
+    routes_table = MagicMock()
+    lookup = routes_table.select.return_value.eq.return_value.eq.return_value.execute
+    # First lookup: no route yet. After the insert loses the race: the winner.
+    lookup.side_effect = [MagicMock(data=[]), MagicMock(data=[winner])]
+    routes_table.insert.return_value.execute.side_effect = APIError(
+        {"code": "23505", "message": "duplicate key"}
+    )
+    connections_table = MagicMock()
+    connections_table.select.return_value.order.return_value.range.return_value.execute.return_value.data = [
+        {"anchor_point_a_id": "a1", "anchor_point_b_id": "a3", "distance_meters": 5.0}
+    ]
+    anchors_table = MagicMock()
+    anchors_table.select.return_value.in_.return_value.execute.return_value.data = []
+    mock_client = _mock_multi_table_client(
+        {
+            "routes": routes_table,
+            "anchor_point_connections": connections_table,
+            "anchor_points": anchors_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/routes/find_or_create",
+            json={"start_anchor_id": "a1", "end_anchor_id": "a3"},
+        )
+    assert response.status_code == 200
+    assert response.json()["id"] == "winner"
+
+
+def test_delete_unknown_route_is_404():
+    _as_caller("admin1")
+    mock_client = _mock_delete_eq_result()
+    mock_client.table.return_value.delete.return_value.eq.return_value.execute.return_value.data = []
+    with patch("app.main.db.client", mock_client):
+        response = client.delete("/routes/gone")
     assert response.status_code == 404

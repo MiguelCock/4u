@@ -38,7 +38,9 @@ String friendlyApiErrorMessageFor(
   if (error.isNetworkError) return l10n.commonErrorNetworkUnreachable;
   // 400s are the backend's own deliberate validation messages, already
   // written for a person to read.
-  if (status == 400) {
+  // 400 and 409 carry the backend's own explanation (validation, "still
+  // used by other data", "already exists"), written to be shown as-is.
+  if (status == 400 || status == 409) {
     return error.detail ?? fallback ?? l10n.commonErrorUnexpected;
   }
   // Only reachable once ApiService's own refresh-and-retry has failed too.

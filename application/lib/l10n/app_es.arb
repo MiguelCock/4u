@@ -358,5 +358,13 @@
   "homeStartNearestPoint": "el punto de ruta más cercano",
   "signupCheckEmailTitle": "Revisa tu correo",
   "signupCheckEmailContent": "Enviamos un enlace de confirmación a {email}. Ábrelo en este teléfono para terminar de crear tu cuenta. La app se abrirá e iniciará tu sesión.",
-  "signupBackToLogin": "Volver a iniciar sesión"
+  "signupBackToLogin": "Volver a iniciar sesión",
+  "adminDeleteKeepsHistoryNote": "\n\nTambién se eliminan las rutas guardadas que usan estos puntos. El historial de viajes se conserva.",
+  "addConnectionErrorBadDistance": "Escribe la distancia en metros, un número mayor que 0, por ejemplo 12,5.",
+  "commonFloorLabel": "Piso",
+  "commonFloorOption": "Piso {number}",
+  "editAnchorErrorVerifyNeedsPhoto": "Agrega al menos una foto antes de verificar este punto: sin fotos la cámara nunca podrá reconocerlo.",
+  "editAnchorErrorPhotosUnavailable": "No se pudieron cargar las fotos de este punto, así que no se puede enviar a la búsqueda por fotos. Revisa la conexión e inténtalo de nuevo.",
+  "capturePhotoSnackbarBackToPending": "Esa era la última foto de este punto, así que volvió a pendiente. Agrega fotos y verifícalo de nuevo para que la cámara pueda reconocerlo.",
+  "commonErrorFloorsInvalid": "Los pisos deben ser un número entero mayor o igual a 1."
 }
