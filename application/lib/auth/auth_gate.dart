@@ -58,7 +58,16 @@ class _AuthGateState extends State<AuthGate> {
     // backend-user-management's create_profile), so an empty body is
     // enough. If this also fails (e.g. a rare race with another self-heal
     // attempt), let it propagate the same way a GET failure would.
-    final created = await _userApi.post('/profiles', {});
+    // The name typed at signup travels as Supabase user metadata, since
+    // with email confirmation on there's no session to create the profile
+    // with until the confirmation link signs the user in (signup_screen).
+    final fullName =
+        Supabase.instance.client.auth.currentUser?.userMetadata?['full_name']
+            as String?;
+    final created = await _userApi.post('/profiles', {
+      if (fullName != null && fullName.trim().isNotEmpty)
+        'full_name': fullName.trim(),
+    });
     final row = (created as List).first as Map<String, dynamic>;
     return _applyAndReturn(row);
   }

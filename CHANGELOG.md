@@ -14,6 +14,9 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - **Re-index verified points** (admin menu): re-sends verified points to photo search, for points verified while indexing was failing.
 - **Pull down to refresh** on every list.
 - **Back button** steps back through admin sections and filters, then asks "press back again to exit".
+- **Unfinished trips**: if the app was closed during a trip, it asks next time whether to continue it or finish it.
+- **Check the starting point on demand**: tap the Start row. The check now takes several photos (about 6–10 seconds, turning slowly), which makes it much more accurate, and it says how many photos matched a known place.
+- **The signup confirmation email opens the app** and signs you in, instead of a broken localhost page.
 
 ### Changed
 - **Destinations vs in-between points**: classrooms, entrances, restrooms and other destination types need a description. Hallways, intersections and similar points can be saved without one and never appear as destinations. New points start as "hallway".
@@ -23,6 +26,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - Admin tips (order of work, row tap to connect) moved from the app into the admin guide.
 
 ### Fixed
+- Pull-to-refresh did nothing on the admin screen, and the refresh button reloaded with no visible spinner.
+- Signing up with email confirmation failed with a "missing bearer token" error.
 - **"Session expired" when indexing a verified point**, even after signing in again. The server was reporting its own configuration problem as an expired session. It now gives an honest error, and the configuration is fixed.
 - **Coordinates lost precision when saved**: longitudes were rounded to about 0.85 m, so points lined up in parallel. Coordinates are now stored at full precision. Existing points keep their rounded position until moved.
 - Map pins were drawn about 17 pixels south of their real position.

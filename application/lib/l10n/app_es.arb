@@ -345,5 +345,18 @@
   "homeVoiceNoMatch": "No encontré \"{heard}\". Inténtalo de nuevo o elige de la lista.",
   "homeVoiceNothingHeard": "No escuché ningún lugar. Inténtalo de nuevo.",
   "homeVoiceUnavailable": "La entrada por voz no está disponible en este teléfono. Elige el destino de la lista.",
-  "homeVoiceChooseTitle": "¿Cuál?"
+  "homeVoiceChooseTitle": "¿Cuál?",
+  "navResumingTo": "Retomando tu ruta hacia {destination}.",
+  "homeUnfinishedTripTitle": "Viaje sin terminar",
+  "homeUnfinishedTripContent": "Tienes un viaje sin terminar hacia {destination}, iniciado a las {time}. ¿Quieres continuarlo o terminarlo?",
+  "homeUnfinishedTripResume": "Continuar",
+  "homeUnfinishedTripFinish": "Terminarlo",
+  "homeCheckStartTooltip": "Verificar mi punto de partida con la cámara",
+  "homeCheckingStartPrompt": "Sostén el teléfono en alto y gira despacio mientras verifico dónde estás.",
+  "homeCheckingStartProgress": "Verificando tu posición: foto {current} de {total}",
+  "homeStartChecked": "Punto de partida: {name}. {matched} de {total} fotos coincidieron con un lugar conocido.",
+  "homeStartNearestPoint": "el punto de ruta más cercano",
+  "signupCheckEmailTitle": "Revisa tu correo",
+  "signupCheckEmailContent": "Enviamos un enlace de confirmación a {email}. Ábrelo en este teléfono para terminar de crear tu cuenta. La app se abrirá e iniciará tu sesión.",
+  "signupBackToLogin": "Volver a iniciar sesión"
 }

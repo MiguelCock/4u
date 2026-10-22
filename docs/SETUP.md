@@ -113,6 +113,13 @@ done
 cd application && flutter test && flutter analyze
 ```
 
+## 6b. Supabase Auth: confirmation email redirect
+
+If **Confirm email** is on (Authentication → Sign In / Providers → Email), the confirmation link must point back to the app, not to the default `localhost`. In **Authentication → URL Configuration**:
+
+- **Redirect URLs**: add `io.github.miguelcock.eyes4u://login-callback`. The app requests it at signup (`kAuthRedirectUrl` in `application/lib/auth/signup_screen.dart`) and Android opens the app for it. Opening the link on the phone where the user signed up signs them straight in. With the default PKCE flow, it has to be the same phone.
+- **Site URL**: the page Supabase falls back to, for example when the link is opened on a computer. Set it to the project's web page instead of `http://localhost:3000`.
+
 ## 7. Manual end-to-end walkthrough
 
 1. **Sign up** in the app (creates a Supabase Auth user, then a `profiles` row via `backend-user-management`'s `POST /profiles` with `role_id: 1`).

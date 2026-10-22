@@ -77,7 +77,16 @@ const int _kCameraBlockedDebounceTicks = 3;
 class NavigationScreen extends StatefulWidget {
   final Map<String, dynamic> route;
 
-  const NavigationScreen({super.key, required this.route});
+  /// Continue an existing session (a trip left open by closing the app,
+  /// offered on the next launch by UserHomeScreen) instead of starting a
+  /// new one.
+  final String? resumeSessionId;
+
+  const NavigationScreen({
+    super.key,
+    required this.route,
+    this.resumeSessionId,
+  });
 
   @override
   State<NavigationScreen> createState() => _NavigationScreenState();
@@ -260,6 +269,24 @@ class _NavigationScreenState extends State<NavigationScreen> {
     if (!_pathLoaded.isCompleted) _pathLoaded.complete();
   }
 
+  /// On resume the user is somewhere along the route already: aim guidance
+  /// at the waypoint nearest them rather than back at the first one.
+  /// _checkProximity's skip-ahead takes it from there.
+  void _skipToNearestWaypoint() {
+    final here = _currentPosition();
+    if (here == null || _waypoints.isEmpty) return;
+    var nearest = 0;
+    var nearestDistance = double.infinity;
+    for (var i = 0; i < _waypoints.length; i++) {
+      final distance = haversineMeters(here, _waypoints[i].point);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = i;
+      }
+    }
+    _nextWaypointIndex = nearest;
+  }
+
   String _destinationName(AppLocalizations l10n) =>
       (_waypoints.isNotEmpty ? _waypoints.last.name : null) ??
       l10n.navYourDestination;
@@ -435,18 +462,25 @@ class _NavigationScreenState extends State<NavigationScreen> {
       return;
     }
     final startPosition = _locationService.lastPosition;
+    final resumeId = widget.resumeSessionId;
     try {
-      final result = await _navigationApi.post('/sessions', {
-        'user_id': userId,
-        'building_id': widget.route['building_id'],
-        'route_id': widget.route['id'],
-        if (startPosition != null)
-          'start_position': {
-            'latitude': startPosition.latitude,
-            'longitude': startPosition.longitude,
-          },
-        'device_info': {'platform': Platform.isAndroid ? 'android' : 'other'},
-      });
+      final result = resumeId != null
+          ? [
+              {'id': resumeId},
+            ]
+          : await _navigationApi.post('/sessions', {
+              'user_id': userId,
+              'building_id': widget.route['building_id'],
+              'route_id': widget.route['id'],
+              if (startPosition != null)
+                'start_position': {
+                  'latitude': startPosition.latitude,
+                  'longitude': startPosition.longitude,
+                },
+              'device_info': {
+                'platform': Platform.isAndroid ? 'android' : 'other',
+              },
+            });
       // backend-navigation-management's POST /sessions returns Supabase's
       // insert result as-is, which is always a list (even for one row).
       final sessionData = (result as List).first as Map<String, dynamic>;
@@ -462,7 +496,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
       );
       if (mounted) {
         final l10n = AppLocalizations.of(context)!;
-        _speak(l10n.navStartingTo(_destinationName(l10n)));
+        _speak(
+          resumeId != null
+              ? l10n.navResumingTo(_destinationName(l10n))
+              : l10n.navStartingTo(_destinationName(l10n)),
+        );
+        if (resumeId != null) _skipToNearestWaypoint();
         // Camera-use transparency: said every time, not just once ever -
         // simplest way to stay always-honest about it without persisting
         // a "seen it once" flag. Spoken (politely, after the route-start
