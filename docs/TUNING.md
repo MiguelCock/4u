@@ -37,7 +37,7 @@ The constants are in `application/lib/services/turn_guidance.dart` and `applicat
 - **Compass:** smoothed over 1 s (`HeadingSmoother.timeConstant`), and corrected from magnetic to true north with `MAGNETIC_DECLINATION` in `application/.env` (−7.5 for Medellín).
 - **Thresholds:** aligned within 25°, turn cue beyond 35°, off-course when the median of the last 5 samples is beyond 50° for 3 s.
 - **Corners:** guidance stops only where the route turns more than 30°, at named places and at the destination (`routeCorners` in `geo_utils.dart`), so a 40 m straight is one instruction, not six. A corner is reached within 8 m, or once you've walked to 8 m before it along the straight (`_kCornerMeters`). A 20 m radius announced turns ~15 m early.
-- **Arrival:** the corrected position within 15 m *and* raw GPS within 25 m, on 2 ticks in a row. Skipping past the next waypoint also needs raw GPS to agree.
+- **Arrival:** the corrected position within twice the GPS accuracy (5–15 m, and never more than half the last leg), *and* raw GPS within that plus 10 m, on 2 ticks in a row (`arrivalRadius` in `turn_guidance.dart`). A fixed 15 m ended a trip at the last corner because the last leg was 13 m. Skipping past the next waypoint also needs raw GPS to agree.
 - **Source switch:** when the correction is older than 5 s, guidance blends to raw GPS over 2 s instead of jumping.
 
 In the debug, `turn`, `target_bearing`, `compass`, `position_source` and `guidance` show what guidance saw when it spoke (`cues`).

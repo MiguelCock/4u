@@ -132,4 +132,23 @@ void main() {
     expect(trueHeading(10, -7.5), closeTo(2.5, 1e-9));
     expect(trueHeading(3, -7.5), closeTo(355.5, 1e-9));
   });
+
+  group('arrivalRadius', () {
+    test('scales with GPS accuracy within 5-15 m', () {
+      expect(arrivalRadius(gpsAccuracy: 3), 6);
+      expect(arrivalRadius(gpsAccuracy: 1), 5);
+      expect(arrivalRadius(gpsAccuracy: 20), 15);
+    });
+
+    test('a short last leg is never swallowed by the radius', () {
+      // The field test: a 12.8 m last leg ended the trip at its corner.
+      final radius = arrivalRadius(gpsAccuracy: 8, lastLegMeters: 12.8);
+      expect(radius, lessThan(12.8));
+      expect(radius, closeTo(6.4, 1e-9));
+    });
+
+    test('a long last leg keeps the accuracy-based radius', () {
+      expect(arrivalRadius(gpsAccuracy: 5, lastLegMeters: 40), 10);
+    });
+  });
 }

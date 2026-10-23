@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -547,6 +548,32 @@ def test_logs_are_refused_once_the_trip_has_ended():
         )
     assert response.status_code == 409
     logs_table.insert.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("ended_ago", "expected"), [(timedelta(seconds=20), 200), (timedelta(hours=1), 409)]
+)
+def test_a_tick_delayed_past_the_end_is_kept_only_briefly(ended_ago, expected):
+    _as_caller("u1")
+    logs_table = MagicMock(
+        **{"insert.return_value.execute.return_value.data": [_LOG_ROW]}
+    )
+    ended = (datetime.now(UTC) - ended_ago).isoformat()
+    mock_client = _mock_multi_table_client(
+        {
+            "navigation_sessions": _sessions_table(
+                select_rows=[
+                    {"user_id": "u1", "status": "completed", "end_time": ended}
+                ]
+            ),
+            "navigation_logs": logs_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/logs", json={"session_id": "s1", "gps_lat": 6.24, "gps_long": -75.58}
+        )
+    assert response.status_code == expected
 
 
 def test_a_match_on_a_deleted_anchor_is_dropped_not_fatal():

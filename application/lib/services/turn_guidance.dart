@@ -206,3 +206,24 @@ class HeadingSmoother {
 /// (NOAA's declination calculator gives the value).
 double trueHeading(double magnetic, double declination) =>
     (magnetic + declination + 360) % 360;
+
+/// How close (meters) to the destination counts as arrived: twice the GPS
+/// accuracy, between [minMeters] and [maxMeters], and never more than half
+/// the last leg.
+///
+/// A fixed 15 m ended a field-test trip at the last corner: the final leg
+/// was only 13 m long, so reaching the corner was already "arrived" and
+/// that leg was never guided. Good GPS (3 m) now means arriving within
+/// ~6 m.
+double arrivalRadius({
+  required double gpsAccuracy,
+  double? lastLegMeters,
+  double minMeters = 5,
+  double maxMeters = 15,
+}) {
+  var radius = (2 * gpsAccuracy).clamp(minMeters, maxMeters).toDouble();
+  if (lastLegMeters != null) {
+    radius = min(radius, max(minMeters, lastLegMeters / 2));
+  }
+  return radius;
+}

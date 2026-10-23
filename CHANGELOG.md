@@ -16,6 +16,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - **The position jumped forward and back, and snapped onto the destination near the end.** A photo match is now used only when the matched place is close to the GPS position and was photographed facing the same way, and a far match pulls only gently.
 - **The trip ended early, about 40 m before the destination.** Arriving now needs both the corrected position and the raw GPS close to the destination.
 - **Turns announced about 15 m before the corner, and "continue straight 6 meters" at every anchor point.** Guidance now goes corner to corner: one instruction per straight, given when you reach the turn.
+- **"You have arrived" at the last corner, skipping the last stretch.** How close counts as arrived now depends on GPS accuracy, and is never more than half the last stretch.
+- **The end of a trip was missing from the session map** after a short loss of connection. Late updates are now kept, and the app no longer waits a minute for each one.
 - **The position jumped after standing still.** Standing still no longer makes the next photo match move the position several metres.
 - **"Turn 30–45 degrees" while walking straight.** Guidance follows the path's direction instead of the line to the next point, the compass is smoothed over time and corrected to true north, and small deviations no longer trigger a turn.
 

@@ -1,4 +1,5 @@
 import os
+from datetime import UTC, datetime, timedelta
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
@@ -45,10 +46,29 @@ def _session_owner(session_id: str) -> str | None:
     return result.data[0]["user_id"] if result.data else None
 
 
+# A tick sent just before the trip ended can reach the server after the
+# end: a field test lost its last two ticks, and the arrival they
+# carried, to a ~20 s connection stall. Accepted for this long after
+# end_time; later ones (a phone still logging long after) are refused.
+LATE_LOG_GRACE = timedelta(minutes=2)
+
+
+def _accepts_logs(session: dict) -> bool:
+    if session.get("status") == "active":
+        return True
+    try:
+        ended = datetime.fromisoformat(session["end_time"])
+    except KeyError, TypeError, ValueError:
+        return False
+    if ended.tzinfo is None:
+        ended = ended.replace(tzinfo=UTC)
+    return datetime.now(UTC) - ended <= LATE_LOG_GRACE
+
+
 def _session_row(session_id: str) -> dict | None:
     result = (
         db.client.table("navigation_sessions")
-        .select("user_id,status")
+        .select("user_id,status,end_time")
         .eq("id", session_id)
         .execute()
     )
@@ -164,7 +184,7 @@ async def create_log(log: NavigationLogCreate, caller_id: str = Depends(get_call
         raise HTTPException(status_code=404, detail="Session not found")
     if session["user_id"] != caller_id and not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Forbidden")
-    if session.get("status") != "active":
+    if not _accepts_logs(session):
         raise HTTPException(status_code=409, detail="This trip has already ended")
     payload = log.model_dump()
     # A camera match on an anchor point deleted since it was indexed would

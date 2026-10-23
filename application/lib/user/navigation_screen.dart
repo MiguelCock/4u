@@ -64,14 +64,18 @@ const double _kCornerMeters = 8.0;
 /// ...but not if they're this far (meters) to the side of that straight.
 const double _kCornerCrossTrackMeters = 15.0;
 
-/// Arriving needs the corrected position this close to the destination
-/// *and* raw GPS within [_kArrivalRawGpsMeters], on
-/// [_kArrivalConfirmTicks] guidance ticks in a row. A field test ended the
-/// trip ~40 m early: photo matches on the destination pulled the corrected
-/// position inside 20 m while the user was still far away.
-const double _kArrivalMeters = 15.0;
-const double _kArrivalRawGpsMeters = 25.0;
+/// Arriving needs the corrected position within [arrivalRadius] of the
+/// destination *and* raw GPS within that plus [_kArrivalRawGpsSlackMeters],
+/// on [_kArrivalConfirmTicks] guidance ticks in a row. A field test ended
+/// the trip ~40 m early: photo matches on the destination pulled the
+/// corrected position inside 20 m while the user was still far away.
+const double _kArrivalRawGpsSlackMeters = 10.0;
 const int _kArrivalConfirmTicks = 2;
+
+/// Navigation's per-tick calls: an answer later than this is useless, and
+/// waiting the default 60 s stalled the whole loop (no logs, stale
+/// correction) through a ~20 s connection drop in a field test.
+const Duration _kTickRequestTimeout = Duration(seconds: 8);
 
 /// When the correction goes stale, guidance blends from the last corrected
 /// position to raw GPS over this long instead of jumping between them.
@@ -500,6 +504,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
   bool _checkProximity(LatLng here) {
     final raw = _rawPosition;
     final last = _waypoints.length - 1;
+    final lastLegFrom = last > 0 ? _waypoints[last - 1].point : _startPoint;
+    final arrivalMeters = arrivalRadius(
+      gpsAccuracy: _locationService.lastPosition?.accuracy ?? 10,
+      lastLegMeters: lastLegFrom == null
+          ? null
+          : haversineMeters(lastLegFrom, _waypoints[last].point),
+    );
     var reached = -1;
     for (var i = _nextWaypointIndex; i < _waypoints.length; i++) {
       final point = _waypoints[i].point;
@@ -516,11 +527,11 @@ class _NavigationScreenState extends State<NavigationScreen> {
           (raw == null ||
               haversineMeters(raw, point) >
                   (i == last
-                      ? _kArrivalRawGpsMeters
+                      ? arrivalMeters + _kArrivalRawGpsSlackMeters
                       : _kProximityThresholdMeters))) {
         continue;
       }
-      if (i == last && haversineMeters(here, point) > _kArrivalMeters) {
+      if (i == last && haversineMeters(here, point) > arrivalMeters) {
         continue;
       }
       reached = i;
@@ -791,7 +802,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
         'gps_accuracy': position.accuracy,
         'heading': position.heading,
         'debug': _debugSnapshot(position, failure: failure),
-      });
+      }, timeout: _kTickRequestTimeout);
     } on ApiException catch (_) {
       // Best-effort logging - a dropped tick shouldn't interrupt navigation.
     }
@@ -834,6 +845,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       final result =
           await _positioningApi.postMultipart(
                 '/correct_position',
+                timeout: _kTickRequestTimeout,
                 fieldName: 'photo',
                 bytes: bytes,
                 filename: path.basename(image.path),
@@ -887,7 +899,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
           position,
           correction: (result['debug'] as Map?)?.cast<String, dynamic>(),
         ),
-      });
+      }, timeout: _kTickRequestTimeout);
     } catch (e) {
       // Camera capture or /correct_position failed (unreachable, slow,
       // unauthenticated, etc.) - degrade to a raw-GPS-only tick rather than
@@ -974,6 +986,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
     setState(() => _ending = true);
     final position = _locationService.lastPosition;
+    // One last tick before the session is closed, carrying what happened
+    // since the previous one - the arrival above all. It used to be lost
+    // whenever the camera loop's own tick was still in flight.
+    if (position != null &&
+        (_pendingEvents.isNotEmpty || _pendingCues.isNotEmpty)) {
+      await _logRawTick(sessionId, position);
+    }
     try {
       await _navigationApi.patch('/sessions/$sessionId', {
         'status': 'completed',
