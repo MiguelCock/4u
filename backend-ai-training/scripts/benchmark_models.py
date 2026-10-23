@@ -107,13 +107,14 @@ class EigenPlaces:
 class MegaLoc:
     name = "megaloc"
 
-    def __init__(self):
+    def __init__(self, short=322):
+        self.short = short
         self.model = torch.hub.load(
             "gmberton/MegaLoc", "get_trained_model", trust_repo=True
         ).eval()
 
     def embed(self, path: Path) -> np.ndarray:
-        x = _tensor(_keep_aspect(_read_rgb(path), 322, 14))
+        x = _tensor(_keep_aspect(_read_rgb(path), self.short, 14))
         with torch.no_grad():
             return self.model(x)[0].numpy()
 
@@ -123,6 +124,8 @@ MODELS = {
     "dinov2_s": Dinov2Small,
     "eigenplaces": EigenPlaces,
     "megaloc": MegaLoc,
+    # Smaller input: about half the CPU time.
+    "megaloc_224": lambda: MegaLoc(short=224),
 }
 
 

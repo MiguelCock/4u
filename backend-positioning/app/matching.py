@@ -26,10 +26,13 @@ def _env_float(name: str, default: float) -> float:
 
 @dataclass(frozen=True)
 class MatchConfig:
-    # Cosine similarity a candidate needs at all. EfficientNet-B0 ImageNet
-    # features score many outdoor scenes highly, so calibrate this against
-    # logged scores rather than trusting the default.
-    min_score: float = 0.75
+    # Cosine similarity a candidate needs at all - on the scale of the
+    # embedding model backend-ai-training runs. For its EigenPlaces model,
+    # 95% of anchor-photo pairs more than 20 m apart score under 0.24 while
+    # most same-spot and nearby ones score above it
+    # (backend-ai-training/scripts/benchmark_models.py). With
+    # EMBEDDING_MODEL=effnet set this to 0.75.
+    min_score: float = 0.25
     # A matched anchor farther than max(this, factor x GPS accuracy) from
     # the GPS fix is not where the user is, it's something the camera sees.
     max_distance_m: float = 20.0

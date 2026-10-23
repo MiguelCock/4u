@@ -16,6 +16,7 @@ Each release's section becomes its GitHub release description (`.github/workflow
 ### Changed
 - **Steadier position on long straights.** The correction now learns how far off the GPS is and keeps that fix between photo matches, instead of drifting back to the GPS error. On the last test walk, the average distance from the route went from 3.6 m to 2.3 m.
 - **Position updates about every second** instead of every ~4 s.
+- **A photo model built for recognizing places.** Matching now uses EigenPlaces instead of a general image classifier. On campus photos it tells nearby places from far ones much better. After updating, an admin must run **Re-index verified points** once.
 
 ### Fixed
 - **The position jumped forward and back, and snapped onto the destination near the end.** A photo match is now used only when the matched place is close to the GPS position and was photographed facing the same way, and a far match pulls only gently.

@@ -31,11 +31,23 @@ uv run python scripts/replay.py session.json
 uv run python scripts/replay.py session.json --grid gps_bias_sigma_m=0,2.5,4,6 gps_bias_tau_s=60,120,300
 ```
 
-It prints the error for raw GPS, for the logged correction, and for the replayed one: distance from the route, plus 2D error when checkpoints were tapped. Any `MatchConfig` field can be set with `--set name=value`. Pick values that improve the 2D error, not just the distance from the route.
+It prints the error for raw GPS, for the logged correction, and for the replayed one: distance from the route, plus 2D error when checkpoints were tapped. Any `MatchConfig` field can be set with `--set name=value`. Pick values that improve the 2D error, not just the distance from the route. Sessions recorded before the switch to EigenPlaces have EfficientNet scores, so replay them with `--set min_score=0.75`.
 
 ### Comparing photo models
 
 `backend-ai-training/scripts/benchmark_models.py session.json photos_dir` scores models on the anchor photos. Each photo queries the *other* anchors near it that face the same way, and should find the nearest one. Download the photos named `<photo id>.jpg` from `anchor_point_photos.image_url`.
+
+Results on the 236 campus anchor photos (2 CPU threads):
+
+| Model | Top match is the right anchor | Near ranked above far (AUC) | Time per photo |
+|---|---|---|---|
+| EfficientNet-B0 (first model) | 31% | 0.75 | 26 ms |
+| DINOv2 ViT-S/14 | 39% | 0.77 | 142 ms |
+| **EigenPlaces ResNet50 (in use)** | 36% | 0.83 | 285 ms |
+| MegaLoc, 224 px | 42% | 0.87 | 531 ms |
+| MegaLoc, 322 px | 44% | 0.86 | 1068 ms |
+
+EigenPlaces is the best within the ~0.5 s budget on the server. MegaLoc is a little better again, but 2–4× slower; the frames from test walks will show whether that's worth it. To switch model, set `EMBEDDING_MODEL` in `backend-ai-training/.env`, restart, run **Re-index verified points** in the admin menu, and set `POSITIONING_MIN_MATCH_SCORE` for its scale.
 
 ## 2. Collect data
 
@@ -53,7 +65,7 @@ Set these as environment variables in `backend-positioning/.env` on the server, 
 
 | Variable (default) | What it does | Symptom it addresses |
 |---|---|---|
-| `POSITIONING_MIN_MATCH_SCORE` (0.75) | Minimum photo similarity. | Raise it if many `applied` matches have low `score`s and pull the position wrongly. |
+| `POSITIONING_MIN_MATCH_SCORE` (0.25) | Minimum photo similarity, on the scale of the photo model in use (0.25 for EigenPlaces, 0.75 for the old EfficientNet). | Raise it if many `applied` matches have low `score`s and pull the position wrongly. |
 | `POSITIONING_MAX_MATCH_DISTANCE_M` (20), `POSITIONING_MATCH_ACCURACY_FACTOR` (2.5) | A match farther than max(20 m, 2.5 × GPS accuracy) from the GPS fix is ignored (`too_far`). | Jumps forward or back, and snapping onto anchors the camera sees in the distance. |
 | `POSITIONING_HEADING_GATE_DEG` (60) | The matched photo must face within ±60° of where the phone faces (`heading_mismatch`). | Matches on photos taken the other way. |
 | `POSITIONING_VISUAL_BASE_SIGMA_M` (3), `POSITIONING_VISUAL_SIGMA_PER_M` (0.3) | How hard an accepted match pulls: noise = 3 m + 0.3 × distance from the fix. | Raise them if accepted matches still pull too far in one tick. |
