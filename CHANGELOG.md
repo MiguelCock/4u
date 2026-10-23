@@ -11,6 +11,11 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - **Filters on anchor points** (admin): by category and type, floor, indoor or outdoor, lighting, and whether they have photos or connections. Works on the list and the map.
 - **Session review map** (admin): the raw GPS path and the corrected path drawn separately, photo matches with a line to the point they matched, and details on tap.
 - **"✗ Wrong instruction" button** in the admin test flow, to mark wrong guidance. Marks appear on the session map.
+- **Checkpoints for test walks** (admin): walk the route exactly and tap "I'm at …" at the start, at each corner and at the destination. The session map then shows how far the raw GPS and the corrected position were from the route and from each checkpoint. Test walks also keep their camera photos, for comparing photo-matching models.
+
+### Changed
+- **Steadier position on long straights.** The correction now learns how far off the GPS is and keeps that fix between photo matches, instead of drifting back to the GPS error. On the last test walk, the average distance from the route went from 3.6 m to 2.3 m.
+- **Position updates about every second** instead of every ~4 s.
 
 ### Fixed
 - **The position jumped forward and back, and snapped onto the destination near the end.** A photo match is now used only when the matched place is close to the GPS position and was photographed facing the same way, and a far match pulls only gently.

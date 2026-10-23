@@ -24,6 +24,7 @@ import '../services/geo_utils.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import '../services/speech_voice.dart';
+import '../services/test_walk.dart';
 import '../services/turn_guidance.dart';
 import '../services/api_error_messages.dart';
 
@@ -153,6 +154,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   /// The route's own start point, where the first segment begins.
   LatLng? _startPoint;
+
+  /// Admin test walk: the checkpoints still to tap (see test_walk.dart),
+  /// one per route corner plus the start and the destination.
+  CheckpointSequence _checkpoints = CheckpointSequence(0);
   int _arrivalStreak = 0;
   DateTime? _staleSince;
   LatLng? _staleFrom;
@@ -337,6 +342,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
     // Guidance stops at corners (and named places), not at every anchor
     // along a straight - see routeCorners.
+    // Checkpoints use the corners alone (not named places), the same rule
+    // backend-positioning/scripts/replay.py applies to score a walk.
+    final checkpoints = CheckpointSequence(routeCorners(points).length);
     final corners = routeCorners(
       points,
       keep: {
@@ -353,6 +361,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       setState(() {
         _plannedPath = points;
         _waypoints = waypoints;
+        _checkpoints = checkpoints;
       });
     }
     if (!_pathLoaded.isCompleted) _pathLoaded.complete();
@@ -611,15 +620,83 @@ class _NavigationScreenState extends State<NavigationScreen> {
   void _arrive() {
     if (_arrived) return;
     _arrived = true;
+    final l10n = AppLocalizations.of(context)!;
+    if (widget.adminPreview) {
+      // Test walk: keep the session open so the destination checkpoint
+      // shows where the user really was when arrival fired.
+      _speak(
+        l10n.navArrivedTestWalk(_destinationName(l10n)),
+        assertive: true,
+        cueType: 'arrival',
+      );
+      return;
+    }
     _speak(
-      AppLocalizations.of(
-        context,
-      )!.navArrivedFinished(_destinationName(AppLocalizations.of(context)!)),
+      l10n.navArrivedFinished(_destinationName(l10n)),
       assertive: true,
       cueType: 'arrival',
     );
     _endSession(arrived: true);
   }
+
+  /// Admin test walk: the user is standing exactly on the next checkpoint
+  /// (start, a corner, the destination). Records where raw GPS and the
+  /// correction put them at that moment; the destination one ends the walk.
+  void _markCheckpoint() {
+    final index = _checkpoints.mark();
+    if (index == null) return;
+    HapticFeedback.heavyImpact();
+    final raw = _rawPosition;
+    _pendingEvents.add({
+      'at': DateTime.now().toUtc().toIso8601String(),
+      'type': 'checkpoint',
+      'index': index,
+      'of': _checkpoints.count,
+      'raw': ?(raw == null ? null : [raw.latitude, raw.longitude]),
+      'corrected': ?(_correctedLat == null
+          ? null
+          : [_correctedLat, _correctedLong]),
+    });
+    final l10n = AppLocalizations.of(context)!;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            l10n.navCheckpointMarked(_checkpointLabel(l10n, index)),
+          ),
+        ),
+      );
+    setState(() {});
+    if (_checkpoints.done) _endSession(arrived: _arrived);
+  }
+
+  void _undoCheckpoint() {
+    final index = _checkpoints.undo();
+    if (index == null) return;
+    _pendingEvents.add({
+      'at': DateTime.now().toUtc().toIso8601String(),
+      'type': 'checkpoint_undo',
+      'index': index,
+    });
+    final l10n = AppLocalizations.of(context)!;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            l10n.navCheckpointUndone(_checkpointLabel(l10n, index)),
+          ),
+        ),
+      );
+    setState(() {});
+  }
+
+  String _checkpointLabel(AppLocalizations l10n, int index) => index == 0
+      ? l10n.navCheckpointStart
+      : index == _checkpoints.count - 1
+      ? l10n.navCheckpointDestination
+      : l10n.navCheckpointCorner(index);
 
   /// While walking a leg, a short "N meters ahead" every
   /// `_kPeriodicAnnouncementInterval` fills long silent stretches - but
@@ -737,6 +814,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   Future<void> _runTick() async {
     if (_stopped) return;
+    final started = DateTime.now();
     final sessionId = _sessionId;
     final position = _locationService.lastPosition;
     try {
@@ -749,7 +827,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
       await _correctionTick(sessionId, position, controller);
     } finally {
       if (!_stopped) {
-        _pendingTickTimer = Timer(const Duration(seconds: 1), _runTick);
+        _pendingTickTimer = Timer(
+          nextTickDelay(DateTime.now().difference(started)),
+          _runTick,
+        );
       }
     }
   }
@@ -761,6 +842,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     Position position, {
     Map<String, dynamic>? correction,
     String? failure,
+    Map<String, int>? timing,
   }) {
     final correctedAt = _correctedAt;
     final snapshot = <String, dynamic>{
@@ -783,6 +865,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       if (_pendingEvents.isNotEmpty) 'events': List.of(_pendingEvents),
       'correction': ?correction,
       'failure': ?failure,
+      'timing_ms': ?timing,
     };
     _pendingCues.clear();
     _pendingEvents.clear();
@@ -794,17 +877,28 @@ class _NavigationScreenState extends State<NavigationScreen> {
     Position position, {
     String? failure,
   }) async {
+    await _postLog({
+      'session_id': sessionId,
+      'gps_lat': position.latitude,
+      'gps_long': position.longitude,
+      'gps_accuracy': position.accuracy,
+      'heading': position.heading,
+      'debug': _debugSnapshot(position, failure: failure),
+    });
+  }
+
+  /// Best-effort - a dropped tick shouldn't interrupt navigation. What it
+  /// carried that happens only once (cues, events, checkpoints) goes back
+  /// into the queue for the next tick.
+  Future<void> _postLog(Map<String, dynamic> body) async {
     try {
-      await _navigationApi.post('/logs', {
-        'session_id': sessionId,
-        'gps_lat': position.latitude,
-        'gps_long': position.longitude,
-        'gps_accuracy': position.accuracy,
-        'heading': position.heading,
-        'debug': _debugSnapshot(position, failure: failure),
-      }, timeout: _kTickRequestTimeout);
+      await _navigationApi.post('/logs', body, timeout: _kTickRequestTimeout);
     } on ApiException catch (_) {
-      // Best-effort logging - a dropped tick shouldn't interrupt navigation.
+      final debug = body['debug'] as Map<String, dynamic>?;
+      final cues = debug?['cues'] as List?;
+      final events = debug?['events'] as List?;
+      if (cues != null) _pendingCues.insertAll(0, cues.cast());
+      if (events != null) _pendingEvents.insertAll(0, events.cast());
     }
   }
 
@@ -814,8 +908,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
     CameraController controller,
   ) async {
     try {
+      final captureStarted = DateTime.now();
       final image = await controller.takePicture();
       final bytes = await image.readAsBytes();
+      final captureMs = DateTime.now()
+          .difference(captureStarted)
+          .inMilliseconds;
 
       if (isFrameBlocked(bytes)) {
         _consecutiveBlockedTicks++;
@@ -842,6 +940,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       _consecutiveBlockedTicks = 0;
       _blockedAnnounced = false;
 
+      final correctStarted = DateTime.now();
       final result =
           await _positioningApi.postMultipart(
                 '/correct_position',
@@ -862,9 +961,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
                     'heading': _heading.value!.toString(),
                   // Lets the backend skip re-fusing the same fix.
                   'gps_time': position.timestamp.toUtc().toIso8601String(),
+                  // Test walks keep their frames, to compare photo models
+                  // on real queries (backend-positioning's store_frame).
+                  if (widget.adminPreview) 'store_frame': 'true',
                 },
               )
               as Map<String, dynamic>;
+      final correctMs = DateTime.now()
+          .difference(correctStarted)
+          .inMilliseconds;
 
       if (mounted) {
         setState(() {
@@ -884,22 +989,27 @@ class _NavigationScreenState extends State<NavigationScreen> {
         HapticFeedback.selectionClick();
       }
 
-      await _navigationApi.post('/logs', {
-        'session_id': sessionId,
-        'gps_lat': position.latitude,
-        'gps_long': position.longitude,
-        'gps_accuracy': position.accuracy,
-        'heading': position.heading,
-        'corrected_lat': result['corrected_lat'],
-        'corrected_long': result['corrected_long'],
-        'correction_error': result['correction_error'],
-        'anchor_match_id': result['anchor_match_id'],
-        'confidence_score': result['confidence_score'],
-        'debug': _debugSnapshot(
-          position,
-          correction: (result['debug'] as Map?)?.cast<String, dynamic>(),
-        ),
-      }, timeout: _kTickRequestTimeout);
+      // Not awaited: the next photo shouldn't wait on the log upload.
+      unawaited(
+        _postLog({
+          'session_id': sessionId,
+          'gps_lat': position.latitude,
+          'gps_long': position.longitude,
+          'gps_accuracy': position.accuracy,
+          'heading': position.heading,
+          'corrected_lat': result['corrected_lat'],
+          'corrected_long': result['corrected_long'],
+          'correction_error': result['correction_error'],
+          'anchor_match_id': result['anchor_match_id'],
+          'confidence_score': result['confidence_score'],
+          'raw_image_url': result['raw_image_url'],
+          'debug': _debugSnapshot(
+            position,
+            correction: (result['debug'] as Map?)?.cast<String, dynamic>(),
+            timing: {'capture': captureMs, 'correct': correctMs},
+          ),
+        }),
+      );
     } catch (e) {
       // Camera capture or /correct_position failed (unreachable, slow,
       // unauthenticated, etc.) - degrade to a raw-GPS-only tick rather than
@@ -1169,6 +1279,28 @@ class _NavigationScreenState extends State<NavigationScreen> {
                                 : _reportWrongInstruction,
                             icon: const Icon(Icons.close),
                             label: Text(l10n.navWrongInstructionButton),
+                          ),
+                        ),
+                      if (widget.adminPreview && _checkpoints.next != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          child: GestureDetector(
+                            onLongPress: _undoCheckpoint,
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.blue.shade700,
+                                minimumSize: const Size.fromHeight(56),
+                              ),
+                              onPressed: _sessionId == null || _ending
+                                  ? null
+                                  : _markCheckpoint,
+                              icon: const Icon(Icons.flag),
+                              label: Text(
+                                l10n.navCheckpointButton(
+                                  _checkpointLabel(l10n, _checkpoints.next!),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       Padding(

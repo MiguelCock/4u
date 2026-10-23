@@ -245,3 +245,57 @@ def test_correct_position_once_keeps_no_session_state():
     with patch("app.main._search_similar", AsyncMock(return_value=[])):
         _post_once()
     assert _store._sessions == before
+
+
+def _post_with_frame(caller="admin-1", admin=True):
+    _as_caller(caller)
+    storage = patch("app.main.db.client")
+    with (
+        patch("app.main._search_similar", AsyncMock(return_value=[])),
+        patch("app.main.db.is_admin", return_value=admin),
+        storage as mock_client,
+        patch("app.main._store_frame") as store,
+    ):
+        mock_client.storage.from_.return_value.get_public_url.side_effect = (
+            lambda name: f"https://example/{name}"
+        )
+        response = client.post(
+            "/correct_position",
+            data={
+                "session_id": "frames",
+                "latitude": 6.2,
+                "longitude": -75.6,
+                "accuracy": 5.0,
+                "store_frame": "true",
+            },
+            files={"photo": ("frame.jpg", b"jpeg-bytes", "image/jpeg")},
+        )
+    return response, store
+
+
+def test_an_admin_test_walk_keeps_its_frame():
+    response, store = _post_with_frame()
+    assert response.status_code == 200
+    url = response.json()["raw_image_url"]
+    assert url.startswith("https://example/frame-frames-")
+    # Uploaded after the response, under the same name.
+    store.assert_called_once()
+    data, name = store.call_args.args
+    assert data == b"jpeg-bytes" and url.endswith(name)
+
+
+def test_only_admins_may_store_frames():
+    response, store = _post_with_frame(caller="user-1", admin=False)
+    assert response.status_code == 403
+    store.assert_not_called()
+
+
+def test_frames_are_not_stored_by_default():
+    with (
+        patch("app.main._search_similar", AsyncMock(return_value=[])),
+        patch("app.main._store_frame") as store,
+    ):
+        response = _post_correction(session_id="no-frames")
+    assert response.json()["raw_image_url"] is None
+    assert "total_ms" in response.json()["debug"]
+    store.assert_not_called()

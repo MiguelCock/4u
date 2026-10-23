@@ -2,8 +2,9 @@
 separate from app/main.py so the math is testable in isolation (same
 rationale as backend-ai-training/app/embedding.py).
 
-State: [x, y, vx, vy] in a local tangent-plane (meters), origin at the
-session's first GPS fix - valid at campus scale, not for a session
+State: [x, y, vx, vy, bx, by] in a local tangent-plane (meters), origin at
+the session's first GPS fix. (bx, by) is the GPS fix's own slowly-varying
+offset (see make_filter); the reported position is (x, y) - valid at campus scale, not for a session
 spanning many kilometers (which doesn't happen in this app). Both fx/hx
 below are linear, so a plain KalmanFilter would be mathematically
 equivalent today - UKF is used anyway because it's forward-compatible
@@ -29,6 +30,7 @@ VISUAL_SIGMA_METERS = 3.0
 # zero-dt resync, so the filter opened up far more than the time passed.
 _PROCESS_VAR_POS = 0.5
 _PROCESS_VAR_VEL = 0.3
+_MIN_VAR = 1e-9
 
 
 def latlng_to_local(
@@ -48,19 +50,41 @@ def local_to_latlng(
     return lat, lng
 
 
-def _fx(state: np.ndarray, dt: float) -> np.ndarray:
-    x, y, vx, vy = state
-    return np.array([x + vx * dt, y + vy * dt, vx, vy])
+def _fx(state: np.ndarray, dt: float, bias_tau: float = 120.0) -> np.ndarray:
+    x, y, vx, vy, bx, by = state
+    decay = math.exp(-dt / bias_tau)
+    return np.array([x + vx * dt, y + vy * dt, vx, vy, bx * decay, by * decay])
 
 
 def _hx(state: np.ndarray) -> np.ndarray:
+    """A visual match measures the position itself."""
     return state[:2]
 
 
-def make_filter(x0: float, y0: float, pos_sigma: float = 5.0) -> UnscentedKalmanFilter:
+def _hx_gps(state: np.ndarray) -> np.ndarray:
+    """A GPS fix measures the position plus the GPS's own offset."""
+    return state[:2] + state[4:6]
+
+
+def make_filter(
+    x0: float,
+    y0: float,
+    pos_sigma: float = 5.0,
+    bias_sigma: float = 0.0,
+    bias_tau: float = 120.0,
+) -> UnscentedKalmanFilter:
     """A freshly-initialized filter seeded at (x0, y0) with zero velocity -
     the correct state for a session's first call, before any motion has
     been observed.
+
+    [bias_sigma]/[bias_tau] model the GPS offset as a first-order
+    Gauss-Markov process: typically [bias_sigma] meters, changing over
+    about [bias_tau] seconds. A field test walking a known path found GPS
+    off to one side by a steady 3-5 m per straight, not scattered around
+    it; with every fix treated as independent, each new one pulled the
+    estimate back onto that offset right after a photo match had fixed
+    it. With the offset in the state, a match corrects it and the
+    correction persists. 0 disables it (the filter before this change).
 
     Calls predict(dt=0) once before returning - confirmed live (filterpy
     doesn't document this): calling update() on a filter that has never
@@ -69,26 +93,42 @@ def make_filter(x0: float, y0: float, pos_sigma: float = 5.0) -> UnscentedKalman
     posterior covariance, not an error. Every filter this returns is
     immediately safe to update() - callers never need to know about this.
     """
-    points = MerweScaledSigmaPoints(n=4, alpha=1.0, beta=2.0, kappa=-1.0)
-    ukf = UnscentedKalmanFilter(dim_x=4, dim_z=2, dt=1.0, hx=_hx, fx=_fx, points=points)
-    ukf.x = np.array([x0, y0, 0.0, 0.0])
+    # kappa=0: every sigma-point weight positive (the models are linear, so
+    # any valid spread gives the exact Kalman result).
+    points = MerweScaledSigmaPoints(n=6, alpha=1.0, beta=2.0, kappa=0.0)
+    ukf = UnscentedKalmanFilter(dim_x=6, dim_z=2, dt=1.0, hx=_hx, fx=_fx, points=points)
+    ukf.x = np.array([x0, y0, 0.0, 0.0, 0.0, 0.0])
     # Start as uncertain as the fix that seeds it: a 20 m fix used to start
-    # at +-5 m, so the first visual match was barely trusted at all.
-    ukf.P = np.diag([pos_sigma**2, pos_sigma**2, 4.0, 4.0])
-    ukf.Q = np.zeros((4, 4))
-    ukf.predict(dt=0.0)
+    # at +-5 m, so the first visual match was barely trusted at all. Part
+    # of that is the GPS offset, which a match can tell apart.
+    # The floor keeps P positive-definite (Cholesky) when the offset is off.
+    bias_var = max(bias_sigma**2, _MIN_VAR)
+    ukf.P = np.diag([pos_sigma**2, pos_sigma**2, 4.0, 4.0, bias_var, bias_var])
+    ukf.Q = np.zeros((6, 6))
+    ukf.bias_sigma = bias_sigma
+    ukf.bias_tau = bias_tau
+    ukf.predict(dt=0.0, bias_tau=bias_tau)
     return ukf
 
 
 def predict(ukf: UnscentedKalmanFilter, dt: float) -> None:
     dt = max(dt, 0.0)
+    # Gauss-Markov: this growth keeps the offset's spread at bias_sigma.
+    bias_var = 2 * ukf.bias_sigma**2 / ukf.bias_tau
     ukf.Q = (
         np.diag(
-            [_PROCESS_VAR_POS, _PROCESS_VAR_POS, _PROCESS_VAR_VEL, _PROCESS_VAR_VEL]
+            [
+                _PROCESS_VAR_POS,
+                _PROCESS_VAR_POS,
+                _PROCESS_VAR_VEL,
+                _PROCESS_VAR_VEL,
+                bias_var,
+                bias_var,
+            ]
         )
         * dt
     )
-    ukf.predict(dt=dt)
+    ukf.predict(dt=dt, bias_tau=ukf.bias_tau)
 
 
 def _resync_sigma_points(ukf: UnscentedKalmanFilter) -> None:
@@ -104,19 +144,19 @@ def _resync_sigma_points(ukf: UnscentedKalmanFilter) -> None:
     caller needing to know about this. Q is zeroed for it: no time passes,
     so no process noise may be added."""
     q = ukf.Q
-    ukf.Q = np.zeros((4, 4))
-    ukf.predict(dt=0.0)
+    ukf.Q = np.zeros((6, 6))
+    ukf.predict(dt=0.0, bias_tau=ukf.bias_tau)
     ukf.Q = q
 
 
 def gps_update(ukf: UnscentedKalmanFilter, x: float, y: float, accuracy: float) -> None:
     _resync_sigma_points(ukf)
     sigma = max(accuracy, 1.0)
-    ukf.update(np.array([x, y]), R=np.diag([sigma**2, sigma**2]))
+    ukf.update(np.array([x, y]), R=np.diag([sigma**2, sigma**2]), hx=_hx_gps)
 
 
 def _hv(state: np.ndarray) -> np.ndarray:
-    return state[2:]
+    return state[2:4]
 
 
 # 1-sigma of the "not moving" pseudo-measurement, m/s.
@@ -166,6 +206,10 @@ def innovation(
     s = ukf.P[:2, :2] + np.diag([sigma**2, sigma**2])
     d2 = float(residual @ np.linalg.solve(s, residual))
     return float(np.hypot(*residual)), d2
+
+
+def gps_bias(ukf: UnscentedKalmanFilter) -> tuple[float, float]:
+    return float(ukf.x[4]), float(ukf.x[5])
 
 
 def correction_error_meters(ukf: UnscentedKalmanFilter) -> float:

@@ -90,6 +90,16 @@ class SessionStore:
             self._sessions[session_id] = state
         return state
 
+    @staticmethod
+    def _new_filter(x0, y0, accuracy, config):
+        return kalman.make_filter(
+            x0,
+            y0,
+            pos_sigma=max(accuracy, 1.0),
+            bias_sigma=config.gps_bias_sigma_m,
+            bias_tau=config.gps_bias_tau_s,
+        )
+
     def get_lock(self, session_id: str, lat: float, lng: float) -> asyncio.Lock:
         """Ensures the session exists and returns its lock. Callers must
         acquire this *before* doing anything else for the session (including
@@ -122,7 +132,7 @@ class SessionStore:
         stationary = False
         if state.last_gps_time is None and not state.started:
             # First call: seed the filter at this fix, as uncertain as it is.
-            state.ukf = kalman.make_filter(0.0, 0.0, pos_sigma=max(accuracy, 1.0))
+            state.ukf = self._new_filter(0.0, 0.0, accuracy, config)
             state.started = True
             dt = 0.0
         elif reinit:
@@ -130,7 +140,7 @@ class SessionStore:
             # fix rather than extrapolating a stale constant-velocity
             # guess through the gap.
             x0, y0 = kalman.latlng_to_local(lat, lng, state.lat0, state.lng0)
-            state.ukf = kalman.make_filter(x0, y0, pos_sigma=max(accuracy, 1.0))
+            state.ukf = self._new_filter(x0, y0, accuracy, config)
             state.last_gps_time = None
         else:
             if gps_time is not None and gps_time == state.last_gps_time:
@@ -149,12 +159,13 @@ class SessionStore:
         # above instead).
         gps_fused = gps_time is None or gps_time != state.last_gps_time
         if gps_fused:
-            kalman.gps_update(state.ukf, x, y, accuracy)
+            kalman.gps_update(state.ukf, x, y, accuracy * config.gps_sigma_factor)
             state.last_gps_time = gps_time
 
         verdicts: list[dict] = []
         applied: dict | None = None
-        for candidate in matching.best_per_anchor(candidates or []):
+        ranked = matching.best_per_anchor(candidates or [])
+        for candidate in ranked:
             cx, cy = kalman.latlng_to_local(
                 candidate["latitude"], candidate["longitude"], state.lat0, state.lng0
             )
@@ -234,5 +245,11 @@ class SessionStore:
                     round(float(state.ukf.x[3]), 2),
                 ],
                 "correction_error_m": matching.finite(round(error, 2)),
+                "gps_bias": [round(b, 2) for b in kalman.gps_bias(state.ukf)],
+                # How far the best anchor stands out from the next one - a
+                # candidate confidence signal (see docs/TUNING.md).
+                "score_margin": round(ranked[0]["score"] - ranked[1]["score"], 4)
+                if len(ranked) > 1
+                else None,
             },
         )

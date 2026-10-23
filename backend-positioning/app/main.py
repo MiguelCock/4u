@@ -1,10 +1,22 @@
 import asyncio
+import io
+import logging
 import os
+import time
+import uuid
 from typing import Annotated
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, UploadFile
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+)
 from packages.db_errors import install_db_error_handlers
 from packages.supabase import SupaBase
 
@@ -49,6 +61,35 @@ _SEARCH_RETRIES = 2
 
 _RETRYABLE_ERRORS = (httpx.HTTPError, httpx.TimeoutException)
 
+# Admin test walks keep their camera frames (store_frame below), linked to
+# each tick through navigation_logs.raw_image_url, so photo-matching models
+# can be compared on real queries with a known true position. A public
+# bucket like "anchor-points"; names carry a random UUID. Created on first
+# use - the service-role key may.
+FRAMES_BUCKET = "navigation-frames"
+_frames_bucket_ready = False
+_log = logging.getLogger(__name__)
+
+
+def _ensure_frames_bucket() -> None:
+    global _frames_bucket_ready
+    if _frames_bucket_ready:
+        return
+    try:
+        db.client.storage.get_bucket(FRAMES_BUCKET)
+    except Exception:  # noqa: BLE001 - storage3 raises its own error types
+        db.client.storage.create_bucket(FRAMES_BUCKET, options={"public": True})
+    _frames_bucket_ready = True
+
+
+def _store_frame(photo_bytes: bytes, filename: str) -> None:
+    """Background task: best-effort, a failed upload only loses the frame."""
+    try:
+        _ensure_frames_bucket()
+        db.upload_image(FRAMES_BUCKET, io.BytesIO(photo_bytes), filename)
+    except Exception:  # noqa: BLE001
+        _log.exception("storing navigation frame %s failed", filename)
+
 
 @app.get("/")
 async def root():
@@ -89,6 +130,7 @@ async def _search_similar(
 
 @app.post("/correct_position")
 async def correct_position(
+    background: BackgroundTasks,
     session_id: Annotated[str, Form()],
     latitude: Annotated[float, Form()],
     longitude: Annotated[float, Form()],
@@ -99,10 +141,22 @@ async def correct_position(
     # The GPS fix's own timestamp, so the same fix sent again isn't fused
     # twice.
     gps_time: Annotated[str | None, Form()] = None,
+    # Admin test walks only: keep this frame (see FRAMES_BUCKET).
+    store_frame: Annotated[bool, Form()] = False,
     photo: UploadFile = File(...),
     caller_id: str = Depends(get_caller_id),
 ) -> CorrectPositionResponse:
+    started = time.perf_counter()
     photo_bytes = await photo.read()
+    frame_url = None
+    if store_frame:
+        if not db.is_admin(caller_id):
+            raise HTTPException(status_code=403, detail="Admin only")
+        # The URL is known before the upload, so the response doesn't wait
+        # for it.
+        name = f"frame-{session_id}-{uuid.uuid4().hex}.jpg"
+        frame_url = db.client.storage.from_(FRAMES_BUCKET).get_public_url(name)
+        background.add_task(_store_frame, photo_bytes, name)
 
     # Held across the visual-match HTTP call too, not just the predict/update
     # math - two in-flight requests for the same session_id (e.g. a client
@@ -110,9 +164,11 @@ async def correct_position(
     # app/session_store.py's module docstring.
     lock = _store.get_lock(session_id, latitude, longitude)
     async with lock:
+        search_started = time.perf_counter()
         candidates = await _search_similar(
             photo_bytes, photo.filename or "frame.jpg", latitude, longitude
         )
+        search_ms = round(1000 * (time.perf_counter() - search_started))
         result = await _store.correct(
             session_id=session_id,
             lat=latitude,
@@ -123,17 +179,19 @@ async def correct_position(
             gps_time=gps_time,
             config=_config,
         )
-    return _response(result)
+    result.debug["search_ms"] = search_ms
+    result.debug["total_ms"] = round(1000 * (time.perf_counter() - started))
+    return _response(result, raw_image_url=frame_url)
 
 
-def _response(result) -> CorrectPositionResponse:
+def _response(result, raw_image_url: str | None = None) -> CorrectPositionResponse:
     return CorrectPositionResponse(
         corrected_lat=result.corrected_lat,
         corrected_long=result.corrected_long,
         correction_error=result.correction_error,
         anchor_match_id=result.anchor_match_id,
         confidence_score=result.confidence_score,
-        raw_image_url=None,
+        raw_image_url=raw_image_url,
         debug=result.debug,
     )
 

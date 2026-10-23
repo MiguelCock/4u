@@ -440,5 +440,19 @@
   "adminFilterPhotos": "Fotos",
   "adminFilterConnections": "Conexiones",
   "adminFilterHas": "Tiene",
-  "adminFilterHasNone": "No tiene"
+  "adminFilterHasNone": "No tiene",
+  "navArrivedTestWalk": "Has llegado a {destination}.",
+  "navCheckpointButton": "Estoy en {place}",
+  "navCheckpointStart": "el inicio",
+  "navCheckpointDestination": "el destino",
+  "navCheckpointCorner": "la esquina {number}",
+  "navCheckpointMarked": "Punto de control marcado: {place}",
+  "navCheckpointUndone": "Punto de control deshecho: {place}",
+  "trackingErrorTitle": "Distancia a la ruta planeada",
+  "trackingErrorCheckpointsTitle": "Error en {count} puntos de control",
+  "trackingErrorRow": "{label}: media {mean} m · p90 {p90} m",
+  "trackingErrorRaw": "GPS sin corregir",
+  "trackingErrorCorrected": "Corregida",
+  "trackingErrorCloser": "La corregida estuvo más cerca en el {percent}% de las lecturas",
+  "trackingLegendCheckpoint": "Punto de control (posición real)"
 }

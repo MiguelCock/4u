@@ -67,6 +67,13 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
     - waypoint and arrival events, including how many waypoints were skipped
     - backend-positioning's own `debug` as `correction`
     - a `failure` reason when a tick fell back to raw GPS
+    - `timing_ms` (`capture`, `correct`) for the photo and the `/correct_position` round trip
+  - **Tick loop:** ticks start every second (`nextTickDelay`, `lib/services/test_walk.dart`), not a second after the previous one finished, which made the "1 s" loop run every ~3.7 s. The `/logs` POST is no longer awaited before the next photo (`_postLog`). If it fails, its cues and events go back in the queue.
+  - **Test walks** (`adminPreview`, "Test as user"), for measuring the correction on a route walked exactly:
+    - An **"I'm at …"** button (`CheckpointSequence`) records a `checkpoint` event at the start, at each `routeCorners` corner and at the destination. The event carries raw and corrected positions; a long press undoes the last tap (`checkpoint_undo`).
+    - Every frame is kept (`store_frame`, see `backend-positioning/CLAUDE.md`).
+    - Arrival is announced (`navArrivedTestWalk`) but doesn't end the trip; the destination checkpoint does.
+    - `session_tracking_screen.dart` shows a card computed by `lib/services/route_error.dart`: distance from the route for raw vs corrected, the share of ticks where the corrected position was closer, and the 2D error at checkpoints. Checkpoints appear as blue flags.
   - **Heading for correction:** the `heading` sent to `/correct_position` is the compass, the direction the camera faces, no longer the GPS course.
   - **Wrong-instruction reports:** in the admin test flow (`NavigationScreen(adminPreview: true)`, passed down from `UserHomeScreen`), a red **✗ Wrong instruction** button above End posts to `POST /guidance-reports`. The report carries the last cue and its type, the waypoint index, both positions, the compass and a guidance snapshot.
   - **`SessionTrackingScreen`:**

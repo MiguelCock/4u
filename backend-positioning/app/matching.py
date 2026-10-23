@@ -46,6 +46,16 @@ class MatchConfig:
     # What backend-ai-training is asked for.
     search_radius_m: float = 60.0
     search_limit: int = 5
+    # The GPS fix's own slowly-varying offset (see kalman.make_filter):
+    # typical size, and how long it takes to change. 0 sigma disables it.
+    # Replaying the first known-path walk (scripts/replay.py), distance
+    # from the route fell from 3.64 m (off) to 2.70 (2.5 m) and 2.28 (4 m);
+    # 6 m scored better still on that axis but leans harder on photo
+    # matches, whose along-route error that walk couldn't measure.
+    gps_bias_sigma_m: float = 4.0
+    gps_bias_tau_s: float = 120.0
+    # Scales the phone's reported accuracy into the GPS noise used.
+    gps_sigma_factor: float = 1.0
 
     @classmethod
     def from_env(cls) -> MatchConfig:
@@ -71,6 +81,15 @@ class MatchConfig:
             ),
             search_limit=int(
                 _env_float("POSITIONING_SEARCH_LIMIT", float(d.search_limit))
+            ),
+            gps_bias_sigma_m=_env_float(
+                "POSITIONING_GPS_BIAS_SIGMA_M", d.gps_bias_sigma_m
+            ),
+            gps_bias_tau_s=max(
+                _env_float("POSITIONING_GPS_BIAS_TAU_S", d.gps_bias_tau_s), 1.0
+            ),
+            gps_sigma_factor=_env_float(
+                "POSITIONING_GPS_SIGMA_FACTOR", d.gps_sigma_factor
             ),
         )
 

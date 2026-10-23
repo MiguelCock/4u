@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import UTC, datetime, timedelta
 
@@ -45,6 +46,11 @@ def _session_owner(session_id: str) -> str | None:
     )
     return result.data[0]["user_id"] if result.data else None
 
+
+_log = logging.getLogger(__name__)
+
+# Where backend-positioning keeps admin test walks' frames.
+FRAMES_BUCKET = "navigation-frames"
 
 # A tick sent just before the trip ended can reach the server after the
 # end: a field test lost its last two ticks, and the arrival they
@@ -173,7 +179,26 @@ async def delete_session(id: str, caller_id: str = Depends(get_caller_id)):
     db.client.table("user_feedback").update({"session_id": None}).eq(
         "session_id", id
     ).execute()
+    # Admin test walks keep their camera frames (backend-positioning's
+    # store_frame); the logs pointing at them go with the session.
+    frames = [
+        row["raw_image_url"]
+        for row in select_all(
+            lambda: (
+                db.client.table("navigation_logs")
+                .select("raw_image_url")
+                .eq("session_id", id)
+                .not_.is_("raw_image_url", "null")
+                .order("id")
+            )
+        )
+    ]
     db.client.table("navigation_sessions").delete().eq("id", id).execute()
+    if frames:
+        try:
+            db.delete_images_by_url(FRAMES_BUCKET, frames)
+        except Exception:  # noqa: BLE001 - leftover files don't undo the delete
+            _log.exception("deleting %d frames of session %s failed", len(frames), id)
     return "ok"
 
 

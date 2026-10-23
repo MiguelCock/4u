@@ -1,4 +1,5 @@
 import asyncio
+import math
 
 import pytest
 
@@ -289,3 +290,72 @@ async def test_standing_still_keeps_a_photo_match_from_yanking_the_position(
     pulled = (result.corrected_lat - 6.2) / _M
     # 8.8 m before (the field symptom), ~3 m now.
     assert pulled < 4.0
+
+
+# --- GPS offset (bias) state ------------------------------------------------
+
+# 1 m east in longitude degrees at latitude 6.2.
+_E = _M / math.cos(math.radians(6.2))
+
+
+async def _walk(monkeypatch, config, matches_every=3, wrong_at=None, ticks=30):
+    """Walks north 1.2 m/s for [ticks] 3.5 s ticks with GPS a steady 5 m
+    east of the truth (the field test's per-straight offset). Every
+    [matches_every]-th tick a photo match on the true position, plus one
+    6 m-wrong match at tick [wrong_at]. Returns per-tick east error (m)."""
+    clock = [1000.0]
+    monkeypatch.setattr(session_store_module.time, "monotonic", lambda: clock[0])
+    store = SessionStore()
+    errors = []
+    for k in range(ticks):
+        north = 1.2 * 3.5 * k
+        truth_lat = 6.2 + north * _M
+        candidates = []
+        if matches_every and k % matches_every == matches_every - 1:
+            candidates = [_match(f"a{k}", truth_lat, -75.6, 0.9)]
+        if k == wrong_at:
+            candidates = [_match("wrong", truth_lat, -75.6 + 6 * _E, 0.9)]
+        result = await _correct(
+            store,
+            "bias",
+            lat=truth_lat,
+            lng=-75.6 + 5 * _E,
+            accuracy=3.0,
+            gps_time=f"t{k}",
+            config=config,
+            candidates=candidates,
+        )
+        errors.append((result.corrected_long + 75.6) / _E)
+        clock[0] += 3.5
+    return errors
+
+
+@pytest.mark.asyncio
+async def test_estimating_the_gps_offset_keeps_matches_correcting(monkeypatch):
+    with_bias = await _walk(monkeypatch, MatchConfig())
+    without = await _walk(monkeypatch, MatchConfig(gps_bias_sigma_m=0.0))
+    late = slice(15, None)
+    mean = lambda v: sum(abs(e) for e in v) / len(v)
+    # GPS alone is 5 m off. Matches every ~10 s get the old filter only
+    # part of the way; with the offset in the state the fix persists.
+    assert mean(without[late]) > 2.5
+    assert mean(with_bias[late]) < 0.6 * mean(without[late])
+    # Between matches too, not only on the ticks that have one.
+    between = [e for k, e in enumerate(with_bias) if k > 15 and k % 3 == 0]
+    assert max(abs(e) for e in between) < 3.0
+
+
+@pytest.mark.asyncio
+async def test_without_matches_the_position_follows_gps(monkeypatch):
+    errors = await _walk(monkeypatch, MatchConfig(), matches_every=0)
+    assert all(abs(e - 5.0) < 1.0 for e in errors[3:])
+
+
+@pytest.mark.asyncio
+async def test_a_wrong_match_fades_instead_of_sticking(monkeypatch):
+    clean = await _walk(monkeypatch, MatchConfig(), matches_every=0)
+    hit = await _walk(monkeypatch, MatchConfig(), matches_every=0, wrong_at=5)
+    effect = [h - c for h, c in zip(hit, clean)]
+    assert abs(effect[5]) > 0.5
+    # ~70 s later, well under the initial pull.
+    assert abs(effect[25]) < 0.6 * abs(effect[5])

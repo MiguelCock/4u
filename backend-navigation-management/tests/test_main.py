@@ -64,6 +64,14 @@ def _mock_multi_table_client(table_mocks):
     return mock_client
 
 
+def _logs_with_frames(urls) -> MagicMock:
+    logs_table = MagicMock()
+    logs_table.select.return_value.eq.return_value.not_.is_.return_value.order.return_value.range.return_value.execute.return_value.data = [
+        {"raw_image_url": url} for url in urls
+    ]
+    return logs_table
+
+
 def _profiles_table(admin: bool) -> MagicMock:
     profiles_table = MagicMock()
     profiles_table.select.return_value.eq.return_value.execute.return_value.data = (
@@ -252,6 +260,7 @@ def test_delete_session_allowed_for_admin():
             "profiles": _profiles_table(admin=True),
             "user_feedback": _sessions_table(update_rows=[]),
             "navigation_sessions": _sessions_table(),
+            "navigation_logs": _logs_with_frames([]),
         }
     )
     with patch("app.main.db.client", mock_client):
@@ -270,6 +279,7 @@ def test_delete_session_detaches_feedback_before_deleting():
             "profiles": _profiles_table(admin=True),
             "user_feedback": feedback_table,
             "navigation_sessions": sessions_table,
+            "navigation_logs": _logs_with_frames([]),
         }
     )
     with patch("app.main.db.client", mock_client):
@@ -278,6 +288,26 @@ def test_delete_session_detaches_feedback_before_deleting():
     feedback_table.update.assert_called_once_with({"session_id": None})
     feedback_table.update.return_value.eq.assert_called_once_with("session_id", "1")
     sessions_table.delete.return_value.eq.assert_called_once_with("id", "1")
+
+
+def test_delete_session_removes_its_test_walk_frames():
+    _as_caller("admin1")
+    urls = ["https://x/storage/v1/object/public/navigation-frames/frame-1-a.jpg"]
+    mock_client = _mock_multi_table_client(
+        {
+            "profiles": _profiles_table(admin=True),
+            "user_feedback": _sessions_table(update_rows=[]),
+            "navigation_sessions": _sessions_table(),
+            "navigation_logs": _logs_with_frames(urls),
+        }
+    )
+    with (
+        patch("app.main.db.client", mock_client),
+        patch("app.main.db.delete_images_by_url") as delete_files,
+    ):
+        response = client.delete("/sessions/1")
+    assert response.status_code == 200
+    delete_files.assert_called_once_with("navigation-frames", urls)
 
 
 # --- POST /logs: admin or self via session_id -> navigation_sessions.user_id
