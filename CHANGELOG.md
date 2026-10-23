@@ -6,6 +6,12 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+### Added
+- **New anchor points start from the last one's values**: university, building, type, floor, indoor, lighting and surface. Only the description and position start empty.
+- **Filters on anchor points** (admin): by category and type, floor, indoor or outdoor, lighting, and whether they have photos or connections. Works on the list and the map.
+- **Session review map** (admin): the raw GPS path and the corrected path drawn separately, photo matches with a line to the point they matched, and details on tap.
+- **"✗ Wrong instruction" button** in the admin test flow, to mark wrong guidance. Marks appear on the session map.
+
 ## [0.5.0] - 2026-10-22
 
 ### Added

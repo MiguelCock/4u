@@ -7,6 +7,7 @@ import '../services/location_service.dart';
 import 'capture_photo_screen.dart';
 import 'location_picker_screen.dart';
 import '../services/api_error_messages.dart';
+import '../services/capture_defaults.dart';
 import '../services/destinations.dart';
 import '../services/location_types.dart';
 import '../widgets/floor_field.dart';
@@ -64,18 +65,26 @@ class _CaptureScreenState extends State<CaptureScreen> {
         _mapApi.get('/places'),
         _mapApi.get('/buildings'),
       ]);
+      final defaults = await CaptureDefaults.load();
       if (!mounted) return;
       setState(() {
         _places = (results[0] as List).cast<Map<String, dynamic>>();
         _buildingsAll = (results[1] as List).cast<Map<String, dynamic>>();
-        final initialPlaceId = widget.initialPlaceId;
+        // The admin's current filter wins; otherwise start where the last
+        // point was created (ignored if that university is gone).
+        final initialPlaceId = widget.initialPlaceId ?? defaults.placeId;
         if (initialPlaceId != null &&
             _places.any((p) => p['id'] == initialPlaceId)) {
           _selectedPlaceId = initialPlaceId;
         } else if (_places.isNotEmpty) {
           _selectedPlaceId = _places.first['id'] as String?;
         }
-        _applyBuildingFilter(preferredBuildingId: widget.initialBuildingId);
+        _applyBuildingFilter(
+          preferredBuildingId:
+              widget.initialBuildingId ??
+              (widget.initialPlaceId == null ? defaults.buildingId : null),
+        );
+        _applyRememberedValues(defaults);
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -87,6 +96,25 @@ class _CaptureScreenState extends State<CaptureScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Type, floor and capture conditions from the last point created here.
+  /// The floor is kept only if it exists in the selected building.
+  void _applyRememberedValues(CaptureDefaults defaults) {
+    final type = defaults.locationTypeId;
+    if (type != null && kLocationTypes.containsKey(type)) {
+      _selectedLocationTypeId = type;
+    }
+    final floor = defaults.floor;
+    if (floor != null && floor >= 0 && floor < _selectedBuildingFloors) {
+      _floor = floor;
+    }
+    if (defaults.indoor != null) _indoor = defaults.indoor!;
+    if (const ['bright', 'moderate', 'dim'].contains(defaults.lighting)) {
+      _lighting = defaults.lighting;
+    }
+    final surface = defaults.surface;
+    if (surface != null) _surfaceController.text = surface;
   }
 
   int get _selectedBuildingFloors =>
@@ -179,6 +207,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
         },
       });
       final id = (result as List).first['id'] as String;
+      await CaptureDefaults(
+        placeId: _selectedPlaceId,
+        buildingId: _selectedBuildingId,
+        locationTypeId: _selectedLocationTypeId,
+        floor: _floor,
+        indoor: _indoor,
+        lighting: _lighting,
+        surface: surface.isEmpty ? null : surface,
+      ).save();
       // Unnamed in-between points are announced by their type instead.
       final displayName = description.isNotEmpty
           ? description

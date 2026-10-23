@@ -67,3 +67,12 @@ There is no service-to-service HTTP call anywhere in this codebase — every bac
 - **Nullable references:** `building_id` and `route_id` are nullable. They're set to null when the building or route is deleted (`ON DELETE SET NULL`), so trip history survives.
 - **Lists** page with `select_all`.
 
+## Diagnostics
+
+- **`navigation_logs.debug`** (JSONB, `NavigationLogCreate.debug`) is stored as-is. The app puts in it what guidance saw and said each tick, plus backend-positioning's correction details. See `application/CLAUDE.md` "Field diagnostics".
+- **`guidance_reports`:** an admin's "wrong instruction" marks from the test flow.
+  - `POST /guidance-reports` is allowed for the session's owner or an admin, and `reported_by` is always the caller.
+  - `GET /guidance-reports?session_id=` returns that session's reports in time order, to the owner or an admin.
+  - Rows cascade with their session.
+  - Migration: `db_schema/migrations/2026-10-23_navigation_debug.sql`.
+
