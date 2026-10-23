@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_compass/flutter_compass.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -54,6 +55,19 @@ const Duration _kGuidanceInterval = Duration(milliseconds: 500);
 /// it's announced as "approaching"/"arrived" - roughly in line with GPS's
 /// own typical accuracy, so it doesn't fire too early or never fire at all.
 const double _kProximityThresholdMeters = 20.0;
+
+/// Arriving needs the corrected position this close to the destination
+/// *and* raw GPS within [_kArrivalRawGpsMeters], on
+/// [_kArrivalConfirmTicks] guidance ticks in a row. A field test ended the
+/// trip ~40 m early: photo matches on the destination pulled the corrected
+/// position inside 20 m while the user was still far away.
+const double _kArrivalMeters = 15.0;
+const double _kArrivalRawGpsMeters = 25.0;
+const int _kArrivalConfirmTicks = 2;
+
+/// When the correction goes stale, guidance blends from the last corrected
+/// position to raw GPS over this long instead of jumping between them.
+const Duration _kSourceBlend = Duration(seconds: 2);
 
 /// The periodic "N meters ahead" update is skipped if anything else was
 /// said this recently, so it never piles onto a turn instruction.
@@ -124,6 +138,16 @@ class _NavigationScreenState extends State<NavigationScreen> {
   DateTime? _correctedAt;
   DateTime? _lastSpokenAt;
   bool _stopped = false;
+
+  /// The route's own start point, where the first segment begins.
+  LatLng? _startPoint;
+  int _arrivalStreak = 0;
+  DateTime? _staleSince;
+  LatLng? _staleFrom;
+
+  /// Magnetic declination (degrees, east positive) - see trueHeading().
+  final double _declination =
+      double.tryParse(dotenv.env['MAGNETIC_DECLINATION'] ?? '') ?? -7.5;
 
   bool _starting = true;
   bool _ending = false;
@@ -278,6 +302,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
         if (lat == null || lng == null) continue;
         final point = LatLng(lat, lng);
         points.add(point);
+        if (i == 0) _startPoint = point;
         if (i > 0) {
           final description = (anchor['location_description'] as String? ?? '')
               .trim();
@@ -337,20 +362,54 @@ class _NavigationScreenState extends State<NavigationScreen> {
         correctedAt != null &&
         DateTime.now().difference(correctedAt) < _kCorrectionFreshness) {
       _lastUsedCorrected = true;
+      _staleSince = null;
       return LatLng(_correctedLat!, _correctedLong!);
     }
     _lastUsedCorrected = false;
+    final position = _locationService.lastPosition;
+    if (position == null) return null;
+    final raw = LatLng(position.latitude, position.longitude);
+    // Blend from the last corrected position to raw GPS instead of jumping
+    // the tens of metres that can separate them.
+    if (_correctedLat != null && _correctedLong != null) {
+      if (_staleSince == null) {
+        _staleSince = DateTime.now();
+        _staleFrom = LatLng(_correctedLat!, _correctedLong!);
+      }
+      final from = _staleFrom!;
+      final f =
+          (DateTime.now().difference(_staleSince!).inMilliseconds /
+                  _kSourceBlend.inMilliseconds)
+              .clamp(0.0, 1.0);
+      if (f < 1) {
+        return LatLng(
+          from.latitude + (raw.latitude - from.latitude) * f,
+          from.longitude + (raw.longitude - from.longitude) * f,
+        );
+      }
+    }
+    return raw;
+  }
+
+  LatLng? get _rawPosition {
     final position = _locationService.lastPosition;
     return position == null
         ? null
         : LatLng(position.latitude, position.longitude);
   }
 
+  /// Where the segment being walked starts: the previous waypoint, or the
+  /// route's start for the first one.
+  LatLng? _segmentStart() => _nextWaypointIndex == 0
+      ? _startPoint
+      : _waypoints[_nextWaypointIndex - 1].point;
+
   /// Compass heading, or GPS direction of travel while actually moving if
   /// the phone has no compass. Null when neither is usable.
   double? _currentHeading() {
     final compass = _heading.value;
-    if (compass != null) return compass;
+    // The compass is magnetic; route bearings are true north.
+    if (compass != null) return trueHeading(compass, _declination);
     final position = _locationService.lastPosition;
     if (position != null && position.speed >= _kMinSpeedForGpsHeading) {
       return position.heading;
@@ -370,7 +429,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
     final heading = _currentHeading();
     if (heading == null) return;
     final target = _waypoints[_nextWaypointIndex].point;
-    _lastTargetBearing = bearingDegrees(here, target);
+    final segmentStart = _segmentStart();
+    // Follow the segment's direction, not the straight line to the
+    // waypoint (see guidanceBearing).
+    _lastTargetBearing = segmentStart == null
+        ? bearingDegrees(here, target)
+        : guidanceBearing(here, segmentStart, target);
     _lastTargetDistance = haversineMeters(here, target);
     _lastTurn = signedTurn(heading, _lastTargetBearing!);
     final cue = _guidance.update(
@@ -399,12 +463,34 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// guidance stuck waiting for it. Reaching the last one finishes the trip.
   /// Returns true when something was announced.
   bool _checkProximity(LatLng here) {
+    final raw = _rawPosition;
+    final last = _waypoints.length - 1;
     var reached = -1;
     for (var i = _nextWaypointIndex; i < _waypoints.length; i++) {
-      if (haversineMeters(here, _waypoints[i].point) <=
-          _kProximityThresholdMeters) {
-        reached = i;
+      final point = _waypoints[i].point;
+      if (haversineMeters(here, point) > _kProximityThresholdMeters) continue;
+      // Skipping past the next waypoint (or arriving) on the strength of
+      // the corrected position alone let one bad photo match jump the trip
+      // forward: raw GPS has to agree too.
+      final skips = i > _nextWaypointIndex || i == last;
+      if (skips &&
+          (raw == null ||
+              haversineMeters(raw, point) >
+                  (i == last
+                      ? _kArrivalRawGpsMeters
+                      : _kProximityThresholdMeters))) {
+        continue;
       }
+      if (i == last && haversineMeters(here, point) > _kArrivalMeters) {
+        continue;
+      }
+      reached = i;
+    }
+    if (reached == last) {
+      _arrivalStreak++;
+      if (_arrivalStreak < _kArrivalConfirmTicks) return false;
+    } else {
+      _arrivalStreak = 0;
     }
     if (reached == -1) return false;
     _pendingEvents.add({
@@ -704,10 +790,14 @@ class _NavigationScreenState extends State<NavigationScreen> {
                   'latitude': position.latitude.toString(),
                   'longitude': position.longitude.toString(),
                   'accuracy': position.accuracy.toString(),
-                  // The direction the phone (and camera) faces, which is
-                  // what a photo match can be checked against - not the
-                  // GPS course, which is meaningless while standing still.
-                  'heading': (_heading.value ?? position.heading).toString(),
+                  // The direction the phone (and camera) faces, magnetic
+                  // like the anchor photos' own headings, so a match can be
+                  // checked against it. Never the GPS course: meaningless
+                  // while standing still, it would reject good matches.
+                  if (_heading.value != null)
+                    'heading': _heading.value!.toString(),
+                  // Lets the backend skip re-fusing the same fix.
+                  'gps_time': position.timestamp.toUtc().toIso8601String(),
                 },
               )
               as Map<String, dynamic>;

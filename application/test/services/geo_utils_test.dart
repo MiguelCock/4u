@@ -51,4 +51,49 @@ void main() {
     expect(signedTurn(10, 350), -20);
     expect(signedTurn(0, 180).abs(), 180);
   });
+
+  group('route segments', () {
+    // A straight segment due north, ~111 m long.
+    const a = LatLng(6.2, -75.58);
+    const b = LatLng(6.201, -75.58);
+    // ~1.1 m east per 0.00001 deg of longitude at this latitude.
+    LatLng east(LatLng p, double meters) =>
+        LatLng(p.latitude, p.longitude + meters / 110574 / 0.99415);
+    LatLng north(double meters) =>
+        LatLng(a.latitude + meters / 111195, a.longitude);
+
+    test('projection gives distance along and to the side', () {
+      final p = projectOntoSegment(east(north(40), 6), a, b);
+      expect(p.along, closeTo(40, 0.5));
+      expect(p.length, closeTo(111.2, 0.5));
+      expect(p.crossTrack, closeTo(6, 0.3)); // positive = right of travel
+    });
+
+    test('a sideways wobble near the line asks for no turn', () {
+      // 8 m to the side, 30 m before the end: aiming at the waypoint itself
+      // would need a ~15-27° turn; the guidance bearing is the path's.
+      final here = east(north(81), 8);
+      expect(signedTurn(0, bearingDegrees(here, b)).abs(), greaterThan(14));
+      expect(guidanceBearing(here, a, b), closeTo(0, 0.5));
+    });
+
+    test('clearly off the path it steers back, gently', () {
+      final here = east(north(40), 25);
+      final turn = signedTurn(0, guidanceBearing(here, a, b));
+      expect(turn, lessThan(-20)); // back to the left, towards the line
+      expect(turn, greaterThan(-60)); // not a sharp U-turn
+    });
+
+    test('on the line it points straight along it', () {
+      expect(guidanceBearing(north(30), a, b), closeTo(0, 0.5));
+    });
+
+    test('near the end it aims at the waypoint itself', () {
+      final here = east(north(105), 3);
+      expect(
+        guidanceBearing(here, a, b),
+        closeTo(bearingDegrees(here, b), 1e-9),
+      );
+    });
+  });
 }

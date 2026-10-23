@@ -76,7 +76,7 @@ def test_correct_position_fuses_gps_and_visual_match():
         "building_id": "b1",
         "score": 0.95,
     }
-    with patch("app.main._search_similar", AsyncMock(return_value=match)):
+    with patch("app.main._search_similar", AsyncMock(return_value=[match])):
         response = _post_correction(session_id="test-fuse")
 
     assert response.status_code == 200
@@ -86,10 +86,11 @@ def test_correct_position_fuses_gps_and_visual_match():
     assert body["raw_image_url"] is None
     assert isinstance(body["corrected_lat"], float)
     assert isinstance(body["correction_error"], float)
+    assert body["debug"]["candidates"][0]["verdict"] == "applied"
 
 
 def test_correct_position_degrades_to_gps_only_when_visual_match_unavailable():
-    with patch("app.main._search_similar", AsyncMock(return_value=None)):
+    with patch("app.main._search_similar", AsyncMock(return_value=[])):
         response = _post_correction(session_id="test-degrade")
 
     assert response.status_code == 200
@@ -121,7 +122,7 @@ async def test_search_similar_retries_then_gives_up_on_persistent_failure():
     with patch("app.main.httpx.AsyncClient", return_value=mock_client):
         result = await _search_similar(b"fake-bytes", "frame.jpg", 6.24, -75.58)
 
-    assert result is None
+    assert result == []
     # Initial attempt + the configured retries, not a single bare try.
     from app.main import _SEARCH_RETRIES
 
@@ -142,7 +143,7 @@ async def test_search_similar_recovers_after_one_transient_failure():
     with patch("app.main.httpx.AsyncClient", return_value=mock_client):
         result = await _search_similar(b"fake-bytes", "frame.jpg", 6.24, -75.58)
 
-    assert result == {"anchor_point_id": "a1", "score": 0.9}
+    assert result == [{"anchor_point_id": "a1", "score": 0.9}]
     assert mock_client.post.call_count == 2
 
 
@@ -163,6 +164,9 @@ async def test_search_similar_forwards_latitude_and_longitude():
     call = mock_client.post.call_args
     assert call.kwargs["data"]["latitude"] == "6.24"
     assert call.kwargs["data"]["longitude"] == "-75.58"
+    # Several candidates within a tight radius, not the top-1 of 150 m.
+    assert call.kwargs["data"]["limit"] == "5"
+    assert call.kwargs["data"]["radius_meters"] == "60.0"
 
 
 # --- /correct_position_once: stateless, no session ----------------------
@@ -187,22 +191,23 @@ def test_correct_position_once_rejects_missing_token():
 
 
 def test_correct_position_once_pulls_toward_a_confident_match():
-    # Match ~22m north of a fix with 20m GPS accuracy - an accepted visual
-    # match (3m sigma) should pull the result most of the way to it.
+    # Match ~22m north of a fix with 20m GPS accuracy - accepted (within
+    # 2.5 x accuracy) with a distance-scaled sigma of ~9.6 m, it still pulls
+    # the result most of the way to it.
     match = {
         "anchor_point_id": "a1",
         "latitude": 6.2002,
         "longitude": -75.6,
         "score": 0.95,
     }
-    with patch("app.main._search_similar", AsyncMock(return_value=match)):
+    with patch("app.main._search_similar", AsyncMock(return_value=[match])):
         response = _post_once(accuracy=20.0)
 
     assert response.status_code == 200
     body = response.json()
     assert body["anchor_match_id"] == "a1"
     assert body["confidence_score"] == 0.95
-    assert body["corrected_lat"] > 6.2 + 0.7 * 0.0002
+    assert 6.2 + 0.5 * 0.0002 < body["corrected_lat"] < 6.2002
     assert body["corrected_long"] == pytest.approx(-75.6, abs=1e-6)
 
 
@@ -213,7 +218,7 @@ def test_correct_position_once_ignores_a_low_score_match():
         "longitude": -75.6,
         "score": 0.1,
     }
-    with patch("app.main._search_similar", AsyncMock(return_value=match)):
+    with patch("app.main._search_similar", AsyncMock(return_value=[match])):
         response = _post_once()
 
     body = response.json()
@@ -222,7 +227,7 @@ def test_correct_position_once_ignores_a_low_score_match():
 
 
 def test_correct_position_once_returns_gps_fix_without_a_match():
-    with patch("app.main._search_similar", AsyncMock(return_value=None)):
+    with patch("app.main._search_similar", AsyncMock(return_value=[])):
         response = _post_once()
 
     assert response.status_code == 200
@@ -237,6 +242,6 @@ def test_correct_position_once_keeps_no_session_state():
     from app.main import _store
 
     before = dict(_store._sessions)
-    with patch("app.main._search_similar", AsyncMock(return_value=None)):
+    with patch("app.main._search_similar", AsyncMock(return_value=[])):
         _post_once()
     assert _store._sessions == before

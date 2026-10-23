@@ -12,6 +12,11 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - **Session review map** (admin): the raw GPS path and the corrected path drawn separately, photo matches with a line to the point they matched, and details on tap.
 - **"✗ Wrong instruction" button** in the admin test flow, to mark wrong guidance. Marks appear on the session map.
 
+### Fixed
+- **The position jumped forward and back, and snapped onto the destination near the end.** A photo match is now used only when the matched place is close to the GPS position and was photographed facing the same way, and a far match pulls only gently.
+- **The trip ended early, about 40 m before the destination.** Arriving now needs both the corrected position and the raw GPS close to the destination.
+- **"Turn 30–45 degrees" while walking straight.** Guidance follows the path's direction instead of the line to the next point, the compass is smoothed over time and corrected to true north, and small deviations no longer trigger a turn.
+
 ## [0.5.0] - 2026-10-22
 
 ### Added

@@ -1,5 +1,7 @@
 import math
 
+import pytest
+
 from app import kalman
 
 
@@ -68,3 +70,35 @@ def test_clamp_confidence_handles_negative_cosine_similarity():
     assert kalman.clamp_confidence(-0.4) == 0.0
     assert kalman.clamp_confidence(0.5) == 0.5
     assert kalman.clamp_confidence(1.4) == 1.0
+
+
+def test_process_noise_grows_with_elapsed_time_not_with_calls():
+    one_long = kalman.make_filter(0.0, 0.0)
+    kalman.predict(one_long, 2.0)
+    many_short = kalman.make_filter(0.0, 0.0)
+    for _ in range(4):
+        kalman.predict(many_short, 0.5)
+    # Same 2 s elapsed: about the same position uncertainty either way
+    # (the velocity term adds a little more over the longer single step).
+    assert many_short.P[0, 0] == pytest.approx(one_long.P[0, 0], rel=0.5)
+
+
+def test_updates_add_no_process_noise_of_their_own():
+    ukf = kalman.make_filter(0.0, 0.0, pos_sigma=5.0)
+    kalman.gps_update(ukf, 0.0, 0.0, 5.0)
+    after_one = ukf.P[0, 0]
+    # A second update with no time passing may only shrink the uncertainty.
+    kalman.gps_update(ukf, 0.0, 0.0, 5.0)
+    assert ukf.P[0, 0] < after_one
+
+
+def test_new_filter_starts_as_uncertain_as_its_fix():
+    assert kalman.make_filter(0.0, 0.0, pos_sigma=20.0).P[0, 0] == pytest.approx(400.0)
+
+
+def test_innovation_reports_distance_and_mahalanobis():
+    ukf = kalman.make_filter(0.0, 0.0, pos_sigma=3.0)
+    distance, d2 = kalman.innovation(ukf, 0.0, 12.0, sigma=3.0)
+    assert distance == pytest.approx(12.0)
+    # 12 m against sqrt(9 + 9) of combined sigma: (12^2) / 18 = 8.
+    assert d2 == pytest.approx(8.0, rel=0.05)

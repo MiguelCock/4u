@@ -56,14 +56,22 @@ int roundMeters(double meters) {
 /// The gap between [alignedDegrees] and [orientDegrees] is hysteresis, so a
 /// heading hovering around the edge doesn't flip-flop.
 class TurnGuidance {
-  static const alignedDegrees = 20.0;
-  static const orientDegrees = 25.0;
-  static const offCourseDegrees = 45.0;
+  // Widened after a field test: with a compass that sways by ±15° while
+  // walking, 20/25 turned straight walking into "turn 30 degrees" cues.
+  static const alignedDegrees = 25.0;
+  static const orientDegrees = 35.0;
+  static const offCourseDegrees = 50.0;
   static const alignedHold = Duration(milliseconds: 1500);
   static const offCourseHold = Duration(seconds: 3);
   static const repeatMinGap = Duration(seconds: 4);
   static const repeatIdle = Duration(seconds: 10);
   static const repeatChangeDegrees = 20.0;
+
+  /// Recent |turn| samples while walking: off course is judged on their
+  /// median, so one swing of the compass doesn't count (and one aligned
+  /// sample doesn't reset a real drift).
+  static const _offCourseSamples = 5;
+  final List<double> _recentOff = [];
 
   bool _walking = false;
   DateTime? _alignedSince;
@@ -83,6 +91,7 @@ class TurnGuidance {
     bool walking = false,
   }) {
     _walking = walking;
+    _recentOff.clear();
     _alignedSince = null;
     _offCourseSince = null;
     _lastTurn = announcedTurn;
@@ -98,7 +107,9 @@ class TurnGuidance {
   }) {
     final off = turn.abs();
     if (_walking) {
-      if (off <= offCourseDegrees) {
+      _recentOff.add(off);
+      if (_recentOff.length > _offCourseSamples) _recentOff.removeAt(0);
+      if (_median(_recentOff) <= offCourseDegrees) {
         _offCourseSince = null;
         return null;
       }
@@ -106,6 +117,7 @@ class TurnGuidance {
       if (now.difference(_offCourseSince!) < offCourseHold) return null;
       _walking = false;
       _offCourseSince = null;
+      _recentOff.clear();
       return _turn(turn, now);
     }
 
@@ -132,6 +144,14 @@ class TurnGuidance {
     return null;
   }
 
+  static double _median(List<double> values) {
+    final sorted = List.of(values)..sort();
+    final mid = sorted.length ~/ 2;
+    return sorted.length.isOdd
+        ? sorted[mid]
+        : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+
   TurnCue _turn(double turn, DateTime now) {
     _lastTurn = turn;
     _lastTurnAt = now;
@@ -139,15 +159,18 @@ class TurnGuidance {
   }
 }
 
-/// Smooths compass readings (degrees, wrapping at 360) with an exponential
-/// moving average on the unit circle, so a jittery sensor doesn't make the
-/// turn instructions jump around - and 359 -> 1 averages to 0, not 180.
+/// Smooths compass readings (degrees, wrapping at 360) on the unit circle,
+/// so 359 -> 1 averages to 0, not 180. Smoothing is by *time*
+/// ([timeConstant]), not per reading: the plugin sends a reading every
+/// ~32 ms, so a per-reading factor of 0.3 averaged over just ~0.1 s and
+/// walking sway went straight into the turn instructions.
 class HeadingSmoother {
-  final double alpha;
+  final Duration timeConstant;
   double? _x;
   double? _y;
+  DateTime? _last;
 
-  HeadingSmoother({this.alpha = 0.3});
+  HeadingSmoother({this.timeConstant = const Duration(seconds: 1)});
 
   double? get value {
     final x = _x;
@@ -156,12 +179,30 @@ class HeadingSmoother {
     return (atan2(y, x) * 180 / pi + 360) % 360;
   }
 
-  double add(double degrees) {
+  double add(double degrees, {DateTime? at}) {
+    final now = at ?? DateTime.now();
     final radians = degrees * pi / 180;
     final x = cos(radians);
     final y = sin(radians);
-    _x = _x == null ? x : _x! + alpha * (x - _x!);
-    _y = _y == null ? y : _y! + alpha * (y - _y!);
+    final last = _last;
+    if (_x == null || last == null) {
+      _x = x;
+      _y = y;
+    } else {
+      final dt = now.difference(last).inMicroseconds / 1e6;
+      final tau = timeConstant.inMicroseconds / 1e6;
+      final alpha = tau <= 0 ? 1.0 : 1 - exp(-max(dt, 0) / tau);
+      _x = _x! + alpha * (x - _x!);
+      _y = _y! + alpha * (y - _y!);
+    }
+    _last = now;
     return value!;
   }
 }
+
+/// Compass headings are magnetic; route bearings are true north. The
+/// difference is the local magnetic declination (east positive): about
+/// -7.5° in Medellín. Set MAGNETIC_DECLINATION in .env for another campus
+/// (NOAA's declination calculator gives the value).
+double trueHeading(double magnetic, double declination) =>
+    (magnetic + declination + 360) % 360;

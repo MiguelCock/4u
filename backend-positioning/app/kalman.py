@@ -18,16 +18,15 @@ from filterpy.kalman import MerweScaledSigmaPoints, UnscentedKalmanFilter
 
 R_EARTH_METERS = 6371000.0
 
-# Below this Qdrant cosine-similarity score, a visual match is treated as
-# "no confident match" rather than deriving a noise magnitude from an
-# uncalibrated number - a hard accept/reject gate is the honest choice here.
+# Default gate and noise for a visual match, kept for callers that don't
+# pass their own (app/matching.py's MatchConfig holds the tunable values).
 MIN_MATCH_SCORE = 0.75
-# Fixed 1-sigma noise (meters) applied to an accepted visual match - not
-# derived from the score, for the same reason.
 VISUAL_SIGMA_METERS = 3.0
 
-# Pedestrian-walking-speed-scale process noise - there's no real IMU-driven
-# acceleration model yet, just a loose constant-velocity assumption.
+# Process noise *per second* (variance growth of a constant-velocity
+# pedestrian model). Scaled by dt in predict(): it used to be added once
+# per predict() call whatever the elapsed time, and again by every
+# zero-dt resync, so the filter opened up far more than the time passed.
 _PROCESS_VAR_POS = 0.5
 _PROCESS_VAR_VEL = 0.3
 
@@ -58,7 +57,7 @@ def _hx(state: np.ndarray) -> np.ndarray:
     return state[:2]
 
 
-def make_filter(x0: float, y0: float) -> UnscentedKalmanFilter:
+def make_filter(x0: float, y0: float, pos_sigma: float = 5.0) -> UnscentedKalmanFilter:
     """A freshly-initialized filter seeded at (x0, y0) with zero velocity -
     the correct state for a session's first call, before any motion has
     been observed.
@@ -73,15 +72,22 @@ def make_filter(x0: float, y0: float) -> UnscentedKalmanFilter:
     points = MerweScaledSigmaPoints(n=4, alpha=1.0, beta=2.0, kappa=-1.0)
     ukf = UnscentedKalmanFilter(dim_x=4, dim_z=2, dt=1.0, hx=_hx, fx=_fx, points=points)
     ukf.x = np.array([x0, y0, 0.0, 0.0])
-    ukf.P = np.diag([25.0, 25.0, 4.0, 4.0])
-    ukf.Q = np.diag(
-        [_PROCESS_VAR_POS, _PROCESS_VAR_POS, _PROCESS_VAR_VEL, _PROCESS_VAR_VEL]
-    )
+    # Start as uncertain as the fix that seeds it: a 20 m fix used to start
+    # at +-5 m, so the first visual match was barely trusted at all.
+    ukf.P = np.diag([pos_sigma**2, pos_sigma**2, 4.0, 4.0])
+    ukf.Q = np.zeros((4, 4))
     ukf.predict(dt=0.0)
     return ukf
 
 
 def predict(ukf: UnscentedKalmanFilter, dt: float) -> None:
+    dt = max(dt, 0.0)
+    ukf.Q = (
+        np.diag(
+            [_PROCESS_VAR_POS, _PROCESS_VAR_POS, _PROCESS_VAR_VEL, _PROCESS_VAR_VEL]
+        )
+        * dt
+    )
     ukf.predict(dt=dt)
 
 
@@ -95,8 +101,12 @@ def _resync_sigma_points(ukf: UnscentedKalmanFilter) -> None:
     posterior covariance - reproduced directly with two tight-R updates
     back to back. gps_update/visual_update both call this before their own
     update() so they're safe to call in any order/combination without the
-    caller needing to know about this."""
+    caller needing to know about this. Q is zeroed for it: no time passes,
+    so no process noise may be added."""
+    q = ukf.Q
+    ukf.Q = np.zeros((4, 4))
     ukf.predict(dt=0.0)
+    ukf.Q = q
 
 
 def gps_update(ukf: UnscentedKalmanFilter, x: float, y: float, accuracy: float) -> None:
@@ -105,17 +115,36 @@ def gps_update(ukf: UnscentedKalmanFilter, x: float, y: float, accuracy: float) 
     ukf.update(np.array([x, y]), R=np.diag([sigma**2, sigma**2]))
 
 
-def visual_update(ukf: UnscentedKalmanFilter, x: float, y: float, score: float) -> bool:
-    """Applies a visual-match correction if score clears MIN_MATCH_SCORE.
-    Returns whether it was applied (callers use this to decide what to put
-    in the response's anchor_match_id/confidence_score fields)."""
-    if score < MIN_MATCH_SCORE:
+def visual_update(
+    ukf: UnscentedKalmanFilter,
+    x: float,
+    y: float,
+    score: float,
+    sigma: float = VISUAL_SIGMA_METERS,
+    min_score: float = MIN_MATCH_SCORE,
+) -> bool:
+    """Applies a visual-match correction with 1-sigma noise [sigma] if
+    score clears [min_score]. Returns whether it was applied. The full gate
+    list (distance, heading, Mahalanobis) is in app/matching.py and
+    app/session_store.py."""
+    if score < min_score:
         return False
     _resync_sigma_points(ukf)
-    ukf.update(
-        np.array([x, y]), R=np.diag([VISUAL_SIGMA_METERS**2, VISUAL_SIGMA_METERS**2])
-    )
+    ukf.update(np.array([x, y]), R=np.diag([sigma**2, sigma**2]))
     return True
+
+
+def innovation(
+    ukf: UnscentedKalmanFilter, x: float, y: float, sigma: float
+) -> tuple[float, float]:
+    """How far a measurement at (x, y) with 1-sigma [sigma] is from the
+    current estimate: (distance in meters, squared Mahalanobis distance).
+    The measurement model is a direct position read-out, so this is exact
+    from x/P without sigma points."""
+    residual = np.array([x, y]) - ukf.x[:2]
+    s = ukf.P[:2, :2] + np.diag([sigma**2, sigma**2])
+    d2 = float(residual @ np.linalg.solve(s, residual))
+    return float(np.hypot(*residual)), d2
 
 
 def correction_error_meters(ukf: UnscentedKalmanFilter) -> float:

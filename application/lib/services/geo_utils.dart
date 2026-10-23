@@ -38,3 +38,84 @@ double signedTurn(double heading, double bearing) {
   final diff = (bearing - heading) % 360;
   return diff > 180 ? diff - 360 : diff;
 }
+
+/// Metres east/north of [origin] (flat approximation, fine at campus scale).
+({double x, double y}) _toLocal(LatLng origin, LatLng p) {
+  final x =
+      (p.longitude - origin.longitude) *
+      pi /
+      180 *
+      cos(origin.latitude * pi / 180) *
+      _earthRadiusMeters;
+  final y = (p.latitude - origin.latitude) * pi / 180 * _earthRadiusMeters;
+  return (x: x, y: y);
+}
+
+/// Where [p] falls along the route segment [a]→[b]: [along] metres from
+/// [a] (negative before it, beyond [length] past [b]) and [crossTrack]
+/// metres to the side (positive = right of the direction of travel).
+class SegmentProjection {
+  final double along;
+  final double length;
+  final double crossTrack;
+
+  const SegmentProjection(this.along, this.length, this.crossTrack);
+}
+
+SegmentProjection projectOntoSegment(LatLng p, LatLng a, LatLng b) {
+  final end = _toLocal(a, b);
+  final point = _toLocal(a, p);
+  final length = sqrt(end.x * end.x + end.y * end.y);
+  if (length < 1e-6) {
+    return SegmentProjection(0, 0, sqrt(point.x * point.x + point.y * point.y));
+  }
+  final ux = end.x / length;
+  final uy = end.y / length;
+  final along = point.x * ux + point.y * uy;
+  // Right of travel: rotate the direction by -90° (east/north frame).
+  final cross = point.x * uy - point.y * ux;
+  return SegmentProjection(along, length, cross);
+}
+
+/// The point [meters] along [a]→[b] from [a], clamped to the segment.
+LatLng pointAlongSegment(LatLng a, LatLng b, double meters) {
+  final length = haversineMeters(a, b);
+  if (length < 1e-6) return b;
+  final t = (meters / length).clamp(0.0, 1.0);
+  return LatLng(
+    a.latitude + (b.latitude - a.latitude) * t,
+    a.longitude + (b.longitude - a.longitude) * t,
+  );
+}
+
+/// The direction to walk to follow segment [a]→[b] from [here].
+///
+/// Aiming at the next waypoint itself swung the needed turn by 30° or more
+/// whenever the position wobbled sideways near it (a field-test symptom).
+/// Within [toleranceMeters] of the line - GPS and correction noise - this
+/// is just the segment's own direction, so a wobble asks for no turn at
+/// all. Further off, it steers back gently towards a point
+/// [lookAheadMeters] ahead along the segment. Near the segment's end it
+/// aims at [b], so the next leg's turn comes at the right place.
+double guidanceBearing(
+  LatLng here,
+  LatLng a,
+  LatLng b, {
+  double toleranceMeters = 10,
+  double lookAheadMeters = 20,
+}) {
+  final projection = projectOntoSegment(here, a, b);
+  final remaining = projection.length - projection.along;
+  if (projection.length < 1e-6 || remaining <= lookAheadMeters / 2) {
+    return bearingDegrees(here, b);
+  }
+  if (projection.crossTrack.abs() <= toleranceMeters) {
+    return bearingDegrees(a, b);
+  }
+  final target = pointAlongSegment(
+    a,
+    b,
+    max(0, projection.along) + lookAheadMeters,
+  );
+  return bearingDegrees(here, target);
+}
