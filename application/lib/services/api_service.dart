@@ -85,15 +85,16 @@ class ApiService {
   Future<http.Response> _send(
     Future<http.Response> Function(Map<String, String> headers) sender, [
     Map<String, String>? extraHeaders,
+    Duration? timeout,
   ]) async {
-    final response = await _attempt(sender, extraHeaders);
+    final response = await _attempt(sender, extraHeaders, timeout);
     if (response.statusCode != 401) return response;
     try {
       await _refreshSession();
     } catch (_) {
       return response;
     }
-    return _attempt(sender, extraHeaders);
+    return _attempt(sender, extraHeaders, timeout);
   }
 
   /// One request, with a timeout, and with transport failures (no
@@ -103,10 +104,13 @@ class ApiService {
   /// a spinner running forever.
   Future<http.Response> _attempt(
     Future<http.Response> Function(Map<String, String> headers) sender,
-    Map<String, String>? extraHeaders,
-  ) async {
+    Map<String, String>? extraHeaders, [
+    Duration? timeout,
+  ]) async {
     try {
-      return await sender(_authHeaders(extraHeaders)).timeout(requestTimeout);
+      return await sender(
+        _authHeaders(extraHeaders),
+      ).timeout(timeout ?? requestTimeout);
     } on TimeoutException catch (e) {
       throw ApiException(ApiException.networkError, e.toString());
     } on http.ClientException catch (e) {
@@ -125,11 +129,18 @@ class ApiService {
     return _handle(response);
   }
 
-  Future<dynamic> post(String path, Map<String, dynamic> body) async {
+  /// [timeout] overrides [requestTimeout] for calls whose answer is only
+  /// useful quickly (navigation's per-tick calls).
+  Future<dynamic> post(
+    String path,
+    Map<String, dynamic> body, {
+    Duration? timeout,
+  }) async {
     final response = await _send(
       (headers) =>
           _client.post(_uri(path), headers: headers, body: jsonEncode(body)),
       {'Content-Type': 'application/json'},
+      timeout,
     );
     return _handle(response);
   }
@@ -158,18 +169,23 @@ class ApiService {
     required List<int> bytes,
     required String filename,
     Map<String, String>? fields,
+    Duration? timeout,
   }) async {
     // A MultipartRequest can only be sent once, so a fresh one is built
     // per attempt.
-    final response = await _send((headers) async {
-      final request = http.MultipartRequest('POST', _uri(path))
-        ..headers.addAll(headers)
-        ..files.add(
-          http.MultipartFile.fromBytes(fieldName, bytes, filename: filename),
-        );
-      if (fields != null) request.fields.addAll(fields);
-      return http.Response.fromStream(await _client.send(request));
-    });
+    final response = await _send(
+      (headers) async {
+        final request = http.MultipartRequest('POST', _uri(path))
+          ..headers.addAll(headers)
+          ..files.add(
+            http.MultipartFile.fromBytes(fieldName, bytes, filename: filename),
+          );
+        if (fields != null) request.fields.addAll(fields);
+        return http.Response.fromStream(await _client.send(request));
+      },
+      null,
+      timeout,
+    );
     return _handle(response);
   }
 

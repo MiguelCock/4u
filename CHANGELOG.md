@@ -11,6 +11,21 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - **Filters on anchor points** (admin): by category and type, floor, indoor or outdoor, lighting, and whether they have photos or connections. Works on the list and the map.
 - **Session review map** (admin): the raw GPS path and the corrected path drawn separately, photo matches with a line to the point they matched, and details on tap.
 - **"✗ Wrong instruction" button** in the admin test flow, to mark wrong guidance. Marks appear on the session map.
+- **Checkpoints for test walks** (admin): walk the route exactly and tap "I'm at …" at the start, at each corner and at the destination. The session map then shows how far the raw GPS and the corrected position were from the route and from each checkpoint. Test walks also keep their camera photos, for comparing photo-matching models.
+
+### Changed
+- **Steadier position on long straights.** The correction now learns how far off the GPS is and keeps that fix between photo matches, instead of drifting back to the GPS error. On the last test walk, the average distance from the route went from 3.6 m to 2.3 m.
+- **Position updates about every second** instead of every ~4 s.
+- **A photo model built for recognizing places.** Matching now uses EigenPlaces instead of a general image classifier. On campus photos it tells nearby places from far ones much better. After updating, an admin must run **Re-index verified points** once.
+
+### Fixed
+- **The position jumped forward and back, and snapped onto the destination near the end.** A photo match is now used only when the matched place is close to the GPS position and was photographed facing the same way, and a far match pulls only gently.
+- **The trip ended early, about 40 m before the destination.** Arriving now needs both the corrected position and the raw GPS close to the destination.
+- **Turns announced about 15 m before the corner, and "continue straight 6 meters" at every anchor point.** Guidance now goes corner to corner: one instruction per straight, given when you reach the turn.
+- **"You have arrived" at the last corner, skipping the last stretch.** How close counts as arrived now depends on GPS accuracy, and is never more than half the last stretch.
+- **The end of a trip was missing from the session map** after a short loss of connection. Late updates are now kept, and the app no longer waits a minute for each one.
+- **The position jumped after standing still.** Standing still no longer makes the next photo match move the position several metres.
+- **"Turn 30–45 degrees" while walking straight.** Guidance follows the path's direction instead of the line to the next point, the compass is smoothed over time and corrected to true north, and small deviations no longer trigger a turn.
 
 ## [0.5.0] - 2026-10-22
 

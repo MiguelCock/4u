@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from supabase import AuthApiError
 
-from app.main import app, get_caller_id
+from app.main import _COLLECTION, _VECTOR_SIZE, app, get_caller_id
 
 client = TestClient(app)
 
@@ -85,24 +85,24 @@ def test_index_anchor_upserts_one_point_per_photo():
         patch("app.main.db.client", _mock_admin_check_client(_ADMIN_ROW)),
         patch("app.main.qdrant", mock_qdrant),
         patch("app.main.download_image", return_value=b"fake-bytes"),
-        patch("app.main.extract_embedding", return_value=[0.1] * 1280),
+        patch("app.main.extract_embedding", return_value=[0.1] * _VECTOR_SIZE),
     ):
         response = client.post("/index_anchor", json=payload)
 
     assert response.status_code == 200
     assert response.json() == {"indexed": 2}
     mock_qdrant.ensure_collection.assert_called_once_with(
-        "anchor_point_photos",
-        1280,
+        _COLLECTION,
+        _VECTOR_SIZE,
         indexed_fields=["anchor_point_id", "building_id"],
         geo_indexed_fields=["location"],
     )
     upsert_call = mock_qdrant.client.upsert.call_args
-    assert upsert_call.args[0] == "anchor_point_photos"
+    assert upsert_call.args[0] == _COLLECTION
     points = upsert_call.kwargs["points"]
     assert len(points) == 2
     assert points[0].id == "p1"
-    assert points[0].vector == [0.1] * 1280
+    assert points[0].vector == [0.1] * _VECTOR_SIZE
     assert points[0].payload == {
         "anchor_point_id": "a1",
         "latitude": 6.24,
@@ -143,7 +143,7 @@ def test_search_similar_has_no_auth_requirement():
     mock_qdrant.client.query_points.return_value = mock_result
     with (
         patch("app.main.qdrant", mock_qdrant),
-        patch("app.main.extract_embedding", return_value=[0.1] * 1280),
+        patch("app.main.extract_embedding", return_value=[0.1] * _VECTOR_SIZE),
     ):
         response = client.post(
             "/search_similar",
@@ -171,7 +171,7 @@ def test_search_similar_returns_matches():
 
     with (
         patch("app.main.qdrant", mock_qdrant),
-        patch("app.main.extract_embedding", return_value=[0.1] * 1280),
+        patch("app.main.extract_embedding", return_value=[0.1] * _VECTOR_SIZE),
     ):
         response = client.post(
             "/search_similar",
@@ -193,13 +193,13 @@ def test_search_similar_returns_matches():
         ]
     }
     mock_qdrant.ensure_collection.assert_called_once_with(
-        "anchor_point_photos",
-        1280,
+        _COLLECTION,
+        _VECTOR_SIZE,
         indexed_fields=["anchor_point_id", "building_id"],
         geo_indexed_fields=["location"],
     )
     mock_qdrant.client.query_points.assert_called_once_with(
-        "anchor_point_photos", query=[0.1] * 1280, limit=5, query_filter=None
+        _COLLECTION, query=[0.1] * _VECTOR_SIZE, limit=5, query_filter=None
     )
 
 
@@ -211,7 +211,7 @@ def test_search_similar_respects_limit_form_field():
 
     with (
         patch("app.main.qdrant", mock_qdrant),
-        patch("app.main.extract_embedding", return_value=[0.1] * 1280),
+        patch("app.main.extract_embedding", return_value=[0.1] * _VECTOR_SIZE),
     ):
         response = client.post(
             "/search_similar",
@@ -221,7 +221,7 @@ def test_search_similar_respects_limit_form_field():
 
     assert response.status_code == 200
     mock_qdrant.client.query_points.assert_called_once_with(
-        "anchor_point_photos", query=[0.1] * 1280, limit=10, query_filter=None
+        _COLLECTION, query=[0.1] * _VECTOR_SIZE, limit=10, query_filter=None
     )
 
 
@@ -233,7 +233,7 @@ def test_search_similar_with_location_scopes_to_geo_radius():
 
     with (
         patch("app.main.qdrant", mock_qdrant),
-        patch("app.main.extract_embedding", return_value=[0.1] * 1280),
+        patch("app.main.extract_embedding", return_value=[0.1] * _VECTOR_SIZE),
     ):
         response = client.post(
             "/search_similar",
@@ -259,7 +259,7 @@ def test_search_similar_with_custom_radius_overrides_default():
 
     with (
         patch("app.main.qdrant", mock_qdrant),
-        patch("app.main.extract_embedding", return_value=[0.1] * 1280),
+        patch("app.main.extract_embedding", return_value=[0.1] * _VECTOR_SIZE),
     ):
         response = client.post(
             "/search_similar",
@@ -291,13 +291,13 @@ def test_delete_indexed_photo():
     assert response.status_code == 200
     assert response.json() == "ok"
     mock_qdrant.ensure_collection.assert_called_once_with(
-        "anchor_point_photos",
-        1280,
+        _COLLECTION,
+        _VECTOR_SIZE,
         indexed_fields=["anchor_point_id", "building_id"],
         geo_indexed_fields=["location"],
     )
     mock_qdrant.client.delete.assert_called_once_with(
-        "anchor_point_photos", points_selector=["p1"]
+        _COLLECTION, points_selector=["p1"]
     )
 
 
@@ -320,7 +320,7 @@ def test_delete_indexed_anchor_filters_by_anchor_point_id():
     assert response.status_code == 200
     assert response.json() == "ok"
     call = mock_qdrant.client.delete.call_args
-    assert call.args[0] == "anchor_point_photos"
+    assert call.args[0] == _COLLECTION
     condition = call.kwargs["points_selector"].must[0]
     assert condition.key == "anchor_point_id"
     assert condition.match.value == "a1"
@@ -345,7 +345,7 @@ def test_delete_indexed_building_filters_by_building_id():
     assert response.status_code == 200
     assert response.json() == "ok"
     call = mock_qdrant.client.delete.call_args
-    assert call.args[0] == "anchor_point_photos"
+    assert call.args[0] == _COLLECTION
     condition = call.kwargs["points_selector"].must[0]
     assert condition.key == "building_id"
     assert condition.match.value == "b1"

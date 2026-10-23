@@ -209,7 +209,13 @@ Any saved route that went through a deleted connection is recalculated automatic
 
 Use **Test as user** (drawer) to walk a route yourself. During the trip, a red **✗ Wrong instruction** button appears above **End navigation**. Tap it whenever the app says something wrong (a turn when you should go straight, a wrong distance, an early arrival). It saves what was just said, where you were and what the app was seeing.
 
-Afterwards, open **Sessions** in the drawer, choose the user, and **Watch** the session. The map shows:
+To measure how accurate the position is, walk the planned route **exactly** and use the blue **I'm at …** button:
+- Tap it while standing on each point it names: the start, every corner, the destination.
+- A long press undoes the last tap.
+- In this mode, arriving is announced but the trip goes on until you tap the destination.
+- The app also keeps each camera photo of a test walk, to compare photo-matching models later.
+
+Afterwards, open **Sessions** in the drawer, choose the user, and **Watch** the session. A card at the top shows how far the raw GPS and the corrected position were from the route, and the error at your checkpoints (blue flags). The map shows:
 - **Grey-blue line:** the planned route.
 - **Orange dashed line:** the raw GPS path.
 - **Green line:** the corrected position.

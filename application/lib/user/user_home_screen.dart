@@ -413,7 +413,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                                 'latitude': position.latitude.toString(),
                                 'longitude': position.longitude.toString(),
                                 'accuracy': position.accuracy.toString(),
-                                'heading': position.heading.toString(),
+                                // No compass here, and the GPS course is
+                                // meaningless while turning on the spot, so
+                                // no heading: the backend skips that gate.
+                                'gps_time': position.timestamp
+                                    .toUtc()
+                                    .toIso8601String(),
                               },
                             )
                             .timeout(const Duration(seconds: 10))
