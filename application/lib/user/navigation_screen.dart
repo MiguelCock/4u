@@ -82,10 +82,15 @@ class NavigationScreen extends StatefulWidget {
   /// new one.
   final String? resumeSessionId;
 
+  /// The admin's "Test as user" flow: shows the "Wrong instruction" button
+  /// that records the last cue for tuning (backend guidance_reports).
+  final bool adminPreview;
+
   const NavigationScreen({
     super.key,
     required this.route,
     this.resumeSessionId,
+    this.adminPreview = false,
   });
 
   @override
@@ -135,6 +140,24 @@ class _NavigationScreenState extends State<NavigationScreen> {
   bool _blockedAnnounced = false;
   String? _lastAnnouncement;
 
+  /// What kind of cue [_lastAnnouncement] was (turn, start_walking, leg,
+  /// meters_ahead, arrival, start...), for the diagnostics and the admin's
+  /// "wrong instruction" reports.
+  String? _lastCueType;
+
+  /// Cues spoken and guidance events since the last log, sent with the next
+  /// tick's `debug` so the session view can show what was said where.
+  final List<Map<String, dynamic>> _pendingCues = [];
+  final List<Map<String, dynamic>> _pendingEvents = [];
+
+  /// Latest guidance inputs, kept for the per-tick diagnostics.
+  double? _lastRawCompass;
+  double? _lastCompassAccuracy;
+  double? _lastTurn;
+  double? _lastTargetDistance;
+  double? _lastTargetBearing;
+  bool _lastUsedCorrected = false;
+
   /// Completes once [_tts] is set to the app language's voice; [_speak]
   /// waits on it so the first announcement isn't read in the phone's
   /// default voice.
@@ -176,7 +199,11 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _compassSub = FlutterCompass.events?.listen((event) {
       // Android only fills `heading` (see capture_photo_screen.dart).
       final heading = event.heading;
-      if (heading != null) _heading.add(heading);
+      _lastCompassAccuracy = event.accuracy;
+      if (heading != null) {
+        _lastRawCompass = heading;
+        _heading.add(heading);
+      }
     });
     _guidanceTimer = Timer.periodic(_kGuidanceInterval, (_) => _guide());
   }
@@ -194,9 +221,19 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// periodic distance, approaching/arrived, session end) stay polite and
   /// just queue; safety-relevant ones (a blocked camera) are assertive,
   /// stopping whatever's queued first so they're not buried behind it.
-  Future<void> _speak(String text, {bool assertive = false}) async {
+  Future<void> _speak(
+    String text, {
+    bool assertive = false,
+    String cueType = 'info',
+  }) async {
     _lastAnnouncement = text;
+    _lastCueType = cueType;
     _lastSpokenAt = DateTime.now();
+    _pendingCues.add({
+      'at': DateTime.now().toUtc().toIso8601String(),
+      'type': cueType,
+      'text': text,
+    });
     if (!voiceGuidanceNotifier.value) return;
     await _ttsReady;
     if (assertive) await _tts.stop();
@@ -209,7 +246,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   void _repeatLastAnnouncement() {
     final text = _lastAnnouncement;
     if (text == null) return;
-    _speak(text, assertive: true);
+    _speak(text, assertive: true, cueType: _lastCueType ?? 'info');
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(text)));
@@ -299,8 +336,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
         _correctedLong != null &&
         correctedAt != null &&
         DateTime.now().difference(correctedAt) < _kCorrectionFreshness) {
+      _lastUsedCorrected = true;
       return LatLng(_correctedLat!, _correctedLong!);
     }
+    _lastUsedCorrected = false;
     final position = _locationService.lastPosition;
     return position == null
         ? null
@@ -331,19 +370,25 @@ class _NavigationScreenState extends State<NavigationScreen> {
     final heading = _currentHeading();
     if (heading == null) return;
     final target = _waypoints[_nextWaypointIndex].point;
+    _lastTargetBearing = bearingDegrees(here, target);
+    _lastTargetDistance = haversineMeters(here, target);
+    _lastTurn = signedTurn(heading, _lastTargetBearing!);
     final cue = _guidance.update(
-      turn: signedTurn(heading, bearingDegrees(here, target)),
-      metersToTarget: haversineMeters(here, target),
+      turn: _lastTurn!,
+      metersToTarget: _lastTargetDistance!,
       now: DateTime.now(),
     );
     final l10n = AppLocalizations.of(context)!;
     switch (cue) {
       case TurnCue(turnAround: true):
-        _speak(l10n.navTurnAround);
+        _speak(l10n.navTurnAround, cueType: 'turn');
       case TurnCue(:final degrees, :final right):
-        _speak(right ? l10n.navTurnRight(degrees) : l10n.navTurnLeft(degrees));
+        _speak(
+          right ? l10n.navTurnRight(degrees) : l10n.navTurnLeft(degrees),
+          cueType: 'turn',
+        );
       case StartWalkingCue(:final meters):
-        _speak(l10n.navStartWalking(meters));
+        _speak(l10n.navStartWalking(meters), cueType: 'start_walking');
       case null:
         break;
     }
@@ -362,6 +407,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
       }
     }
     if (reached == -1) return false;
+    _pendingEvents.add({
+      'at': DateTime.now().toUtc().toIso8601String(),
+      'type': reached == _waypoints.length - 1 ? 'arrival' : 'waypoint',
+      'index': reached,
+      'skipped': reached - _nextWaypointIndex,
+    });
     if (reached == _waypoints.length - 1) {
       _arrive();
       return true;
@@ -395,7 +446,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
           : l10n.navTurnLeftThenWalk(cue.degrees, meters);
     }
     final name = from.name;
-    _speak(name == null ? action : '${l10n.navAtPlace(name)} $action');
+    _speak(
+      name == null ? action : '${l10n.navAtPlace(name)} $action',
+      cueType: 'leg',
+    );
     _guidance.reset(
       now: DateTime.now(),
       announcedTurn: straight ? null : turn,
@@ -413,6 +467,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
         context,
       )!.navArrivedFinished(_destinationName(AppLocalizations.of(context)!)),
       assertive: true,
+      cueType: 'arrival',
     );
     _endSession(arrived: true);
   }
@@ -436,7 +491,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
       _waypoints[_nextWaypointIndex].point,
     );
     if (distance <= _kProximityThresholdMeters) return;
-    _speak(AppLocalizations.of(context)!.navMetersAhead(roundMeters(distance)));
+    _speak(
+      AppLocalizations.of(context)!.navMetersAhead(roundMeters(distance)),
+      cueType: 'meters_ahead',
+    );
   }
 
   Future<void> _initCamera() async {
@@ -547,7 +605,46 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
   }
 
-  Future<void> _logRawTick(String sessionId, Position position) async {
+  /// Per-tick diagnostics for tuning (navigation_logs.debug): what
+  /// guidance saw and decided, plus everything said since the last tick.
+  /// [correction] is backend-positioning's own `debug`, when there is one.
+  Map<String, dynamic> _debugSnapshot(
+    Position position, {
+    Map<String, dynamic>? correction,
+    String? failure,
+  }) {
+    final correctedAt = _correctedAt;
+    final snapshot = <String, dynamic>{
+      'compass': _heading.value,
+      'compass_raw': _lastRawCompass,
+      'compass_accuracy': _lastCompassAccuracy,
+      'gps_speed': position.speed,
+      'gps_course': position.heading,
+      'gps_time': position.timestamp.toUtc().toIso8601String(),
+      'position_source': _lastUsedCorrected ? 'corrected' : 'raw',
+      'correction_age_s': correctedAt == null
+          ? null
+          : DateTime.now().difference(correctedAt).inMilliseconds / 1000,
+      'target_index': _nextWaypointIndex,
+      'target_distance_m': _lastTargetDistance,
+      'target_bearing': _lastTargetBearing,
+      'turn': _lastTurn,
+      'guidance': _guidance.walking ? 'walking' : 'orienting',
+      if (_pendingCues.isNotEmpty) 'cues': List.of(_pendingCues),
+      if (_pendingEvents.isNotEmpty) 'events': List.of(_pendingEvents),
+      'correction': ?correction,
+      'failure': ?failure,
+    };
+    _pendingCues.clear();
+    _pendingEvents.clear();
+    return snapshot;
+  }
+
+  Future<void> _logRawTick(
+    String sessionId,
+    Position position, {
+    String? failure,
+  }) async {
     try {
       await _navigationApi.post('/logs', {
         'session_id': sessionId,
@@ -555,6 +652,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
         'gps_long': position.longitude,
         'gps_accuracy': position.accuracy,
         'heading': position.heading,
+        'debug': _debugSnapshot(position, failure: failure),
       });
     } on ApiException catch (_) {
       // Best-effort logging - a dropped tick shouldn't interrupt navigation.
@@ -589,7 +687,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
             );
           }
         }
-        await _logRawTick(sessionId, position);
+        await _logRawTick(sessionId, position, failure: 'camera_blocked');
         return;
       }
       _consecutiveBlockedTicks = 0;
@@ -606,7 +704,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
                   'latitude': position.latitude.toString(),
                   'longitude': position.longitude.toString(),
                   'accuracy': position.accuracy.toString(),
-                  'heading': position.heading.toString(),
+                  // The direction the phone (and camera) faces, which is
+                  // what a photo match can be checked against - not the
+                  // GPS course, which is meaningless while standing still.
+                  'heading': (_heading.value ?? position.heading).toString(),
                 },
               )
               as Map<String, dynamic>;
@@ -640,12 +741,78 @@ class _NavigationScreenState extends State<NavigationScreen> {
         'correction_error': result['correction_error'],
         'anchor_match_id': result['anchor_match_id'],
         'confidence_score': result['confidence_score'],
+        'debug': _debugSnapshot(
+          position,
+          correction: (result['debug'] as Map?)?.cast<String, dynamic>(),
+        ),
       });
-    } catch (_) {
+    } catch (e) {
       // Camera capture or /correct_position failed (unreachable, slow,
       // unauthenticated, etc.) - degrade to a raw-GPS-only tick rather than
       // dropping this tick entirely.
-      await _logRawTick(sessionId, position);
+      await _logRawTick(
+        sessionId,
+        position,
+        failure: e is ApiException
+            ? 'api_${e.statusCode}'
+            : e.runtimeType.toString(),
+      );
+    }
+  }
+
+  /// Admin test flow: records the last instruction as wrong, with where it
+  /// happened and what guidance saw, for the session view and tuning.
+  Future<void> _reportWrongInstruction() async {
+    final sessionId = _sessionId;
+    if (sessionId == null) return;
+    final l10n = AppLocalizations.of(context)!;
+    final messenger = ScaffoldMessenger.of(context);
+    HapticFeedback.heavyImpact();
+    final position = _locationService.lastPosition;
+    final instruction = _lastAnnouncement;
+    try {
+      await _navigationApi.post('/guidance-reports', {
+        'session_id': sessionId,
+        'instruction_text': instruction,
+        'cue_type': _lastCueType,
+        'waypoint_index': _nextWaypointIndex,
+        if (position != null) ...{
+          'gps_lat': position.latitude,
+          'gps_long': position.longitude,
+        },
+        'corrected_lat': _correctedLat,
+        'corrected_long': _correctedLong,
+        'compass_heading': _heading.value,
+        'debug': {
+          'turn': _lastTurn,
+          'target_distance_m': _lastTargetDistance,
+          'target_bearing': _lastTargetBearing,
+          'position_source': _lastUsedCorrected ? 'corrected' : 'raw',
+          'guidance': _guidance.walking ? 'walking' : 'orienting',
+          'gps_accuracy': position?.accuracy,
+          'correction_error': _correctionError,
+        },
+      });
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              instruction == null
+                  ? l10n.navWrongInstructionNothingYet
+                  : l10n.navWrongInstructionMarked(instruction),
+            ),
+          ),
+        );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            l10n.navWrongInstructionFailed(friendlyApiErrorMessage(context, e)),
+          ),
+        ),
+      );
     }
   }
 
@@ -828,6 +995,21 @@ class _NavigationScreenState extends State<NavigationScreen> {
                           ),
                         ),
                       ),
+                      if (widget.adminPreview)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.red.shade700,
+                              minimumSize: const Size.fromHeight(56),
+                            ),
+                            onPressed: _sessionId == null || _ending
+                                ? null
+                                : _reportWrongInstruction,
+                            icon: const Icon(Icons.close),
+                            label: Text(l10n.navWrongInstructionButton),
+                          ),
+                        ),
                       Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: ElevatedButton(

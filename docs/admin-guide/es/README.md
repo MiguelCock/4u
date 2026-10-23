@@ -123,6 +123,10 @@ Un **anchor point** es un punto físico específico — una puerta, una intersec
 | **Surface (optional)** | Opcional, texto libre | La superficie física del suelo. Puede servir como una pista útil de orientación (por ejemplo, un cambio de baldosa a alfombra puede marcar el límite de una sala). | `tile`, `carpet`, `concrete`, `grass` |
 | **Location** | Obligatoria (GPS o selección en mapa) | Las coordenadas reales del punto. Una selección en el mapa siempre tiene prioridad sobre la lectura GPS en vivo del dispositivo. | — |
 
+**El formulario recuerda tu último punto.** Un punto de anclaje nuevo empieza con la universidad, el edificio, el tipo de lugar, el piso, el ajuste de interior, la iluminación y la superficie del último que creaste en este teléfono. Solo la descripción y la posición empiezan vacías. Si abriste el formulario filtrado a un edificio, se usa ese edificio.
+
+**Filtrar la lista.** El botón **Filtros** encima de la lista (y del mapa) acota los puntos de anclaje por categoría y tipo, piso, interior o exterior, iluminación, y si tienen fotos o conexiones. Se combina con los chips de estado y la búsqueda. **Quitar filtros** (o el botón atrás) los elimina.
+
 ### 5.2 Tomar fotos
 
 Por qué varias fotos: una persona podría acercarse al mismo lugar físico desde cualquier dirección, así que la aplicación necesita reconocer cómo se ve desde cada lado — no solo desde un ángulo.
@@ -200,6 +204,19 @@ Eliminar una conexión no tiene efecto en cascada: no afecta a los dos puntos de
 - En la pantalla **Connect on map**, toca la línea verde (lejos de los puntos, porque tocar cerca de un punto lo selecciona) y confirma.
 
 Cualquier ruta guardada que pasaba por una conexión eliminada se recalcula automáticamente la próxima vez que alguien la pida.
+
+## 6b. Probar una ruta y revisarla
+
+Usa **Test as user** (menú) para recorrer una ruta tú mismo. Durante el viaje aparece un botón rojo **✗ Instrucción incorrecta** encima de **Terminar navegación**. Tócalo cada vez que la app diga algo incorrecto (un giro cuando deberías seguir derecho, una distancia equivocada, una llegada antes de tiempo). Guarda lo que se acababa de decir, dónde estabas y lo que la app estaba viendo.
+
+Después, abre **Sesiones** en el menú, elige el usuario y toca **Ver** en la sesión. El mapa muestra:
+- **Línea gris azulada:** la ruta planeada.
+- **Línea naranja punteada:** el recorrido del GPS sin corregir.
+- **Línea verde:** la posición corregida.
+- **Puntos morados:** coincidencias de foto, cada uno con una línea delgada al punto de anclaje reconocido. Las líneas largas muestran desde dónde se jaló la posición.
+- **✗ rojas:** tus marcas de instrucción incorrecta.
+
+Toca cualquiera para ver los detalles registrados ahí.
 
 ## 7. Eliminar datos
 

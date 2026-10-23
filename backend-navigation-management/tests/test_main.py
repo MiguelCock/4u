@@ -649,3 +649,111 @@ def test_invalid_session_status_is_rejected():
     ):
         response = client.patch("/sessions/s1", json={"status": "done"})
     assert response.status_code == 422
+
+
+# --- guidance reports -------------------------------------------------------
+
+
+def test_guidance_report_is_stored_for_the_session_owner():
+    _as_caller("u1")
+    reports_table = MagicMock(
+        **{"insert.return_value.execute.return_value.data": [{"id": "r1"}]}
+    )
+    mock_client = _mock_multi_table_client(
+        {
+            "navigation_sessions": _sessions_table(select_rows=[{"user_id": "u1"}]),
+            "guidance_reports": reports_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/guidance-reports",
+            json={
+                "session_id": "s1",
+                "instruction_text": "Turn left about 30 degrees.",
+                "cue_type": "turn",
+                "gps_lat": 6.2,
+                "gps_long": -75.58,
+                "debug": {"turn": -32},
+            },
+        )
+    assert response.status_code == 200
+    inserted = reports_table.insert.call_args.args[0]
+    assert inserted["reported_by"] == "u1"
+    assert inserted["instruction_text"] == "Turn left about 30 degrees."
+    assert inserted["debug"] == {"turn": -32}
+
+
+def test_guidance_report_on_someone_elses_session_is_forbidden():
+    _as_caller("u2")
+    reports_table = MagicMock()
+    mock_client = _mock_multi_table_client(
+        {
+            "navigation_sessions": _sessions_table(select_rows=[{"user_id": "u1"}]),
+            "profiles": _profiles_table(admin=False),
+            "guidance_reports": reports_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post("/guidance-reports", json={"session_id": "s1"})
+    assert response.status_code == 403
+    reports_table.insert.assert_not_called()
+
+
+def test_guidance_reports_for_a_missing_session_is_404():
+    _as_caller("u1")
+    mock_client = _mock_multi_table_client(
+        {"navigation_sessions": _sessions_table(select_rows=[])}
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.get("/guidance-reports?session_id=gone")
+    assert response.status_code == 404
+
+
+def test_guidance_reports_listed_in_time_order():
+    _as_caller("u1")
+    reports_table = MagicMock()
+    ordered = reports_table.select.return_value.eq.return_value.order.return_value.order
+    ordered.return_value.range.return_value.execute.return_value.data = [
+        {"id": "r1", "session_id": "s1", "created_at": "2026-10-23T10:00:00+00:00"}
+    ]
+    mock_client = _mock_multi_table_client(
+        {
+            "navigation_sessions": _sessions_table(select_rows=[{"user_id": "u1"}]),
+            "guidance_reports": reports_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.get("/guidance-reports?session_id=s1")
+    assert response.status_code == 200
+    assert [r["id"] for r in response.json()] == ["r1"]
+
+
+def test_logs_accept_a_debug_payload():
+    _as_caller("u1")
+    logs_table = MagicMock(
+        **{"insert.return_value.execute.return_value.data": [_LOG_ROW]}
+    )
+    mock_client = _mock_multi_table_client(
+        {
+            "navigation_sessions": _sessions_table(
+                select_rows=[{"user_id": "u1", "status": "active"}]
+            ),
+            "navigation_logs": logs_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/logs",
+            json={
+                "session_id": "s1",
+                "gps_lat": 6.24,
+                "gps_long": -75.58,
+                "debug": {"compass": 91.5, "source": "corrected"},
+            },
+        )
+    assert response.status_code == 200
+    assert logs_table.insert.call_args.args[0]["debug"] == {
+        "compass": 91.5,
+        "source": "corrected",
+    }

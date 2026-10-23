@@ -589,6 +589,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           builder: (_) => NavigationScreen(
             route: route!,
             resumeSessionId: latest['id'] as String,
+            adminPreview: widget.adminPreview,
           ),
         ),
       );
@@ -680,8 +681,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) =>
-              NavigationScreen(route: route as Map<String, dynamic>),
+          builder: (_) => NavigationScreen(
+            route: route as Map<String, dynamic>,
+            adminPreview: widget.adminPreview,
+          ),
         ),
       );
       setState(() => _finding = false);
