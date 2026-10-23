@@ -119,3 +119,34 @@ double guidanceBearing(
   );
   return bearingDegrees(here, target);
 }
+
+/// Indexes into [points] (a route, start first) where guidance should
+/// stop: each corner where the direction changes by more than
+/// [turnDegrees], every index in [keep], and the last point.
+///
+/// Anchor points are captured every 6-7 m, so a field test spoke
+/// "continue straight 6 meters" at every one of them and, reaching each
+/// from 20 m away, announced corners ~15 m early. Guidance now walks from
+/// corner to corner. A corner is judged against the direction since the
+/// last kept point, so a gradual curve still gets one once it adds up.
+List<int> routeCorners(
+  List<LatLng> points, {
+  double turnDegrees = 30,
+  Set<int> keep = const {},
+}) {
+  if (points.length < 2) return [for (var i = 0; i < points.length; i++) i];
+  final corners = <int>[0];
+  for (var i = 1; i < points.length - 1; i++) {
+    final from = points[corners.last];
+    if (keep.contains(i) ||
+        signedTurn(
+              bearingDegrees(from, points[i]),
+              bearingDegrees(points[i], points[i + 1]),
+            ).abs() >
+            turnDegrees) {
+      corners.add(i);
+    }
+  }
+  corners.add(points.length - 1);
+  return corners;
+}

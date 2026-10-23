@@ -51,10 +51,18 @@ const double _kMinSpeedForGpsHeading = 0.7;
 /// the ~1s camera-correction loop, which can run slower.
 const Duration _kGuidanceInterval = Duration(milliseconds: 500);
 
-/// How close (meters) the live GPS fix needs to be to a waypoint before
-/// it's announced as "approaching"/"arrived" - roughly in line with GPS's
-/// own typical accuracy, so it doesn't fire too early or never fire at all.
+/// Raw GPS has to be this close (meters) to a waypoint before guidance
+/// may skip ahead to it - roughly GPS's own typical accuracy.
 const double _kProximityThresholdMeters = 20.0;
+
+/// A corner counts as reached this close (meters), or once the user has
+/// walked to within this of its end along the straight leading to it. It
+/// used to be 20 m like the skip check, which announced every turn
+/// ~15 m early (a field test, with GPS at 3 m accuracy).
+const double _kCornerMeters = 8.0;
+
+/// ...but not if they're this far (meters) to the side of that straight.
+const double _kCornerCrossTrackMeters = 15.0;
 
 /// Arriving needs the corrected position this close to the destination
 /// *and* raw GPS within [_kArrivalRawGpsMeters], on
@@ -291,7 +299,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
       widget.route['end_anchor_id'] as String,
     ];
     final points = <LatLng>[];
-    final waypoints = <_Waypoint>[];
+    final names = <String?>[];
+    var resolvedStart = false;
     for (var i = 0; i < anchorIds.length; i++) {
       try {
         final anchor =
@@ -302,26 +311,40 @@ class _NavigationScreenState extends State<NavigationScreen> {
         if (lat == null || lng == null) continue;
         final point = LatLng(lat, lng);
         points.add(point);
-        if (i == 0) _startPoint = point;
-        if (i > 0) {
-          final description = (anchor['location_description'] as String? ?? '')
-              .trim();
-          // The final point is always named when spoken (falling back to
-          // "your destination"); in-between ones only if they're a real
-          // destination-type place.
-          final named =
-              description.isNotEmpty &&
-              (i == anchorIds.length - 1 || isDestinationAnchor(anchor));
-          waypoints.add(
-            _Waypoint(point: point, name: named ? description : null),
-          );
+        if (i == 0) {
+          _startPoint = point;
+          resolvedStart = true;
         }
+        final description = (anchor['location_description'] as String? ?? '')
+            .trim();
+        // The final point is always named when spoken (falling back to
+        // "your destination"); in-between ones only if they're a real
+        // destination-type place.
+        final named =
+            i > 0 &&
+            description.isNotEmpty &&
+            (i == anchorIds.length - 1 || isDestinationAnchor(anchor));
+        names.add(named ? description : null);
       } on ApiException {
         // The guidance line/checkpoints are a nice-to-have overlay - a
         // missing/deleted anchor shouldn't block navigation, it just means
         // no line/announcement for that point.
       }
     }
+    // Guidance stops at corners (and named places), not at every anchor
+    // along a straight - see routeCorners.
+    final corners = routeCorners(
+      points,
+      keep: {
+        for (var i = 0; i < names.length; i++)
+          if (names[i] != null) i,
+      },
+    );
+    final waypoints = [
+      for (final i in corners)
+        if (i > 0 || !resolvedStart)
+          _Waypoint(point: points[i], name: names[i]),
+    ];
     if (mounted) {
       setState(() {
         _plannedPath = points;
@@ -345,6 +368,18 @@ class _NavigationScreenState extends State<NavigationScreen> {
         nearestDistance = distance;
         nearest = i;
       }
+    }
+    // Corners can be 40 m apart: if the user is already past the nearest
+    // one along the next straight, aim at the corner after it instead of
+    // sending them back.
+    if (nearest + 1 < _waypoints.length &&
+        projectOntoSegment(
+              here,
+              _waypoints[nearest].point,
+              _waypoints[nearest + 1].point,
+            ).along >
+            0) {
+      nearest++;
     }
     _nextWaypointIndex = nearest;
   }
@@ -468,7 +503,11 @@ class _NavigationScreenState extends State<NavigationScreen> {
     var reached = -1;
     for (var i = _nextWaypointIndex; i < _waypoints.length; i++) {
       final point = _waypoints[i].point;
-      if (haversineMeters(here, point) > _kProximityThresholdMeters) continue;
+      if (i < last && !_cornerReached(here, i)) continue;
+      if (i == last &&
+          haversineMeters(here, point) > _kProximityThresholdMeters) {
+        continue;
+      }
       // Skipping past the next waypoint (or arriving) on the strength of
       // the corrected position alone let one bad photo match jump the trip
       // forward: raw GPS has to agree too.
@@ -506,6 +545,19 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _nextWaypointIndex = reached + 1;
     _announceNextLeg(_waypoints[reached], _waypoints[_nextWaypointIndex]);
     return true;
+  }
+
+  /// Whether intermediate waypoint [i] counts as reached from [here]: close
+  /// to it, or - for the next one - walked up to along its straight.
+  bool _cornerReached(LatLng here, int i) {
+    final point = _waypoints[i].point;
+    if (haversineMeters(here, point) <= _kCornerMeters) return true;
+    final from = _segmentStart();
+    if (i != _nextWaypointIndex || from == null) return false;
+    final projection = projectOntoSegment(here, from, point);
+    return projection.length > 0 &&
+        projection.along >= projection.length - _kCornerMeters &&
+        projection.crossTrack.abs() <= _kCornerCrossTrackMeters;
   }
 
   /// At a waypoint: one sentence for what to do next. "At the cafeteria,

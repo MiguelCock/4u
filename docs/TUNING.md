@@ -25,7 +25,7 @@ Set these as environment variables in `backend-positioning/.env` on the server, 
 | `POSITIONING_MAHALANOBIS_GATE` (9.21) | A match inconsistent with the current estimate is refused (`mahalanobis`). | Sudden jumps. Lower it to be stricter. |
 | `POSITIONING_SEARCH_RADIUS_M` (60), `POSITIONING_SEARCH_LIMIT` (5) | Which anchors are compared at all. | Fewer far-away candidates. |
 
-The filter also no longer counts the same GPS fix twice while standing still (`gps_fused: false`), and process noise now grows with real elapsed time.
+The filter doesn't fuse the same GPS fix twice. Instead, a repeated fix means "not moving": the app's GPS stream only reports a new fix after 1 m of movement. Debug shows this as `gps_fused: false, stationary: true`. Without it, standing ~12 s while orienting let the next photo match move the position ~9 m. Process noise grows with real elapsed time.
 
 What to look at in the debug: `score`, `distance_m`, `heading_diff`, `sigma_m`, `innovation_m` and `mahalanobis2` per candidate. If correct matches are being rejected as `too_far`, raise the distance; if wrong ones get through, lower it or raise the score.
 
@@ -36,6 +36,7 @@ The constants are in `application/lib/services/turn_guidance.dart` and `applicat
 - **Bearing:** guidance follows the route segment's own direction while the position is within 10 m of the line (`guidanceBearing`, `toleranceMeters`). It steers back gently (20 m look-ahead) only when farther off. A sideways wobble no longer asks for a turn.
 - **Compass:** smoothed over 1 s (`HeadingSmoother.timeConstant`), and corrected from magnetic to true north with `MAGNETIC_DECLINATION` in `application/.env` (−7.5 for Medellín).
 - **Thresholds:** aligned within 25°, turn cue beyond 35°, off-course when the median of the last 5 samples is beyond 50° for 3 s.
+- **Corners:** guidance stops only where the route turns more than 30°, at named places and at the destination (`routeCorners` in `geo_utils.dart`), so a 40 m straight is one instruction, not six. A corner is reached within 8 m, or once you've walked to 8 m before it along the straight (`_kCornerMeters`). A 20 m radius announced turns ~15 m early.
 - **Arrival:** the corrected position within 15 m *and* raw GPS within 25 m, on 2 ticks in a row. Skipping past the next waypoint also needs raw GPS to agree.
 - **Source switch:** when the correction is older than 5 s, guidance blends to raw GPS over 2 s instead of jumping.
 

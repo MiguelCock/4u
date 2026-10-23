@@ -115,6 +115,27 @@ def gps_update(ukf: UnscentedKalmanFilter, x: float, y: float, accuracy: float) 
     ukf.update(np.array([x, y]), R=np.diag([sigma**2, sigma**2]))
 
 
+def _hv(state: np.ndarray) -> np.ndarray:
+    return state[2:]
+
+
+# 1-sigma of the "not moving" pseudo-measurement, m/s.
+STATIONARY_SIGMA_MPS = 0.3
+
+
+def stationary_update(
+    ukf: UnscentedKalmanFilter, sigma: float = STATIONARY_SIGMA_MPS
+) -> None:
+    """Velocity ~ 0. The app's GPS stream has a 1 m distance filter, so no
+    new fix since the last call means the user moved less than that. A
+    field test skipped such repeated fixes instead: while the user stood
+    orienting for ~12 s the velocity uncertainty (1 m/s) grew the position
+    uncertainty to ~12 m, and the next photo match then pulled the
+    position ~9 m in one tick, then GPS pulled it back."""
+    _resync_sigma_points(ukf)
+    ukf.update(np.zeros(2), R=np.diag([sigma**2, sigma**2]), hx=_hv)
+
+
 def visual_update(
     ukf: UnscentedKalmanFilter,
     x: float,

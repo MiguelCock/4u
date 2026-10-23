@@ -119,6 +119,7 @@ class SessionStore:
         now = time.monotonic()
         dt = now - state.last_call
         reinit = dt > MAX_DT_SECONDS
+        stationary = False
         if state.last_gps_time is None and not state.started:
             # First call: seed the filter at this fix, as uncertain as it is.
             state.ukf = kalman.make_filter(0.0, 0.0, pos_sigma=max(accuracy, 1.0))
@@ -132,12 +133,20 @@ class SessionStore:
             state.ukf = kalman.make_filter(x0, y0, pos_sigma=max(accuracy, 1.0))
             state.last_gps_time = None
         else:
+            if gps_time is not None and gps_time == state.last_gps_time:
+                # No new fix since the last call: the user moved less than
+                # the app's 1 m GPS distance filter over this interval, so
+                # say so before projecting the velocity forward through it
+                # (see kalman.stationary_update).
+                kalman.stationary_update(state.ukf)
+                stationary = True
             kalman.predict(state.ukf, dt)
         state.last_call = now
 
         x, y = kalman.latlng_to_local(lat, lng, state.lat0, state.lng0)
-        # The same fix again (standing still) is not new evidence; fusing it
-        # every tick made the filter over-trust one reading.
+        # The same fix again is not a new position reading - fusing it every
+        # tick made the filter over-trust it (it was used as "not moving"
+        # above instead).
         gps_fused = gps_time is None or gps_time != state.last_gps_time
         if gps_fused:
             kalman.gps_update(state.ukf, x, y, accuracy)
@@ -216,6 +225,7 @@ class SessionStore:
                 "dt_s": round(dt, 2),
                 "reinit": reinit,
                 "gps_fused": gps_fused,
+                "stationary": stationary,
                 "gps_accuracy_m": accuracy,
                 "compass": compass_heading,
                 "candidates": verdicts,

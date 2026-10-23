@@ -257,3 +257,35 @@ async def test_debug_reports_inputs_for_tuning():
     assert entry["distance_m"] == pytest.approx(3.0, abs=0.2)
     assert "sigma_m" in entry and "mahalanobis2" in entry
     assert result.debug["gps_accuracy_m"] == 7.0
+
+
+@pytest.mark.asyncio
+async def test_standing_still_keeps_a_photo_match_from_yanking_the_position(
+    monkeypatch,
+):
+    # Field test: the user stood orienting ~12 s on one unchanged fix, then
+    # a match 9 m away pulled the position ~8.6 m in one tick.
+    clock = [1000.0]
+    monkeypatch.setattr(session_store_module.time, "monotonic", lambda: clock[0])
+    store = SessionStore()
+    await _correct(store, "still", lat=6.2, lng=-75.6, accuracy=3.0, gps_time="t0")
+    for _ in range(4):
+        clock[0] += 3.5
+        result = await _correct(
+            store, "still", lat=6.2, lng=-75.6, accuracy=3.0, gps_time="t0"
+        )
+        assert result.debug["stationary"] is True
+    clock[0] += 3.5
+    result = await _correct(
+        store,
+        "still",
+        lat=6.2,
+        lng=-75.6,
+        accuracy=3.0,
+        gps_time="t0",
+        candidates=[_match("a", 6.2 + 9 * _M, -75.6, 0.8)],
+    )
+    assert result.anchor_match_id == "a"
+    pulled = (result.corrected_lat - 6.2) / _M
+    # 8.8 m before (the field symptom), ~3 m now.
+    assert pulled < 4.0

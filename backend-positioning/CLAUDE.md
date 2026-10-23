@@ -39,6 +39,7 @@ Issues #31-34's text says "GPS and IMU". Confirmed by an exhaustive grep across 
     4. Mahalanobis² ≤ `POSITIONING_MAHALANOBIS_GATE`, judged with the base sigma.
   - **How hard a match pulls:** sigma is `base + per_m × distance` (`visual_sigma`), so a far match pulls gently.
   - **Process noise:** Q scales with dt, and the zero-dt sigma-point resync adds none.
+  - **Repeated fix = standing still:** a call whose `gps_time` matches the last one isn't fused as a position again. It gets `kalman.stationary_update` (velocity ≈ 0, σ 0.3 m/s) *before* the predict. The app's GPS stream has a 1 m distance filter, so no new fix means no movement. Simply skipping such fixes let 12 s of orienting grow the position uncertainty to ~12 m through the velocity term, and the next match moved the position 8.6 m.
   - **Seeding:** a new filter starts as uncertain as its first fix.
   - **Tuning:** every value is an environment variable (see `.env.example` and `docs/TUNING.md`).
   - **Diagnostics:** the response's `debug` lists every candidate with `score`, `distance_m`, `heading_diff`, `sigma_m`, `innovation_m`, `mahalanobis2` and a `verdict`, plus `dt_s`, `reinit`, `gps_fused` and velocity. The app stores it in `navigation_logs.debug.correction`.
