@@ -56,6 +56,29 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
   - **The picker:** `LocationTypeField` (`lib/widgets/location_type_field.dart`) replaces the dropdown in capture and edit. It's a field that opens a bottom sheet with search and category headers.
   - **New types:** ids 19–33 (stationery shop, copy center, store, ATM, library, laboratory, computer room, study area, infirmary, sports area, chapel, exit, bike parking, waiting area, drinking fountain) come from `db_schema/migrations/2026-10-22_more_location_types.sql`. They are all destination types.
   - **Drift tests:** `test/services/location_types_test.dart` fails if the catalog and `db_schema/location_type.sql` disagree. A backend test fails if the destination sets drift.
+- **Field diagnostics** (for tuning the correction and guidance):
+  - **Per-tick logs:** every `POST /logs` from `NavigationScreen` carries `debug` (stored in `navigation_logs.debug`, JSONB). It holds:
+    - the compass (smoothed and raw) and its accuracy
+    - GPS speed, course and fix time
+    - which position guidance used (corrected or raw) and the correction's age
+    - target waypoint, distance, bearing and signed turn
+    - the guidance state
+    - every cue spoken since the last tick, with its type (`turn`, `start_walking`, `leg`, `meters_ahead`, `arrival`, `info`)
+    - waypoint and arrival events, including how many waypoints were skipped
+    - backend-positioning's own `debug` as `correction`
+    - a `failure` reason when a tick fell back to raw GPS
+  - **Heading for correction:** the `heading` sent to `/correct_position` is the compass, the direction the camera faces, no longer the GPS course.
+  - **Wrong-instruction reports:** in the admin test flow (`NavigationScreen(adminPreview: true)`, passed down from `UserHomeScreen`), a red **✗ Wrong instruction** button above End posts to `POST /guidance-reports`. The report carries the last cue and its type, the waypoint index, both positions, the compass and a guidance snapshot.
+  - **`SessionTrackingScreen`:**
+    - **What it draws:** the planned route, the raw GPS path (orange, dashed) and the corrected path (green). Each photo match is a dot coloured by confidence, with a line to the matched anchor, which shows where a pull came from. Each report is a red ✗.
+    - **Taps** (`nearestOnScreen`) open the logged details, and a legend explains the layers.
+    - **Updates:** it fits the trip once, and polls only while the session is active.
+- **Capture remembers the last point** (`lib/services/capture_defaults.dart`, `shared_preferences`):
+  - **What's kept:** after a successful create, the university, building, type, floor, indoor, lighting and surface are saved, and the next `CaptureScreen` starts from them. The description and position are never kept.
+  - **Precedence:** an explicit `initialPlaceId`/`initialBuildingId` from the admin's current filter wins, and a remembered building that no longer exists, or a floor outside the building, is ignored.
+- **Anchor-point metadata filters** (`lib/services/anchor_filters.dart`, pure and unit-tested):
+  - **The control:** a Filters chip on the Anchor points tab opens a sheet with category and type, floor, indoor/outdoor/not set, lighting (or not set), has photos, and has connections.
+  - **Behaviour:** filters apply to both the list and the map, combine with the building scope, status chips and search, and are cleared by "Clear filters" or by system back first.
 - **CRUD integrity** (from a full audit; see the root `CLAUDE.md` and each service's notes):
   - **Floors**: capture and edit have a **Floor** dropdown (`lib/widgets/floor_field.dart`). It's 0-based in the database but shown as "Floor 1" for the ground floor, and offers the building's floors. Every point used to be saved on floor 0.
   - **Altitude**: a point placed on the map, or moved, gets `altitude: null` instead of the phone's GPS altitude for some other spot.

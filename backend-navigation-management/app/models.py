@@ -41,6 +41,10 @@ class NavigationLogCreate(BaseModel):
     anchor_match_id: str | None = None
     confidence_score: float | None = None
     raw_image_url: str | None = None
+    # Free-form per-tick diagnostics (navigation_logs.debug): the
+    # correction's candidates and gating decisions, compass heading, which
+    # position guidance used, any cue spoken since the last tick.
+    debug: dict | None = None
 
 
 class NavigationLogResponse(NavigationLogCreate):
@@ -56,4 +60,25 @@ class UserFeedbackCreate(BaseModel):
 
 class UserFeedbackResponse(UserFeedbackCreate):
     id: str
+    created_at: str
+
+
+class GuidanceReportCreate(BaseModel):
+    """An admin's "wrong instruction" mark during a test trip."""
+
+    session_id: str
+    instruction_text: str | None = None
+    cue_type: str | None = None
+    waypoint_index: int | None = None
+    gps_lat: float | None = None
+    gps_long: float | None = None
+    corrected_lat: float | None = None
+    corrected_long: float | None = None
+    compass_heading: float | None = None
+    debug: dict | None = None
+
+
+class GuidanceReportResponse(GuidanceReportCreate):
+    id: str
+    reported_by: str | None = None
     created_at: str

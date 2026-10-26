@@ -147,6 +147,7 @@ async def search_similar(
             "longitude": point.payload["longitude"],
             "building_id": point.payload["building_id"],
             "score": point.score,
+            "heading": point.payload.get("heading"),
         }
         for point in result.points
     ]

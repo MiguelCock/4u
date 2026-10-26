@@ -161,6 +161,7 @@ def test_search_similar_returns_matches():
         "latitude": 6.24,
         "longitude": -75.58,
         "building_id": "b1",
+        "heading": 90.0,
     }
     mock_result = MagicMock()
     mock_result.points = [mock_point]
@@ -187,6 +188,7 @@ def test_search_similar_returns_matches():
                 "longitude": -75.58,
                 "building_id": "b1",
                 "score": 0.98,
+                "heading": 90.0,
             }
         ]
     }

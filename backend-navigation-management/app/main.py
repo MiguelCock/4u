@@ -6,6 +6,8 @@ from packages.db_errors import install_db_error_handlers, select_all
 from packages.supabase import SupaBase
 
 from .models import (
+    GuidanceReportCreate,
+    GuidanceReportResponse,
     NavigationLogCreate,
     NavigationLogResponse,
     NavigationSessionCreate,
@@ -254,3 +256,41 @@ async def get_feedback(
     if row["user_id"] != caller_id and not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Forbidden")
     return row
+
+
+@app.post("/guidance-reports")
+async def create_guidance_report(
+    report: GuidanceReportCreate, caller_id: str = Depends(get_caller_id)
+):
+    """Marks the instruction the app just gave as wrong (admin test flow).
+    The session's owner or an admin; reported_by is always the caller."""
+    owner_id = _session_owner(report.session_id)
+    if owner_id is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if owner_id != caller_id and not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    payload = {**report.model_dump(), "reported_by": caller_id}
+    result = db.client.table("guidance_reports").insert(payload).execute()
+    return result.data
+
+
+@app.get("/guidance-reports")
+async def list_guidance_reports(
+    session_id: str, caller_id: str = Depends(get_caller_id)
+) -> list[GuidanceReportResponse]:
+    """One session's reports in time order, for its owner or an admin -
+    drawn as X marks on that session's tracking map."""
+    owner_id = _session_owner(session_id)
+    if owner_id is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if owner_id != caller_id and not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return select_all(
+        lambda: (
+            db.client.table("guidance_reports")
+            .select("*")
+            .eq("session_id", session_id)
+            .order("created_at")
+            .order("id")
+        )
+    )

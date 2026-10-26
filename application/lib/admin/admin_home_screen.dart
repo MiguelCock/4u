@@ -19,6 +19,7 @@ import 'feedback_screen.dart';
 import 'sessions_screen.dart';
 import '../user/settings_screen.dart';
 import '../user/user_home_screen.dart';
+import '../services/anchor_filters.dart';
 import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
 import '../services/exit_guard.dart';
@@ -65,6 +66,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   String _anchorQuery = '';
   String _connectionQuery = '';
   String? _anchorStatusFilter;
+  AnchorFilters _anchorFilters = AnchorFilters.none;
   String? _buildingsPlaceFilterId;
   String? _anchorPointsBuildingFilterId;
 
@@ -210,6 +212,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// go to the first tab, and only then ask to press again to exit.
   void _handleBack() {
     final index = _tabController.index;
+    // Metadata filters on the Anchor points tab are cleared first.
+    if (index == 2 && !_anchorFilters.isEmpty) {
+      setState(() => _anchorFilters = AnchorFilters.none);
+      return;
+    }
     void clearFilterOf(int tab) {
       if (tab == 1) _buildingsPlaceFilterId = null;
       if (tab == 2) _anchorPointsBuildingFilterId = null;
@@ -1246,8 +1253,211 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  /// The metadata filters sheet for the Anchor points tab. Changes apply
+  /// right away to the list and map behind it.
+  Future<void> _showAnchorFilters() async {
+    final l10n = AppLocalizations.of(context)!;
+    final scopedBuilding = _buildings.firstWhere(
+      (b) => b['id'] == _anchorPointsBuildingFilterId,
+      orElse: () => const {},
+    );
+    final maxFloors = scopedBuilding.isNotEmpty
+        ? (scopedBuilding['floors'] as int? ?? 1)
+        : _buildings.fold<int>(
+            1,
+            (most, b) => (b['floors'] as int? ?? 1) > most
+                ? (b['floors'] as int? ?? 1)
+                : most,
+          );
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final f = _anchorFilters;
+          void update(AnchorFilters next) {
+            setState(() => _anchorFilters = next);
+            setSheetState(() {});
+          }
+
+          Widget section(String title, List<Widget> chips) => Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 4),
+                Wrap(spacing: 6, runSpacing: 4, children: chips),
+              ],
+            ),
+          );
+          Widget choice<T>(
+            String label,
+            T? value,
+            T? current,
+            void Function(T?) set,
+          ) => ChoiceChip(
+            label: Text(label),
+            selected: value == current,
+            onSelected: (_) => set(value),
+          );
+
+          final typesInCategory = f.category == null
+              ? const <LocationType>[]
+              : kLocationTypeCatalog
+                    .where((t) => t.category == f.category)
+                    .toList();
+
+          return SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.8,
+              ),
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          l10n.adminFiltersTitle,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      if (!f.isEmpty)
+                        TextButton(
+                          onPressed: () => update(AnchorFilters.none),
+                          child: Text(l10n.adminFiltersClear),
+                        ),
+                    ],
+                  ),
+                  section(l10n.adminFilterCategory, [
+                    choice<LocationCategory>(
+                      l10n.adminFilterAny,
+                      null,
+                      f.category,
+                      (v) =>
+                          update(f.copyWith(category: v, locationTypeId: null)),
+                    ),
+                    for (final category in LocationCategory.values)
+                      choice<LocationCategory>(
+                        locationCategoryLabel(l10n, category),
+                        category,
+                        f.category,
+                        (v) => update(
+                          f.copyWith(category: v, locationTypeId: null),
+                        ),
+                      ),
+                  ]),
+                  if (typesInCategory.isNotEmpty)
+                    section(l10n.adminFilterType, [
+                      choice<int>(
+                        l10n.adminFilterAny,
+                        null,
+                        f.locationTypeId,
+                        (v) => update(f.copyWith(locationTypeId: v)),
+                      ),
+                      for (final type in typesInCategory)
+                        choice<int>(
+                          locationTypeLabel(l10n, type.key),
+                          type.id,
+                          f.locationTypeId,
+                          (v) => update(f.copyWith(locationTypeId: v)),
+                        ),
+                    ]),
+                  section(l10n.adminFilterFloor, [
+                    choice<int>(
+                      l10n.adminFilterAny,
+                      null,
+                      f.floor,
+                      (v) => update(f.copyWith(floor: v)),
+                    ),
+                    for (var floor = 0; floor < maxFloors; floor++)
+                      choice<int>(
+                        l10n.commonFloorOption(floor + 1),
+                        floor,
+                        f.floor,
+                        (v) => update(f.copyWith(floor: v)),
+                      ),
+                  ]),
+                  section(l10n.adminFilterPlace, [
+                    for (final (label, value) in [
+                      (l10n.adminFilterAny, null),
+                      (l10n.adminFilterIndoor, 'indoor'),
+                      (l10n.adminFilterOutdoor, 'outdoor'),
+                      (l10n.adminFilterNotSet, 'unset'),
+                    ])
+                      choice<String>(
+                        label,
+                        value,
+                        f.indoor,
+                        (v) => update(f.copyWith(indoor: v)),
+                      ),
+                  ]),
+                  section(l10n.adminFilterLighting, [
+                    for (final (label, value) in [
+                      (l10n.adminFilterAny, null),
+                      (l10n.commonLightingBright, 'bright'),
+                      (l10n.commonLightingModerate, 'moderate'),
+                      (l10n.commonLightingDim, 'dim'),
+                      (l10n.adminFilterNotSet, 'unset'),
+                    ])
+                      choice<String>(
+                        label,
+                        value,
+                        f.lighting,
+                        (v) => update(f.copyWith(lighting: v)),
+                      ),
+                  ]),
+                  section(l10n.adminFilterPhotos, [
+                    for (final (label, value) in [
+                      (l10n.adminFilterAny, null),
+                      (l10n.adminFilterHas, true),
+                      (l10n.adminFilterHasNone, false),
+                    ])
+                      choice<bool>(
+                        label,
+                        value,
+                        f.hasPhotos,
+                        (v) => update(f.copyWith(hasPhotos: v)),
+                      ),
+                  ]),
+                  section(l10n.adminFilterConnections, [
+                    for (final (label, value) in [
+                      (l10n.adminFilterAny, null),
+                      (l10n.adminFilterHas, true),
+                      (l10n.adminFilterHasNone, false),
+                    ])
+                      choice<bool>(
+                        label,
+                        value,
+                        f.hasConnections,
+                        (v) => update(f.copyWith(hasConnections: v)),
+                      ),
+                  ]),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _anchorPointsTab() {
     final l10n = AppLocalizations.of(context)!;
+    final withPhotos = {
+      for (final photo in _photos) photo['anchor_point_id'] as String?,
+    }.whereType<String>().toSet();
+    final connected = {
+      for (final c in _connections) ...[
+        c['anchor_point_a_id'] as String?,
+        c['anchor_point_b_id'] as String?,
+      ],
+    }.whereType<String>().toSet();
     final buildingsById = {for (final b in _buildings) b['id'] as String: b};
     final scopedBuilding = _anchorPointsBuildingFilterId != null
         ? buildingsById[_anchorPointsBuildingFilterId]
@@ -1265,6 +1475,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               (p) =>
                   (_anchorStatusFilter == null ||
                       p['status'] == _anchorStatusFilter) &&
+                  _anchorFilters.matches(
+                    p,
+                    withPhotos: withPhotos,
+                    connected: connected,
+                  ) &&
                   anchorDisplayName(
                     l10n,
                     p,
@@ -1297,6 +1512,32 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             ),
           ),
         _statusFilterChips(buildingScoped),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+          child: Row(
+            children: [
+              ActionChip(
+                avatar: const Icon(Icons.filter_list, size: 18),
+                label: Text(
+                  _anchorFilters.isEmpty
+                      ? l10n.adminFiltersButton
+                      : l10n.adminFiltersButtonCount(
+                          _anchorFilters.activeCount,
+                        ),
+                ),
+                onPressed: _showAnchorFilters,
+              ),
+              if (!_anchorFilters.isEmpty) ...[
+                const SizedBox(width: 6),
+                InputChip(
+                  label: Text(l10n.adminFiltersClear),
+                  onDeleted: () =>
+                      setState(() => _anchorFilters = AnchorFilters.none),
+                ),
+              ],
+            ],
+          ),
+        ),
         _searchField(_anchorSearchController, l10n.adminSearchAnchorPointsHint),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
