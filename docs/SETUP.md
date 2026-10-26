@@ -8,12 +8,12 @@ Create one at [supabase.com](https://supabase.com) (or use an existing project).
 
 ## 2. Apply the schema
 
-In the Supabase SQL editor, run the files in `db_schema/` **in this order** (later tables reference earlier ones by foreign key). The files always describe the current schema, so a fresh project needs nothing else. An **existing** project created from older versions of these files also needs any newer scripts in `db_schema/migrations/`, run once in date order (today: `2026-10-21_coordinates_double_precision.sql`, then `2026-10-22_delete_rules.sql`, `2026-10-22_data_integrity.sql`, then `2026-10-22_more_location_types.sql`):
+In the Supabase SQL editor, run the files in `db_schema/` **in this order** (later tables reference earlier ones by foreign key). The files always describe the current schema, so a fresh project needs nothing else. An **existing** project created from older versions of these files also needs any newer scripts in `db_schema/migrations/`, run once in date order (today: `2026-10-21_coordinates_double_precision.sql`, then `2026-10-22_delete_rules.sql`, `2026-10-22_data_integrity.sql`, `2026-10-22_more_location_types.sql`, then `2026-10-23_navigation_debug.sql`):
 
 ```
 places.sql
 roles.sql            -- self-seeds 'user'/'admin'
-location_type.sql    -- self-seeds 9 location types
+location_type.sql    -- self-seeds the 33 location types
 profiles.sql
 buildings.sql
 anchor_points.sql    -- run `CREATE EXTENSION IF NOT EXISTS btree_gist;` first -
@@ -25,6 +25,7 @@ routes.sql
 navigation_sessions.sql
 navigation_logs.sql
 user_feedback.sql
+guidance_reports.sql  -- admin "wrong instruction" reports (after navigation_sessions.sql)
 ```
 
 `places` and `buildings` have no seed data. Once the app and `backend-map-management` are running (steps 4-5 below), an admin can create both from the app itself (sign in as `admin` → the **Places**/**Buildings** tab's floating action button) — no SQL needed. To seed them by hand instead (e.g. before the app is running):

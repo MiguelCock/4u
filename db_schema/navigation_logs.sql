@@ -11,7 +11,10 @@ CREATE TABLE navigation_logs (
     correction_error FLOAT4,
     anchor_match_id UUID REFERENCES anchor_points(id) ON DELETE SET NULL,
     confidence_score FLOAT4 CHECK (confidence_score BETWEEN 0 AND 1),
-    raw_image_url TEXT
+    raw_image_url TEXT,
+    -- Per-tick diagnostics for tuning the correction and guidance (match
+    -- candidates, gating decisions, compass heading, spoken cue...).
+    debug JSONB
 );
 
 -- Indexes

@@ -14,7 +14,7 @@ from qdrant_client.models import (
     PointStruct,
 )
 
-from .embedding import download_image, extract_embedding
+from .embedding import COLLECTION, VECTOR_SIZE, download_image, extract_embedding
 from .models import IndexAnchorRequest, IndexAnchorResponse, SearchSimilarResponse
 
 load_dotenv()
@@ -31,8 +31,9 @@ db = SupaBase(
     os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 )
 
-_COLLECTION = "anchor_point_photos"
-_VECTOR_SIZE = 1280
+# Per embedding model (see app/embedding.py).
+_COLLECTION = COLLECTION
+_VECTOR_SIZE = VECTOR_SIZE
 # Filtering (including filter-based delete) on a payload field requires an
 # index on that field - every field ever used in a Filter() below must be
 # listed here, or Qdrant rejects the request with a 400.
@@ -147,6 +148,7 @@ async def search_similar(
             "longitude": point.payload["longitude"],
             "building_id": point.payload["building_id"],
             "score": point.score,
+            "heading": point.payload.get("heading"),
         }
         for point in result.points
     ]

@@ -27,8 +27,8 @@ Every endpoint depends on `get_caller_id` (`app/main.py`, `get_caller_id = db.ge
 - **`GET /sessions`**, **`GET /logs`**, **`GET /feedback`** (the list endpoints) — admin only.
 - **`GET /sessions/active`** — any authenticated user, but only their *own* sessions with `status = 'active'`, newest first. These are trips left open by closing the app mid-route. On the next launch the app's `UserHomeScreen` offers to resume one (`NavigationScreen(resumeSessionId:)`) or finish it (`PATCH` to `abandoned`), so it doesn't stay active forever. Declared above `GET /sessions/{id}` so `active` isn't captured as an id.
 - **`GET /sessions/{id}`**, **`PATCH /sessions/{id}`**, **`GET /feedback/{id}`** — admin, or the caller who owns the row (`row["user_id"] == caller_id`, checked directly since `user_id` is a field on these tables).
-- **`DELETE /sessions/{id}`** — admin only. `user_feedback.session_id` has no `ON DELETE` rule (`db_schema/user_feedback.sql`), so this first nulls out `session_id` on any feedback rows pointing at it (keeping the comment, just detaching it) before deleting the session row; `navigation_logs.session_id` has `ON DELETE CASCADE`, so those rows are removed by the DB automatically with no code needed here.
-- **`POST /logs`**, **`GET /logs/{id}`** — admin, or the caller who owns the *session* the log belongs to. `navigation_logs` has no `user_id` of its own, so ownership is resolved one hop away via the new `_session_owner(session_id) -> str | None` helper (`app/main.py`) — `session_id -> navigation_sessions.user_id`. `POST /logs` 404s if `session_id` doesn't exist and 403s if it belongs to someone else and the caller isn't an admin; `GET /logs/{id}` does the same two-hop lookup via the fetched log's own `session_id`.
+- **`DELETE /sessions/{id}`** — admin only. `user_feedback.session_id` has no `ON DELETE` rule (`db_schema/user_feedback.sql`), so this first nulls out `session_id` on any feedback rows pointing at it (keeping the comment, just detaching it) before deleting the session row; `navigation_logs.session_id` has `ON DELETE CASCADE`, so those rows are removed by the DB automatically with no code needed here. It also deletes the camera frames those logs point to (`raw_image_url`, bucket `navigation-frames`, kept by admin test walks - see `backend-positioning/CLAUDE.md`), best-effort after the row delete.
+- **`POST /logs`**, **`GET /logs/{id}`** — admin, or the caller who owns the *session* the log belongs to. `navigation_logs` has no `user_id` of its own, so ownership is resolved one hop away via the new `_session_owner(session_id) -> str | None` helper (`app/main.py`) — `session_id -> navigation_sessions.user_id`. `POST /logs` 404s if `session_id` doesn't exist and 403s if it belongs to someone else and the caller isn't an admin. It 409s once the session has ended, except within `LATE_LOG_GRACE` (2 min) of its `end_time`: a tick delayed by a connection stall can arrive after the app's end-of-trip `PATCH`, and a field test lost its last ticks, the arrival among them, that way; `GET /logs/{id}` does the same two-hop lookup via the fetched log's own `session_id`.
 
 This was the one service in the #24 rollout needing admin-or-self checks instead of a flat admin-only/any-authenticated-user split (`backend-map-management`/`backend-route-management`/`backend-data-collection`/`backend-ai-training` only needed the latter) - and the only one needing the foreign-key-lookup ownership pattern, since every other service's ownership field lives directly on the row being checked.
 
@@ -66,4 +66,13 @@ There is no service-to-service HTTP call anywhere in this codebase — every bac
 - **Status:** `NavigationSessionUpdate.status` is a `Literal` of the four DB values. A non-admin can't set a session back to `active`; a trip is resumed by continuing its still-active session.
 - **Nullable references:** `building_id` and `route_id` are nullable. They're set to null when the building or route is deleted (`ON DELETE SET NULL`), so trip history survives.
 - **Lists** page with `select_all`.
+
+## Diagnostics
+
+- **`navigation_logs.debug`** (JSONB, `NavigationLogCreate.debug`) is stored as-is. The app puts in it what guidance saw and said each tick, plus backend-positioning's correction details. See `application/CLAUDE.md` "Field diagnostics".
+- **`guidance_reports`:** an admin's "wrong instruction" marks from the test flow.
+  - `POST /guidance-reports` is allowed for the session's owner or an admin, and `reported_by` is always the caller.
+  - `GET /guidance-reports?session_id=` returns that session's reports in time order, to the owner or an admin.
+  - Rows cascade with their session.
+  - Migration: `db_schema/migrations/2026-10-23_navigation_debug.sql`.
 

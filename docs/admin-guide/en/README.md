@@ -123,6 +123,10 @@ An **anchor point** is a specific physical spot — a doorway, an intersection o
 | **Surface (optional)** | Optional, free text | The physical floor/ground surface. Can serve as a useful orientation cue (e.g. a change from tile to carpet marking a room boundary). | `tile`, `carpet`, `concrete`, `grass` |
 | **Location** | Required (GPS or map pick) | The point's actual coordinates. A map pick always takes priority over the device's live GPS reading. | — |
 
+**The form remembers your last point.** A new anchor point starts with the university, building, location type, floor, indoor setting, lighting and surface of the last one you created on this phone. Only the description and position start empty. If you opened the form while filtered to a building, that building is used instead.
+
+**Filtering the list.** The **Filters** button above the list (and map) narrows anchor points by category and type, floor, indoor or outdoor, lighting, and whether they have photos or connections. It combines with the status chips and search. **Clear filters** (or the back button) removes them.
+
 ### 5.2 Taking photos
 
 Why multiple photos: a user could approach the same physical spot from any direction, so the app needs to recognize what it looks like from each side — not just one angle.
@@ -200,6 +204,25 @@ Deleting a connection has no cascade: it doesn't affect the two anchor points th
 - On the **Connect on map** screen, tap the green line itself (away from the dots, since tapping near a dot selects the point) and confirm.
 
 Any saved route that went through a deleted connection is recalculated automatically the next time someone asks for it.
+
+## 6b. Testing a route and reviewing it
+
+Use **Test as user** (drawer) to walk a route yourself. During the trip, a red **✗ Wrong instruction** button appears above **End navigation**. Tap it whenever the app says something wrong (a turn when you should go straight, a wrong distance, an early arrival). It saves what was just said, where you were and what the app was seeing.
+
+To measure how accurate the position is, walk the planned route **exactly** and use the blue **I'm at …** button:
+- Tap it while standing on each point it names: the start, every corner, the destination.
+- A long press undoes the last tap.
+- In this mode, arriving is announced but the trip goes on until you tap the destination.
+- The app also keeps each camera photo of a test walk, to compare photo-matching models later.
+
+Afterwards, open **Sessions** in the drawer, choose the user, and **Watch** the session. A card at the top shows how far the raw GPS and the corrected position were from the route, and the error at your checkpoints (blue flags). The map shows:
+- **Grey-blue line:** the planned route.
+- **Orange dashed line:** the raw GPS path.
+- **Green line:** the corrected position.
+- **Purple dots:** photo matches, each with a thin line to the anchor point it matched. Long lines show where the position was pulled from.
+- **Red ✗:** your wrong-instruction marks.
+
+Tap any of them to see the details logged there.
 
 ## 7. Deleting things
 

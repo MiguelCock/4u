@@ -26,6 +26,9 @@ class SearchMatch(BaseModel):
     longitude: float
     building_id: str
     score: float
+    # Compass heading the matched photo was taken facing (degrees), so the
+    # caller can check it against the direction the phone faces now.
+    heading: float | None = None
 
 
 class SearchSimilarResponse(BaseModel):
