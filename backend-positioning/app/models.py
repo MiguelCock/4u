@@ -15,3 +15,6 @@ class CorrectPositionResponse(BaseModel):
     # frame (no Storage access, by design - see CLAUDE.md). Documented gap,
     # not silently dropped.
     raw_image_url: str | None = None
+    # Why the position came out this way (candidates and their verdicts,
+    # gating, noise, innovation) - stored by the app in navigation_logs.debug.
+    debug: dict = {}

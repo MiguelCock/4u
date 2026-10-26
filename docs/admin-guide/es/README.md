@@ -209,7 +209,13 @@ Cualquier ruta guardada que pasaba por una conexión eliminada se recalcula auto
 
 Usa **Test as user** (menú) para recorrer una ruta tú mismo. Durante el viaje aparece un botón rojo **✗ Instrucción incorrecta** encima de **Terminar navegación**. Tócalo cada vez que la app diga algo incorrecto (un giro cuando deberías seguir derecho, una distancia equivocada, una llegada antes de tiempo). Guarda lo que se acababa de decir, dónde estabas y lo que la app estaba viendo.
 
-Después, abre **Sesiones** en el menú, elige el usuario y toca **Ver** en la sesión. El mapa muestra:
+Para medir qué tan precisa es la posición, recorre la ruta planeada **exactamente** y usa el botón azul **Estoy en …**:
+- Tócalo parado en cada punto que nombra: el inicio, cada esquina, el destino.
+- Una pulsación larga deshace el último toque.
+- En este modo la llegada se anuncia, pero el recorrido sigue hasta que marques el destino.
+- La app también guarda cada foto de la cámara de un recorrido de prueba, para comparar luego modelos de reconocimiento de fotos.
+
+Después, abre **Sesiones** en el menú, elige el usuario y toca **Ver** en la sesión. Una tarjeta arriba muestra qué tan lejos de la ruta estuvieron el GPS sin corregir y la posición corregida, y el error en tus puntos de control (banderas azules). El mapa muestra:
 - **Línea gris azulada:** la ruta planeada.
 - **Línea naranja punteada:** el recorrido del GPS sin corregir.
 - **Línea verde:** la posición corregida.

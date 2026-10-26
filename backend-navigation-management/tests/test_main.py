@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -61,6 +62,14 @@ def _mock_multi_table_client(table_mocks):
     mock_client = MagicMock()
     mock_client.table.side_effect = lambda name: table_mocks[name]
     return mock_client
+
+
+def _logs_with_frames(urls) -> MagicMock:
+    logs_table = MagicMock()
+    logs_table.select.return_value.eq.return_value.not_.is_.return_value.order.return_value.range.return_value.execute.return_value.data = [
+        {"raw_image_url": url} for url in urls
+    ]
+    return logs_table
 
 
 def _profiles_table(admin: bool) -> MagicMock:
@@ -251,6 +260,7 @@ def test_delete_session_allowed_for_admin():
             "profiles": _profiles_table(admin=True),
             "user_feedback": _sessions_table(update_rows=[]),
             "navigation_sessions": _sessions_table(),
+            "navigation_logs": _logs_with_frames([]),
         }
     )
     with patch("app.main.db.client", mock_client):
@@ -269,6 +279,7 @@ def test_delete_session_detaches_feedback_before_deleting():
             "profiles": _profiles_table(admin=True),
             "user_feedback": feedback_table,
             "navigation_sessions": sessions_table,
+            "navigation_logs": _logs_with_frames([]),
         }
     )
     with patch("app.main.db.client", mock_client):
@@ -277,6 +288,26 @@ def test_delete_session_detaches_feedback_before_deleting():
     feedback_table.update.assert_called_once_with({"session_id": None})
     feedback_table.update.return_value.eq.assert_called_once_with("session_id", "1")
     sessions_table.delete.return_value.eq.assert_called_once_with("id", "1")
+
+
+def test_delete_session_removes_its_test_walk_frames():
+    _as_caller("admin1")
+    urls = ["https://x/storage/v1/object/public/navigation-frames/frame-1-a.jpg"]
+    mock_client = _mock_multi_table_client(
+        {
+            "profiles": _profiles_table(admin=True),
+            "user_feedback": _sessions_table(update_rows=[]),
+            "navigation_sessions": _sessions_table(),
+            "navigation_logs": _logs_with_frames(urls),
+        }
+    )
+    with (
+        patch("app.main.db.client", mock_client),
+        patch("app.main.db.delete_images_by_url") as delete_files,
+    ):
+        response = client.delete("/sessions/1")
+    assert response.status_code == 200
+    delete_files.assert_called_once_with("navigation-frames", urls)
 
 
 # --- POST /logs: admin or self via session_id -> navigation_sessions.user_id
@@ -547,6 +578,32 @@ def test_logs_are_refused_once_the_trip_has_ended():
         )
     assert response.status_code == 409
     logs_table.insert.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("ended_ago", "expected"), [(timedelta(seconds=20), 200), (timedelta(hours=1), 409)]
+)
+def test_a_tick_delayed_past_the_end_is_kept_only_briefly(ended_ago, expected):
+    _as_caller("u1")
+    logs_table = MagicMock(
+        **{"insert.return_value.execute.return_value.data": [_LOG_ROW]}
+    )
+    ended = (datetime.now(UTC) - ended_ago).isoformat()
+    mock_client = _mock_multi_table_client(
+        {
+            "navigation_sessions": _sessions_table(
+                select_rows=[
+                    {"user_id": "u1", "status": "completed", "end_time": ended}
+                ]
+            ),
+            "navigation_logs": logs_table,
+        }
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/logs", json={"session_id": "s1", "gps_lat": 6.24, "gps_long": -75.58}
+        )
+    assert response.status_code == expected
 
 
 def test_a_match_on_a_deleted_anchor_is_dropped_not_fatal():

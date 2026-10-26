@@ -35,6 +35,6 @@ dynamic IP instead - update application/.env's API_GATEWAY_URL by hand.
 Every service has restart: unless-stopped, so the containers should come
 back on their own once Docker finishes starting on this instance - give
 it a minute. If something didn't come back for any reason, the fallback
-is still `ssh ... "cd ~/4u && sudo docker compose up -d"` (no rebuild
+is still \`ssh ... "cd ~/4u && sudo docker compose up -d"\` (no rebuild
 needed) - see README.md.
 EOF

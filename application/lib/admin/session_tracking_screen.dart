@@ -6,9 +6,11 @@ import 'package:latlong2/latlong.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/geo_utils.dart' show routeCorners;
 import '../services/location_types.dart' show anchorDisplayName;
 import '../services/map_tap.dart';
 import '../services/map_tile_config.dart';
+import '../services/route_error.dart';
 
 /// Admin: one navigation session on a map, for checking how the GPS
 /// correction and guidance behaved. Draws the planned route, the raw GPS
@@ -299,6 +301,52 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
     super.dispose();
   }
 
+  /// For test walks along the route exactly: how far raw GPS and the
+  /// correction were from it (see route_error.dart).
+  Widget? _errorCard(AppLocalizations l10n) {
+    final summary = RouteErrorSummary.compute(_logs, _plannedPath);
+    if (summary.isEmpty) return null;
+    String m(double v) => v.toStringAsFixed(1);
+    Widget row(String label, ErrorStats? stats) => stats == null
+        ? const SizedBox.shrink()
+        : Text(
+            l10n.trackingErrorRow(label, m(stats.mean), m(stats.p90)),
+            style: const TextStyle(fontSize: 12),
+          );
+    final share = summary.correctedCloserShare;
+    final titleStyle = Theme.of(context).textTheme.labelLarge;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.trackingErrorTitle, style: titleStyle),
+            row(l10n.trackingErrorRaw, summary.raw),
+            row(l10n.trackingErrorCorrected, summary.corrected),
+            if (share != null)
+              Text(
+                l10n.trackingErrorCloser((share * 100).round()),
+                style: const TextStyle(fontSize: 12),
+              ),
+            if (summary.checkpointRaw != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                l10n.trackingErrorCheckpointsTitle(
+                  summary.checkpointRaw!.count,
+                ),
+                style: titleStyle,
+              ),
+              row(l10n.trackingErrorRaw, summary.checkpointRaw),
+              row(l10n.trackingErrorCorrected, summary.checkpointCorrected),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _legend(AppLocalizations l10n) {
     Widget row(Widget swatch, String label) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -330,6 +378,11 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
               const Icon(Icons.close, size: 16, color: Colors.red),
               l10n.trackingLegendReport,
             ),
+            if (checkpointEvents(_logs).isNotEmpty)
+              row(
+                const Icon(Icons.flag, size: 16, color: Colors.blue),
+                l10n.trackingLegendCheckpoint,
+              ),
           ],
         ),
       ),
@@ -345,6 +398,15 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
       for (final log in _logs)
         if (log['anchor_match_id'] != null && _corrected(log) != null) log,
     ];
+    final corners = _plannedPath.length > 1
+        ? routeCorners(_plannedPath)
+        : const <int>[];
+    final checkpoints = [
+      for (final tap in checkpointEvents(_logs))
+        if ((tap['index'] as int) < corners.length)
+          _plannedPath[corners[tap['index'] as int]],
+    ];
+    final errorCard = _errorCard(l10n);
     final center = raw.isNotEmpty
         ? raw.last
         : (_plannedPath.isNotEmpty ? _plannedPath.first : const LatLng(0, 0));
@@ -424,6 +486,18 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
                               ),
                             ),
                           ),
+                        for (final point in checkpoints)
+                          Marker(
+                            point: point,
+                            width: 28,
+                            height: 28,
+                            alignment: Alignment.topCenter,
+                            child: const Icon(
+                              Icons.flag,
+                              color: Colors.blue,
+                              size: 24,
+                            ),
+                          ),
                         for (final report in _reports)
                           if (_reportPosition(report) != null)
                             Marker(
@@ -453,6 +527,8 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
                     ),
                   ],
                 ),
+                if (errorCard != null)
+                  Positioned(left: 8, top: 8, right: 8, child: errorCard),
                 Positioned(left: 8, bottom: 8, right: 80, child: _legend(l10n)),
               ],
             ),
