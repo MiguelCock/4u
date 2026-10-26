@@ -6,6 +6,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-26
+
+**For testers:** install `app-release.apk` from this release. Admins test with **Test as user**, walking the route exactly and tapping the checkpoints (admin guide §6b).
+
 ### Added
 - **New anchor points start from the last one's values**: university, building, type, floor, indoor, lighting and surface. Only the description and position start empty.
 - **Filters on anchor points** (admin): by category and type, floor, indoor or outdoor, lighting, and whether they have photos or connections. Works on the list and the map.
@@ -146,7 +150,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.0...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.1...develop
+[0.5.1]: https://github.com/MiguelCock/4u/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/MiguelCock/4u/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MiguelCock/4u/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/MiguelCock/4u/compare/v0.3.0...v0.3.1
