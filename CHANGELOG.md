@@ -6,6 +6,14 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+### Added
+- **Version support**: the newest app version and the one before it both work. When a new version comes out, the previous one shows a "new version available" message once per launch with a download button. Anything older can't be used until it's updated, and shows a screen with the download link.
+
+### Changed
+- **Turn instructions follow your real turns.** Direction now comes from the phone's gyroscope and from your walking direction, not the compass alone. The compass under-counted every turn, so the app asked for more turning than needed and, after a few corners, kept saying "turn left" while you faced the right way.
+- **The corrected position keeps up with you.** It used to trail several seconds behind, because each correction takes a few seconds to come back. It now moves with your live GPS.
+- **Faster position updates**: less waiting on the server for each photo.
+
 ## [0.5.1] - 2026-10-26
 
 **For testers:** install `app-release.apk` from this release. Admins test with **Test as user**, walking the route exactly and tapping the checkpoints (admin guide §6b).

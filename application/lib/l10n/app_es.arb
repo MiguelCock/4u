@@ -454,5 +454,13 @@
   "trackingErrorRaw": "GPS sin corregir",
   "trackingErrorCorrected": "Corregida",
   "trackingErrorCloser": "La corregida estuvo más cerca en el {percent}% de las lecturas",
-  "trackingLegendCheckpoint": "Punto de control (posición real)"
+  "trackingLegendCheckpoint": "Punto de control (posición real)",
+  "updateRequiredTitle": "Actualización necesaria",
+  "updateRequiredBody": "Esta versión de la aplicación ({current}) ya no funciona. Instala la versión {latest} para seguir usándola.",
+  "updateDownload": "Descargar la actualización",
+  "updateLater": "Más tarde",
+  "updateAvailableTitle": "Nueva versión disponible",
+  "updateAvailableBody": "Ya salió la versión {latest}. Esta versión sigue funcionando por ahora, pero dejará de funcionar cuando salga la siguiente.",
+  "updateOpenFailed": "No se pudo abrir el enlace: {url}",
+  "commonErrorUpdateRequired": "Esta versión de la aplicación ya no es compatible. Por favor actualízala."
 }

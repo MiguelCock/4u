@@ -6,7 +6,9 @@ import '../l10n/app_localizations.dart';
 import '../services/api_error_messages.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
+import '../services/app_version.dart';
 import '../user/user_home_screen.dart';
+import '../widgets/app_update.dart';
 import 'login_screen.dart';
 
 /// Matches roles.sql's seeded values (`db_schema/roles.sql`).
@@ -35,6 +37,9 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   final _userApi = UserManagementApi();
+
+  /// The deprecated-version notice is shown once per launch.
+  static bool _versionChecked = false;
 
   String? _fetchedForUserId;
   Future<Map<String, dynamic>?>? _profileFuture;
@@ -78,6 +83,7 @@ class _AuthGateState extends State<AuthGate> {
   /// called during build" assertion on MainApp's ValueListenableBuilder
   /// while this subtree is still building).
   Map<String, dynamic> _applyAndReturn(Map<String, dynamic> result) {
+    _checkAppVersion();
     if (mounted) {
       applyPreferences(
         result['preferences'] as Map<String, dynamic>?,
@@ -86,6 +92,29 @@ class _AuthGateState extends State<AuthGate> {
       );
     }
     return result;
+  }
+
+  /// Once per launch, after sign-in: is this version still the newest?
+  /// Best effort - a failure here never blocks the app, and an unsupported
+  /// version is caught by the backend's 426 anyway.
+  Future<void> _checkAppVersion() async {
+    final running = runningAppVersion;
+    if (_versionChecked || running == null) return;
+    _versionChecked = true;
+    try {
+      final policy = AppVersionPolicy.fromJson(
+        await _userApi.get('/app-version'),
+      );
+      if (policy == null || !mounted) return;
+      switch (appVersionStatus(running, policy)) {
+        case AppVersionStatus.unsupported:
+          updateRequiredNotifier.value = policy;
+        case AppVersionStatus.deprecated:
+          await showUpdateAvailableDialog(context, policy);
+        case AppVersionStatus.current:
+          break;
+      }
+    } on ApiException catch (_) {}
   }
 
   void _retry(String userId) {

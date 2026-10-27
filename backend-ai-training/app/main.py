@@ -1,7 +1,9 @@
 import os
+import time
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from packages.app_versions import install_app_version_guard
 from packages.db_errors import install_db_error_handlers
 from packages.qdrant import Qdrant
 from packages.supabase import SupaBase
@@ -21,6 +23,7 @@ load_dotenv()
 
 app = FastAPI()
 install_db_error_handlers(app)
+install_app_version_guard(app)
 
 qdrant = Qdrant(os.environ.get("QDRANT_URL"), os.environ.get("QDRANT_KEY"))
 # Only needed to verify caller bearer tokens / admin role for the write
@@ -54,6 +57,28 @@ _DEFAULT_SEARCH_RADIUS_METERS = 150.0
 get_caller_id = db.get_caller_id
 
 
+# The Qdrant client _ensure_collection last prepared the collection with.
+_ensured_for: Qdrant | None = None
+
+
+def _ensure_collection() -> None:
+    """Creates the collection and its payload indexes on the first call of
+    this process (repairing an older collection's missing indexes). Doing
+    it on every call cost 4 Qdrant Cloud round trips per search, about a
+    second of each navigation tick. Keyed by client, so a test's mock gets
+    its own first call."""
+    global _ensured_for
+    if _ensured_for is qdrant:
+        return
+    qdrant.ensure_collection(
+        _COLLECTION,
+        _VECTOR_SIZE,
+        indexed_fields=_INDEXED_FIELDS,
+        geo_indexed_fields=_GEO_INDEXED_FIELDS,
+    )
+    _ensured_for = qdrant
+
+
 @app.get("/")
 async def root():
     return {"service": "backend-ai-training", "status": "ok"}
@@ -65,12 +90,7 @@ async def index_anchor(
 ) -> IndexAnchorResponse:
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    qdrant.ensure_collection(
-        _COLLECTION,
-        _VECTOR_SIZE,
-        indexed_fields=_INDEXED_FIELDS,
-        geo_indexed_fields=_GEO_INDEXED_FIELDS,
-    )
+    _ensure_collection()
 
     points = []
     for photo in anchor.photos:
@@ -115,14 +135,11 @@ async def search_similar(
     longitude: float | None = Form(None),
     radius_meters: float | None = Form(None),
 ) -> SearchSimilarResponse:
-    qdrant.ensure_collection(
-        _COLLECTION,
-        _VECTOR_SIZE,
-        indexed_fields=_INDEXED_FIELDS,
-        geo_indexed_fields=_GEO_INDEXED_FIELDS,
-    )
+    _ensure_collection()
 
+    started = time.perf_counter()
     embedding = extract_embedding(file.file.read())
+    embed_ms = round(1000 * (time.perf_counter() - started))
     query_filter = None
     if latitude is not None and longitude is not None:
         query_filter = Filter(
@@ -136,9 +153,11 @@ async def search_similar(
                 )
             ]
         )
+    started = time.perf_counter()
     result = qdrant.client.query_points(
         _COLLECTION, query=embedding, limit=limit, query_filter=query_filter
     )
+    qdrant_ms = round(1000 * (time.perf_counter() - started))
 
     matches = [
         {
@@ -152,19 +171,16 @@ async def search_similar(
         }
         for point in result.points
     ]
-    return SearchSimilarResponse(matches=matches)
+    return SearchSimilarResponse(
+        matches=matches, timing_ms={"embed": embed_ms, "qdrant": qdrant_ms}
+    )
 
 
 @app.delete("/index_photo/{photo_id}")
 async def delete_indexed_photo(photo_id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    qdrant.ensure_collection(
-        _COLLECTION,
-        _VECTOR_SIZE,
-        indexed_fields=_INDEXED_FIELDS,
-        geo_indexed_fields=_GEO_INDEXED_FIELDS,
-    )
+    _ensure_collection()
     qdrant.client.delete(_COLLECTION, points_selector=[photo_id])
     return "ok"
 
@@ -175,12 +191,7 @@ async def delete_indexed_anchor(
 ):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    qdrant.ensure_collection(
-        _COLLECTION,
-        _VECTOR_SIZE,
-        indexed_fields=_INDEXED_FIELDS,
-        geo_indexed_fields=_GEO_INDEXED_FIELDS,
-    )
+    _ensure_collection()
     qdrant.client.delete(
         _COLLECTION,
         points_selector=Filter(
@@ -200,12 +211,7 @@ async def delete_indexed_building(
 ):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    qdrant.ensure_collection(
-        _COLLECTION,
-        _VECTOR_SIZE,
-        indexed_fields=_INDEXED_FIELDS,
-        geo_indexed_fields=_GEO_INDEXED_FIELDS,
-    )
+    _ensure_collection()
     qdrant.client.delete(
         _COLLECTION,
         points_selector=Filter(

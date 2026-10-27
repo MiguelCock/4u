@@ -11,6 +11,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
+import 'package:sensors_plus/sensors_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
@@ -21,6 +22,7 @@ import '../services/app_preferences.dart';
 import '../services/camera_helper.dart';
 import '../services/destinations.dart';
 import '../services/geo_utils.dart';
+import '../services/heading_tracker.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import '../services/speech_voice.dart';
@@ -40,9 +42,13 @@ class _Waypoint {
   const _Waypoint({required this.point, this.name});
 }
 
-/// A corrected position older than this is ignored in favour of raw GPS,
-/// e.g. when the camera loop has stalled.
-const Duration _kCorrectionFreshness = Duration(seconds: 5);
+/// A correction's offset from raw GPS is applied to the live fix for this
+/// long, then dropped in favour of raw GPS (the camera loop has stalled).
+/// The offset is the GPS's own slowly changing error (backend-positioning's
+/// bias, tau 120 s), so it holds well past the next tick. Showing the
+/// corrected position itself instead put it 5-11 s behind the user in a
+/// field test: a tick's answer arrives ~5 s after its photo.
+const Duration _kCorrectionFreshness = Duration(seconds: 20);
 
 /// Below this GPS speed (m/s), GPS heading is meaningless (standing still),
 /// so it's only used as a fallback for a missing compass when walking.
@@ -144,6 +150,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
   Timer? _guidanceTimer;
   StreamSubscription<CompassEvent>? _compassSub;
   final _heading = HeadingSmoother();
+  final _tracker = HeadingTracker();
+  StreamSubscription<GyroscopeEvent>? _gyroSub;
+  StreamSubscription<AccelerometerEvent>? _accelSub;
+  StreamSubscription<Position>? _positionSub;
   final _guidance = TurnGuidance();
   final _pathLoaded = Completer<void>();
   bool _guiding = false;
@@ -172,6 +182,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   double? _correctedLat;
   double? _correctedLong;
+
+  /// The last correction minus the raw fix it corrected, metres east/north
+  /// (see _kCorrectionFreshness).
+  ({double x, double y})? _correctionOffset;
   double? _correctionError;
   List<LatLng> _plannedPath = [];
   List<_Waypoint> _waypoints = [];
@@ -244,7 +258,26 @@ class _NavigationScreenState extends State<NavigationScreen> {
       if (heading != null) {
         _lastRawCompass = heading;
         _heading.add(heading);
+        _tracker.compass(
+          trueHeading(_heading.value!, _declination),
+          DateTime.now(),
+        );
       }
+    });
+    // Turns come from the gyroscope, direction from walking: the compass
+    // under-counted every turn in a field test (see HeadingTracker).
+    _accelSub = accelerometerEventStream(
+      samplingPeriod: SensorInterval.gameInterval,
+    ).listen((e) => _tracker.accelerometer(e.x, e.y, e.z), onError: (_) {});
+    _gyroSub = gyroscopeEventStream(samplingPeriod: SensorInterval.gameInterval)
+        .listen(
+          (e) => _tracker.gyro(e.x, e.y, e.z, DateTime.now()),
+          onError: (_) {},
+        );
+    _positionSub = _locationService.positionStream.listen((position) {
+      _tracker.gpsCourse(position.heading, position.speed, position.timestamp);
+      // The corrected marker follows the live fix (see _liveCorrected).
+      if (_correctionOffset != null && mounted) setState(() {});
     });
     _guidanceTimer = Timer.periodic(_kGuidanceInterval, (_) => _guide());
   }
@@ -404,14 +437,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// Where guidance thinks the user is: the camera-corrected position when
   /// it's fresh, raw GPS otherwise.
   LatLng? _currentPosition() {
-    final correctedAt = _correctedAt;
-    if (_correctedLat != null &&
-        _correctedLong != null &&
-        correctedAt != null &&
-        DateTime.now().difference(correctedAt) < _kCorrectionFreshness) {
+    final live = _liveCorrected();
+    if (live != null) {
       _lastUsedCorrected = true;
       _staleSince = null;
-      return LatLng(_correctedLat!, _correctedLong!);
+      _staleFrom = live;
+      return live;
     }
     _lastUsedCorrected = false;
     final position = _locationService.lastPosition;
@@ -419,12 +450,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
     final raw = LatLng(position.latitude, position.longitude);
     // Blend from the last corrected position to raw GPS instead of jumping
     // the tens of metres that can separate them.
-    if (_correctedLat != null && _correctedLong != null) {
-      if (_staleSince == null) {
-        _staleSince = DateTime.now();
-        _staleFrom = LatLng(_correctedLat!, _correctedLong!);
-      }
-      final from = _staleFrom!;
+    final staleFrom = _staleFrom;
+    if (staleFrom != null) {
+      _staleSince ??= DateTime.now();
+      final from = staleFrom;
       final f =
           (DateTime.now().difference(_staleSince!).inMilliseconds /
                   _kSourceBlend.inMilliseconds)
@@ -437,6 +466,21 @@ class _NavigationScreenState extends State<NavigationScreen> {
       }
     }
     return raw;
+  }
+
+  /// The live GPS fix with the latest correction's offset applied, while
+  /// that offset is fresh; null otherwise.
+  LatLng? _liveCorrected() {
+    final offset = _correctionOffset;
+    final correctedAt = _correctedAt;
+    final raw = _rawPosition;
+    if (offset == null ||
+        correctedAt == null ||
+        raw == null ||
+        DateTime.now().difference(correctedAt) >= _kCorrectionFreshness) {
+      return null;
+    }
+    return applyOffset(raw, offset.x, offset.y);
   }
 
   LatLng? get _rawPosition {
@@ -452,9 +496,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
       ? _startPoint
       : _waypoints[_nextWaypointIndex - 1].point;
 
-  /// Compass heading, or GPS direction of travel while actually moving if
-  /// the phone has no compass. Null when neither is usable.
+  /// Which way the user faces (true north): HeadingTracker's gyro heading
+  /// anchored to walking, else the compass, else the GPS direction of
+  /// travel while actually moving. Null when none is usable.
   double? _currentHeading() {
+    final tracked = _tracker.value;
+    if (tracked != null) return tracked;
     final compass = _heading.value;
     // The compass is magnetic; route bearings are true north.
     if (compass != null) return trueHeading(compass, _declination);
@@ -647,15 +694,20 @@ class _NavigationScreenState extends State<NavigationScreen> {
     if (index == null) return;
     HapticFeedback.heavyImpact();
     final raw = _rawPosition;
+    final corrected = _liveCorrected();
+    final correctedAt = _correctedAt;
     _pendingEvents.add({
       'at': DateTime.now().toUtc().toIso8601String(),
       'type': 'checkpoint',
       'index': index,
       'of': _checkpoints.count,
       'raw': ?(raw == null ? null : [raw.latitude, raw.longitude]),
-      'corrected': ?(_correctedLat == null
+      'corrected': ?(corrected == null
           ? null
-          : [_correctedLat, _correctedLong]),
+          : [corrected.latitude, corrected.longitude]),
+      'correction_age_s': ?(correctedAt == null
+          ? null
+          : DateTime.now().difference(correctedAt).inMilliseconds / 1000),
     });
     final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context)
@@ -843,12 +895,23 @@ class _NavigationScreenState extends State<NavigationScreen> {
     Map<String, dynamic>? correction,
     String? failure,
     Map<String, int>? timing,
+    DateTime? photoAt,
   }) {
     final correctedAt = _correctedAt;
     final snapshot = <String, dynamic>{
       'compass': _heading.value,
       'compass_raw': _lastRawCompass,
       'compass_accuracy': _lastCompassAccuracy,
+      'heading': _tracker.value,
+      'heading_source': _tracker.source,
+      // How far the compass (true) is from the tracked heading: magnetic
+      // disturbance shows up here.
+      'compass_vs_heading': _tracker.value == null || _heading.value == null
+          ? null
+          : signedTurn(
+              _tracker.value!,
+              trueHeading(_heading.value!, _declination),
+            ),
       'gps_speed': position.speed,
       'gps_course': position.heading,
       'gps_time': position.timestamp.toUtc().toIso8601String(),
@@ -866,6 +929,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       'correction': ?correction,
       'failure': ?failure,
       'timing_ms': ?timing,
+      'photo_at': ?photoAt?.toUtc().toIso8601String(),
     };
     _pendingCues.clear();
     _pendingEvents.clear();
@@ -902,6 +966,16 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
   }
 
+  /// The heading sent with a photo: the tracked heading back in magnetic
+  /// degrees, like the anchor photos' own (the compass alone, when there's
+  /// no tracker heading yet), so the heading gate compares like with like.
+  /// Never the GPS course: meaningless while standing still.
+  double? _sentHeading() {
+    final tracked = _tracker.value;
+    if (tracked != null) return trueHeading(tracked, -_declination);
+    return _heading.value;
+  }
+
   Future<void> _correctionTick(
     String sessionId,
     Position position,
@@ -909,6 +983,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
   ) async {
     try {
       final captureStarted = DateTime.now();
+      // The direction the camera faces as the photo is taken (see
+      // _sentHeading), not when the answer comes back.
+      final sentHeading = _sentHeading();
       final image = await controller.takePicture();
       final bytes = await image.readAsBytes();
       final captureMs = DateTime.now()
@@ -953,12 +1030,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
                   'latitude': position.latitude.toString(),
                   'longitude': position.longitude.toString(),
                   'accuracy': position.accuracy.toString(),
-                  // The direction the phone (and camera) faces, magnetic
-                  // like the anchor photos' own headings, so a match can be
-                  // checked against it. Never the GPS course: meaningless
-                  // while standing still, it would reject good matches.
-                  if (_heading.value != null)
-                    'heading': _heading.value!.toString(),
+                  // The direction the camera faces, so a match can be
+                  // checked against it (see _sentHeading).
+                  'heading': ?sentHeading?.toString(),
                   // Lets the backend skip re-fusing the same fix.
                   'gps_time': position.timestamp.toUtc().toIso8601String(),
                   // Test walks keep their frames, to compare photo models
@@ -977,6 +1051,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
           _correctedLong = (result['corrected_long'] as num).toDouble();
           _correctionError = (result['correction_error'] as num).toDouble();
           _correctedAt = DateTime.now();
+          _correctionOffset = offsetMeters(
+            LatLng(position.latitude, position.longitude),
+            LatLng(_correctedLat!, _correctedLong!),
+          );
         });
       }
 
@@ -1007,6 +1085,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
             position,
             correction: (result['debug'] as Map?)?.cast<String, dynamic>(),
             timing: {'capture': captureMs, 'correct': correctMs},
+            photoAt: captureStarted,
           ),
         }),
       );
@@ -1044,8 +1123,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
           'gps_lat': position.latitude,
           'gps_long': position.longitude,
         },
-        'corrected_lat': _correctedLat,
-        'corrected_long': _correctedLong,
+        'corrected_lat': _liveCorrected()?.latitude ?? _correctedLat,
+        'corrected_long': _liveCorrected()?.longitude ?? _correctedLong,
         'compass_heading': _heading.value,
         'debug': {
           'turn': _lastTurn,
@@ -1090,6 +1169,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _guidanceTimer?.cancel();
     _periodicAnnouncementTimer?.cancel();
     _compassSub?.cancel();
+    _gyroSub?.cancel();
+    _accelSub?.cancel();
+    _positionSub?.cancel();
     if (sessionId == null) {
       if (mounted) Navigator.of(context).pop();
       return;
@@ -1172,6 +1254,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _periodicAnnouncementTimer?.cancel();
     _guidanceTimer?.cancel();
     _compassSub?.cancel();
+    _gyroSub?.cancel();
+    _accelSub?.cancel();
+    _positionSub?.cancel();
     _cameraController?.dispose();
     _tts.stop();
     super.dispose();
@@ -1180,8 +1265,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final correctedLat = _correctedLat;
-    final correctedLong = _correctedLong;
+    final live = _liveCorrected();
+    final correctedLat = live?.latitude ?? _correctedLat;
+    final correctedLong = live?.longitude ?? _correctedLong;
     final showDebugPreview =
         kDebugMode &&
         _cameraController != null &&

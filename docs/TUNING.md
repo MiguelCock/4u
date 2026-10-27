@@ -92,3 +92,42 @@ The constants are in `application/lib/services/turn_guidance.dart` and `applicat
 - **Source switch:** when the correction is older than 5 s, guidance blends to raw GPS over 2 s instead of jumping.
 
 In the debug, `turn`, `target_bearing`, `compass`, `position_source` and `guidance` show what guidance saw when it spoke (`cues`).
+
+## 5. Findings from the third test walk (session f0fb7820, 2026-10-27)
+
+The route was 131 m with four straights. It produced 27 ticks, 5 checkpoints and 6 "wrong instruction" reports.
+
+**The correction works; it was showing up late.**
+- Each `/correct_position` round trip took 5–7 s, so ticks ran every ~6 s. On the server, `total_ms` was ~1.7 s, of which the photo search (`search_ms`) was ~1.4 s.
+- The app kept showing each answer until the next one arrived, so it described where the user had been 5–11 s earlier.
+- Scored at the moment each photo was taken (not when the log was posted), the error was 7.6 m for raw GPS and 4.2 m corrected.
+- At the checkpoints:
+
+  | Checkpoint | 0 | 1 | 2 | 3 | 4 | mean |
+  |---|---|---|---|---|---|---|
+  | raw GPS | 6.2 | 4.0 | 3.0 | 5.1 | 9.6 | 5.6 |
+  | corrected, as shown (stale) | 7.7 | 15.0 | 12.1 | 7.8 | 11.1 | 10.7 |
+  | live fix + last correction offset | 0.8 | 3.8 | 1.8 | 3.6 | 7.5 | 3.5 |
+
+**What changed:**
+- **Position:** the app now applies the latest correction's offset to the live GPS fix for up to 20 s (`_kCorrectionFreshness`). That offset is mostly the GPS's own slowly changing error. Checkpoints record that live value and its age (`correction_age_s`).
+- **Scoring:** `scripts/replay.py` scores each tick at its photo time (`debug.photo_at`, or the log time minus `timing_ms` for older logs). It also prints each checkpoint's error.
+
+**Every report came from the compass.**
+- `flutter_compass` (Android's rotation vector, referenced to the magnetometer) counted about 70° for each real 90° left turn. Its error grew at every corner: +20, +50, +65 and +80° on the four straights, while the GPS course matched the route within ~10°.
+- The user turned by the angle they were told, and was told to turn more. On the third straight, guidance never left "orienting" and kept repeating "turn left".
+- The same error made the heading gate refuse good photo matches. Replaying with that gate off scored better: 3.98 m against 4.80 m.
+- **Fix:** `HeadingTracker` (`application/lib/services/heading_tracker.dart`).
+  - The gyroscope, projected on the vertical, measures turns.
+  - The GPS course anchors the absolute direction while walking a steady straight: ≥ 0.7 m/s, 3 courses within 20°, time constant 3 s.
+  - The compass only sets the starting direction, and pulls weakly (60 s) after a minute with no walking.
+  - The heading sent to positioning is the tracked one, converted back to magnetic.
+  - Logs carry `heading`, `heading_source` and `compass_vs_heading`.
+
+**Latency changes:**
+- ai-training prepares its Qdrant collection once per process; it used to make 4 Qdrant Cloud round trips on every search.
+- Verified tokens are cached for 60 s (`packages`).
+- The admin check for test-walk frames runs alongside the search.
+- New in the positioning `debug` output: `upload_ms` (the photo arriving), `auth_ms`, and `search_timing` (`embed` and `qdrant`), to show where the rest of the round trip goes.
+
+**Not retuned yet.** With only 15 corrected ticks, and the heading gate fed a broken compass, this walk is too small to tune on. In the grid, `gps_bias_sigma_m=6` with the heading gate off scored best. Re-run the grid on the next walk.

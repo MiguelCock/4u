@@ -51,6 +51,19 @@ double signedTurn(double heading, double bearing) {
   return (x: x, y: y);
 }
 
+/// How far [to] is from [from], in metres east ([x]) and north ([y]) -
+/// e.g. a correction's offset from the raw GPS fix it corrected.
+({double x, double y}) offsetMeters(LatLng from, LatLng to) =>
+    _toLocal(from, to);
+
+/// [p] moved [x] metres east and [y] metres north: the inverse of
+/// [offsetMeters].
+LatLng applyOffset(LatLng p, double x, double y) => LatLng(
+  p.latitude + y / _earthRadiusMeters * 180 / pi,
+  p.longitude +
+      x / (_earthRadiusMeters * cos(p.latitude * pi / 180)) * 180 / pi,
+);
+
 /// Where [p] falls along the route segment [a]→[b]: [along] metres from
 /// [a] (negative before it, beyond [length] past [b]) and [crossTrack]
 /// metres to the side (positive = right of the direction of travel).

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'auth/auth_gate.dart';
 import 'l10n/app_localizations.dart';
 import 'services/app_preferences.dart';
+import 'services/app_version.dart';
 import 'services/location_service.dart';
+import 'widgets/app_update.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +28,12 @@ void main() async {
     url: dotenv.env['SUPABASE_URL'] ?? 'https://placeholder.supabase.co',
     publishableKey: dotenv.env['SUPABASE_PUBLISHABLE_KEY'] ?? 'placeholder-key',
   );
+
+  try {
+    runningAppVersion = (await PackageInfo.fromPlatform()).version;
+  } catch (_) {
+    // Unknown version: requests go without X-App-Version.
+  }
 
   await LocationService().initialize();
   runApp(const MainApp());
@@ -71,7 +80,14 @@ class MainApp extends StatelessWidget {
                       child: child!,
                     );
                   },
-                  home: const AuthGate(),
+                  // A version the backend no longer serves shows only
+                  // the update screen (see app_version.dart).
+                  home: ValueListenableBuilder<AppVersionPolicy?>(
+                    valueListenable: updateRequiredNotifier,
+                    builder: (context, policy, _) => policy == null
+                        ? const AuthGate()
+                        : UpdateRequiredScreen(policy: policy),
+                  ),
                 );
               },
             );

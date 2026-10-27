@@ -576,5 +576,16 @@
   "trackingErrorCorrected": "Corrected",
   "trackingErrorCloser": "Corrected was closer on {percent}% of ticks",
   "@trackingErrorCloser": {"placeholders": {"percent": {"type": "int"}}},
-  "trackingLegendCheckpoint": "Checkpoint (true position)"
+  "trackingLegendCheckpoint": "Checkpoint (true position)",
+  "updateRequiredTitle": "Update required",
+  "updateRequiredBody": "This version of the app ({current}) no longer works. Install version {latest} to keep using it.",
+  "@updateRequiredBody": {"placeholders": {"current": {"type": "String"}, "latest": {"type": "String"}}},
+  "updateDownload": "Download the update",
+  "updateLater": "Later",
+  "updateAvailableTitle": "New version available",
+  "updateAvailableBody": "Version {latest} is out. This version keeps working for now, but stops working when the next version is released.",
+  "@updateAvailableBody": {"placeholders": {"latest": {"type": "String"}}},
+  "updateOpenFailed": "Couldn't open the link: {url}",
+  "@updateOpenFailed": {"placeholders": {"url": {"type": "String"}}},
+  "commonErrorUpdateRequired": "This version of the app is no longer supported. Please update."
 }

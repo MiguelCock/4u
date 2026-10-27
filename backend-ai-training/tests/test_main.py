@@ -179,7 +179,9 @@ def test_search_similar_returns_matches():
         )
 
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    assert set(body.pop("timing_ms")) == {"embed", "qdrant"}
+    assert body == {
         "matches": [
             {
                 "anchor_point_id": "a1",

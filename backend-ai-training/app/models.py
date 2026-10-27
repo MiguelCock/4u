@@ -33,3 +33,5 @@ class SearchMatch(BaseModel):
 
 class SearchSimilarResponse(BaseModel):
     matches: list[SearchMatch]
+    # How long the embedding and the Qdrant query took, for diagnostics.
+    timing_ms: dict[str, int] | None = None
