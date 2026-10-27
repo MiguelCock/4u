@@ -320,7 +320,6 @@
   "adminReindexNothing": "No hay puntos verificados con fotos para indexar.",
   "adminReindexRunning": "Reindexando {count} puntos verificados...",
   "adminReindexDone": "{ok} de {total} puntos verificados reindexados.",
-  "adminReindexDoneWithErrors": "{ok} de {total} puntos verificados reindexados. Último error: {error}",
   "navVoiceLanguageMissing": "Este teléfono no tiene instalada una voz para el idioma de la app, así que las indicaciones pueden leerse con otro acento. Instálala en Ajustes del teléfono > Salida de texto a voz.",
   "homeStartUnnamedSubtitle": "Partiendo del punto de ruta más cercano, a unos {meters} m",
   "navStartingTo": "Iniciando ruta hacia {destination}.",
@@ -462,5 +461,11 @@
   "updateAvailableTitle": "Nueva versión disponible",
   "updateAvailableBody": "Ya salió la versión {latest}. Esta versión sigue funcionando por ahora, pero dejará de funcionar cuando salga la siguiente.",
   "updateOpenFailed": "No se pudo abrir el enlace: {url}",
-  "commonErrorUpdateRequired": "Esta versión de la aplicación ya no es compatible. Por favor actualízala."
+  "commonErrorUpdateRequired": "Esta versión de la aplicación ya no es compatible. Por favor actualízala.",
+  "adminReindexAllSearchable": "Todas las fotos verificadas ya se pueden buscar.",
+  "adminReindexUnsearchable": "{count} fotos no se pueden buscar",
+  "adminReindexResultTitle": "Reindexación terminada",
+  "adminReindexFailedList": "Estos puntos no se pudieron indexar (se intentó 3 veces). Último error: {error}",
+  "navTurnAheadLeft": "En {meters} metros, gira a la izquierda.",
+  "navTurnAheadRight": "En {meters} metros, gira a la derecha."
 }

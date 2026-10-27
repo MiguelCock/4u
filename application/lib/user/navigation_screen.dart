@@ -63,10 +63,18 @@ const Duration _kGuidanceInterval = Duration(milliseconds: 500);
 const double _kProximityThresholdMeters = 20.0;
 
 /// A corner counts as reached this close (meters), or once the user has
-/// walked to within this of its end along the straight leading to it. It
-/// used to be 20 m like the skip check, which announced every turn
-/// ~15 m early (a field test, with GPS at 3 m accuracy).
-const double _kCornerMeters = 8.0;
+/// walked to within this of its end along the straight leading to it, or
+/// has already turned onto the next leg near it (see cornerProgress). It
+/// was 20 m, then 8 m: with the position good to ~1 m, 8 m still spoke
+/// every turn 5-8 s before the corner (third test walk).
+const double _kCornerMeters = 3.0;
+
+/// This far (meters) before a corner: "In 8 meters, turn left", once.
+const double _kTurnWarningMeters = 8.0;
+
+/// No heads-up on a leg shorter than this: it would follow straight on
+/// from the leg's own instruction.
+const double _kMinLegForWarningMeters = 12.0;
 
 /// ...but not if they're this far (meters) to the side of that straight.
 const double _kCornerCrossTrackMeters = 15.0;
@@ -169,6 +177,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// one per route corner plus the start and the destination.
   CheckpointSequence _checkpoints = CheckpointSequence(0);
   int _arrivalStreak = 0;
+
+  /// The waypoint whose heads-up ("in 8 meters, turn left") was given.
+  int? _warnedForWaypoint;
   DateTime? _staleSince;
   LatLng? _staleFrom;
 
@@ -520,6 +531,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     final here = _currentPosition();
     if (here == null) return;
     if (_checkProximity(here)) return;
+    _warnTurnAhead(here);
 
     final heading = _currentHeading();
     if (heading == null) return;
@@ -617,14 +629,60 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// Whether intermediate waypoint [i] counts as reached from [here]: close
   /// to it, or - for the next one - walked up to along its straight.
   bool _cornerReached(LatLng here, int i) {
-    final point = _waypoints[i].point;
-    if (haversineMeters(here, point) <= _kCornerMeters) return true;
+    if (haversineMeters(here, _waypoints[i].point) <= _kCornerMeters) {
+      return true;
+    }
+    return i == _nextWaypointIndex &&
+        _cornerProgress(here) == CornerProgress.reached;
+  }
+
+  /// Progress toward the next waypoint when it's a corner (not the
+  /// destination), or null.
+  CornerProgress? _cornerProgress(LatLng here) {
+    final i = _nextWaypointIndex;
     final from = _segmentStart();
-    if (i != _nextWaypointIndex || from == null) return false;
-    final projection = projectOntoSegment(here, from, point);
-    return projection.length > 0 &&
-        projection.along >= projection.length - _kCornerMeters &&
-        projection.crossTrack.abs() <= _kCornerCrossTrackMeters;
+    if (from == null || i >= _waypoints.length - 1) return null;
+    final corner = _waypoints[i].point;
+    final projection = projectOntoSegment(here, from, corner);
+    if (projection.length <= 0) return null;
+    return cornerProgress(
+      metersToCorner: haversineMeters(here, corner),
+      alongRemaining: projection.length - projection.along,
+      crossTrack: projection.crossTrack,
+      heading: _currentHeading(),
+      legBearing: bearingDegrees(from, corner),
+      nextLegBearing: bearingDegrees(corner, _waypoints[i + 1].point),
+      reachedMeters: _kCornerMeters,
+      warnMeters: _kTurnWarningMeters,
+      maxCrossTrackMeters: _kCornerCrossTrackMeters,
+    );
+  }
+
+  /// "In 8 meters, turn left", once per corner, so the turn instruction at
+  /// the corner itself doesn't come as a surprise.
+  void _warnTurnAhead(LatLng here) {
+    final i = _nextWaypointIndex;
+    if (_warnedForWaypoint == i ||
+        _cornerProgress(here) != CornerProgress.warn) {
+      return;
+    }
+    _warnedForWaypoint = i;
+    final from = _segmentStart()!;
+    final corner = _waypoints[i].point;
+    final turn = signedTurn(
+      bearingDegrees(from, corner),
+      bearingDegrees(corner, _waypoints[i + 1].point),
+    );
+    if (haversineMeters(from, corner) < _kMinLegForWarningMeters ||
+        turn.abs() <= TurnGuidance.alignedDegrees) {
+      return;
+    }
+    final meters = roundMeters(haversineMeters(here, corner));
+    final l10n = AppLocalizations.of(context)!;
+    _speak(
+      turn > 0 ? l10n.navTurnAheadRight(meters) : l10n.navTurnAheadLeft(meters),
+      cueType: 'turn_ahead',
+    );
   }
 
   /// At a waypoint: one sentence for what to do next. "At the cafeteria,

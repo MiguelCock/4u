@@ -51,14 +51,16 @@ void main() {
         isA<TurnCue>(),
       );
       expect(g.update(turn: -88, metersToTarget: 10, now: at(5000)), isNull);
-      // A meaningful change after the minimum gap is announced...
+      // A meaningful change after the minimum gap is announced, once the
+      // user has stopped turning...
+      expect(g.update(turn: -40, metersToTarget: 10, now: at(5500)), isNull);
       expect(
-        g.update(turn: -40, metersToTarget: 10, now: at(5500)),
+        g.update(turn: -40, metersToTarget: 10, now: at(6600)),
         isA<TurnCue>(),
       );
       // ...and so is no change at all after the idle repeat.
       expect(
-        g.update(turn: -40, metersToTarget: 10, now: at(16000)),
+        g.update(turn: -40, metersToTarget: 10, now: at(17000)),
         isA<TurnCue>(),
       );
     });
@@ -149,6 +151,89 @@ void main() {
 
     test('a long last leg keeps the accuracy-based radius', () {
       expect(arrivalRadius(gpsAccuracy: 5, lastLegMeters: 40), 10);
+    });
+  });
+
+  group('turning in progress', () {
+    test('no repeat while the user is still rotating', () {
+      final g = TurnGuidance()..reset(now: t0);
+      expect(
+        g.update(turn: -90, metersToTarget: 40, now: at(0)),
+        isA<TurnCue>(),
+      );
+      // A 90-degree turn over 2 s, sampled every 0.5 s: never re-cued.
+      for (final (ms, turn) in [
+        (4500, -70.0),
+        (5000, -55.0),
+        (5500, -40.0),
+        (6000, -30.0),
+      ]) {
+        expect(g.update(turn: turn, metersToTarget: 40, now: at(ms)), isNull);
+      }
+    });
+
+    test('stopping halfway re-cues once it settles', () {
+      final g = TurnGuidance()..reset(now: t0);
+      expect(
+        g.update(turn: -90, metersToTarget: 40, now: at(0)),
+        isA<TurnCue>(),
+      );
+      expect(g.update(turn: -70, metersToTarget: 40, now: at(4500)), isNull);
+      expect(g.update(turn: -50, metersToTarget: 40, now: at(5000)), isNull);
+      expect(g.update(turn: -50, metersToTarget: 40, now: at(5500)), isNull);
+      final cue = g.update(turn: -50, metersToTarget: 40, now: at(6100));
+      expect(cue, isA<TurnCue>());
+      expect((cue as TurnCue).degrees, 45);
+    });
+  });
+
+  group('cornerProgress', () {
+    test('approaching, then a heads-up, then reached at the corner', () {
+      expect(
+        cornerProgress(metersToCorner: 20, alongRemaining: 20, crossTrack: 1),
+        CornerProgress.approaching,
+      );
+      expect(
+        cornerProgress(metersToCorner: 7, alongRemaining: 7, crossTrack: 1),
+        CornerProgress.warn,
+      );
+      expect(
+        cornerProgress(metersToCorner: 3.5, alongRemaining: 2.5, crossTrack: 2),
+        CornerProgress.reached,
+      );
+    });
+
+    test('far to the side, along-track progress alone does not count', () {
+      expect(
+        cornerProgress(metersToCorner: 20, alongRemaining: 1, crossTrack: 19),
+        CornerProgress.approaching,
+      );
+    });
+
+    test('already turned onto the next leg near the corner counts', () {
+      expect(
+        cornerProgress(
+          metersToCorner: 5,
+          alongRemaining: 5,
+          crossTrack: 1,
+          heading: 355,
+          legBearing: 90,
+          nextLegBearing: 0,
+        ),
+        CornerProgress.reached,
+      );
+      // Still facing along the current leg: just the heads-up.
+      expect(
+        cornerProgress(
+          metersToCorner: 5,
+          alongRemaining: 5,
+          crossTrack: 1,
+          heading: 85,
+          legBearing: 90,
+          nextLegBearing: 0,
+        ),
+        CornerProgress.warn,
+      );
     });
   });
 }

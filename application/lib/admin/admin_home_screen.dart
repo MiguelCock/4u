@@ -79,6 +79,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   final _refreshKey = GlobalKey<RefreshIndicatorState>();
   bool _reindexing = false;
 
+  /// Verified photos missing from the photo index (null: unknown).
+  int? _unsearchablePhotos;
+
   /// Anchor points tab: map instead of list, and the point being moved on it.
   bool _anchorMapView = false;
   Map<String, dynamic>? _movingPoint;
@@ -163,6 +166,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         _loading = false;
         _error = null;
       });
+      _refreshIndexStatus();
     } catch (e) {
       // Not only ApiException: a malformed response must end the spinner too.
       if (!mounted) return;
@@ -240,18 +244,26 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// Re-sends every verified point with photos to the search index. Points
   /// verified while indexing was failing were never searchable, and
   /// re-saving each one by hand is slow.
+  /// Sends to `/index_anchor` the verified points with a photo that isn't
+  /// searchable yet (`/index_status`; all of them if that can't be read),
+  /// retrying each failure twice, then lists the points that still failed.
   Future<void> _reindexVerified() async {
     final l10n = AppLocalizations.of(context)!;
     final messenger = ScaffoldMessenger.of(context);
-    final targets = _anchorPoints
-        .where(
-          (p) =>
-              p['status'] == 'verified' &&
-              _photosOf(p['id'] as String).isNotEmpty,
-        )
-        .toList();
+    final indexed = await fetchIndexedPhotoIds(_aiTrainingApi);
+    if (!mounted) return;
+    final targets = pointsMissingFromIndex(_anchorPoints, _photosOf, indexed);
     if (targets.isEmpty) {
-      messenger.showSnackBar(SnackBar(content: Text(l10n.adminReindexNothing)));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            indexed == null
+                ? l10n.adminReindexNothing
+                : l10n.adminReindexAllSearchable,
+          ),
+        ),
+      );
+      setState(() => _unsearchablePhotos = 0);
       return;
     }
     setState(() => _reindexing = true);
@@ -260,36 +272,76 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
     var ok = 0;
     Object? lastError;
+    final failed = <Map<String, dynamic>>[];
     for (final point in targets) {
-      try {
-        await indexAnchorPoint(
-          _aiTrainingApi,
-          point,
-          _photosOf(point['id'] as String),
-        );
+      var done = false;
+      for (var attempt = 0; attempt < 3 && !done; attempt++) {
+        try {
+          await indexAnchorPoint(
+            _aiTrainingApi,
+            point,
+            _photosOf(point['id'] as String),
+          );
+          done = true;
+        } on ApiException catch (e) {
+          lastError = e;
+        }
+      }
+      if (done) {
         ok++;
-      } on ApiException catch (e) {
-        lastError = e;
+      } else {
+        failed.add(point);
       }
     }
     if (!mounted) return;
     setState(() => _reindexing = false);
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 8),
-          content: Text(
-            lastError == null
-                ? l10n.adminReindexDone(ok, targets.length)
-                : l10n.adminReindexDoneWithErrors(
-                    ok,
-                    targets.length,
-                    friendlyApiErrorMessage(context, lastError),
+    messenger.hideCurrentSnackBar();
+    _refreshIndexStatus();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.adminReindexResultTitle),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l10n.adminReindexDone(ok, targets.length)),
+              if (failed.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  l10n.adminReindexFailedList(
+                    friendlyApiErrorMessage(context, lastError!),
                   ),
+                ),
+                for (final point in failed)
+                  Text('• ${anchorDisplayName(l10n, point)}'),
+              ],
+            ],
           ),
         ),
-      );
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(MaterialLocalizations.of(context).okButtonLabel),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// How many verified photos aren't searchable, for the drawer warning.
+  /// Best effort: unknown leaves the warning off.
+  Future<void> _refreshIndexStatus() async {
+    final indexed = await fetchIndexedPhotoIds(_aiTrainingApi);
+    if (!mounted || indexed == null) return;
+    setState(
+      () => _unsearchablePhotos = unsearchablePhotoCount(
+        _anchorPoints,
+        _photosOf,
+        indexed,
+      ),
+    );
   }
 
   Future<void> _setUserRole(Map<String, dynamic> user, int roleId) async {
@@ -1872,6 +1924,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           ListTile(
             leading: const Icon(Icons.manage_search, color: Colors.teal),
             title: Text(l10n.adminReindexMenu),
+            subtitle: (_unsearchablePhotos ?? 0) > 0
+                ? Text(
+                    l10n.adminReindexUnsearchable(_unsearchablePhotos!),
+                    style: const TextStyle(color: Colors.red),
+                  )
+                : null,
             enabled: !_reindexing && !_loading,
             onTap: () {
               Navigator.of(context).pop();

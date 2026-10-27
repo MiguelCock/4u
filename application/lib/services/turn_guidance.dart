@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'geo_utils.dart';
+
 /// Something the navigation screen should say. Produced by [TurnGuidance]
 /// from the compass heading vs the bearing to the next waypoint.
 sealed class GuidanceCue {
@@ -67,6 +69,13 @@ class TurnGuidance {
   static const repeatIdle = Duration(seconds: 10);
   static const repeatChangeDegrees = 20.0;
 
+  /// A needed turn that moved more than this within [rotatingWindow] means
+  /// the user is turning right now: no repeat until they stop. A field test
+  /// got "turn left about 60 degrees" halfway through a 90-degree turn.
+  static const rotatingDegrees = 10.0;
+  static const rotatingWindow = Duration(seconds: 1);
+  final List<({DateTime at, double turn})> _recentTurns = [];
+
   /// Recent |turn| samples while walking: off course is judged on their
   /// median, so one swing of the compass doesn't count (and one aligned
   /// sample doesn't reset a real drift).
@@ -96,6 +105,7 @@ class TurnGuidance {
     _offCourseSince = null;
     _lastTurn = announcedTurn;
     _lastTurnAt = announcedTurn == null ? null : now;
+    _recentTurns.clear();
   }
 
   /// [turn] is [signedTurn] from the current heading to the target's
@@ -106,6 +116,9 @@ class TurnGuidance {
     required DateTime now,
   }) {
     final off = turn.abs();
+    _recentTurns
+      ..removeWhere((t) => now.difference(t.at) > rotatingWindow)
+      ..add((at: now, turn: turn));
     if (_walking) {
       _recentOff.add(off);
       if (_recentOff.length > _offCourseSamples) _recentOff.removeAt(0);
@@ -136,6 +149,7 @@ class TurnGuidance {
     final lastTurn = _lastTurn;
     final lastAt = _lastTurnAt;
     if (lastTurn == null || lastAt == null) return _turn(turn, now);
+    if (_rotating(turn)) return null;
     final since = now.difference(lastAt);
     final changed = (turn - lastTurn).abs() > repeatChangeDegrees;
     if ((changed && since >= repeatMinGap) || since >= repeatIdle) {
@@ -143,6 +157,9 @@ class TurnGuidance {
     }
     return null;
   }
+
+  bool _rotating(double turn) =>
+      _recentTurns.any((t) => signedTurn(t.turn, turn).abs() > rotatingDegrees);
 
   static double _median(List<double> values) {
     final sorted = List.of(values)..sort();
@@ -226,4 +243,45 @@ double arrivalRadius({
     radius = min(radius, max(minMeters, lastLegMeters / 2));
   }
   return radius;
+}
+
+/// Where the user is relative to the corner ending the leg they walk.
+enum CornerProgress { approaching, warn, reached }
+
+/// The corner counts as reached within [reachedMeters] of it, or within
+/// that of its end along the leg (while no more than [maxCrossTrackMeters]
+/// to the side), or once the user has already turned onto the next leg
+/// near it (heading within [turnedOntoDegrees] of the next leg and more
+/// than [leftLegDegrees] off the current one). [warnMeters] before it the
+/// screen gives a heads-up. A field test with an 8 m reach radius spoke
+/// every turn 5-8 s before the corner, once the position was good to ~1 m.
+CornerProgress cornerProgress({
+  required double metersToCorner,
+  required double alongRemaining,
+  required double crossTrack,
+  double? heading,
+  double? legBearing,
+  double? nextLegBearing,
+  double reachedMeters = 3,
+  double warnMeters = 8,
+  double maxCrossTrackMeters = 15,
+  double turnedOntoDegrees = 30,
+  double leftLegDegrees = 45,
+}) {
+  final onLeg = crossTrack.abs() <= maxCrossTrackMeters;
+  if (metersToCorner <= reachedMeters ||
+      (onLeg && alongRemaining <= reachedMeters)) {
+    return CornerProgress.reached;
+  }
+  final near =
+      metersToCorner <= warnMeters || (onLeg && alongRemaining <= warnMeters);
+  if (near &&
+      heading != null &&
+      legBearing != null &&
+      nextLegBearing != null &&
+      signedTurn(heading, nextLegBearing).abs() <= turnedOntoDegrees &&
+      signedTurn(heading, legBearing).abs() > leftLegDegrees) {
+    return CornerProgress.reached;
+  }
+  return near ? CornerProgress.warn : CornerProgress.approaching;
 }

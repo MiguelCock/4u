@@ -13,6 +13,11 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - **Turn instructions follow your real turns.** Direction now comes from the phone's gyroscope and from your walking direction, not the compass alone. The compass under-counted every turn, so the app asked for more turning than needed and, after a few corners, kept saying "turn left" while you faced the right way.
 - **The corrected position keeps up with you.** It used to trail several seconds behind, because each correction takes a few seconds to come back. It now moves with your live GPS.
 - **Faster position updates**: less waiting on the server for each photo.
+- **Turns are announced at the corner**, with a heads-up about 8 m before it ("In 8 meters, turn left"). They used to come 5–8 seconds early. While you're turning, the app no longer asks you to keep turning.
+- **Re-index verified points** (admin) sends only the points whose photos aren't searchable, retries failures, and lists any point that still failed. The menu entry warns when photos aren't searchable.
+
+### Fixed
+- 122 of 298 anchor photos weren't searchable after the switch to the new photo model, so the correction had nothing to match along much of a route. They're all searchable again.
 
 ## [0.5.1] - 2026-10-26
 

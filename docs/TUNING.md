@@ -131,3 +131,25 @@ The route was 131 m with four straights. It produced 27 ticks, 5 checkpoints and
 - New in the positioning `debug` output: `upload_ms` (the photo arriving), `auth_ms`, and `search_timing` (`embed` and `qdrant`), to show where the rest of the round trip goes.
 
 **Not retuned yet.** With only 15 corrected ticks, and the heading gate fed a broken compass, this walk is too small to tune on. In the grid, `gps_bias_sigma_m=6` with the heading gate off scored best. Re-run the grid on the next walk.
+
+## 6. Fourth test walk (session f4e3fd25, 2026-10-27)
+
+The same route, with the live corrected position and the gyroscope heading:
+
+| | raw GPS | corrected |
+|---|---|---|
+| off route (mean) | 3.58 m | **0.73 m** |
+| 2D at photo time (mean) | 6.04 m | **3.15 m** |
+| checkpoints 0 / 1 / 2 / 3 / 4 | 3.4 / 4.2 / 5.9 / 8.8 / 15.2 m | 1.0 / 5.5 / 1.1 / 1.0 / 8.8 m |
+
+- **Ticks:** every ~2 s, with `/correct_position` taking a median 1.3 s. On the server, embedding takes 440 ms and the Qdrant query 350 ms. Auth and upload are now ~0.
+- **Heading:** the gyroscope heading was anchored to walking on 74 of 86 ticks. Every turn was announced as about 90°, which was right.
+- **Photo index:**
+  - **Finding:** the new model's collection held 176 of 298 photos. The re-index had silently stopped short, and 10 anchors on this route were missing, including the corner before leg 3 and the point before the destination.
+  - **Effect:** on the last leg, the only match was the corner behind the user, which held the position back. The destination ended 8.8 m off, and arrival didn't fire.
+  - **Fix:** all 298 are indexed now. `GET /index_status` and the admin re-index show and fill any gap.
+- **Corner timing:**
+  - **Finding:** all 3 reports were turn instructions spoken 5–8 s before the user reached the corner. The 8 m reach radius was sized for 5–10 m position error.
+  - **Fix:** the corner now counts as reached at 3 m (`cornerProgress`), or as soon as the user has turned onto the next leg near it. A heads-up comes at 8 m.
+- **Turn repeats:** "Turn left about 60°" came halfway through a turn. Repeats now wait until the needed turn has stopped changing.
+- **Tried and not adopted:** a match fixing only the position across the camera's view, not along it. In replay the 2D error ranged from 2.79 to 3.65 m depending on settings, so it isn't worth the complexity yet.

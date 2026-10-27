@@ -121,6 +121,30 @@ async def index_anchor(
     return IndexAnchorResponse(indexed=len(points))
 
 
+@app.get("/index_status")
+async def index_status(caller_id: str = Depends(get_caller_id)) -> dict:
+    """Admin only: the ids of every indexed photo, so the app can tell which
+    verified photos aren't searchable. A re-index once left 122 of 298 out,
+    and nothing showed it until a test walk found anchors that never
+    matched."""
+    if not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
+    _ensure_collection()
+    ids: list[str] = []
+    offset = None
+    while True:
+        points, offset = qdrant.client.scroll(
+            _COLLECTION,
+            limit=1000,
+            offset=offset,
+            with_payload=False,
+            with_vectors=False,
+        )
+        ids += [str(point.id) for point in points]
+        if offset is None:
+            return {"collection": _COLLECTION, "photo_ids": ids}
+
+
 @app.post("/search_similar")
 async def search_similar(
     file: UploadFile = File(...),

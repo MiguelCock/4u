@@ -351,3 +351,24 @@ def test_delete_indexed_building_filters_by_building_id():
     condition = call.kwargs["points_selector"].must[0]
     assert condition.key == "building_id"
     assert condition.match.value == "b1"
+
+
+def test_index_status_lists_indexed_photo_ids():
+    _as_caller("admin-1")
+    mock_qdrant = MagicMock()
+    first, second = MagicMock(id="p1"), MagicMock(id="p2")
+    mock_qdrant.client.scroll.side_effect = [([first], "next"), ([second], None)]
+    with (
+        patch("app.main.db.client", _mock_admin_check_client(_ADMIN_ROW)),
+        patch("app.main.qdrant", mock_qdrant),
+    ):
+        response = client.get("/index_status")
+    assert response.status_code == 200
+    assert response.json()["photo_ids"] == ["p1", "p2"]
+
+
+def test_index_status_is_admin_only():
+    _as_caller("user-1")
+    with patch("app.main.db.client", _mock_admin_check_client([{"role_id": 1}])):
+        response = client.get("/index_status")
+    assert response.status_code == 403

@@ -401,8 +401,6 @@
   "@adminReindexRunning": {"placeholders": {"count": {"type": "int"}}},
   "adminReindexDone": "{ok} of {total} verified points re-indexed.",
   "@adminReindexDone": {"placeholders": {"ok": {"type": "int"}, "total": {"type": "int"}}},
-  "adminReindexDoneWithErrors": "{ok} of {total} verified points re-indexed. Last error: {error}",
-  "@adminReindexDoneWithErrors": {"placeholders": {"ok": {"type": "int"}, "total": {"type": "int"}, "error": {"type": "String"}}},
   "navVoiceLanguageMissing": "This phone has no voice installed for the app's language, so directions may be read with the wrong accent. Install it in the phone's Settings > Text-to-speech output.",
   "homeStartUnnamedSubtitle": "Starting from the nearest route point, about {meters} m away",
   "@homeStartUnnamedSubtitle": {"placeholders": {"meters": {"type": "int"}}},
@@ -587,5 +585,15 @@
   "@updateAvailableBody": {"placeholders": {"latest": {"type": "String"}}},
   "updateOpenFailed": "Couldn't open the link: {url}",
   "@updateOpenFailed": {"placeholders": {"url": {"type": "String"}}},
-  "commonErrorUpdateRequired": "This version of the app is no longer supported. Please update."
+  "commonErrorUpdateRequired": "This version of the app is no longer supported. Please update.",
+  "adminReindexAllSearchable": "Every verified photo is already searchable.",
+  "adminReindexUnsearchable": "{count} photos not searchable",
+  "@adminReindexUnsearchable": {"placeholders": {"count": {"type": "int"}}},
+  "adminReindexResultTitle": "Re-index finished",
+  "adminReindexFailedList": "These points could not be indexed (tried 3 times). Last error: {error}",
+  "@adminReindexFailedList": {"placeholders": {"error": {"type": "String"}}},
+  "navTurnAheadLeft": "In {meters} meters, turn left.",
+  "@navTurnAheadLeft": {"placeholders": {"meters": {"type": "int"}}},
+  "navTurnAheadRight": "In {meters} meters, turn right.",
+  "@navTurnAheadRight": {"placeholders": {"meters": {"type": "int"}}}
 }
