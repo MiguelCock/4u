@@ -47,6 +47,9 @@ String friendlyApiErrorMessageFor(
   if (status == 401) return l10n.commonErrorSessionExpired;
   if (status == 403) return l10n.commonErrorForbidden;
   if (status == 404) return fallback ?? l10n.commonErrorNotFoundGeneric;
+  if (status == ApiService.upgradeRequired) {
+    return l10n.commonErrorUpdateRequired;
+  }
   if (status >= 500) return l10n.commonErrorServerUnavailable;
   return fallback ?? l10n.commonErrorUnexpected;
 }

@@ -224,6 +224,10 @@ Después, abre **Sesiones** en el menú, elige el usuario y toca **Ver** en la s
 
 Toca cualquiera para ver los detalles registrados ahí.
 
+**Lo que ve el usuario y lo que ves tú.** Un usuario normal no ve coordenadas ni mapa durante el viaje: solo un botón grande **Repetir instrucción** y **Terminar navegación**. Su punto de partida sale del GPS, sin fotos. En **Test as user** sigues viendo el mapa, las coordenadas (GPS y corregida) y la revisión del punto de partida con la cámara (toca la fila **Inicio**).
+
+**Cómo sostener el teléfono.** Para que las fotos se reconozcan, el teléfono va vertical frente al pecho, con la cámara trasera mirando hacia adelante. Explícaselo así al usuario; el tutorial de la app (botón **?**) también lo dice.
+
 ## 7. Eliminar datos
 
 Las universidades y los edificios tienen un ícono de basura en su fila. En la fila de un punto de anclaje, **Agregar foto** y **Eliminar** están en el menú ⋮, junto a los botones de verificar y editar.

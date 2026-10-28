@@ -116,6 +116,19 @@ def load(path: str):
     return data, anchors, plane, Route(points), logs
 
 
+def photo_time(log) -> float:
+    """When the tick's photo and GPS fix were taken: `debug.photo_at`, or
+    for older logs the POST time minus the capture and round-trip time. The
+    log is written ~5 s later, and scoring at that time put the truth ~6 m
+    ahead of where the user was."""
+    debug = log.get("debug") or {}
+    if debug.get("photo_at"):
+        return _ts(debug["photo_at"])
+    timing = debug.get("timing_ms") or {}
+    lag_ms = (timing.get("capture") or 0) + (timing.get("correct") or 0)
+    return _ts(log["timestamp"]) - lag_ms / 1000
+
+
 def checkpoint_truth(logs, route: Route):
     """(time, along-route distance) for each checkpoint tap, or []."""
     corners = route_corners(route.points)
@@ -149,7 +162,7 @@ async def replay(logs, anchors, config: MatchConfig):
         correction = debug.get("correction")
         if correction is None:
             continue
-        clock[0] = _ts(log["timestamp"])
+        clock[0] = photo_time(log)
         candidates = []
         for c in correction.get("candidates") or []:
             anchor = anchors.get(c.get("anchor_id"))
@@ -197,7 +210,7 @@ def score(logs, plane, route, taps, positions):
     for log in logs:
         if log["id"] not in positions:
             continue
-        t = _ts(log["timestamp"])
+        t = photo_time(log)
         p = {
             "raw": (log["gps_lat"], log["gps_long"]),
             "logged": (log["corrected_lat"], log["corrected_long"]),
@@ -216,6 +229,29 @@ def score(logs, plane, route, taps, positions):
             if truth is not None:
                 full.append(math.dist(xy, truth))
     return sources
+
+
+def checkpoint_errors(logs, plane, route):
+    """Per tapped checkpoint: raw GPS error, and the corrected position's
+    error as recorded at the tap (the app now records it with the latest
+    correction offset applied to the live fix)."""
+    corners = route_corners(route.points)
+    rows = []
+    for log in logs:
+        for event in (log.get("debug") or {}).get("events") or []:
+            if event.get("type") != "checkpoint" or event.get("index") is None:
+                continue
+            index = int(event["index"])
+            if not 0 <= index < len(corners):
+                continue
+            truth = route.points[corners[index]]
+            errors = {
+                name: math.dist(plane.xy(*event[name]), truth)
+                for name in ("raw", "corrected")
+                if event.get(name)
+            }
+            rows.append((index, errors, event.get("correction_age_s")))
+    return sorted(rows, key=lambda row: row[0])
 
 
 def _parse(pairs):
@@ -249,6 +285,10 @@ def main() -> None:
     print(
         f"session {data['session']['id']}: {len(logs)} ticks, route {route.cum[-1]:.0f} m, {len(taps)} checkpoints"
     )
+    for index, errors, age in checkpoint_errors(logs, plane, route):
+        line = "  ".join(f"{k} {v:5.1f} m" for k, v in errors.items())
+        aged = f"  (correction {age:.1f} s old)" if age is not None else ""
+        print(f"checkpoint {index}: {line}{aged}")
     fixed = _parse(args.set)
     grid = {k: v.split(",") for k, v in _parse(args.grid).items()}
     combos = [

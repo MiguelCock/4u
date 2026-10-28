@@ -299,3 +299,29 @@ def test_frames_are_not_stored_by_default():
     assert response.json()["raw_image_url"] is None
     assert "total_ms" in response.json()["debug"]
     store.assert_not_called()
+
+
+def test_debug_splits_the_round_trip():
+    async def fake_search(*args, timing=None, **kwargs):
+        timing.update({"embed": 500, "qdrant": 40})
+        return []
+
+    with patch("app.main._search_similar", fake_search):
+        response = _post_correction(session_id="test-timing")
+    debug = response.json()["debug"]
+    assert debug["search_timing"] == {"embed": 500, "qdrant": 40}
+    assert debug["upload_ms"] >= 0
+    assert debug["auth_ms"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_search_similar_reports_its_timing():
+    response = httpx.Response(
+        200,
+        json={"matches": [], "timing_ms": {"embed": 480, "qdrant": 35}},
+        request=httpx.Request("POST", "http://ai-training/search_similar"),
+    )
+    timing = {}
+    with patch("httpx.AsyncClient.post", AsyncMock(return_value=response)):
+        await _search_similar(b"x", "frame.jpg", 6.2, -75.6, timing=timing)
+    assert timing == {"embed": 480, "qdrant": 35}
