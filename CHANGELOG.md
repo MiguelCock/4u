@@ -6,6 +6,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-28
+
+**For testers:** install `app-release.apk` from this release. Version 0.5.1 keeps working for now but is deprecated and stops working with the next release; from this version on, the app itself tells you when an update is out.
+
 ### Added
 - **Version support**: the newest app version and the one before it both work. When a new version comes out, the previous one shows a "new version available" message once per launch with a download button. Anything older can't be used until it's updated, and shows a screen with the download link.
 
@@ -175,7 +179,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.1...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.2...develop
+[0.5.2]: https://github.com/MiguelCock/4u/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/MiguelCock/4u/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/MiguelCock/4u/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MiguelCock/4u/compare/v0.3.1...v0.4.0
