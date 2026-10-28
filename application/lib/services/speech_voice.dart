@@ -54,6 +54,11 @@ Future<bool> configureTts(FlutterTts tts, String languageCode) async {
     await tts.setQueueMode(1);
   } catch (_) {}
   try {
+    // A little faster than the engine's normal 0.5: users in the first
+    // test, used to TalkBack, found the instructions slow.
+    await tts.setSpeechRate(0.6);
+  } catch (_) {}
+  try {
     final voices = await tts.getVoices;
     final voice = voices is List ? pickVoice(voices, candidates) : null;
     if (voice != null) {

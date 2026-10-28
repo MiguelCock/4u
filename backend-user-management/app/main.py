@@ -2,6 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
+from packages.app_versions import install_app_version_guard, load_policy
 from packages.db_errors import install_db_error_handlers
 from packages.supabase import SupaBase
 from supabase import AuthError
@@ -18,6 +19,7 @@ load_dotenv()
 
 app = FastAPI()
 install_db_error_handlers(app)
+install_app_version_guard(app)
 
 db = SupaBase(
     os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -35,6 +37,13 @@ get_caller_id = db.get_caller_id
 @app.get("/")
 async def root():
     return {"service": "backend-user-management", "status": "ok"}
+
+
+@app.get("/app-version")
+async def app_version():
+    """Public: the app versions the backend serves (packages/app_versions.py).
+    The app checks it at sign-in to tell its user to update."""
+    return load_policy()
 
 
 @app.post("/profiles")

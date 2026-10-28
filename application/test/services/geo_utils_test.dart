@@ -157,4 +157,20 @@ void main() {
       expect(routeCorners([a, const LatLng(6.2001, -75.58)]), [0, 1]);
     });
   });
+
+  test('offsetMeters and applyOffset invert each other', () {
+    const raw = LatLng(6.2009, -75.5781);
+    const corrected = LatLng(6.20092, -75.57815);
+    final o = offsetMeters(raw, corrected);
+    expect(o.y, closeTo(2.22, 0.05));
+    expect(o.x, closeTo(-5.53, 0.05));
+    final back = applyOffset(raw, o.x, o.y);
+    expect(haversineMeters(back, corrected), lessThan(0.01));
+    // The same offset carried to a fix 30 m further on.
+    final later = applyOffset(const LatLng(6.20117, -75.5781), o.x, o.y);
+    expect(
+      haversineMeters(later, const LatLng(6.20117, -75.5781)),
+      closeTo(sqrt(o.x * o.x + o.y * o.y), 0.01),
+    );
+  });
 }

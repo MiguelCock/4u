@@ -100,3 +100,62 @@ def test_is_admin_false_when_profile_missing():
     db = _make_supabase()
     db.client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
     assert db.is_admin("ghost") is False
+
+
+def _jwt(exp: float) -> str:
+    import base64
+    import json
+
+    claims = base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).decode()
+    return f"header.{claims.rstrip('=')}.signature"
+
+
+@pytest.mark.asyncio
+async def test_get_caller_id_caches_a_verified_token():
+    import time
+
+    db = _make_supabase()
+    db.client.auth.get_user.return_value.user.id = "a1b2c3"
+    token = _jwt(time.time() + 3600)
+    assert await db.get_caller_id(f"Bearer {token}") == "a1b2c3"
+    assert await db.get_caller_id(f"Bearer {token}") == "a1b2c3"
+    db.client.auth.get_user.assert_called_once_with(token)
+
+
+@pytest.mark.asyncio
+async def test_get_caller_id_cache_expires(monkeypatch):
+    import time
+
+    from packages import supabase as module
+
+    db = _make_supabase()
+    db.client.auth.get_user.return_value.user.id = "a1b2c3"
+    token = _jwt(time.time() + 3600)
+    clock = [1000.0]
+    monkeypatch.setattr(module.time, "monotonic", lambda: clock[0])
+    await db.get_caller_id(f"Bearer {token}")
+    clock[0] += module.TOKEN_CACHE_SECONDS + 1
+    await db.get_caller_id(f"Bearer {token}")
+    assert db.client.auth.get_user.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_caller_id_never_caches_past_the_token_expiry():
+    import time
+
+    db = _make_supabase()
+    db.client.auth.get_user.return_value.user.id = "a1b2c3"
+    token = _jwt(time.time() - 5)
+    await db.get_caller_id(f"Bearer {token}")
+    await db.get_caller_id(f"Bearer {token}")
+    assert db.client.auth.get_user.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_caller_id_does_not_cache_a_rejected_token():
+    db = _make_supabase()
+    db.client.auth.get_user.side_effect = AuthApiError("expired", 403, "bad_jwt")
+    for _ in range(2):
+        with pytest.raises(HTTPException):
+            await db.get_caller_id("Bearer garbage")
+    assert db.client.auth.get_user.call_count == 2

@@ -4,6 +4,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from packages.app_versions import install_app_version_guard
 from packages.db_errors import install_db_error_handlers, select_all
 from packages.supabase import SupaBase
 
@@ -30,6 +31,7 @@ load_dotenv()
 
 app = FastAPI()
 install_db_error_handlers(app)
+install_app_version_guard(app)
 
 db = SupaBase(
     os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")

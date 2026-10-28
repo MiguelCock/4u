@@ -15,8 +15,10 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Request,
     UploadFile,
 )
+from packages.app_versions import install_app_version_guard
 from packages.db_errors import install_db_error_handlers
 from packages.supabase import SupaBase
 
@@ -28,6 +30,7 @@ load_dotenv()
 
 app = FastAPI()
 install_db_error_handlers(app)
+install_app_version_guard(app)
 
 # Added in the app-integration follow-up to #24 - the app is this
 # endpoint's first real end-user caller, so it needs the same per-request
@@ -38,6 +41,20 @@ db = SupaBase(
     os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 )
 get_caller_id = db.get_caller_id
+
+
+@app.middleware("http")
+async def _note_arrival(request: Request, call_next):
+    # When the request's headers arrived: the photo upload comes after.
+    request.state.arrived = time.perf_counter()
+    return await call_next(request)
+
+
+def _body_read(request: Request) -> float:
+    """Runs after the form (photo) is read and before get_caller_id, so the
+    gaps around it split the round trip into upload and auth time."""
+    return time.perf_counter()
+
 
 # The other external dependency this service has - no Qdrant credentials
 # of its own (see CLAUDE.md for why). Defaults to the Docker Compose
@@ -97,7 +114,11 @@ async def root():
 
 
 async def _search_similar(
-    photo_bytes: bytes, filename: str, latitude: float, longitude: float
+    photo_bytes: bytes,
+    filename: str,
+    latitude: float,
+    longitude: float,
+    timing: dict | None = None,
 ) -> list[dict]:
     """Best-effort call to backend-ai-training's /search_similar, scoped to
     `_config.search_radius_m` around the caller's raw GPS fix. Returns up to
@@ -120,7 +141,10 @@ async def _search_similar(
                     },
                 )
                 response.raise_for_status()
-                return response.json().get("matches", [])
+                body = response.json()
+                if timing is not None and body.get("timing_ms"):
+                    timing.update(body["timing_ms"])
+                return body.get("matches", [])
             except _RETRYABLE_ERRORS:
                 if attempt == _SEARCH_RETRIES:
                     return []
@@ -131,6 +155,7 @@ async def _search_similar(
 @app.post("/correct_position")
 async def correct_position(
     background: BackgroundTasks,
+    request: Request,
     session_id: Annotated[str, Form()],
     latitude: Annotated[float, Form()],
     longitude: Annotated[float, Form()],
@@ -144,19 +169,17 @@ async def correct_position(
     # Admin test walks only: keep this frame (see FRAMES_BUCKET).
     store_frame: Annotated[bool, Form()] = False,
     photo: UploadFile = File(...),
+    body_read: float = Depends(_body_read),
     caller_id: str = Depends(get_caller_id),
 ) -> CorrectPositionResponse:
     started = time.perf_counter()
     photo_bytes = await photo.read()
-    frame_url = None
-    if store_frame:
-        if not db.is_admin(caller_id):
-            raise HTTPException(status_code=403, detail="Admin only")
-        # The URL is known before the upload, so the response doesn't wait
-        # for it.
-        name = f"frame-{session_id}-{uuid.uuid4().hex}.jpg"
-        frame_url = db.client.storage.from_(FRAMES_BUCKET).get_public_url(name)
-        background.add_task(_store_frame, photo_bytes, name)
+    # The admin check runs alongside the photo search rather than before it.
+    admin_check = (
+        asyncio.create_task(asyncio.to_thread(db.is_admin, caller_id))
+        if store_frame
+        else None
+    )
 
     # Held across the visual-match HTTP call too, not just the predict/update
     # math - two in-flight requests for the same session_id (e.g. a client
@@ -165,10 +188,24 @@ async def correct_position(
     lock = _store.get_lock(session_id, latitude, longitude)
     async with lock:
         search_started = time.perf_counter()
+        search_timing: dict = {}
         candidates = await _search_similar(
-            photo_bytes, photo.filename or "frame.jpg", latitude, longitude
+            photo_bytes,
+            photo.filename or "frame.jpg",
+            latitude,
+            longitude,
+            timing=search_timing,
         )
         search_ms = round(1000 * (time.perf_counter() - search_started))
+        frame_url = None
+        if admin_check is not None:
+            if not await admin_check:
+                raise HTTPException(status_code=403, detail="Admin only")
+            # The URL is known before the upload, so the response doesn't
+            # wait for it.
+            name = f"frame-{session_id}-{uuid.uuid4().hex}.jpg"
+            frame_url = db.client.storage.from_(FRAMES_BUCKET).get_public_url(name)
+            background.add_task(_store_frame, photo_bytes, name)
         result = await _store.correct(
             session_id=session_id,
             lat=latitude,
@@ -180,7 +217,15 @@ async def correct_position(
             config=_config,
         )
     result.debug["search_ms"] = search_ms
+    if search_timing:
+        result.debug["search_timing"] = search_timing
     result.debug["total_ms"] = round(1000 * (time.perf_counter() - started))
+    # Where the rest of the app's round trip went: reading the upload, and
+    # verifying the caller's token.
+    arrived = getattr(request.state, "arrived", None)
+    if arrived is not None:
+        result.debug["upload_ms"] = round(1000 * (body_read - arrived))
+    result.debug["auth_ms"] = round(1000 * (started - body_read))
     return _response(result, raw_image_url=frame_url)
 
 

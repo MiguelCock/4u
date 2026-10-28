@@ -433,3 +433,9 @@ def test_deleting_a_profile_also_deletes_the_sign_in_account():
         response = client.delete("/profiles/1")
     assert response.status_code == 200
     mock_client.auth.admin.delete_user.assert_called_once_with("1")
+
+
+def test_app_version_is_public_and_returns_the_policy():
+    response = client.get("/app-version")
+    assert response.status_code == 200
+    assert {"latest", "min_supported", "download_url"} <= set(response.json())

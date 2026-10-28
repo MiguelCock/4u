@@ -11,6 +11,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
+import 'package:sensors_plus/sensors_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
@@ -21,6 +22,7 @@ import '../services/app_preferences.dart';
 import '../services/camera_helper.dart';
 import '../services/destinations.dart';
 import '../services/geo_utils.dart';
+import '../services/heading_tracker.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import '../services/speech_voice.dart';
@@ -40,9 +42,13 @@ class _Waypoint {
   const _Waypoint({required this.point, this.name});
 }
 
-/// A corrected position older than this is ignored in favour of raw GPS,
-/// e.g. when the camera loop has stalled.
-const Duration _kCorrectionFreshness = Duration(seconds: 5);
+/// A correction's offset from raw GPS is applied to the live fix for this
+/// long, then dropped in favour of raw GPS (the camera loop has stalled).
+/// The offset is the GPS's own slowly changing error (backend-positioning's
+/// bias, tau 120 s), so it holds well past the next tick. Showing the
+/// corrected position itself instead put it 5-11 s behind the user in a
+/// field test: a tick's answer arrives ~5 s after its photo.
+const Duration _kCorrectionFreshness = Duration(seconds: 20);
 
 /// Below this GPS speed (m/s), GPS heading is meaningless (standing still),
 /// so it's only used as a fallback for a missing compass when walking.
@@ -57,10 +63,18 @@ const Duration _kGuidanceInterval = Duration(milliseconds: 500);
 const double _kProximityThresholdMeters = 20.0;
 
 /// A corner counts as reached this close (meters), or once the user has
-/// walked to within this of its end along the straight leading to it. It
-/// used to be 20 m like the skip check, which announced every turn
-/// ~15 m early (a field test, with GPS at 3 m accuracy).
-const double _kCornerMeters = 8.0;
+/// walked to within this of its end along the straight leading to it, or
+/// has already turned onto the next leg near it (see cornerProgress). It
+/// was 20 m, then 8 m: with the position good to ~1 m, 8 m still spoke
+/// every turn 5-8 s before the corner (third test walk).
+const double _kCornerMeters = 3.0;
+
+/// This far (meters) before a corner: "In 8 meters, turn left", once.
+const double _kTurnWarningMeters = 8.0;
+
+/// No heads-up on a leg shorter than this: it would follow straight on
+/// from the leg's own instruction.
+const double _kMinLegForWarningMeters = 12.0;
 
 /// ...but not if they're this far (meters) to the side of that straight.
 const double _kCornerCrossTrackMeters = 15.0;
@@ -144,6 +158,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
   Timer? _guidanceTimer;
   StreamSubscription<CompassEvent>? _compassSub;
   final _heading = HeadingSmoother();
+  final _tracker = HeadingTracker();
+  StreamSubscription<GyroscopeEvent>? _gyroSub;
+  StreamSubscription<AccelerometerEvent>? _accelSub;
+  StreamSubscription<Position>? _positionSub;
   final _guidance = TurnGuidance();
   final _pathLoaded = Completer<void>();
   bool _guiding = false;
@@ -159,6 +177,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// one per route corner plus the start and the destination.
   CheckpointSequence _checkpoints = CheckpointSequence(0);
   int _arrivalStreak = 0;
+
+  /// The waypoint whose heads-up ("in 8 meters, turn left") was given.
+  int? _warnedForWaypoint;
+
+  /// The first instruction is still to be said (see _speakStartCue).
+  bool _needsStartCue = false;
+
+  /// "Loading the route" was said (the path is slow to arrive).
+  bool _loadingAnnounced = false;
   DateTime? _staleSince;
   LatLng? _staleFrom;
 
@@ -172,6 +199,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   double? _correctedLat;
   double? _correctedLong;
+
+  /// The last correction minus the raw fix it corrected, metres east/north
+  /// (see _kCorrectionFreshness).
+  ({double x, double y})? _correctionOffset;
   double? _correctionError;
   List<LatLng> _plannedPath = [];
   List<_Waypoint> _waypoints = [];
@@ -244,9 +275,42 @@ class _NavigationScreenState extends State<NavigationScreen> {
       if (heading != null) {
         _lastRawCompass = heading;
         _heading.add(heading);
+        _tracker.compass(
+          trueHeading(_heading.value!, _declination),
+          DateTime.now(),
+        );
       }
     });
+    // Turns come from the gyroscope, direction from walking: the compass
+    // under-counted every turn in a field test (see HeadingTracker).
+    _accelSub =
+        accelerometerEventStream(
+          samplingPeriod: SensorInterval.gameInterval,
+        ).listen(
+          (e) => _tracker.accelerometer(e.x, e.y, e.z),
+          onError: _sensorError,
+        );
+    _gyroSub = gyroscopeEventStream(samplingPeriod: SensorInterval.gameInterval)
+        .listen(
+          (e) => _tracker.gyro(e.x, e.y, e.z, DateTime.now()),
+          onError: _sensorError,
+        );
+    _positionSub = _locationService.positionStream.listen((position) {
+      _tracker.gpsCourse(position.heading, position.speed, position.timestamp);
+      // The corrected marker follows the live fix (see _liveCorrected).
+      if (_correctionOffset != null && mounted) setState(() {});
+    });
     _guidanceTimer = Timer.periodic(_kGuidanceInterval, (_) => _guide());
+  }
+
+  /// A sensor stream failed: logged with the next tick, so a phone whose
+  /// gyroscope doesn't work shows up in the session data.
+  void _sensorError(Object error) {
+    _pendingEvents.add({
+      'at': DateTime.now().toUtc().toIso8601String(),
+      'type': 'sensor_error',
+      'error': error.toString(),
+    });
   }
 
   /// Speaks [text] if the user has voice guidance on (#39/#40/#85) -
@@ -266,9 +330,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
     String text, {
     bool assertive = false,
     String cueType = 'info',
+    bool repeatable = true,
   }) async {
-    _lastAnnouncement = text;
-    _lastCueType = cueType;
+    // Notices (the camera, "loading") aren't what "repeat" should replay.
+    if (repeatable) {
+      _lastAnnouncement = text;
+      _lastCueType = cueType;
+    }
     _lastSpokenAt = DateTime.now();
     _pendingCues.add({
       'at': DateTime.now().toUtc().toIso8601String(),
@@ -307,38 +375,45 @@ class _NavigationScreenState extends State<NavigationScreen> {
           .cast<String>(),
       widget.route['end_anchor_id'] as String,
     ];
+    // All at once: one request after another took ~90 s on campus mobile
+    // data in a test walk, and guidance can't start without the path.
+    final anchors = await Future.wait(
+      anchorIds.map((id) async {
+        try {
+          return await MapManagementApi().get('/anchor-points/$id')
+              as Map<String, dynamic>;
+        } on ApiException {
+          // The guidance line/checkpoints are a nice-to-have overlay - a
+          // missing/deleted anchor shouldn't block navigation, it just
+          // means no line/announcement for that point.
+          return null;
+        }
+      }),
+    );
     final points = <LatLng>[];
     final names = <String?>[];
     var resolvedStart = false;
-    for (var i = 0; i < anchorIds.length; i++) {
-      try {
-        final anchor =
-            await MapManagementApi().get('/anchor-points/${anchorIds[i]}')
-                as Map<String, dynamic>;
-        final lat = (anchor['latitude'] as num?)?.toDouble();
-        final lng = (anchor['longitude'] as num?)?.toDouble();
-        if (lat == null || lng == null) continue;
-        final point = LatLng(lat, lng);
-        points.add(point);
-        if (i == 0) {
-          _startPoint = point;
-          resolvedStart = true;
-        }
-        final description = (anchor['location_description'] as String? ?? '')
-            .trim();
-        // The final point is always named when spoken (falling back to
-        // "your destination"); in-between ones only if they're a real
-        // destination-type place.
-        final named =
-            i > 0 &&
-            description.isNotEmpty &&
-            (i == anchorIds.length - 1 || isDestinationAnchor(anchor));
-        names.add(named ? description : null);
-      } on ApiException {
-        // The guidance line/checkpoints are a nice-to-have overlay - a
-        // missing/deleted anchor shouldn't block navigation, it just means
-        // no line/announcement for that point.
+    for (var i = 0; i < anchors.length; i++) {
+      final anchor = anchors[i];
+      final lat = (anchor?['latitude'] as num?)?.toDouble();
+      final lng = (anchor?['longitude'] as num?)?.toDouble();
+      if (anchor == null || lat == null || lng == null) continue;
+      final point = LatLng(lat, lng);
+      points.add(point);
+      if (i == 0) {
+        _startPoint = point;
+        resolvedStart = true;
       }
+      final description = (anchor['location_description'] as String? ?? '')
+          .trim();
+      // The final point is always named when spoken (falling back to
+      // "your destination"); in-between ones only if they're a real
+      // destination-type place.
+      final named =
+          i > 0 &&
+          description.isNotEmpty &&
+          (i == anchorIds.length - 1 || isDestinationAnchor(anchor));
+      names.add(named ? description : null);
     }
     // Guidance stops at corners (and named places), not at every anchor
     // along a straight - see routeCorners.
@@ -404,14 +479,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// Where guidance thinks the user is: the camera-corrected position when
   /// it's fresh, raw GPS otherwise.
   LatLng? _currentPosition() {
-    final correctedAt = _correctedAt;
-    if (_correctedLat != null &&
-        _correctedLong != null &&
-        correctedAt != null &&
-        DateTime.now().difference(correctedAt) < _kCorrectionFreshness) {
+    final live = _liveCorrected();
+    if (live != null) {
       _lastUsedCorrected = true;
       _staleSince = null;
-      return LatLng(_correctedLat!, _correctedLong!);
+      _staleFrom = live;
+      return live;
     }
     _lastUsedCorrected = false;
     final position = _locationService.lastPosition;
@@ -419,12 +492,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
     final raw = LatLng(position.latitude, position.longitude);
     // Blend from the last corrected position to raw GPS instead of jumping
     // the tens of metres that can separate them.
-    if (_correctedLat != null && _correctedLong != null) {
-      if (_staleSince == null) {
-        _staleSince = DateTime.now();
-        _staleFrom = LatLng(_correctedLat!, _correctedLong!);
-      }
-      final from = _staleFrom!;
+    final staleFrom = _staleFrom;
+    if (staleFrom != null) {
+      _staleSince ??= DateTime.now();
+      final from = staleFrom;
       final f =
           (DateTime.now().difference(_staleSince!).inMilliseconds /
                   _kSourceBlend.inMilliseconds)
@@ -437,6 +508,21 @@ class _NavigationScreenState extends State<NavigationScreen> {
       }
     }
     return raw;
+  }
+
+  /// The live GPS fix with the latest correction's offset applied, while
+  /// that offset is fresh; null otherwise.
+  LatLng? _liveCorrected() {
+    final offset = _correctionOffset;
+    final correctedAt = _correctedAt;
+    final raw = _rawPosition;
+    if (offset == null ||
+        correctedAt == null ||
+        raw == null ||
+        DateTime.now().difference(correctedAt) >= _kCorrectionFreshness) {
+      return null;
+    }
+    return applyOffset(raw, offset.x, offset.y);
   }
 
   LatLng? get _rawPosition {
@@ -452,9 +538,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
       ? _startPoint
       : _waypoints[_nextWaypointIndex - 1].point;
 
-  /// Compass heading, or GPS direction of travel while actually moving if
-  /// the phone has no compass. Null when neither is usable.
+  /// Which way the user faces (true north): HeadingTracker's gyro heading
+  /// anchored to walking, else the compass, else the GPS direction of
+  /// travel while actually moving. Null when none is usable.
   double? _currentHeading() {
+    final tracked = _tracker.value;
+    if (tracked != null) return tracked;
     final compass = _heading.value;
     // The compass is magnetic; route bearings are true north.
     if (compass != null) return trueHeading(compass, _declination);
@@ -469,10 +558,23 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// the next waypoint (see TurnGuidance).
   void _guide() {
     if (!_guiding || _stopped || _arrived || !mounted) return;
+    if (_waypoints.isEmpty && !_pathLoaded.isCompleted) {
+      if (!_loadingAnnounced) {
+        _loadingAnnounced = true;
+        _speak(
+          AppLocalizations.of(context)!.navLoadingRoute,
+          repeatable: false,
+        );
+      }
+      return;
+    }
     if (_nextWaypointIndex >= _waypoints.length) return;
     final here = _currentPosition();
     if (here == null) return;
     if (_checkProximity(here)) return;
+    _warnTurnAhead(here);
+
+    if (_needsStartCue) _speakStartCue(here);
 
     final heading = _currentHeading();
     if (heading == null) return;
@@ -485,25 +587,55 @@ class _NavigationScreenState extends State<NavigationScreen> {
         : guidanceBearing(here, segmentStart, target);
     _lastTargetDistance = haversineMeters(here, target);
     _lastTurn = signedTurn(heading, _lastTargetBearing!);
+    final now = DateTime.now();
     final cue = _guidance.update(
       turn: _lastTurn!,
       metersToTarget: _lastTargetDistance!,
-      now: DateTime.now(),
+      now: now,
+      reliable: _tracker.reliable(now),
     );
     final l10n = AppLocalizations.of(context)!;
     switch (cue) {
       case TurnCue(turnAround: true):
         _speak(l10n.navTurnAround, cueType: 'turn');
-      case TurnCue(:final degrees, :final right):
+      case TurnCue(kind: TurnKind.slight, :final right):
         _speak(
-          right ? l10n.navTurnRight(degrees) : l10n.navTurnLeft(degrees),
+          right ? l10n.navTurnSlightRight : l10n.navTurnSlightLeft,
           cueType: 'turn',
         );
-      case StartWalkingCue(:final meters):
-        _speak(l10n.navStartWalking(meters), cueType: 'start_walking');
+      case TurnCue(:final right):
+        _speak(
+          right ? l10n.navTurnRightShort : l10n.navTurnLeftShort,
+          cueType: 'turn',
+        );
+      case StartWalkingCue(:final steps):
+        _speak(l10n.navGoStraightSteps(steps), cueType: 'start_walking');
       case null:
         break;
     }
+  }
+
+  /// The heading, only when it can be trusted (see HeadingTracker.reliable).
+  double? _reliableHeading() =>
+      _tracker.reliable(DateTime.now()) ? _tracker.value : null;
+
+  /// The first instruction, once the route is loaded. With a heading that
+  /// can be trusted it's face-then-walk (TurnGuidance); without one there's
+  /// no knowing which way the user faces, so they're told to walk and the
+  /// walking direction takes it from there.
+  void _speakStartCue(LatLng here) {
+    _needsStartCue = false;
+    if (_reliableHeading() != null) {
+      _guidance.reset(now: DateTime.now());
+      return;
+    }
+    _speak(
+      AppLocalizations.of(context)!.navWalkForward(
+        roundSteps(haversineMeters(here, _waypoints[_nextWaypointIndex].point)),
+      ),
+      cueType: 'start_walking',
+    );
+    _guidance.reset(now: DateTime.now(), walking: true);
   }
 
   /// Waypoint progress. Reaching any upcoming waypoint counts, not only
@@ -563,56 +695,117 @@ class _NavigationScreenState extends State<NavigationScreen> {
       return true;
     }
     _nextWaypointIndex = reached + 1;
-    _announceNextLeg(_waypoints[reached], _waypoints[_nextWaypointIndex]);
+    _announceNextLeg(
+      reached == 0 ? _startPoint : _waypoints[reached - 1].point,
+      _waypoints[reached],
+      _waypoints[_nextWaypointIndex],
+    );
     return true;
   }
 
   /// Whether intermediate waypoint [i] counts as reached from [here]: close
   /// to it, or - for the next one - walked up to along its straight.
   bool _cornerReached(LatLng here, int i) {
-    final point = _waypoints[i].point;
-    if (haversineMeters(here, point) <= _kCornerMeters) return true;
+    if (haversineMeters(here, _waypoints[i].point) <= _kCornerMeters) {
+      return true;
+    }
+    return i == _nextWaypointIndex &&
+        _cornerProgress(here) == CornerProgress.reached;
+  }
+
+  /// Progress toward the next waypoint when it's a corner (not the
+  /// destination), or null.
+  CornerProgress? _cornerProgress(LatLng here) {
+    final i = _nextWaypointIndex;
     final from = _segmentStart();
-    if (i != _nextWaypointIndex || from == null) return false;
-    final projection = projectOntoSegment(here, from, point);
-    return projection.length > 0 &&
-        projection.along >= projection.length - _kCornerMeters &&
-        projection.crossTrack.abs() <= _kCornerCrossTrackMeters;
+    if (from == null || i >= _waypoints.length - 1) return null;
+    final corner = _waypoints[i].point;
+    final projection = projectOntoSegment(here, from, corner);
+    if (projection.length <= 0) return null;
+    return cornerProgress(
+      metersToCorner: haversineMeters(here, corner),
+      alongRemaining: projection.length - projection.along,
+      crossTrack: projection.crossTrack,
+      // Only a heading that can be trusted may say "already turned": the
+      // raw compass made corners come early in a user test.
+      heading: _reliableHeading(),
+      legBearing: bearingDegrees(from, corner),
+      nextLegBearing: bearingDegrees(corner, _waypoints[i + 1].point),
+      reachedMeters: _kCornerMeters,
+      warnMeters: _kTurnWarningMeters,
+      maxCrossTrackMeters: _kCornerCrossTrackMeters,
+    );
+  }
+
+  /// "In 8 meters, turn left", once per corner, so the turn instruction at
+  /// the corner itself doesn't come as a surprise.
+  void _warnTurnAhead(LatLng here) {
+    final i = _nextWaypointIndex;
+    if (_warnedForWaypoint == i ||
+        _cornerProgress(here) != CornerProgress.warn) {
+      return;
+    }
+    _warnedForWaypoint = i;
+    final from = _segmentStart()!;
+    final corner = _waypoints[i].point;
+    final turn = signedTurn(
+      bearingDegrees(from, corner),
+      bearingDegrees(corner, _waypoints[i + 1].point),
+    );
+    if (haversineMeters(from, corner) < _kMinLegForWarningMeters ||
+        turn.abs() <= TurnGuidance.alignedDegrees) {
+      return;
+    }
+    final steps = roundSteps(haversineMeters(here, corner));
+    final l10n = AppLocalizations.of(context)!;
+    _speak(
+      turn > 0
+          ? l10n.navTurnAheadRightSteps(steps)
+          : l10n.navTurnAheadLeftSteps(steps),
+      cueType: 'turn_ahead',
+    );
   }
 
   /// At a waypoint: one sentence for what to do next. "At the cafeteria,
-  /// turn right about 90 degrees, then walk 12 meters", or "continue
-  /// straight for 20 meters". The distance is the leg's length, point to
-  /// point.
-  void _announceNextLeg(_Waypoint from, _Waypoint to) {
+  /// turn right and walk about 20 steps", or "go straight, about 30
+  /// steps". The turn comes from the route itself (the bend between the two
+  /// legs), not the phone's heading, which can be far off; the steps are the
+  /// leg's length. A user who has already turned (by a trusted heading) just
+  /// hears "go straight".
+  void _announceNextLeg(LatLng? previous, _Waypoint from, _Waypoint to) {
     final l10n = AppLocalizations.of(context)!;
-    final meters = roundMeters(haversineMeters(from.point, to.point));
-    final heading = _currentHeading();
-    final turn = heading == null
-        ? null
-        : signedTurn(heading, bearingDegrees(from.point, to.point));
-    final straight = turn == null || turn.abs() <= TurnGuidance.alignedDegrees;
+    final steps = roundSteps(haversineMeters(from.point, to.point));
+    final nextBearing = bearingDegrees(from.point, to.point);
+    final routeTurn = previous == null
+        ? 0.0
+        : signedTurn(bearingDegrees(previous, from.point), nextBearing);
+    final heading = _reliableHeading();
+    final alreadyTurned =
+        heading != null &&
+        signedTurn(heading, nextBearing).abs() <= TurnGuidance.alignedDegrees;
     final String action;
-    if (straight) {
-      action = l10n.navContinueStraight(meters);
+    if (routeTurn.abs() <= kCornerTurnDegrees || alreadyTurned) {
+      action = l10n.navContinueStraightSteps(steps);
     } else {
-      final cue = TurnCue.from(turn);
-      action = cue.turnAround
-          ? l10n.navTurnAroundThenWalk(meters)
-          : cue.right
-          ? l10n.navTurnRightThenWalk(cue.degrees, meters)
-          : l10n.navTurnLeftThenWalk(cue.degrees, meters);
+      final cue = TurnCue.from(routeTurn);
+      action = switch (cue) {
+        TurnCue(turnAround: true) => l10n.navLegAround(steps),
+        TurnCue(kind: TurnKind.slight, right: true) => l10n.navLegSlightRight(
+          steps,
+        ),
+        TurnCue(kind: TurnKind.slight) => l10n.navLegSlightLeft(steps),
+        TurnCue(right: true) => l10n.navLegRight(steps),
+        TurnCue() => l10n.navLegLeft(steps),
+      };
     }
     final name = from.name;
     _speak(
       name == null ? action : '${l10n.navAtPlace(name)} $action',
       cueType: 'leg',
     );
-    _guidance.reset(
-      now: DateTime.now(),
-      announcedTurn: straight ? null : turn,
-      walking: straight,
-    );
+    // Walking: the user turns as told, and is corrected (once) only if a
+    // trusted heading shows them going the wrong way.
+    _guidance.reset(now: DateTime.now(), walking: true);
   }
 
   /// Within range of the destination: say so and finish the trip on its
@@ -647,15 +840,20 @@ class _NavigationScreenState extends State<NavigationScreen> {
     if (index == null) return;
     HapticFeedback.heavyImpact();
     final raw = _rawPosition;
+    final corrected = _liveCorrected();
+    final correctedAt = _correctedAt;
     _pendingEvents.add({
       'at': DateTime.now().toUtc().toIso8601String(),
       'type': 'checkpoint',
       'index': index,
       'of': _checkpoints.count,
       'raw': ?(raw == null ? null : [raw.latitude, raw.longitude]),
-      'corrected': ?(_correctedLat == null
+      'corrected': ?(corrected == null
           ? null
-          : [_correctedLat, _correctedLong]),
+          : [corrected.latitude, corrected.longitude]),
+      'correction_age_s': ?(correctedAt == null
+          ? null
+          : DateTime.now().difference(correctedAt).inMilliseconds / 1000),
     });
     final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context)
@@ -718,7 +916,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     );
     if (distance <= _kProximityThresholdMeters) return;
     _speak(
-      AppLocalizations.of(context)!.navMetersAhead(roundMeters(distance)),
+      AppLocalizations.of(context)!.navStepsAhead(roundSteps(distance)),
       cueType: 'meters_ahead',
     );
   }
@@ -792,13 +990,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
         // announcement) *and* shown as text - the same secondary-channel
         // principle this screen already follows for every other
         // announcement, for anyone who can't hear it.
-        _speak(l10n.navAnnouncementCameraDisclosure);
+        _speak(l10n.navAnnouncementCameraDisclosure, repeatable: false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n.navAnnouncementCameraDisclosure)),
         );
       }
-      // Face-then-walk guidance toward the first waypoint starts now.
+      // The first instruction comes from _guide once the route is loaded
+      // (_speakStartCue).
       _guidance.reset(now: DateTime.now());
+      _needsStartCue = true;
       _guiding = true;
       _runTick();
     } on ApiException catch (e) {
@@ -843,12 +1043,25 @@ class _NavigationScreenState extends State<NavigationScreen> {
     Map<String, dynamic>? correction,
     String? failure,
     Map<String, int>? timing,
+    DateTime? photoAt,
   }) {
     final correctedAt = _correctedAt;
     final snapshot = <String, dynamic>{
       'compass': _heading.value,
       'compass_raw': _lastRawCompass,
       'compass_accuracy': _lastCompassAccuracy,
+      'heading': _tracker.value,
+      'heading_source': _tracker.source,
+      'heading_reliable': _tracker.reliable(DateTime.now()),
+      'gyroscope': _tracker.hasGyroscope,
+      // How far the compass (true) is from the tracked heading: magnetic
+      // disturbance shows up here.
+      'compass_vs_heading': _tracker.value == null || _heading.value == null
+          ? null
+          : signedTurn(
+              _tracker.value!,
+              trueHeading(_heading.value!, _declination),
+            ),
       'gps_speed': position.speed,
       'gps_course': position.heading,
       'gps_time': position.timestamp.toUtc().toIso8601String(),
@@ -866,6 +1079,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       'correction': ?correction,
       'failure': ?failure,
       'timing_ms': ?timing,
+      'photo_at': ?photoAt?.toUtc().toIso8601String(),
     };
     _pendingCues.clear();
     _pendingEvents.clear();
@@ -902,6 +1116,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
   }
 
+  /// The heading sent with a photo: the tracked heading back in magnetic
+  /// degrees, like the anchor photos' own (the compass alone, when there's
+  /// no tracker heading yet), so the heading gate compares like with like.
+  /// Never the GPS course: meaningless while standing still.
+  double? _sentHeading() {
+    final tracked = _reliableHeading();
+    return tracked == null ? null : trueHeading(tracked, -_declination);
+  }
+
   Future<void> _correctionTick(
     String sessionId,
     Position position,
@@ -909,6 +1132,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
   ) async {
     try {
       final captureStarted = DateTime.now();
+      // The direction the camera faces as the photo is taken (see
+      // _sentHeading), not when the answer comes back.
+      final sentHeading = _sentHeading();
       final image = await controller.takePicture();
       final bytes = await image.readAsBytes();
       final captureMs = DateTime.now()
@@ -953,12 +1179,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
                   'latitude': position.latitude.toString(),
                   'longitude': position.longitude.toString(),
                   'accuracy': position.accuracy.toString(),
-                  // The direction the phone (and camera) faces, magnetic
-                  // like the anchor photos' own headings, so a match can be
-                  // checked against it. Never the GPS course: meaningless
-                  // while standing still, it would reject good matches.
-                  if (_heading.value != null)
-                    'heading': _heading.value!.toString(),
+                  // The direction the camera faces, so a match can be
+                  // checked against it (see _sentHeading).
+                  'heading': ?sentHeading?.toString(),
                   // Lets the backend skip re-fusing the same fix.
                   'gps_time': position.timestamp.toUtc().toIso8601String(),
                   // Test walks keep their frames, to compare photo models
@@ -977,6 +1200,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
           _correctedLong = (result['corrected_long'] as num).toDouble();
           _correctionError = (result['correction_error'] as num).toDouble();
           _correctedAt = DateTime.now();
+          _correctionOffset = offsetMeters(
+            LatLng(position.latitude, position.longitude),
+            LatLng(_correctedLat!, _correctedLong!),
+          );
         });
       }
 
@@ -1007,6 +1234,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
             position,
             correction: (result['debug'] as Map?)?.cast<String, dynamic>(),
             timing: {'capture': captureMs, 'correct': correctMs},
+            photoAt: captureStarted,
           ),
         }),
       );
@@ -1044,8 +1272,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
           'gps_lat': position.latitude,
           'gps_long': position.longitude,
         },
-        'corrected_lat': _correctedLat,
-        'corrected_long': _correctedLong,
+        'corrected_lat': _liveCorrected()?.latitude ?? _correctedLat,
+        'corrected_long': _liveCorrected()?.longitude ?? _correctedLong,
         'compass_heading': _heading.value,
         'debug': {
           'turn': _lastTurn,
@@ -1090,6 +1318,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _guidanceTimer?.cancel();
     _periodicAnnouncementTimer?.cancel();
     _compassSub?.cancel();
+    _gyroSub?.cancel();
+    _accelSub?.cancel();
+    _positionSub?.cancel();
     if (sessionId == null) {
       if (mounted) Navigator.of(context).pop();
       return;
@@ -1172,6 +1403,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _periodicAnnouncementTimer?.cancel();
     _guidanceTimer?.cancel();
     _compassSub?.cancel();
+    _gyroSub?.cancel();
+    _accelSub?.cancel();
+    _positionSub?.cancel();
     _cameraController?.dispose();
     _tts.stop();
     super.dispose();
@@ -1180,8 +1414,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final correctedLat = _correctedLat;
-    final correctedLong = _correctedLong;
+    final live = _liveCorrected();
+    final correctedLat = live?.latitude ?? _correctedLat;
+    final correctedLong = live?.longitude ?? _correctedLong;
     final showDebugPreview =
         kDebugMode &&
         _cameraController != null &&
@@ -1213,59 +1448,85 @@ class _NavigationScreenState extends State<NavigationScreen> {
                             ),
                           ),
                         ),
-                      const LocationInfo(),
-                      if (correctedLat != null && correctedLong != null)
+                      // Coordinates and the map are for admins testing the
+                      // flow; a user test asked for them off the user's
+                      // screen, and users didn't know what "the map" to tap
+                      // was.
+                      LocationInfo(showCoordinates: widget.adminPreview),
+                      if (widget.adminPreview) ...[
+                        if (correctedLat != null && correctedLong != null)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16.0,
+                            ),
+                            child: Text(
+                              l10n.navCorrectedPosition(
+                                correctedLat.toStringAsFixed(6),
+                                correctedLong.toStringAsFixed(6),
+                                _correctionError != null
+                                    ? ' (±${_correctionError!.toStringAsFixed(2)}m)'
+                                    : '',
+                              ),
+                              style: const TextStyle(color: Colors.green),
+                            ),
+                          ),
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                          child: Text(
-                            l10n.navCorrectedPosition(
-                              correctedLat.toStringAsFixed(6),
-                              correctedLong.toStringAsFixed(6),
-                              _correctionError != null
-                                  ? ' (±${_correctionError!.toStringAsFixed(2)}m)'
-                                  : '',
-                            ),
-                            style: const TextStyle(color: Colors.green),
-                          ),
-                        ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                        child: ExcludeSemantics(
-                          child: Row(
-                            children: [
-                              const Icon(Icons.touch_app_outlined, size: 18),
-                              const SizedBox(width: 6),
-                              Expanded(child: Text(l10n.navTapToRepeatHint)),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        // The map itself means nothing to a screen reader -
-                        // it's exposed as one large button that repeats the
-                        // last instruction (TalkBack: double-tap it).
-                        child: Semantics(
-                          container: true,
-                          button: true,
-                          label: l10n.navTapToRepeatHint,
-                          onTap: _repeatLastAnnouncement,
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                           child: ExcludeSemantics(
-                            child: SimpleMapWidget(
-                              onTap: _repeatLastAnnouncement,
-                              plannedPath: _plannedPath,
-                              extraMarkers:
-                                  correctedLat != null && correctedLong != null
-                                  ? [
-                                      locationPinMarker(
-                                        LatLng(correctedLat, correctedLong),
-                                        Colors.green,
-                                      ),
-                                    ]
-                                  : const [],
+                            child: Row(
+                              children: [
+                                const Icon(Icons.touch_app_outlined, size: 18),
+                                const SizedBox(width: 6),
+                                Expanded(child: Text(l10n.navTapToRepeatHint)),
+                              ],
                             ),
                           ),
                         ),
-                      ),
+                        Expanded(
+                          // The map itself means nothing to a screen reader -
+                          // it's exposed as one large button that repeats the
+                          // last instruction (TalkBack: double-tap it).
+                          child: Semantics(
+                            container: true,
+                            button: true,
+                            label: l10n.navTapToRepeatHint,
+                            onTap: _repeatLastAnnouncement,
+                            child: ExcludeSemantics(
+                              child: SimpleMapWidget(
+                                onTap: _repeatLastAnnouncement,
+                                plannedPath: _plannedPath,
+                                extraMarkers:
+                                    correctedLat != null &&
+                                        correctedLong != null
+                                    ? [
+                                        locationPinMarker(
+                                          LatLng(correctedLat, correctedLong),
+                                          Colors.green,
+                                        ),
+                                      ]
+                                    : const [],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ] else ...[
+                        const Spacer(),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(160),
+                              textStyle: Theme.of(
+                                context,
+                              ).textTheme.headlineSmall,
+                            ),
+                            onPressed: _repeatLastAnnouncement,
+                            icon: const Icon(Icons.replay, size: 40),
+                            label: Text(l10n.navRepeatButton),
+                          ),
+                        ),
+                        const Spacer(),
+                      ],
                       if (widget.adminPreview)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),

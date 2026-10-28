@@ -5,6 +5,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'app_version.dart';
+
 class ApiException implements Exception {
   /// Used as [statusCode] when no HTTP response came back at all (no
   /// connection, DNS failure, timeout).
@@ -69,7 +71,13 @@ class ApiService {
   /// nobody).
   Map<String, String> _authHeaders([Map<String, String>? extra]) {
     final token = _getAccessToken();
-    return {if (token != null) 'Authorization': 'Bearer $token', ...?extra};
+    final version = runningAppVersion;
+    return {
+      if (token != null) 'Authorization': 'Bearer $token',
+      // Lets the backend refuse versions it no longer serves (426).
+      'X-App-Version': ?version,
+      ...?extra,
+    };
   }
 
   /// Sends a request built by [sender], and on a 401 refreshes the session
@@ -121,6 +129,9 @@ class ApiService {
   /// Generous enough for a photo upload on a slow connection, matching the
   /// gateway's own 60s proxy timeout.
   static const requestTimeout = Duration(seconds: 60);
+
+  /// What every service answers a version it no longer serves.
+  static const upgradeRequired = 426;
 
   Future<dynamic> get(String path) async {
     final response = await _send(
@@ -193,6 +204,12 @@ class ApiService {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       if (response.body.isEmpty) return null;
       return jsonDecode(response.body);
+    }
+    if (response.statusCode == upgradeRequired) {
+      // This version is no longer served: MainApp switches to the update
+      // screen.
+      final policy = AppVersionPolicy.tryParse(response.body);
+      if (policy != null) updateRequiredNotifier.value = policy;
     }
     throw ApiException(response.statusCode, response.body);
   }

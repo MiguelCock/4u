@@ -3,10 +3,12 @@ import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -80,7 +82,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     super.initState();
     _positionSub = _locationService.positionStream.listen(_recomputeStart);
     _loadAnchors();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkUnfinishedTrip());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _checkUnfinishedTrip();
+      if (!widget.adminPreview) await _showTutorialOnFirstRun();
+    });
   }
 
   @override
@@ -184,8 +189,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     setState(() {
       _listening = true;
       _heard = '';
-      _voiceStatus = null;
+      _voiceStatus = l10n.homeListeningShort;
     });
+    // Felt, not spoken: anything said now would be heard by the recognizer.
+    HapticFeedback.heavyImpact();
     await _speech.listen(
       onResult: (result) {
         if (!mounted) return;
@@ -204,6 +211,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   Future<void> _handleSpoken(String heard) async {
     final l10n = AppLocalizations.of(context)!;
+    HapticFeedback.mediumImpact();
     setState(() => _listening = false);
     if (heard.trim().isEmpty) {
       await _say(l10n.homeVoiceNothingHeard);
@@ -252,16 +260,48 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     if (picked != null && mounted) _chooseVoiceDestination(picked);
   }
 
-  void _chooseVoiceDestination(Map<String, dynamic> anchor) {
+  void _chooseVoiceDestination(Map<String, dynamic> anchor) =>
+      _confirmAndStart(anchor);
+
+  /// A destination was chosen (by voice or from the list): "Go to X?" with
+  /// one big Start route button, which starts the trip. In the first user
+  /// test people expected the route to start once they'd said the place,
+  /// and couldn't find the separate Find route button.
+  Future<void> _confirmAndStart(Map<String, dynamic> anchor) async {
     setState(() {
       _end = anchor;
       _error = null;
+      _voiceStatus = null;
     });
-    _say(
-      AppLocalizations.of(
-        context,
-      )!.homeVoiceDestinationSet(_destinationLabel(anchor)),
+    final l10n = AppLocalizations.of(context)!;
+    final title = l10n.homeGoToTitle(_destinationLabel(anchor));
+    if (!MediaQuery.of(context).accessibleNavigation) _say(title);
+    final start = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        actionsAlignment: MainAxisAlignment.center,
+        actionsOverflowDirection: VerticalDirection.up,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(220, 64),
+              textStyle: Theme.of(dialogContext).textTheme.titleLarge,
+            ),
+            autofocus: true,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.directions_walk),
+            label: Text(l10n.homeStartRouteButton),
+          ),
+        ],
+      ),
     );
+    await _tts.stop();
+    if (start == true && mounted) _findRoute();
   }
 
   /// Verified points in active buildings of active universities - the only
@@ -356,7 +396,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ),
       ),
     );
-    if (picked != null) setState(() => _end = picked);
+    if (picked != null && mounted) _confirmAndStart(picked);
   }
 
   /// Photos taken by the start-point check, and the minimum gap between
@@ -525,6 +565,48 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   /// A trip left open by closing the app mid-route: offer to continue it
   /// or finish it, instead of it staying "active" forever.
+  static const _kTutorialSeenKey = 'tutorial_seen_v1';
+
+  /// First launch: the spoken tutorial once, on its own.
+  Future<void> _showTutorialOnFirstRun() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_kTutorialSeenKey) ?? false) return;
+      await prefs.setBool(_kTutorialSeenKey, true);
+    } catch (_) {
+      return; // No storage: don't nag on every launch.
+    }
+    if (mounted) await _showTutorial();
+  }
+
+  /// "How does it work?": what the app does and how to use it, shown and
+  /// spoken (TalkBack reads the dialog itself). The first user test had to
+  /// explain every button by hand.
+  Future<void> _showTutorial() async {
+    final l10n = AppLocalizations.of(context)!;
+    if (voiceGuidanceNotifier.value &&
+        !MediaQuery.of(context).accessibleNavigation) {
+      await _ttsReady;
+      await _tts.stop();
+      _tts.speak(l10n.homeTutorialText);
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.homeTutorialTitle),
+        content: SingleChildScrollView(child: Text(l10n.homeTutorialText)),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(MaterialLocalizations.of(dialogContext).okButtonLabel),
+          ),
+        ],
+      ),
+    );
+    await _tts.stop();
+  }
+
   Future<void> _checkUnfinishedTrip() async {
     List<Map<String, dynamic>> sessions;
     try {
@@ -649,18 +731,41 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       _error = null;
     });
 
-    final position = _locationService.lastPosition;
+    final l10n = AppLocalizations.of(context)!;
+    if (_locationService.lastPosition == null) _say(l10n.homeSearchingLocation);
+    // Waits for a fix (and re-checks location) instead of giving up on the
+    // first try: in battery saver that said "GPS off" while it was on.
+    final position = await _locationService.ensureReady();
+    if (!mounted) return;
     if (position == null) {
       setState(() {
-        _error = AppLocalizations.of(context)!.homeErrorLocationUnavailable;
+        _error = _locationService.lastError == LocationError.serviceDisabled
+            ? l10n.locationServiceDisabledError
+            : _locationService.lastError != null
+            ? l10n.locationPermissionDeniedError
+            : l10n.homeErrorNoGpsFix;
         _finding = false;
       });
+      _say(_error!);
       return;
     }
 
     try {
-      // A start checked moments ago (tapping Start) isn't checked again.
-      final start = _startCheckIsFresh ? _start : await _locateStart();
+      // Users: the start comes straight from GPS - the camera check
+      // ("photo 0 of 6, turn around") confused everyone in the first user
+      // test, and navigation's own correction takes over from the first
+      // ticks. Admins testing keep it (tapping Start, or Find route).
+      final Map<String, dynamic>? start;
+      if (widget.adminPreview) {
+        start = _startCheckIsFresh ? _start : await _locateStart();
+      } else {
+        _verifiedAnchors = await _fetchVerifiedAnchors();
+        start = _nearestAnchor(
+          _verifiedAnchors,
+          LatLng(position.latitude, position.longitude),
+        );
+        if (mounted) setState(() => _start = start);
+      }
       if (!mounted) return;
       if (start == null) {
         setState(() {
@@ -728,6 +833,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         title: Text(l10n.appTitle),
         backgroundColor: Colors.blue,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: l10n.homeTutorialButton,
+            onPressed: _showTutorial,
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: l10n.homeSettingsTooltip,
@@ -805,11 +915,15 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   height: 24,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : Icon(
+              : widget.adminPreview
+              ? Icon(
                   Icons.my_location,
                   semanticLabel: l10n.homeCheckStartTooltip,
-                ),
-          onTap: (_locatingStart || _finding) ? null : _relocateStart,
+                )
+              : null,
+          onTap: !widget.adminPreview || _locatingStart || _finding
+              ? null
+              : _relocateStart,
         ),
         const Divider(height: 1),
         ListTile(
@@ -865,7 +979,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         const Spacer(),
         Padding(
           padding: const EdgeInsets.all(16.0),
-          child: ElevatedButton(
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(64),
+              textStyle: Theme.of(context).textTheme.titleLarge,
+            ),
             onPressed: (_end != null && !_finding) ? _findRoute : null,
             child: _finding
                 ? const SizedBox(

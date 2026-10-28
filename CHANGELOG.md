@@ -6,6 +6,35 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-28
+
+**For testers:** install `app-release.apk` from this release. Version 0.5.1 keeps working for now but is deprecated and stops working with the next release; from this version on, the app itself tells you when an update is out.
+
+### Added
+- **Version support**: the newest app version and the one before it both work. When a new version comes out, the previous one shows a "new version available" message once per launch with a download button. Anything older can't be used until it's updated, and shows a screen with the download link.
+
+### Changed
+- **Turn instructions follow your real turns.** Direction now comes from the phone's gyroscope and from your walking direction, not the compass alone. The compass under-counted every turn, so the app asked for more turning than needed and, after a few corners, kept saying "turn left" while you faced the right way.
+- **The corrected position keeps up with you.** It used to trail several seconds behind, because each correction takes a few seconds to come back. It now moves with your live GPS.
+- **Faster position updates**: less waiting on the server for each photo.
+- **Turns are announced at the corner**, with a heads-up about 8 m before it ("In 8 meters, turn left"). They used to come 5–8 seconds early. While you're turning, the app no longer asks you to keep turning.
+- **Re-index verified points** (admin) sends only the points whose photos aren't searchable, retries failures, and lists any point that still failed. The menu entry warns when photos aren't searchable.
+
+- **Instructions in steps, not meters or degrees.** "Turn left and walk about 40 steps", "Go straight, about 20 steps left". Turns are "turn left", "turn slightly left" or "turn around". Users found degrees meaningless and always turned about 90° anyway. The voice is also a little faster.
+- **Turns come from the route itself**, not the phone's compass. A wrong compass can no longer send someone the wrong way or make them spin. The app corrects the direction only when it can trust it (gyroscope, or the walking direction), at most once at a time.
+- **Phones without a gyroscope** use the walking direction from GPS. On one such phone, the compass was 85° off. Photo matching also no longer depends on the compass there.
+- **Simpler user screens.**
+  - Saying or picking a destination asks "Go to X?" with one big **Start route** button.
+  - The phone vibrates when it starts and stops listening.
+  - The start point comes from GPS with no photo step; admins keep the photo check in **Test as user**.
+  - During the trip, users see a large **Repeat instruction** button instead of the map and coordinates.
+  - A **?** button, also shown on first launch, explains how the app works.
+- **Guidance starts right away.** The route used to take up to 90 s to load on mobile data, and the app stayed silent until then.
+
+### Fixed
+- **GPS in battery saver.** Location is checked again when needed, and the app waits for a position instead of saying the GPS is off. If there's still no position, it suggests turning battery saver off.
+- 122 of 298 anchor photos weren't searchable after the switch to the new photo model, so the correction had nothing to match along much of a route. They're all searchable again.
+
 ## [0.5.1] - 2026-10-26
 
 **For testers:** install `app-release.apk` from this release. Admins test with **Test as user**, walking the route exactly and tapping the checkpoints (admin guide §6b).
@@ -150,7 +179,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.1...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.2...develop
+[0.5.2]: https://github.com/MiguelCock/4u/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/MiguelCock/4u/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/MiguelCock/4u/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MiguelCock/4u/compare/v0.3.1...v0.4.0

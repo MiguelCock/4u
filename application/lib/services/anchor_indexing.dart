@@ -47,3 +47,45 @@ Future<void> indexAnchorPoint(
     ),
   );
 }
+
+/// The photo ids backend-ai-training has indexed (`GET /index_status`), or
+/// null if it couldn't say.
+Future<Set<String>?> fetchIndexedPhotoIds(AiTrainingApi api) async {
+  try {
+    final status = await api.get('/index_status');
+    final ids = status is Map ? status['photo_ids'] : null;
+    return ids is List ? ids.map((id) => '$id').toSet() : null;
+  } on ApiException {
+    return null;
+  }
+}
+
+/// Verified [points] with at least one photo, and of those only the ones
+/// with a photo missing from [indexedPhotoIds] (all of them when it's
+/// null: nothing to compare against). A re-index once left 122 of 298
+/// photos out, and only a test walk found it.
+List<Map<String, dynamic>> pointsMissingFromIndex(
+  Iterable<Map<String, dynamic>> points,
+  List<Map<String, dynamic>> Function(String pointId) photosOf,
+  Set<String>? indexedPhotoIds,
+) => [
+  for (final point in points)
+    if (point['status'] == 'verified')
+      if (photosOf(point['id'] as String) case final photos
+          when photos.isNotEmpty &&
+              (indexedPhotoIds == null ||
+                  photos.any((p) => !indexedPhotoIds.contains('${p['id']}'))))
+        point,
+];
+
+/// How many photos of verified points aren't in [indexedPhotoIds].
+int unsearchablePhotoCount(
+  Iterable<Map<String, dynamic>> points,
+  List<Map<String, dynamic>> Function(String pointId) photosOf,
+  Set<String> indexedPhotoIds,
+) => [
+  for (final point in points)
+    if (point['status'] == 'verified')
+      for (final photo in photosOf(point['id'] as String))
+        if (!indexedPhotoIds.contains('${photo['id']}')) photo,
+].length;

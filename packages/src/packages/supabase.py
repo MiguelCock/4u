@@ -1,5 +1,10 @@
+import asyncio
+import base64
+import hashlib
+import json
 import logging
 import mimetypes
+import time
 from typing import BinaryIO
 
 from fastapi import Header, HTTPException
@@ -17,6 +22,28 @@ _TOKEN_ERROR_CODES = {
     "user_not_found",
     "user_banned",
 }
+
+
+# A verified token is trusted again for this long without asking Supabase:
+# every request used to pay a live Auth round trip, ~0.2-0.5 s on the
+# navigation loop's every tick. The cost is that a token revoked by signing
+# out elsewhere keeps working here for up to this long (an expired one
+# never does: entries also end at the token's own expiry).
+TOKEN_CACHE_SECONDS = 60.0
+_TOKEN_CACHE_MAX = 1000
+
+
+def _seconds_left(token: str) -> float | None:
+    """Seconds until the JWT's own `exp`, read without verifying it - only
+    ever used to shorten a cache entry for a token Supabase just accepted."""
+    try:
+        payload = token.split(".")[1]
+        claims = json.loads(
+            base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+        )
+        return float(claims["exp"]) - time.time()
+    except IndexError, KeyError, TypeError, ValueError:
+        return None
 
 
 class SupaBase:
@@ -125,7 +152,27 @@ class SupaBase:
         # token raises supabase.AuthApiError, which this lets propagate so
         # callers can turn it into a 401. This is what lets a backend
         # service trust a caller-supplied id instead of taking it on faith.
-        return self.client.auth.get_user(access_token).user.id
+        cache: dict[str, tuple[str, float]] = self.__dict__.setdefault(
+            "_token_cache", {}
+        )
+        key = hashlib.sha256(access_token.encode()).hexdigest()
+        now = time.monotonic()
+        hit = cache.get(key)
+        if hit is not None and hit[1] > now:
+            return hit[0]
+        user = self.client.auth.get_user(access_token).user
+        if len(cache) >= _TOKEN_CACHE_MAX:
+            for stale in [k for k, (_, until) in cache.items() if until <= now]:
+                del cache[stale]
+            if len(cache) >= _TOKEN_CACHE_MAX:
+                cache.clear()
+        ttl = TOKEN_CACHE_SECONDS
+        left = _seconds_left(access_token)
+        if left is not None:
+            ttl = min(ttl, left)
+        if ttl > 0:
+            cache[key] = (user.id, now + ttl)
+        return user.id
 
     async def get_caller_id(
         self, authorization: str | None = Header(default=None)
@@ -151,7 +198,8 @@ class SupaBase:
         if not token:
             raise HTTPException(status_code=401, detail="Missing bearer token")
         try:
-            return self.get_user_id_from_token(token)
+            # Off the event loop: it's a blocking network call on a miss.
+            return await asyncio.to_thread(self.get_user_id_from_token, token)
         except AuthApiError as e:
             if e.code in _TOKEN_ERROR_CODES:
                 raise HTTPException(

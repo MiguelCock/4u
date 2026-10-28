@@ -92,3 +92,87 @@ The constants are in `application/lib/services/turn_guidance.dart` and `applicat
 - **Source switch:** when the correction is older than 5 s, guidance blends to raw GPS over 2 s instead of jumping.
 
 In the debug, `turn`, `target_bearing`, `compass`, `position_source` and `guidance` show what guidance saw when it spoke (`cues`).
+
+## 5. Findings from the third test walk (session f0fb7820, 2026-10-27)
+
+The route was 131 m with four straights. It produced 27 ticks, 5 checkpoints and 6 "wrong instruction" reports.
+
+**The correction works; it was showing up late.**
+- Each `/correct_position` round trip took 5–7 s, so ticks ran every ~6 s. On the server, `total_ms` was ~1.7 s, of which the photo search (`search_ms`) was ~1.4 s.
+- The app kept showing each answer until the next one arrived, so it described where the user had been 5–11 s earlier.
+- Scored at the moment each photo was taken (not when the log was posted), the error was 7.6 m for raw GPS and 4.2 m corrected.
+- At the checkpoints:
+
+  | Checkpoint | 0 | 1 | 2 | 3 | 4 | mean |
+  |---|---|---|---|---|---|---|
+  | raw GPS | 6.2 | 4.0 | 3.0 | 5.1 | 9.6 | 5.6 |
+  | corrected, as shown (stale) | 7.7 | 15.0 | 12.1 | 7.8 | 11.1 | 10.7 |
+  | live fix + last correction offset | 0.8 | 3.8 | 1.8 | 3.6 | 7.5 | 3.5 |
+
+**What changed:**
+- **Position:** the app now applies the latest correction's offset to the live GPS fix for up to 20 s (`_kCorrectionFreshness`). That offset is mostly the GPS's own slowly changing error. Checkpoints record that live value and its age (`correction_age_s`).
+- **Scoring:** `scripts/replay.py` scores each tick at its photo time (`debug.photo_at`, or the log time minus `timing_ms` for older logs). It also prints each checkpoint's error.
+
+**Every report came from the compass.**
+- `flutter_compass` (Android's rotation vector, referenced to the magnetometer) counted about 70° for each real 90° left turn. Its error grew at every corner: +20, +50, +65 and +80° on the four straights, while the GPS course matched the route within ~10°.
+- The user turned by the angle they were told, and was told to turn more. On the third straight, guidance never left "orienting" and kept repeating "turn left".
+- The same error made the heading gate refuse good photo matches. Replaying with that gate off scored better: 3.98 m against 4.80 m.
+- **Fix:** `HeadingTracker` (`application/lib/services/heading_tracker.dart`).
+  - The gyroscope, projected on the vertical, measures turns.
+  - The GPS course anchors the absolute direction while walking a steady straight: ≥ 0.7 m/s, 3 courses within 20°, time constant 3 s.
+  - The compass only sets the starting direction, and pulls weakly (60 s) after a minute with no walking.
+  - The heading sent to positioning is the tracked one, converted back to magnetic.
+  - Logs carry `heading`, `heading_source` and `compass_vs_heading`.
+
+**Latency changes:**
+- ai-training prepares its Qdrant collection once per process; it used to make 4 Qdrant Cloud round trips on every search.
+- Verified tokens are cached for 60 s (`packages`).
+- The admin check for test-walk frames runs alongside the search.
+- New in the positioning `debug` output: `upload_ms` (the photo arriving), `auth_ms`, and `search_timing` (`embed` and `qdrant`), to show where the rest of the round trip goes.
+
+**Not retuned yet.** With only 15 corrected ticks, and the heading gate fed a broken compass, this walk is too small to tune on. In the grid, `gps_bias_sigma_m=6` with the heading gate off scored best. Re-run the grid on the next walk.
+
+## 6. Fourth test walk (session f4e3fd25, 2026-10-27)
+
+The same route, with the live corrected position and the gyroscope heading:
+
+| | raw GPS | corrected |
+|---|---|---|
+| off route (mean) | 3.58 m | **0.73 m** |
+| 2D at photo time (mean) | 6.04 m | **3.15 m** |
+| checkpoints 0 / 1 / 2 / 3 / 4 | 3.4 / 4.2 / 5.9 / 8.8 / 15.2 m | 1.0 / 5.5 / 1.1 / 1.0 / 8.8 m |
+
+- **Ticks:** every ~2 s, with `/correct_position` taking a median 1.3 s. On the server, embedding takes 440 ms and the Qdrant query 350 ms. Auth and upload are now ~0.
+- **Heading:** the gyroscope heading was anchored to walking on 74 of 86 ticks. Every turn was announced as about 90°, which was right.
+- **Photo index:**
+  - **Finding:** the new model's collection held 176 of 298 photos. The re-index had silently stopped short, and 10 anchors on this route were missing, including the corner before leg 3 and the point before the destination.
+  - **Effect:** on the last leg, the only match was the corner behind the user, which held the position back. The destination ended 8.8 m off, and arrival didn't fire.
+  - **Fix:** all 298 are indexed now. `GET /index_status` and the admin re-index show and fill any gap.
+- **Corner timing:**
+  - **Finding:** all 3 reports were turn instructions spoken 5–8 s before the user reached the corner. The 8 m reach radius was sized for 5–10 m position error.
+  - **Fix:** the corner now counts as reached at 3 m (`cornerProgress`), or as soon as the user has turned onto the next leg near it. A heads-up comes at 8 m.
+- **Turn repeats:** "Turn left about 60°" came halfway through a turn. Repeats now wait until the needed turn has stopped changing.
+- **Tried and not adopted:** a match fixing only the position across the camera's view, not along it. In replay the 2D error ranged from 2.79 to 3.65 m depending on settings, so it isn't worth the complexity yet.
+
+## 7. First user tests (2026-10-28)
+
+Two blind users walked the route with the non-admin account, on a phone with no working gyroscope (sessions 2729b270, b9b81ae6, 4217ef62). Their notes are in `test_users_comments/first_oficial_test.md`.
+
+**Heading:**
+- Every tick logged `heading_source: compass`, and that compass was ~85° off: it read ~10° while the user walked east.
+- Guidance said "turn right about 75–105°" 36–57 times per session, about every 10 s.
+- The server refused photo matches as `heading_mismatch` on legs 1 and 3, and the "already turned" corner rule fired early.
+- Replayed without that heading, the distance from the route dropped:
+
+  | Session | With the bad heading | Without it |
+  |---|---|---|
+  | 2729b270 | 3.29 m | **2.29 m** |
+  | b9b81ae6 | 2.58 m | **1.55 m** |
+  | 4217ef62 | 2.99 m | **1.37 m** |
+
+**Changes:**
+- **Heading:** `HeadingTracker.reliable` holds only for a gyroscope anchored by walking, or for the GPS course while walking a steady straight. Without a gyroscope, the heading is the GPS course while walking. An unreliable heading is not sent to positioning, gives no turn corrections, and can't decide a corner.
+- **Corners:** turns are spoken from the route's own bend, with no degrees ("Gira a la izquierda / un poco a la izquierda / Da media vuelta").
+- **Distances:** in steps (`stepLengthMeters` 0.7).
+- **Walking:** while walking, a trusted heading more than 50° off for 5 s gets one correction, then 10 s of quiet. No loops.
+- **Route loading:** the admin walk was silent for two legs because the route's 23 anchors were fetched one by one (~90 s on mobile data). They now load in parallel.

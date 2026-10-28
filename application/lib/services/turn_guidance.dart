@@ -1,57 +1,84 @@
 import 'dart:math';
 
+import 'geo_utils.dart';
+
 /// Something the navigation screen should say. Produced by [TurnGuidance]
 /// from the compass heading vs the bearing to the next waypoint.
 sealed class GuidanceCue {
   const GuidanceCue();
 }
 
-/// "Turn left/right about N degrees" (or "turn around" above 150).
+/// How much to turn, in words: blind users in the first user test didn't
+/// relate to degrees ("gira 75 grados") and turned about 90 degrees every
+/// time anyway.
+enum TurnKind {
+  /// "Turn slightly left" (up to 60 degrees).
+  slight,
+
+  /// "Turn left" (60-150 degrees).
+  normal,
+
+  /// "Turn around" (over 150 degrees).
+  around,
+}
+
+/// "Turn (slightly) left/right", or "turn around".
 class TurnCue extends GuidanceCue {
-  /// Rounded to 15-degree steps, always positive.
-  final int degrees;
+  final TurnKind kind;
   final bool right;
 
-  const TurnCue({required this.degrees, required this.right});
+  const TurnCue({required this.kind, required this.right});
 
-  bool get turnAround => degrees > 150;
+  bool get turnAround => kind == TurnKind.around;
 
-  factory TurnCue.from(double signedTurn) => TurnCue(
-    degrees: roundTurnDegrees(signedTurn.abs()),
-    right: signedTurn > 0,
-  );
+  factory TurnCue.from(double signedTurn) {
+    final off = signedTurn.abs();
+    return TurnCue(
+      kind: off > 150
+          ? TurnKind.around
+          : off > 60
+          ? TurnKind.normal
+          : TurnKind.slight,
+      right: signedTurn > 0,
+    );
+  }
 }
 
-/// "You're facing the right way. Start walking forward, N meters."
+/// "Good. Go straight, about N steps."
 class StartWalkingCue extends GuidanceCue {
-  final int meters;
+  final int steps;
 
-  const StartWalkingCue(this.meters);
+  const StartWalkingCue(this.steps);
 }
 
-/// Turn amounts are spoken in 15-degree steps (never "0"): users can't act
-/// on finer precision, and the compass isn't that accurate anyway.
-int roundTurnDegrees(double absDegrees) =>
-    max(15, (absDegrees / 15).round() * 15);
+/// Average step length (meters) used to speak distances as steps, which the
+/// user test asked for instead of meters.
+const double stepLengthMeters = 0.7;
 
-/// Distances are spoken roughly: to the meter under 10m, then to 5m, then
-/// to 10m - a GPS-derived distance jitters too much for more.
-int roundMeters(double meters) {
-  if (meters < 10) return max(1, meters.round());
-  if (meters < 50) return (meters / 5).round() * 5;
-  return (meters / 10).round() * 10;
+/// [meters] as a rough number of steps: exact under 10, then to 5, then to
+/// 10 - a GPS-derived distance jitters too much for more.
+int roundSteps(double meters) {
+  final steps = meters / stepLengthMeters;
+  if (steps < 10) return max(1, steps.round());
+  if (steps < 50) return (steps / 5).round() * 5;
+  return (steps / 10).round() * 10;
 }
 
 /// Face-then-walk state machine toward one target at a time.
 ///
-/// - **Orienting**: while the user faces more than [orientDegrees] away from
-///   the target, say which way and how far to turn. Repeat when the needed
-///   turn changes by more than [repeatChangeDegrees] (after at least
-///   [repeatMinGap]), or every [repeatIdle] if nothing changes.
+/// - **Orienting** (only with a reliable heading, see HeadingTracker): while
+///   the user faces more than [orientDegrees] away from the target, say
+///   which way to turn. Repeat when the needed turn changes by more than
+///   [repeatChangeDegrees] (after at least [repeatMinGap]), or every
+///   [repeatIdle] if nothing changes - never while the user is turning.
 /// - Once within [alignedDegrees] for [alignedHold]: "start walking", and
 ///   switch to **walking**, which stays quiet...
 /// - ...unless the user drifts more than [offCourseDegrees] off for
-///   [offCourseHold]: back to orienting with a new turn instruction.
+///   [offCourseHold]: one correction, then quiet again for at least
+///   [correctionGap]. No loop: a user test got a "turn right" every ~10 s
+///   for minutes from a compass that was ~85 degrees off.
+/// - Without a reliable heading nothing is said at all: the screen speaks
+///   the corners from the route itself.
 ///
 /// The gap between [alignedDegrees] and [orientDegrees] is hysteresis, so a
 /// heading hovering around the edge doesn't flip-flop.
@@ -62,10 +89,18 @@ class TurnGuidance {
   static const orientDegrees = 35.0;
   static const offCourseDegrees = 50.0;
   static const alignedHold = Duration(milliseconds: 1500);
-  static const offCourseHold = Duration(seconds: 3);
+  static const offCourseHold = Duration(seconds: 5);
+  static const correctionGap = Duration(seconds: 10);
   static const repeatMinGap = Duration(seconds: 4);
   static const repeatIdle = Duration(seconds: 10);
   static const repeatChangeDegrees = 20.0;
+
+  /// A needed turn that moved more than this within [rotatingWindow] means
+  /// the user is turning right now: no repeat until they stop. A field test
+  /// got "turn left about 60 degrees" halfway through a 90-degree turn.
+  static const rotatingDegrees = 10.0;
+  static const rotatingWindow = Duration(seconds: 1);
+  final List<({DateTime at, double turn})> _recentTurns = [];
 
   /// Recent |turn| samples while walking: off course is judged on their
   /// median, so one swing of the compass doesn't count (and one aligned
@@ -76,6 +111,7 @@ class TurnGuidance {
   bool _walking = false;
   DateTime? _alignedSince;
   DateTime? _offCourseSince;
+  DateTime? _lastCorrectionAt;
   DateTime? _lastTurnAt;
   double? _lastTurn;
 
@@ -94,18 +130,32 @@ class TurnGuidance {
     _recentOff.clear();
     _alignedSince = null;
     _offCourseSince = null;
+    _lastCorrectionAt = null;
     _lastTurn = announcedTurn;
     _lastTurnAt = announcedTurn == null ? null : now;
+    _recentTurns.clear();
   }
 
   /// [turn] is [signedTurn] from the current heading to the target's
   /// bearing; [metersToTarget] goes into the "start walking" sentence.
+  /// [reliable]: whether that heading can be trusted (HeadingTracker); if
+  /// not, nothing is said.
   GuidanceCue? update({
     required double turn,
     required double metersToTarget,
     required DateTime now,
+    bool reliable = true,
   }) {
+    if (!reliable) {
+      _offCourseSince = null;
+      _alignedSince = null;
+      _recentOff.clear();
+      return null;
+    }
     final off = turn.abs();
+    _recentTurns
+      ..removeWhere((t) => now.difference(t.at) > rotatingWindow)
+      ..add((at: now, turn: turn));
     if (_walking) {
       _recentOff.add(off);
       if (_recentOff.length > _offCourseSamples) _recentOff.removeAt(0);
@@ -115,10 +165,15 @@ class TurnGuidance {
       }
       _offCourseSince ??= now;
       if (now.difference(_offCourseSince!) < offCourseHold) return null;
-      _walking = false;
+      final lastCorrection = _lastCorrectionAt;
+      if (lastCorrection != null &&
+          now.difference(lastCorrection) < correctionGap) {
+        return null;
+      }
       _offCourseSince = null;
       _recentOff.clear();
-      return _turn(turn, now);
+      _lastCorrectionAt = now;
+      return TurnCue.from(turn);
     }
 
     if (off <= alignedDegrees) {
@@ -128,7 +183,7 @@ class TurnGuidance {
       _alignedSince = null;
       _lastTurn = null;
       _lastTurnAt = null;
-      return StartWalkingCue(roundMeters(metersToTarget));
+      return StartWalkingCue(roundSteps(metersToTarget));
     }
     _alignedSince = null;
     if (off < orientDegrees) return null;
@@ -136,6 +191,7 @@ class TurnGuidance {
     final lastTurn = _lastTurn;
     final lastAt = _lastTurnAt;
     if (lastTurn == null || lastAt == null) return _turn(turn, now);
+    if (_rotating(turn)) return null;
     final since = now.difference(lastAt);
     final changed = (turn - lastTurn).abs() > repeatChangeDegrees;
     if ((changed && since >= repeatMinGap) || since >= repeatIdle) {
@@ -143,6 +199,9 @@ class TurnGuidance {
     }
     return null;
   }
+
+  bool _rotating(double turn) =>
+      _recentTurns.any((t) => signedTurn(t.turn, turn).abs() > rotatingDegrees);
 
   static double _median(List<double> values) {
     final sorted = List.of(values)..sort();
@@ -226,4 +285,45 @@ double arrivalRadius({
     radius = min(radius, max(minMeters, lastLegMeters / 2));
   }
   return radius;
+}
+
+/// Where the user is relative to the corner ending the leg they walk.
+enum CornerProgress { approaching, warn, reached }
+
+/// The corner counts as reached within [reachedMeters] of it, or within
+/// that of its end along the leg (while no more than [maxCrossTrackMeters]
+/// to the side), or once the user has already turned onto the next leg
+/// near it (heading within [turnedOntoDegrees] of the next leg and more
+/// than [leftLegDegrees] off the current one). [warnMeters] before it the
+/// screen gives a heads-up. A field test with an 8 m reach radius spoke
+/// every turn 5-8 s before the corner, once the position was good to ~1 m.
+CornerProgress cornerProgress({
+  required double metersToCorner,
+  required double alongRemaining,
+  required double crossTrack,
+  double? heading,
+  double? legBearing,
+  double? nextLegBearing,
+  double reachedMeters = 3,
+  double warnMeters = 8,
+  double maxCrossTrackMeters = 15,
+  double turnedOntoDegrees = 30,
+  double leftLegDegrees = 45,
+}) {
+  final onLeg = crossTrack.abs() <= maxCrossTrackMeters;
+  if (metersToCorner <= reachedMeters ||
+      (onLeg && alongRemaining <= reachedMeters)) {
+    return CornerProgress.reached;
+  }
+  final near =
+      metersToCorner <= warnMeters || (onLeg && alongRemaining <= warnMeters);
+  if (near &&
+      heading != null &&
+      legBearing != null &&
+      nextLegBearing != null &&
+      signedTurn(heading, nextLegBearing).abs() <= turnedOntoDegrees &&
+      signedTurn(heading, legBearing).abs() > leftLegDegrees) {
+    return CornerProgress.reached;
+  }
+  return near ? CornerProgress.warn : CornerProgress.approaching;
 }
