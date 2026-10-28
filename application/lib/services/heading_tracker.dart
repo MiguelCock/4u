@@ -41,18 +41,51 @@ class HeadingTracker {
   bool _hasGyro = false;
   List<double>? _gravity;
   DateTime? _lastGyro;
-  DateTime? _lastCompass;
+  DateTime? _lastCompassAt;
   DateTime? _lastGps;
   DateTime? _gpsAnchoredAt;
   final List<({double course, DateTime at})> _courses = [];
 
+  /// Without a gyroscope: the last compass reading (true north), and how
+  /// far it was from the walking direction last time both were known.
+  double? _lastCompass;
+  double? _compassOffset;
+
+  /// Without a gyroscope the heading counts only this long after the last
+  /// steady walking course.
+  static const _walkingCourseValidFor = Duration(seconds: 3);
+
   /// Degrees from true north (0-360), or null before any reading.
   double? get value => _heading == null ? null : _wrap(_heading!);
 
-  /// `gyro+gps` (anchored to walking recently), `gyro+compass`, or
-  /// `compass` (no gyroscope: just the smoothed compass).
+  /// Whether a gyroscope is feeding this tracker.
+  bool get hasGyroscope => _hasGyro;
+
+  /// Whether [value] can be trusted for turn feedback and the photo
+  /// heading gate. The raw compass never is: on a phone without a
+  /// gyroscope it was ~85 degrees off in a user test, and guidance said
+  /// "turn right" for minutes while the user walked straight. With a
+  /// gyroscope it is once walking has anchored it; without one, only while
+  /// walking a steady straight (the heading is then the GPS course).
+  bool reliable(DateTime now) {
+    final anchored = _gpsAnchoredAt;
+    if (anchored == null) return false;
+    return _hasGyro || now.difference(anchored) <= _walkingCourseValidFor;
+  }
+
+  /// `gyro+gps` (anchored to walking recently), `gyro+compass`, `gps`
+  /// (no gyroscope, walking), `compass+offset` (no gyroscope, standing,
+  /// with an offset learned while walking) or `compass`.
   String get source {
-    if (!_hasGyro) return 'compass';
+    if (!_hasGyro) {
+      final anchored = _gpsAnchoredAt;
+      if (anchored != null &&
+          (_lastCompassAt ?? anchored).difference(anchored) <=
+              _walkingCourseValidFor) {
+        return 'gps';
+      }
+      return _compassOffset == null ? 'compass' : 'compass+offset';
+    }
     final anchored = _gpsAnchoredAt;
     return anchored != null &&
             (_lastGyro ?? anchored).difference(anchored) < gpsAnchorFor
@@ -96,12 +129,22 @@ class HeadingTracker {
 
   /// Smoothed compass, already corrected to true north.
   void compass(double trueDegrees, DateTime at) {
-    final last = _lastCompass;
-    _lastCompass = at;
+    final last = _lastCompassAt;
+    _lastCompassAt = at;
+    _lastCompass = trueDegrees;
     final heading = _heading;
-    if (heading == null || !_hasGyro) {
-      // The start, or a phone without a gyroscope: the compass is all
-      // there is.
+    if (!_hasGyro) {
+      // No gyroscope: while walking the GPS course rules (gpsCourse), and
+      // standing still the compass is corrected by the offset it had then.
+      final anchored = _gpsAnchoredAt;
+      if (anchored != null &&
+          at.difference(anchored) <= _walkingCourseValidFor) {
+        return;
+      }
+      _heading = trueDegrees + (_compassOffset ?? 0);
+      return;
+    }
+    if (heading == null) {
       _heading = trueDegrees;
       return;
     }
@@ -133,6 +176,14 @@ class HeadingTracker {
         .reduce(max);
     if (spread > maxCourseSpread) return;
     _gpsAnchoredAt = at;
+    if (!_hasGyro) {
+      // Walking direction is the heading; remember how far off the compass
+      // was, for when the user stops.
+      _heading = course;
+      final compass = _lastCompass;
+      if (compass != null) _compassOffset = signedTurn(compass, course);
+      return;
+    }
     if (_heading == null) {
       _heading = course;
       return;

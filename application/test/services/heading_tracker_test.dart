@@ -105,4 +105,54 @@ void main() {
     expect(t.value, 50);
     expect(t.source, 'compass');
   });
+
+  group('without a gyroscope', () {
+    test('walking: the heading is the GPS course, and reliable', () {
+      final t = HeadingTracker();
+      t.compass(10, _at(0)); // 80 degrees off
+      expect(t.reliable(_at(0)), isFalse);
+      for (var s = 1; s <= 4; s++) {
+        t.compass(10, _at(s.toDouble()));
+        t.gpsCourse(90, 1.1, _at(s.toDouble()));
+      }
+      expect(t.value, closeTo(90, 1e-9));
+      expect(t.reliable(_at(4)), isTrue);
+      expect(t.source, 'gps');
+    });
+
+    test('standing: compass plus the learned offset, not reliable', () {
+      final t = HeadingTracker();
+      for (var s = 0; s <= 4; s++) {
+        t.compass(10, _at(s.toDouble()));
+        t.gpsCourse(90, 1.1, _at(s.toDouble()));
+      }
+      t.gpsCourse(0, 0.1, _at(5));
+      t.compass(20, _at(10));
+      expect(t.value, closeTo(100, 1e-9));
+      expect(t.reliable(_at(10)), isFalse);
+      expect(t.source, 'compass+offset');
+    });
+
+    test('never walked: the compass, never reliable', () {
+      final t = HeadingTracker();
+      t.compass(10, _at(0));
+      t.compass(12, _at(1));
+      expect(t.value, 12);
+      expect(t.reliable(_at(1)), isFalse);
+    });
+  });
+
+  test('with a gyroscope, reliable once walking anchored it', () {
+    final t = HeadingTracker();
+    t.accelerometer(0, 9.81, 0);
+    t.compass(10, _at(0));
+    t.gyro(0, 0, 0, _at(0));
+    t.gyro(0, 0, 0, _at(0.02));
+    expect(t.hasGyroscope, isTrue);
+    expect(t.reliable(_at(1)), isFalse);
+    for (var s = 1; s <= 4; s++) {
+      t.gpsCourse(90, 1.1, _at(s.toDouble()));
+    }
+    expect(t.reliable(_at(60)), isTrue);
+  });
 }

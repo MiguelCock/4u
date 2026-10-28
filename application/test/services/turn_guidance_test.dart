@@ -7,17 +7,18 @@ void main() {
   DateTime at(int ms) => t0.add(Duration(milliseconds: ms));
 
   group('rounding', () {
-    test('turns round to 15-degree steps, never zero', () {
-      expect(roundTurnDegrees(3), 15);
-      expect(roundTurnDegrees(44), 45);
-      expect(roundTurnDegrees(97), 90);
+    test('turns are spoken as slight, normal or around', () {
+      expect(TurnCue.from(40).kind, TurnKind.slight);
+      expect(TurnCue.from(-90).kind, TurnKind.normal);
+      expect(TurnCue.from(140).kind, TurnKind.normal);
+      expect(TurnCue.from(-170).kind, TurnKind.around);
     });
 
-    test('distances get coarser as they grow', () {
-      expect(roundMeters(0.4), 1);
-      expect(roundMeters(7.6), 8);
-      expect(roundMeters(23), 25);
-      expect(roundMeters(84), 80);
+    test('distances are spoken as steps, coarser as they grow', () {
+      expect(roundSteps(0.3), 1);
+      expect(roundSteps(4.2), 6);
+      expect(roundSteps(28), 40);
+      expect(roundSteps(84), 120);
     });
 
     test('a turn above 150 degrees is "turn around"', () {
@@ -33,14 +34,14 @@ void main() {
       final first = g.update(turn: 90, metersToTarget: 15, now: at(0));
       expect(first, isA<TurnCue>());
       expect((first as TurnCue).right, isTrue);
-      expect(first.degrees, 90);
+      expect(first.kind, TurnKind.normal);
 
       // Turning: aligned but not yet held long enough.
       expect(g.update(turn: 10, metersToTarget: 15, now: at(1000)), isNull);
       expect(g.update(turn: 5, metersToTarget: 15, now: at(2000)), isNull);
       final walk = g.update(turn: 4, metersToTarget: 15, now: at(2600));
       expect(walk, isA<StartWalkingCue>());
-      expect((walk as StartWalkingCue).meters, 15);
+      expect((walk as StartWalkingCue).steps, 20);
       expect(g.walking, isTrue);
     });
 
@@ -71,14 +72,30 @@ void main() {
       for (var ms = 0; ms <= 2000; ms += 500) {
         expect(g.update(turn: 40, metersToTarget: 10, now: at(ms)), isNull);
       }
-      // A real drift has to hold for the whole 3 s window.
+      // A real drift has to hold for the whole 5 s window.
       GuidanceCue? cue;
-      for (var ms = 2500; ms <= 7000 && cue == null; ms += 500) {
+      var cuedAt = 0;
+      for (var ms = 2500; ms <= 10000 && cue == null; ms += 500) {
         cue = g.update(turn: 70, metersToTarget: 10, now: at(ms));
-        if (ms < 5000) expect(cue, isNull, reason: 'too early at $ms');
+        if (ms < 7000) expect(cue, isNull, reason: 'too early at $ms');
+        cuedAt = ms;
       }
       expect(cue, isA<TurnCue>());
-      expect(g.walking, isFalse);
+      // One correction, then quiet: still walking, no repeat for 10 s.
+      expect(g.walking, isTrue);
+      for (var ms = cuedAt + 500; ms < cuedAt + 10000; ms += 500) {
+        expect(g.update(turn: 70, metersToTarget: 10, now: at(ms)), isNull);
+      }
+    });
+
+    test('says nothing without a reliable heading', () {
+      final g = TurnGuidance()..reset(now: t0);
+      for (var ms = 0; ms <= 20000; ms += 500) {
+        expect(
+          g.update(turn: 90, metersToTarget: 10, now: at(ms), reliable: false),
+          isNull,
+        );
+      }
     });
 
     test('compass sway while walking is ignored', () {
@@ -183,7 +200,7 @@ void main() {
       expect(g.update(turn: -50, metersToTarget: 40, now: at(5500)), isNull);
       final cue = g.update(turn: -50, metersToTarget: 40, now: at(6100));
       expect(cue, isA<TurnCue>());
-      expect((cue as TurnCue).degrees, 45);
+      expect((cue as TurnCue).kind, TurnKind.slight);
     });
   });
 

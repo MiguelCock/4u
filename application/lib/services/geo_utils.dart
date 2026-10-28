@@ -133,6 +133,9 @@ double guidanceBearing(
   return bearingDegrees(here, target);
 }
 
+/// A bend sharper than this (degrees) between two legs is a corner.
+const double kCornerTurnDegrees = 30;
+
 /// Indexes into [points] (a route, start first) where guidance should
 /// stop: each corner where the direction changes by more than
 /// [turnDegrees], every index in [keep], and the last point.
@@ -144,7 +147,7 @@ double guidanceBearing(
 /// last kept point, so a gradual curve still gets one once it adds up.
 List<int> routeCorners(
   List<LatLng> points, {
-  double turnDegrees = 30,
+  double turnDegrees = kCornerTurnDegrees,
   Set<int> keep = const {},
 }) {
   if (points.length < 2) return [for (var i = 0; i < points.length; i++) i];

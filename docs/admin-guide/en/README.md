@@ -224,6 +224,10 @@ Afterwards, open **Sessions** in the drawer, choose the user, and **Watch** the 
 
 Tap any of them to see the details logged there.
 
+**What the user sees, and what you see.** A regular user sees no coordinates and no map during the trip: just a large **Repeat instruction** button and **End navigation**. Their start point comes from GPS, with no photos. In **Test as user** you still see the map, both coordinates (GPS and corrected) and the camera start-point check (tap the **Start** row).
+
+**How to hold the phone.** For photos to be recognised, hold the phone upright in front of the chest with the back camera facing forward. Explain it to the user this way; the app's tutorial (the **?** button) says it too.
+
 ## 7. Deleting things
 
 Universities and buildings have a trash icon on their row. On an anchor point row, **Add photo** and **Delete** are in the ⋮ menu, next to the verify and edit buttons.

@@ -153,3 +153,26 @@ The same route, with the live corrected position and the gyroscope heading:
   - **Fix:** the corner now counts as reached at 3 m (`cornerProgress`), or as soon as the user has turned onto the next leg near it. A heads-up comes at 8 m.
 - **Turn repeats:** "Turn left about 60°" came halfway through a turn. Repeats now wait until the needed turn has stopped changing.
 - **Tried and not adopted:** a match fixing only the position across the camera's view, not along it. In replay the 2D error ranged from 2.79 to 3.65 m depending on settings, so it isn't worth the complexity yet.
+
+## 7. First user tests (2026-10-28)
+
+Two blind users walked the route with the non-admin account, on a phone with no working gyroscope (sessions 2729b270, b9b81ae6, 4217ef62). Their notes are in `test_users_comments/first_oficial_test.md`.
+
+**Heading:**
+- Every tick logged `heading_source: compass`, and that compass was ~85° off: it read ~10° while the user walked east.
+- Guidance said "turn right about 75–105°" 36–57 times per session, about every 10 s.
+- The server refused photo matches as `heading_mismatch` on legs 1 and 3, and the "already turned" corner rule fired early.
+- Replayed without that heading, the distance from the route dropped:
+
+  | Session | With the bad heading | Without it |
+  |---|---|---|
+  | 2729b270 | 3.29 m | **2.29 m** |
+  | b9b81ae6 | 2.58 m | **1.55 m** |
+  | 4217ef62 | 2.99 m | **1.37 m** |
+
+**Changes:**
+- **Heading:** `HeadingTracker.reliable` holds only for a gyroscope anchored by walking, or for the GPS course while walking a steady straight. Without a gyroscope, the heading is the GPS course while walking. An unreliable heading is not sent to positioning, gives no turn corrections, and can't decide a corner.
+- **Corners:** turns are spoken from the route's own bend, with no degrees ("Gira a la izquierda / un poco a la izquierda / Da media vuelta").
+- **Distances:** in steps (`stepLengthMeters` 0.7).
+- **Walking:** while walking, a trusted heading more than 50° off for 5 s gets one correction, then 10 s of quiet. No loops.
+- **Route loading:** the admin walk was silent for two legs because the route's 23 anchors were fetched one by one (~90 s on mobile data). They now load in parallel.

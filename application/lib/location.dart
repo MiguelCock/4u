@@ -5,7 +5,11 @@ import 'l10n/app_localizations.dart';
 import 'services/location_service.dart';
 
 class LocationInfo extends StatefulWidget {
-  const LocationInfo({super.key});
+  /// False hides the coordinates themselves, keeping only the waiting
+  /// spinner and the location errors with their fix-it button.
+  final bool showCoordinates;
+
+  const LocationInfo({super.key, this.showCoordinates = true});
 
   @override
   State<LocationInfo> createState() => _LocationInfoState();
@@ -101,6 +105,8 @@ class _LocationInfoState extends State<LocationInfo> {
         ),
       );
     }
+
+    if (!widget.showCoordinates) return const SizedBox.shrink();
 
     // This container's background is a fixed light grey regardless of
     // theme - in dark mode (or the high-contrast dark scheme) the ambient
