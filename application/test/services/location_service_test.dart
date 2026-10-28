@@ -34,8 +34,7 @@ class _FakePlatform extends LocationPlatform {
   @override
   Future<Position?> lastKnown() async => null;
   @override
-  Future<Position> current(Duration timeLimit) =>
-      Completer<Position>().future; // never answers: the stream does
+  Future<Position> current(Duration timeLimit) => Completer<Position>().future; // never answers: the stream does
   @override
   Stream<Position> positions() {
     streams++;
