@@ -185,7 +185,12 @@ async def correct_position(
     # math - two in-flight requests for the same session_id (e.g. a client
     # retry) must not interleave around that awaited call. See
     # app/session_store.py's module docstring.
-    lock = _store.get_lock(session_id, latitude, longitude)
+    # Filters are keyed by caller too, so one user can't feed or reset
+    # another user's session by sending its id, and each caller keeps at
+    # most a few live filters however many ids they invent.
+    key = f"{caller_id}:{session_id}"
+    _store.limit_owner(f"{caller_id}:")
+    lock = _store.get_lock(key, latitude, longitude)
     async with lock:
         search_started = time.perf_counter()
         search_timing: dict = {}
@@ -207,7 +212,7 @@ async def correct_position(
             frame_url = db.client.storage.from_(FRAMES_BUCKET).get_public_url(name)
             background.add_task(_store_frame, photo_bytes, name)
         result = await _store.correct(
-            session_id=session_id,
+            session_id=key,
             lat=latitude,
             lng=longitude,
             accuracy=accuracy,

@@ -6,6 +6,19 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+### Added
+- **Admin web app** at `/admin/` on the server: universities, buildings, anchor points, connections, users and sessions in a browser, with a side menu on wide screens. Photos are uploaded from files, with the direction they face chosen before uploading. Only admins can use it.
+- **Deactivate accounts** (admin, Users): a deactivated account can't use the app until it's activated again.
+- **User guide** (Spanish/English, `docs/user-guide/`): installing and updating, choosing a destination, how to hold the phone, what the instructions mean, and common problems. The admin guide now covers the web app and the Users section.
+- **Re-index verified points** also removes photos from search that no longer belong there (deleted photos, points no longer verified).
+
+### Changed
+- **The photo search keeps working with several users at once.** It used to process one request at a time, so with a few people navigating, photo matches stopped arriving.
+
+### Fixed
+- **Security:** the server limits how many requests one client can send per second, photo search is no longer reachable from outside the server, a deactivated account is refused, one user can't affect another's navigation session, and ids are validated before they reach a database filter.
+- **Server:** the services now run on the Python version they're written for, the profile list no longer stops at 1000 users, larger photo uploads are accepted, and a broken image gets an error message instead of a server error.
+
 ## [0.5.2] - 2026-10-28
 
 **For testers:** install `app-release.apk` from this release. Version 0.5.1 keeps working for now but is deprecated and stops working with the next release; from this version on, the app itself tells you when an update is out.

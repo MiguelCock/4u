@@ -72,13 +72,18 @@ class LocationService {
   /// Doesn't wait for a fix: the first one arrives on [positionStream]
   /// (see [ensureReady] to wait for it).
   Future<LocationError?> initialize() async {
-    _status ??= _platform.serviceStatus().listen((status) {
-      if (status == ServiceStatus.enabled) {
-        initialize();
-      } else {
-        lastError = LocationError.serviceDisabled;
-      }
-    }, onError: (_) {});
+    try {
+      _status ??= _platform.serviceStatus().listen((status) {
+        if (status == ServiceStatus.enabled) {
+          initialize();
+        } else {
+          lastError = LocationError.serviceDisabled;
+        }
+      }, onError: (_) {});
+    } catch (_) {
+      // Not every platform has it (the web throws right away); without it,
+      // ensureReady still re-checks on demand.
+    }
 
     if (!await _platform.isServiceEnabled()) {
       return lastError = LocationError.serviceDisabled;

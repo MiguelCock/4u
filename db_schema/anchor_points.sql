@@ -14,6 +14,12 @@ CREATE TABLE anchor_points (
 );
 
 -- Indexes
+-- A GiST index on two plain DOUBLE PRECISION columns needs btree_gist.
+-- It speeds up range filters on latitude/longitude, not radius searches:
+-- if the backend ever queries by distance in SQL, PostGIS (a geography
+-- column with its own GiST index) is the right tool. Photo search by radius
+-- happens in Qdrant instead (backend-ai-training's GeoRadius filter).
+CREATE EXTENSION IF NOT EXISTS btree_gist;
 CREATE INDEX idx_anchor_points_location ON anchor_points USING GiST (latitude, longitude);
 CREATE INDEX idx_anchor_points_building_floor ON anchor_points (building_id, floor);
 CREATE INDEX idx_anchor_points_location_type ON anchor_points (location_type_id);

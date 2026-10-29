@@ -2,20 +2,25 @@
 
 Esta guía es para los administradores que usan la aplicación para agregar y gestionar los datos que hacen funcionar el sistema de navegación: lugares (places), edificios (buildings), puntos de anclaje (anchor points) y las conexiones entre ellos. Explica qué hacer, en qué orden, y qué significa realmente cada campo de cada pantalla — no solo si es obligatorio u opcional.
 
-> Esta guía describe la aplicación tal como existe hoy. Las pantallas de la aplicación están únicamente en inglés, así que cada campo a continuación muestra su etiqueta exacta tal como aparece en pantalla.
+> Esta guía describe la aplicación tal como existe hoy. La aplicación está en español e inglés (sigue el idioma del teléfono, o el elegido en Ajustes). Los nombres de campos de abajo son las etiquetas en inglés; en español las mismas pantallas muestran su traducción. Todo esto funciona en la aplicación del teléfono, y casi todo también en la [aplicación web](#6c-la-aplicación-web).
 
 ## 1. Primeros pasos
 
 Se accede al área de administración automáticamente al iniciar sesión con una cuenta de administrador — no hay un inicio de sesión separado para administradores; la aplicación te dirige a la vista de administración según el rol de tu cuenta.
 
-La navegación vive en un menú lateral (drawer), que se abre con el ícono de hamburguesa (☰) en la esquina superior izquierda de la pantalla. El encabezado del menú muestra "Admin" y tu correo electrónico de la sesión iniciada, y debajo, cuatro secciones:
+La navegación vive en un menú lateral (drawer), que se abre con el ícono de hamburguesa (☰) en la esquina superior izquierda de la pantalla. En una pantalla ancha, como la aplicación web en un computador, queda abierto a la izquierda. El encabezado del menú muestra "Admin" y tu correo electrónico de la sesión iniciada, y debajo, cinco secciones:
 
-- **Places** (ícono de bandera) — Lugares
-- **Buildings** (ícono de edificio) — Edificios
-- **Anchor points** (ícono de pin) — Puntos de anclaje
-- **Connections** (ícono de línea) — Conexiones
+- **Universidades** (ícono de bandera)
+- **Edificios** (ícono de edificio)
+- **Puntos de anclaje** (ícono de pin)
+- **Conexiones** (ícono de línea)
+- **Usuarios** (ícono de personas), ver [§6d](#6d-usuarios)
 
-Toca una sección para cambiar a ella; el menú se cierra automáticamente. El título en la parte superior de la pantalla siempre indica en qué sección te encuentras. Dos íconos siempre están disponibles en la esquina superior derecha: uno de actualizar (recarga todo desde el servidor) y uno de cerrar sesión (te desconecta de inmediato, sin confirmación).
+Debajo están **Sesiones** y **Comentarios** ([§6b](#6b-probar-una-ruta-y-revisarla)), **Reindexar puntos verificados** ([§5.3](#53-revisar-y-verificar)) y **Test as user** (solo en el teléfono).
+
+Toca una sección para cambiar a ella; el menú se cierra automáticamente. El título en la parte superior de la pantalla siempre indica en qué sección te encuentras. La esquina superior derecha siempre tiene un ícono de actualizar (recarga todo desde el servidor), uno de ajustes (idioma, alto contraste, tamaño del texto, voz) y uno de cerrar sesión (te desconecta de inmediato, sin confirmación).
+
+En esta guía, "lugar" (place) y "universidad" son lo mismo: la aplicación llama *universidades* a los lugares.
 
 ## 2. Orden recomendado de trabajo
 
@@ -75,7 +80,7 @@ Un **building** es un edificio físico dentro de un lugar.
 
 ### Editar un edificio
 
-Toca el ícono de lápiz en la fila del edificio. Igual que con los lugares, **Code** no se puede cambiar después de creado — y nota que el campo **Place** ni siquiera aparece en la pantalla de edición: no es posible mover un edificio a otro lugar. Si un edificio quedó asignado al lugar equivocado, elimínalo y créalo de nuevo.
+Toca el ícono de lápiz en la fila del edificio. Igual que con los lugares, **Code** no se puede cambiar después de creado. El menú **Universidad** sí: úsalo para mover un edificio que quedó asignado a la universidad equivocada.
 
 ### Eliminar un edificio
 
@@ -85,7 +90,7 @@ Mismo patrón de advertencia en cascada que los lugares — verás cuántos punt
 
 | Etiqueta en pantalla | ¿Obligatorio? | Qué significa | Ejemplo |
 |---|---|---|---|
-| **Place** (solo al crear) | Obligatorio | A qué lugar pertenece este edificio. Filtra la lista de edificios que se verá en el resto de la aplicación. | Main Campus |
+| **Universidad** | Obligatorio | A qué universidad pertenece este edificio. Filtra la lista de edificios que se verá en el resto de la aplicación. Se puede cambiar al editar. | Main Campus |
 | **Code** (solo al crear) | Obligatorio | Misma idea que el código de un lugar — un identificador corto, único e inmutable para este edificio específico. | `B1` |
 | **Name** | Obligatorio | El nombre completo del edificio, mostrado en toda la aplicación. | `Main Building` |
 | **Address (optional)** | Opcional | Dirección de referencia. | — |
@@ -116,8 +121,9 @@ Un **anchor point** es un punto físico específico — una puerta, una intersec
 | Etiqueta en pantalla | ¿Obligatorio? | Qué significa | Ejemplo |
 |---|---|---|---|
 | **Place** / **Building** | Ambos obligatorios | A qué edificio pertenece este punto (el menú de Place solo filtra la lista de edificios). | — |
-| **Location type** | Obligatorio, por defecto "entrance" | Qué tipo de lugar es este. Lista completa de opciones y significados en [§8](#8-referencia-rápida). | `entrance` |
-| **Description** | Obligatoria | El nombre legible del punto — se muestra en todas partes. Describe el lugar real, no una etiqueta genérica. | `Front door, north side` |
+| **Location type** | Obligatorio, los puntos nuevos empiezan como "hallway" | Qué tipo de lugar es este, elegido en un selector con búsqueda agrupado por categorías. Lista completa en [§8](#8-referencia-rápida). | `entrance` |
+| **Floor** | Obligatorio | En qué piso del edificio está el punto. "Piso 1" es la planta baja; la lista ofrece los pisos del edificio. | `Piso 1` |
+| **Description** | Obligatoria para los tipos de destino (★ en [§8](#8-referencia-rápida)), opcional para los demás | El nombre legible del punto — el que los usuarios eligen y escuchan. Describe el lugar real, no una etiqueta genérica. | `Puerta principal, lado norte` |
 | **Indoor location** (interruptor) | Activado por defecto | Interior vs. exterior — ver arriba por qué importa. | — |
 | **Lighting** (menú desplegable) | Opcional, por defecto "Not set" | La iluminación típica de este lugar exacto: Bright / Moderate / Dim. Es un contexto útil para quien revise las fotos después (una foto oscura puede simplemente significar un pasillo con poca luz, no una mala foto), y con el tiempo esta información está pensada para ayudar a que el sistema de reconocimiento visual sea más confiable en distintas condiciones de luz. | Un lugar junto a una ventana grande al mediodía → `Bright`; una escalera interior con solo luces de techo → `Dim` |
 | **Surface (optional)** | Opcional, texto libre | La superficie física del suelo. Puede servir como una pista útil de orientación (por ejemplo, un cambio de baldosa a alfombra puede marcar el límite de una sala). | `tile`, `carpet`, `concrete`, `grass` |
@@ -160,11 +166,11 @@ Para editar un punto de anclaje: toca el ícono de lápiz en su fila. Verás los
 | Botón **Manage photos** | Abre la misma pantalla de fotos de [§5.2](#52-tomar-fotos) para agregar o eliminar fotos. |
 | Botón **Move on map** | Permite volver a elegir la posición del punto en un mapa, por ejemplo si resulta estar en el lugar equivocado. |
 
-**Si al verificar aparece un error de indexación:** el punto queda guardado como Verified, pero la búsqueda por fotos no lo recibió, así que la app todavía no puede reconocerlo. Cuando se arregle el problema del servidor, abre el menú y toca **Reindexar puntos verificados**. Vuelve a enviar todos los puntos verificados que tengan fotos e indica cuántos se enviaron bien.
+**Si al verificar aparece un error de indexación:** el punto queda guardado como Verified, pero la búsqueda por fotos no lo recibió, así que la app todavía no puede reconocerlo. Cuando se arregle el problema del servidor, abre el menú y toca **Reindexar puntos verificados**. Primero quita de la búsqueda por fotos lo que ya no debería estar (fotos eliminadas, puntos que ya no están verificados). Luego envía solo los puntos verificados cuyas fotos todavía no se pueden buscar, reintenta cada fallo dos veces y termina con la lista de los puntos que aun así fallaron. Cuando hay fotos verificadas que no se pueden buscar, la opción del menú muestra un aviso rojo "N fotos no se pueden buscar": esa es la señal para usarla.
 
 ## 6. Connections (conexiones)
 
-Una **connection** registra que una persona puede caminar directamente entre dos puntos de anclaje — va construyendo el grafo de transitabilidad que la aplicación podrá usar más adelante para dar indicaciones de ruta paso a paso, no es solo un enlace arbitrario entre dos pines.
+Una **connection** registra que una persona puede caminar directamente entre dos puntos de anclaje. Juntas forman el grafo de transitabilidad: las rutas se calculan solo a lo largo de las conexiones, y las instrucciones paso a paso las siguen.
 
 Hay dos formas de crear una — elige la que se ajuste a la situación:
 
@@ -227,6 +233,25 @@ Toca cualquiera para ver los detalles registrados ahí.
 **Lo que ve el usuario y lo que ves tú.** Un usuario normal no ve coordenadas ni mapa durante el viaje: solo un botón grande **Repetir instrucción** y **Terminar navegación**. Su punto de partida sale del GPS, sin fotos. En **Test as user** sigues viendo el mapa, las coordenadas (GPS y corregida) y la revisión del punto de partida con la cámara (toca la fila **Inicio**).
 
 **Cómo sostener el teléfono.** Para que las fotos se reconozcan, el teléfono va vertical frente al pecho, con la cámara trasera mirando hacia adelante. Explícaselo así al usuario; el tutorial de la app (botón **?**) también lo dice.
+
+## 6c. La aplicación web
+
+Todo lo de esta guía, salvo tomar fotos con la cámara y **Test as user**, también funciona en un navegador, en una pantalla más grande: **https://184-195-103-237.sslip.io/admin/**. Entra con tu cuenta de administrador; a una cuenta que no es de administrador se le indica usar la aplicación del teléfono.
+
+- **Menú lateral:** en una ventana ancha, el menú queda abierto a la izquierda en vez de deslizarse.
+- **Fotos:** la pantalla de fotos de un punto tiene **Subir fotos** en lugar de la cámara. Elige uno o más archivos de imagen tomados parado en el punto. Antes de subirlas, elige hacia dónde miran (N, NE, E…). Elige **No sé** si no estás seguro: esa foto nunca se descarta por mirar hacia otro lado.
+- **Usuarios:** cada fila tiene además **Desactivar cuenta**. Una cuenta desactivada no puede usar la aplicación ni la web hasta que un administrador la vuelva a activar. No puedes desactivarte a ti mismo.
+
+## 6d. Usuarios
+
+La sección **Usuarios** lista todas las cuentas.
+
+- **Ascender / quitar administrador:** el ícono de escudo de una fila convierte a esa persona en administradora, o le quita los permisos (con confirmación). Está desactivado en tu propia fila.
+- **Desactivar / activar:** el ícono de persona bloquea una cuenta sin eliminarla. Una cuenta desactivada no puede usar la aplicación ni la web hasta que se vuelva a activar. Está desactivado en tu propia fila.
+- **Cuentas sin perfil:** si un registro no terminó, la cuenta aparece en una tarjeta resaltada arriba. Su botón crea el perfil que falta, y la persona aparece luego en la lista normal.
+- **El primer administrador** se asigna a mano en la base de datos (`UPDATE profiles SET role_id = 2 WHERE id = ...`), como dice la nota arriba de la lista.
+
+**Versiones de la aplicación.** La aplicación funciona en su versión más nueva y en la anterior. Quien tenga la versión anterior ve "Nueva versión disponible" una vez cada vez que abre la aplicación, con un botón para descargarla. Las versiones más viejas solo muestran "Actualización necesaria" con el enlace de descarga, hasta que se instale el APK nuevo. Las versiones están en la página de releases del proyecto en GitHub. Para quienes prueban, la [guía del usuario](../../user-guide/README.md) explica cómo instalar y actualizar.
 
 ## 7. Eliminar datos
 

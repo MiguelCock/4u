@@ -325,3 +325,34 @@ async def test_search_similar_reports_its_timing():
     with patch("httpx.AsyncClient.post", AsyncMock(return_value=response)):
         await _search_similar(b"x", "frame.jpg", 6.2, -75.6, timing=timing)
     assert timing == {"embed": 480, "qdrant": 35}
+
+
+def test_a_session_id_is_private_to_its_caller():
+    from app.main import _store
+
+    with patch("app.main._search_similar", AsyncMock(return_value=[])):
+        _as_caller("alice")
+        client.post(
+            "/correct_position",
+            data={
+                "session_id": "shared",
+                "latitude": 6.2,
+                "longitude": -75.6,
+                "accuracy": 5.0,
+            },
+            files={"photo": ("frame.jpg", b"x", "image/jpeg")},
+        )
+        _as_caller("mallory")
+        client.post(
+            "/correct_position",
+            data={
+                "session_id": "shared",
+                "latitude": 6.3,
+                "longitude": -75.7,
+                "accuracy": 5.0,
+            },
+            files={"photo": ("frame.jpg", b"x", "image/jpeg")},
+        )
+    assert "alice:shared" in _store._sessions
+    assert "mallory:shared" in _store._sessions
+    assert _store._sessions["alice:shared"].lat0 == 6.2

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -196,10 +197,46 @@ class _AuthGateState extends State<AuthGate> {
             if (roleId == kAdminRoleId) {
               return const AdminHomeScreen();
             }
+            // The web app is only for managing the data: trips need the
+            // phone's camera, GPS and sensors.
+            if (kIsWeb) return const _WebAdminOnlyScreen();
             return const UserHomeScreen();
           },
         );
       },
+    );
+  }
+}
+
+class _WebAdminOnlyScreen extends StatelessWidget {
+  const _WebAdminOnlyScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.webAdminOnlyTitle)),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.phone_android, size: 56),
+                const SizedBox(height: 16),
+                Text(l10n.webAdminOnlyBody, textAlign: TextAlign.center),
+                const SizedBox(height: 24),
+                OutlinedButton(
+                  onPressed: () => Supabase.instance.client.auth.signOut(),
+                  child: Text(l10n.commonLogOut),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

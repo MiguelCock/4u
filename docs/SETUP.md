@@ -16,8 +16,7 @@ roles.sql            -- self-seeds 'user'/'admin'
 location_type.sql    -- self-seeds the 33 location types
 profiles.sql
 buildings.sql
-anchor_points.sql    -- run `CREATE EXTENSION IF NOT EXISTS btree_gist;` first -
-                      -- its GiST index needs it
+anchor_points.sql    -- also enables btree_gist, which its GiST index needs
 anchor_point_photos.sql  -- one row per photo (~4-8 per anchor point);
                           -- must come after anchor_points.sql
 anchor_point_connections.sql  -- walkability graph edges between anchor points
@@ -104,6 +103,27 @@ ipconfig getifaddr en0                              # macOS (Wi-Fi)
 
 e.g. `API_GATEWAY_URL=http://192.168.1.23:8000`. Also confirm the phone and dev machine are on the same WiFi network, and that the dev machine's firewall allows inbound connections on port 8000 (e.g. on Linux with `ufw` active: `sudo ufw allow 8000/tcp`). See `application/README.md` for ADB pairing steps.
 
+## 5b. Build and serve the admin web app
+
+The admin screens also run in a browser (admins only), served by the gateway at `/admin/`, on the same origin as the API, so no CORS setup is needed.
+
+```bash
+cd application
+flutter build web --release --base-href /admin/
+rm -rf ../gateway/admin-web/* && cp -r build/web/* ../gateway/admin-web/
+```
+
+`docker-compose.yml` mounts `gateway/admin-web/` into the gateway (`location /admin/` in `gateway/nginx.conf`), so a rebuild only needs those files copied (and rsynced, on the server). No restart is required. **Deploying it to a server:** the usual rsync excludes every `.env` so the server's own secrets survive, but the web build's `assets/.env` (gateway URL and publishable key only) must go along, or the web app loads but can't reach the API. Put the include first:
+
+```bash
+rsync -az --include 'admin-web/assets/.env' --exclude '.venv' --exclude '.env' \
+  --exclude '__pycache__' --exclude '.pytest_cache' --exclude '.ruff_cache' \
+  docker-compose.yml gateway packages backend-* <server>:~/4u/
+curl -s -o /dev/null -w "%{http_code}\n" https://<domain>/admin/assets/.env   # expect 200
+```
+
+Every release also attaches `admin-web.zip` with the same build; unzip it into `gateway/admin-web/` instead of building. The build reads the same `application/.env` as the phone app, which holds only client-safe values.
+
 ## 6. Run every automated test suite
 
 ```bash
@@ -128,7 +148,7 @@ If **Confirm email** is on (Authentication → Sign In / Providers → Email), t
 3. **Capture two anchor points** from the admin screen — if you didn't already create a place/building via SQL in step 2, use the floating action button's **Add university** then **Add building** first. Take a photo, pick the building, submit; do this twice in the same building. Open each from **Anchor points** and set its status to **Verified** (this both indexes it into Qdrant and is required for the picker in step 6 — unverified points aren't offered as trip start/end choices).
 4. **Connect the two anchor points**: from the drawer, open **Connections** → **Connect on map**, tap one anchor point then the other. This writes an `anchor_point_connections` row — without it, step 6's trip has no walkable path between the two points and `find_or_create` 404s.
 5. **Try the user flow as your admin account** via the drawer's **Test as user** entry — or sign up a second, regular user and log in as them, if you'd rather test with a real second account.
-6. On the user home screen, tap **Where to?** and pick the second anchor point as the destination (University → Building → anchor point drill-down) — the start point is auto-selected as the verified anchor point nearest your current GPS fix, so make sure you're actually near the first anchor point when you do this. Tap **Find route** — this calls `POST /routes/find_or_create`, which computes a path over the connection from step 4 and creates the route on the fly, then shows it as a guidance line on the map while you navigate.
+6. On the user home screen, tap **Where to?** and pick the second anchor point as the destination (University → Building → anchor point drill-down) — the start point is auto-selected as the verified anchor point nearest your current GPS fix, so make sure you're actually near the first anchor point when you do this. Confirm with **Start route** in the "Go to X?" dialog — this calls `POST /routes/find_or_create`, which computes a path over the connection from step 4 and creates the route on the fly, then starts spoken guidance. A regular user sees a **Repeat instruction** button; to see the route on a map, coordinates and the corrected position, use an admin's **Test as user** instead.
 7. Confirm `navigation_logs` rows accumulate in Supabase roughly every second while the navigation screen stays open (a self-rescheduling loop, not a fixed timer). With a working camera and the verified, indexed anchor points nearby, `corrected_lat`/`corrected_long`/`anchor_match_id`/`confidence_score` populate too; otherwise (no camera on an emulator, no nearby match, `backend-positioning` unreachable) those columns stay `NULL` and only raw GPS is logged for that tick — this is the designed degradation, not a bug.
 8. Tap **End navigation** and leave a feedback comment — confirm the session's `status` becomes `completed` and a `user_feedback` row appears.
 9. **As the admin**, open the drawer's **Sessions**, pick the user from step 5/6, and open that session — confirm the planned route and the logged trail both draw on the map, and a comment badge appears if feedback was left. Open the drawer's **Feedback** screen and confirm the same comment shows there too.

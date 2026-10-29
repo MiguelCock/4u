@@ -1,10 +1,12 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_compass/flutter_compass.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -16,18 +18,40 @@ import '../services/api_error_messages.dart';
 class _PhotoEntry {
   final String? id;
   final String? imageUrl;
-  final File? localFile;
+
+  /// The image itself while it's new (camera or file), shown until the
+  /// uploaded copy takes over. Bytes, not a file: the web app has no files.
+  final Uint8List? localBytes;
   final double? heading;
   final bool uploading;
+
+  /// Tells an upload's own placeholder apart from the others.
+  final int? uploadKey;
 
   const _PhotoEntry({
     this.id,
     this.imageUrl,
-    this.localFile,
+    this.localBytes,
     this.heading,
     this.uploading = false,
+    this.uploadKey,
   });
 }
+
+/// Compass directions an admin can give a photo picked from a file in the
+/// web app, which has no compass. Null is "unknown": such a photo is never
+/// refused for facing the wrong way.
+const _kDirections = <(String, double?)>[
+  ('N', 0),
+  ('NE', 45),
+  ('E', 90),
+  ('SE', 135),
+  ('S', 180),
+  ('SW', 225),
+  ('W', 270),
+  ('NW', 315),
+  ('?', null),
+];
 
 /// Multi-photo capture loop for a single `anchor_points` row - one physical
 /// point typically ends up with ~4-8 photos facing different directions, so
@@ -54,6 +78,10 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
   CameraController? _controller;
   StreamSubscription<CompassEvent>? _compassSubscription;
   double? _liveHeading;
+
+  /// Web: the direction given to the next photos picked from files.
+  double? _webHeading;
+  int _nextUploadKey = 0;
   final List<_PhotoEntry> _photos = [];
   Map<String, dynamic>? _anchorPoint;
   bool _loadingExisting = true;
@@ -63,9 +91,11 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
   @override
   void initState() {
     super.initState();
-    _initCamera();
     _loadAnchorPoint();
     _loadExistingPhotos();
+    // The web app uploads photos from files instead (_pickFiles).
+    if (kIsWeb) return;
+    _initCamera();
     _compassSubscription = FlutterCompass.events?.listen((event) {
       if (mounted) {
         // `heading` is what the Android plugin actually computes from the
@@ -145,31 +175,67 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
 
   Future<void> _takePhoto() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
+    setState(() => _capturing = true);
+    try {
+      final heading = _liveHeading;
+      final image = await _controller!.takePicture();
+      await _upload(await image.readAsBytes(), heading);
+    } catch (e) {
+      _showSaveError(e);
+    } finally {
+      if (mounted) setState(() => _capturing = false);
+    }
+  }
+
+  /// Web: one or more photos picked from files, all with [_webHeading].
+  Future<void> _pickFiles() async {
+    final files = await ImagePicker().pickMultiImage(imageQuality: 90);
+    if (files.isEmpty || !mounted) return;
+    setState(() => _capturing = true);
+    try {
+      for (final file in files) {
+        await _upload(await file.readAsBytes(), _webHeading);
+      }
+    } catch (e) {
+      _showSaveError(e);
+    } finally {
+      if (mounted) setState(() => _capturing = false);
+    }
+  }
+
+  void _showSaveError(Object e) {
+    if (!mounted) return;
+    setState(
+      () => _error = AppLocalizations.of(
+        context,
+      )!.capturePhotoErrorSaveFailed(friendlyApiErrorMessage(context, e)),
+    );
+  }
+
+  /// Uploads one photo, records it on this point, and indexes it if the
+  /// point is verified. Throws on failure, after removing its placeholder
+  /// and any file uploaded but never recorded.
+  Future<void> _upload(Uint8List bytes, double? heading) async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) {
       setState(() => _error = AppLocalizations.of(context)!.commonNotSignedIn);
       return;
     }
-
+    final key = _nextUploadKey++;
     setState(() {
-      _capturing = true;
       _error = null;
+      _photos.add(
+        _PhotoEntry(
+          localBytes: bytes,
+          heading: heading,
+          uploading: true,
+          uploadKey: key,
+        ),
+      );
     });
-
-    final heading = _liveHeading;
-    File? localFile;
     // Set once the file is in Storage; cleared once its photo row exists.
     String? unrecordedUpload;
     try {
-      final image = await _controller!.takePicture();
-      localFile = File(image.path);
-      setState(
-        () => _photos.add(
-          _PhotoEntry(localFile: localFile, heading: heading, uploading: true),
-        ),
-      );
-
-      final bytes = await localFile.readAsBytes();
       final uploadResult = await _mapApi.postMultipart(
         '/anchor-points/upload-image',
         fieldName: 'file',
@@ -192,14 +258,12 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
 
       if (!mounted) return;
       setState(() {
-        final index = _photos.indexWhere(
-          (p) => p.uploading && p.localFile?.path == localFile!.path,
-        );
+        final index = _photos.indexWhere((p) => p.uploadKey == key);
         if (index != -1) {
           _photos[index] = _PhotoEntry(
             id: id,
             imageUrl: imageUrl,
-            localFile: localFile,
+            localBytes: bytes,
             heading: heading,
           );
         }
@@ -241,7 +305,7 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
           }
         }
       }
-    } catch (e) {
+    } catch (_) {
       final orphan = unrecordedUpload;
       if (orphan != null) {
         // Uploaded but never recorded: don't leave it in Storage forever.
@@ -252,19 +316,9 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
             .then((_) {}, onError: (_) {});
       }
       if (mounted) {
-        setState(() {
-          if (localFile != null) {
-            _photos.removeWhere(
-              (p) => p.uploading && p.localFile?.path == localFile!.path,
-            );
-          }
-          _error = AppLocalizations.of(
-            context,
-          )!.capturePhotoErrorSaveFailed(friendlyApiErrorMessage(context, e));
-        });
+        setState(() => _photos.removeWhere((p) => p.uploadKey == key));
       }
-    } finally {
-      if (mounted) setState(() => _capturing = false);
+      rethrow;
     }
   }
 
@@ -340,6 +394,57 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
     super.dispose();
   }
 
+  /// Web: which way the photos face, and a button to pick them from files.
+  Widget _webUploadBar(AppLocalizations l10n) {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(l10n.capturePhotoWebDirectionLabel),
+          SegmentedButton<double?>(
+            segments: [
+              for (final (label, degrees) in _kDirections)
+                ButtonSegment(
+                  value: degrees,
+                  label: Text(
+                    degrees == null
+                        ? l10n.capturePhotoWebDirectionUnknown
+                        : label,
+                  ),
+                ),
+            ],
+            selected: {_webHeading},
+            showSelectedIcon: false,
+            onSelectionChanged: (value) =>
+                setState(() => _webHeading = value.first),
+          ),
+          FilledButton.icon(
+            onPressed: _capturing ? null : _pickFiles,
+            icon: _capturing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.upload_file),
+            label: Text(
+              _capturing
+                  ? l10n.capturePhotoSavingLabel
+                  : l10n.capturePhotoWebUploadButton(_photos.length),
+            ),
+          ),
+          Text(
+            l10n.capturePhotoWebHint,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -357,55 +462,60 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Stack(
-              children: [
-                SizedBox(
-                  height: 300,
-                  width: double.infinity,
-                  child:
-                      (_controller != null && _controller!.value.isInitialized)
-                      ? CameraPreview(_controller!)
-                      : const Center(child: CircularProgressIndicator()),
-                ),
-                if (_liveHeading != null)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        l10n.capturePhotoFacingLabel(_liveHeading!.round()),
-                        style: const TextStyle(color: Colors.white),
+            if (kIsWeb)
+              _webUploadBar(l10n)
+            else ...[
+              Stack(
+                children: [
+                  SizedBox(
+                    height: 300,
+                    width: double.infinity,
+                    child:
+                        (_controller != null &&
+                            _controller!.value.isInitialized)
+                        ? CameraPreview(_controller!)
+                        : const Center(child: CircularProgressIndicator()),
+                  ),
+                  if (_liveHeading != null)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          l10n.capturePhotoFacingLabel(_liveHeading!.round()),
+                          style: const TextStyle(color: Colors.white),
+                        ),
                       ),
                     ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: ElevatedButton.icon(
+                  onPressed: _capturing ? null : _takePhoto,
+                  icon: _capturing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.camera_alt),
+                  label: Text(
+                    _capturing
+                        ? l10n.capturePhotoSavingLabel
+                        : l10n.capturePhotoTakeButton(_photos.length),
                   ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: ElevatedButton.icon(
-                onPressed: _capturing ? null : _takePhoto,
-                icon: _capturing
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.camera_alt),
-                label: Text(
-                  _capturing
-                      ? l10n.capturePhotoSavingLabel
-                      : l10n.capturePhotoTakeButton(_photos.length),
                 ),
               ),
-            ),
+            ],
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12.0),
@@ -431,9 +541,9 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
                         return Stack(
                           fit: StackFit.expand,
                           children: [
-                            photo.localFile != null
-                                ? Image.file(
-                                    photo.localFile!,
+                            photo.localBytes != null
+                                ? Image.memory(
+                                    photo.localBytes!,
                                     fit: BoxFit.cover,
                                   )
                                 : Image.network(

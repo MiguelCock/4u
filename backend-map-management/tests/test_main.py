@@ -1329,3 +1329,12 @@ def test_list_places_includes_is_active():
     with patch("app.main.db.client", _mock_select_result([row])):
         response = client.get("/places")
     assert response.json()[0]["is_active"] is False
+
+
+def test_connections_for_a_malformed_id_are_404_not_a_filter():
+    app.dependency_overrides[get_caller_id] = lambda: "u1"
+    try:
+        response = client.get("/anchor-points/x),id.neq.0/connections")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 404

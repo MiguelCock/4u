@@ -48,3 +48,15 @@ def test_each_model_has_its_own_collection():
     assert len(set(collections.values())) == len(collections)
     assert collections["effnet"] == "anchor_point_photos"
     assert embedding._MODELS["eigenplaces"][1] == 2048
+
+
+def test_undecodable_bytes_raise_invalid_image():
+    import pytest
+
+    from app.embedding import InvalidImageError, load_and_resize, load_keep_aspect
+
+    for loader in (lambda b: load_and_resize(b), lambda b: load_keep_aspect(b, 384)):
+        with pytest.raises(InvalidImageError):
+            loader(b"definitely not an image")
+        with pytest.raises(InvalidImageError):
+            loader(b"")

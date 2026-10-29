@@ -1,10 +1,10 @@
 # backend-ai-training
 
-FastAPI service turning anchor-point photos into Qdrant-searchable embeddings: `POST /index_anchor` and `POST /search_similar`, both using a pretrained `torchvision.models.efficientnet_b0` (no fine-tuning) as a fixed feature extractor.
+FastAPI service turning anchor-point photos into Qdrant-searchable embeddings: `POST /index_anchor` and `POST /search_similar`, using a pretrained place-recognition model as a fixed feature extractor (no fine-tuning): EigenPlaces ResNet50 by default, or EfficientNet-B0 with `EMBEDDING_MODEL=effnet`. Admin endpoints `GET /index_status` and `POST /reconcile` show and repair gaps between the database and the index. `/search_similar` is internal: only `backend-positioning` calls it, and the gateway refuses it from outside.
 
 ## Stack
 
-- **PyTorch / torchvision**: the embedding model (`efficientnet_b0`, ImageNet-pretrained, CPU wheel index — this component doesn't need GPU support to run).
+- **PyTorch / torchvision**: the embedding model (EigenPlaces' published ResNet50 weights, pinned by SHA-256 and baked into the image; or `efficientnet_b0`), CPU wheel index — no GPU needed.
 - **OpenCV (`opencv-python-headless`)**: image decode/resize before embedding extraction.
 - **Qdrant** (via the shared `packages` library): vector storage and top-k similarity search.
 - **FastAPI**: same conventions as every other `backend-*` service in this repo (`app/main.py`/`app/models.py`, no installable package).
@@ -16,7 +16,7 @@ uv sync
 uv run fastapi dev
 ```
 
-Needs a `.env` with `QDRANT_URL`/`QDRANT_KEY` (see `.env.example`) — no Supabase credentials required, since it never queries Postgres directly; callers pass anchor-point/photo data straight in the request body.
+Needs a `.env` with `QDRANT_URL`/`QDRANT_KEY` and `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` (see `.env.example`): Supabase verifies callers on the admin endpoints, and `/reconcile` reads which photos should be indexed. Callers still pass the photos to index straight in the request body.
 
 ## Testing
 

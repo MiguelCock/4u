@@ -68,6 +68,8 @@ services:
       - "0.0.0.0:8000:80"
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      # The admin web app's build (see docs/SETUP.md); empty until built.
+      - ./gateway/admin-web:/usr/share/nginx/admin:ro
     depends_on:
       - data-collection
       - map-management

@@ -121,17 +121,25 @@ def _get_model() -> torch.nn.Module:
     return _model
 
 
-def _decode_rgb(image_bytes: bytes) -> np.ndarray:
+class InvalidImageError(ValueError):
+    """The bytes aren't an image OpenCV can read (the API answers 400)."""
+
+
+def _decode_bgr(image_bytes: bytes) -> np.ndarray:
     array = np.frombuffer(image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(array, cv2.IMREAD_COLOR)
-    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    image = cv2.imdecode(array, cv2.IMREAD_COLOR) if array.size else None
+    if image is None:
+        raise InvalidImageError("not a readable image")
+    return image
+
+
+def _decode_rgb(image_bytes: bytes) -> np.ndarray:
+    return cv2.cvtColor(_decode_bgr(image_bytes), cv2.COLOR_BGR2RGB)
 
 
 def load_and_resize(image_bytes: bytes, size: int = _IMAGE_SIZE) -> np.ndarray:
     """effnet's input: squashed to a size x size square."""
-    array = np.frombuffer(image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(array, cv2.IMREAD_COLOR)
-    image = cv2.resize(image, (size, size))
+    image = cv2.resize(_decode_bgr(image_bytes), (size, size))
     return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
 
@@ -152,15 +160,18 @@ def _to_tensor(rgb: np.ndarray) -> torch.Tensor:
 
 
 def extract_embedding(image_bytes: bytes) -> list[float]:
+    # Decoded before the model loads, so a bad upload fails fast.
+    if MODEL_NAME == "effnet":
+        tensor = _to_tensor(load_and_resize(image_bytes))
+    else:
+        tensor = _to_tensor(load_keep_aspect(image_bytes, _EIGENPLACES_SHORT_SIDE))
     model = _get_model()
     with torch.no_grad():
         if MODEL_NAME == "effnet":
-            tensor = _to_tensor(load_and_resize(image_bytes))
             features = model.features(tensor)
             pooled = model.avgpool(features)
             embedding = torch.flatten(pooled, 1)
         else:
-            tensor = _to_tensor(load_keep_aspect(image_bytes, _EIGENPLACES_SHORT_SIDE))
             embedding = model(tensor)
     return embedding.squeeze(0).tolist()
 
