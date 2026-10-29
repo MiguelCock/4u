@@ -34,6 +34,8 @@ from . import kalman, matching
 MAX_DT_SECONDS = 30.0
 # Sessions idle longer than this are dropped on the next sweep.
 SESSION_TTL_SECONDS = 15 * 60.0
+# Live filters one caller may hold (see SessionStore.limit_owner).
+MAX_SESSIONS_PER_OWNER = 5
 
 
 @dataclass
@@ -74,6 +76,22 @@ class SessionStore:
             if now - s.last_call > SESSION_TTL_SECONDS
         ]
         for sid in stale:
+            del self._sessions[sid]
+
+    def limit_owner(self, prefix: str, keep: int = MAX_SESSIONS_PER_OWNER) -> None:
+        """Drops the least recently used filters whose key starts with
+        [prefix] (one caller's) beyond [keep], so nobody can grow the store
+        without bound by inventing session ids. Never touches a session
+        whose lock is held (a request is using it)."""
+        owned = sorted(
+            (
+                (state.last_call, sid)
+                for sid, state in self._sessions.items()
+                if sid.startswith(prefix) and not state.lock.locked()
+            ),
+            reverse=True,
+        )
+        for _, sid in owned[keep:]:
             del self._sessions[sid]
 
     def _get_or_create(self, session_id: str, lat: float, lng: float) -> _SessionState:

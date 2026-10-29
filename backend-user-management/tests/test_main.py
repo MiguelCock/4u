@@ -280,7 +280,7 @@ def test_list_orphaned_is_not_captured_as_a_profile_id():
 def test_list_orphaned_filters_out_users_with_profiles():
     _as_caller("admin1")
     mock_client = MagicMock()
-    mock_client.table.return_value.select.return_value.execute.return_value.data = [
+    mock_client.table.return_value.select.return_value.order.return_value.range.return_value.execute.return_value.data = [
         {"id": "has-profile"}
     ]
     mock_client.auth.admin.list_users.return_value = [
@@ -301,7 +301,7 @@ def test_list_orphaned_filters_out_users_with_profiles():
 def test_list_orphaned_pages_through_all_auth_users():
     _as_caller("admin1")
     mock_client = MagicMock()
-    mock_client.table.return_value.select.return_value.execute.return_value.data = []
+    mock_client.table.return_value.select.return_value.order.return_value.range.return_value.execute.return_value.data = []
     full_page = [_auth_user(f"u{i}", f"u{i}@example.com") for i in range(200)]
     last_page = [_auth_user("last", "last@example.com")]
     mock_client.auth.admin.list_users.side_effect = [full_page, last_page]

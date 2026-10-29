@@ -1,7 +1,7 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Install uv.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.3 /uv /uvx /bin/
 
 # Copy the shared `packages` library and this service into the container,
 # preserving their sibling layout so `../packages` resolves in pyproject.toml.

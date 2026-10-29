@@ -1,6 +1,6 @@
 # application
 
-Flutter mobile app for the GPS positioning correction system — a single codebase serving both the `user` role (sends photo + GPS + IMU while navigating, receives a corrected position) and the `admin` role (captures anchor point photos with exact coordinates at strategic campus locations).
+Flutter app for the GPS positioning correction system — a single codebase serving both the `user` role (sends a photo + GPS while navigating, gets a corrected position and spoken guidance; the gyroscope and walking direction give the heading) and the `admin` role (captures anchor point photos with exact coordinates at strategic campus locations). The same code also builds the admin-only web app (`flutter build web --base-href /admin/`, see [`docs/SETUP.md`](../docs/SETUP.md) §5b).
 
 ## Setup
 
@@ -16,7 +16,7 @@ flutter pub get
 | Variable | Purpose |
 |---|---|
 | `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` | Supabase Auth (login/signup) — same project the backend services use |
-| `API_GATEWAY_URL` | Base URL of the API gateway in front of all 5 backend services (see root README) — each service is reached at its own path prefix (`/data-collection`, `/map`, `/route`, `/user`, `/navigation`) |
+| `API_GATEWAY_URL` | Base URL of the API gateway in front of all 7 backend services (see root README) — each service is reached at its own path prefix (`/data-collection`, `/map`, `/route`, `/user`, `/navigation`, `/ai-training`, `/positioning`) |
 
 Camera and location permissions are declared in `android/app/src/main/AndroidManifest.xml`.
 
@@ -32,13 +32,10 @@ On start, the app loads `.env`, initializes the Supabase Auth client, then shows
 
 > For a full admin walkthrough (adding places, buildings, anchor points, photos, verification, and connections), see [`docs/admin-guide/`](../docs/admin-guide/README.md) — the steps below are a quick developer smoke test, not the full admin flow.
 
-1. Launch the app. If not signed in, use **Sign up** (creates a Supabase Auth account, then a matching `profiles` row via `backend-user-management`'s `POST /profiles` — defaults to the `user` role) or **Log in**.
-2. Once signed in as `user`, you land on the original single-screen prototype: live location info, a camera preview with a capture button, and a map centered on the device's current position.
-3. The top panel shows the live GPS fix (lat/lng/accuracy), updating as `LocationService` streams new positions.
-4. The map panel re-centers on each position update.
-5. Tap the camera button to take a photo; it's uploaded (multipart: file field `image`, plus `latitude`/`longitude`/`accuracy` form fields) via `DataCollectionApi` to the gateway's `/data-collection/upload`.
-6. Tap **Navigate** to see the route list (via the gateway's `/route`) and start one — this creates a navigation session (`/navigation`), logs your raw GPS position every 5 seconds while the screen is open, and lets you end the session and leave optional feedback.
-7. Signing in as `admin` (a profile with `role_id: 2`, set by hand in Supabase for now — there's no admin-invite flow) shows a list of captured anchor points and a button to capture a new one: take a photo, pick a building and location type, optionally describe it, and save — this uploads the photo to `backend-map-management` and creates the `anchor_points` row with your account as `captured_by`. The app bar's menu also has **Add place** / **Add building**, so a place and building can be created from the app first if none exist yet.
+1. Launch the app. If not signed in, use **Sign up** (creates a Supabase Auth account, then a matching `profiles` row via `backend-user-management`'s `POST /profiles` — defaults to the `user` role) or **Log in**. On first launch a user hears the spoken tutorial (the **?** button replays it).
+2. Signed in as `user`: say a destination with **Say where you want to go**, or pick it under **Where to?**. Confirm with **Start route** in the "Go to X?" dialog. The start point is the verified anchor point nearest your GPS fix, and the route comes from `backend-route-management`'s `POST /routes/find_or_create`.
+3. Navigation: guidance is spoken (in steps, without degrees), the camera sends a photo to `backend-positioning` about every 1–2 s, and each tick is logged to `backend-navigation-management`. Users see a large **Repeat instruction** button and **End navigation**. Ending offers optional feedback.
+4. Signed in as `admin` (a profile with `role_id: 2`, set by hand in Supabase for the very first one, then promoted from the Users tab): the admin home with universities, buildings, anchor points, connections and users. **Test as user** in the menu runs the user flow with the map, coordinates, checkpoints and the wrong-instruction button (see the admin guide §6b).
 
 ### Running on a physical device (ADB)
 
@@ -74,13 +71,12 @@ flutter test
 flutter analyze
 ```
 
-`test/widget_test.dart` is currently just a sanity smoke test so CI has something to run — add real widget/unit tests alongside new widgets/services. CI copies `.env.example` to `.env` before running tests, since `pubspec.yaml` declares `.env` as an asset (`flutter_dotenv`) and Flutter's asset bundling needs the file to exist even with placeholder values.
+Unit tests for the pure logic live in `test/services/` (guidance, heading, geometry, version policy, location recovery...); `test/widget_test.dart` is a smoke test — add tests alongside new widgets/services. CI copies `.env.example` to `.env` before running tests, since `pubspec.yaml` declares `.env` as an asset (`flutter_dotenv`) and Flutter's asset bundling needs the file to exist even with placeholder values.
 
 ## Known gaps
 
-- The building dropdown in the admin capture screen is empty until at least one `buildings` row exists — use the app bar's **Add building** (and **Add place** first, if needed) rather than seeding it in Supabase by hand.
+- The building dropdown in the admin capture screen is empty until at least one `buildings` row exists — add a university and a building first (their own sections' **+** button).
 - `AuthGate` self-heals a missing `profiles` row (creates one on the spot) but still shows a generic error+retry screen for any other backend failure, rather than a more specific message per failure mode.
-- Navigation logs only raw GPS — there's no visual-correction pipeline anywhere in the repo yet (see `backend-ai-training/CLAUDE.md`), so `corrected_lat`/`corrected_long`/`anchor_match_id`/`confidence_score` are never populated.
 - A route needs `building_id`/`start_anchor_id`/`end_anchor_id` already pointing at real rows for navigation to make sense — nothing in the app validates this before starting a session.
 
 ## Keeping dependencies up to date

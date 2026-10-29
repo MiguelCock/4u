@@ -4,7 +4,7 @@ import time
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from packages.app_versions import install_app_version_guard
-from packages.db_errors import install_db_error_handlers
+from packages.db_errors import install_db_error_handlers, select_all
 from packages.qdrant import Qdrant
 from packages.supabase import SupaBase
 from qdrant_client.models import (
@@ -16,7 +16,13 @@ from qdrant_client.models import (
     PointStruct,
 )
 
-from .embedding import COLLECTION, VECTOR_SIZE, download_image, extract_embedding
+from .embedding import (
+    COLLECTION,
+    VECTOR_SIZE,
+    InvalidImageError,
+    download_image,
+    extract_embedding,
+)
 from .models import IndexAnchorRequest, IndexAnchorResponse, SearchSimilarResponse
 
 load_dotenv()
@@ -26,9 +32,9 @@ install_db_error_handlers(app)
 install_app_version_guard(app)
 
 qdrant = Qdrant(os.environ.get("QDRANT_URL"), os.environ.get("QDRANT_KEY"))
-# Only needed to verify caller bearer tokens / admin role for the write
-# endpoints below - this service otherwise never queries Postgres directly
-# (see CLAUDE.md). POST /search_similar stays unauthenticated (#24 - it's
+# Verifies caller bearer tokens / admin role for the write endpoints below,
+# and lets POST /reconcile read which photos should be indexed (see
+# CLAUDE.md). POST /search_similar stays unauthenticated (#24 - it's
 # called server-to-server by backend-positioning with no end-user token).
 db = SupaBase(
     os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -84,8 +90,15 @@ async def root():
     return {"service": "backend-ai-training", "status": "ok"}
 
 
+# Every endpoint below is a plain `def`: FastAPI runs it in its threadpool.
+# As `async def`, the model (~0.3-0.5 s of CPU per photo) and the blocking
+# httpx/Qdrant calls ran on the event loop, so one search held up every
+# other request and positioning's 2 s timeout dropped visual matches as
+# soon as a few users navigated at once.
+
+
 @app.post("/index_anchor")
-async def index_anchor(
+def index_anchor(
     anchor: IndexAnchorRequest, caller_id: str = Depends(get_caller_id)
 ) -> IndexAnchorResponse:
     if not db.is_admin(caller_id):
@@ -95,7 +108,12 @@ async def index_anchor(
     points = []
     for photo in anchor.photos:
         image_bytes = download_image(photo.image_url)
-        embedding = extract_embedding(image_bytes)
+        try:
+            embedding = extract_embedding(image_bytes)
+        except InvalidImageError as e:
+            raise HTTPException(
+                status_code=400, detail=f"Photo {photo.photo_id} is not an image"
+            ) from e
         points.append(
             PointStruct(
                 id=photo.photo_id,
@@ -121,15 +139,7 @@ async def index_anchor(
     return IndexAnchorResponse(indexed=len(points))
 
 
-@app.get("/index_status")
-async def index_status(caller_id: str = Depends(get_caller_id)) -> dict:
-    """Admin only: the ids of every indexed photo, so the app can tell which
-    verified photos aren't searchable. A re-index once left 122 of 298 out,
-    and nothing showed it until a test walk found anchors that never
-    matched."""
-    if not db.is_admin(caller_id):
-        raise HTTPException(status_code=403, detail="Admin only")
-    _ensure_collection()
+def _indexed_photo_ids() -> list[str]:
     ids: list[str] = []
     offset = None
     while True:
@@ -142,11 +152,60 @@ async def index_status(caller_id: str = Depends(get_caller_id)) -> dict:
         )
         ids += [str(point.id) for point in points]
         if offset is None:
-            return {"collection": _COLLECTION, "photo_ids": ids}
+            return ids
+
+
+def _searchable_photo_ids() -> set[str]:
+    """Photos of verified anchor points: what the index should hold."""
+    verified = {
+        row["id"]
+        for row in select_all(
+            lambda: (
+                db.client.table("anchor_points").select("id").eq("status", "verified")
+            )
+        )
+    }
+    return {
+        str(row["id"])
+        for row in select_all(
+            lambda: db.client.table("anchor_point_photos").select("id,anchor_point_id")
+        )
+        if row["anchor_point_id"] in verified
+    }
+
+
+@app.get("/index_status")
+def index_status(caller_id: str = Depends(get_caller_id)) -> dict:
+    """Admin only: the ids of every indexed photo, so the app can tell which
+    verified photos aren't searchable. A re-index once left 122 of 298 out,
+    and nothing showed it until a test walk found anchors that never
+    matched."""
+    if not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
+    _ensure_collection()
+    return {"collection": _COLLECTION, "photo_ids": _indexed_photo_ids()}
+
+
+@app.post("/reconcile")
+def reconcile(caller_id: str = Depends(get_caller_id)) -> dict:
+    """Admin only: removes indexed photos that shouldn't be searchable any
+    more - the photo was deleted, or its point is no longer verified. The
+    app deletes rows and index entries in separate calls, so a failure in
+    between used to leave vectors that searches kept finding. The app's
+    "Re-index verified points" runs this first."""
+    if not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
+    _ensure_collection()
+    searchable = _searchable_photo_ids()
+    indexed = _indexed_photo_ids()
+    stale = [photo_id for photo_id in indexed if photo_id not in searchable]
+    for start in range(0, len(stale), 500):
+        qdrant.client.delete(_COLLECTION, points_selector=stale[start : start + 500])
+    return {"removed": len(stale), "kept": len(indexed) - len(stale)}
 
 
 @app.post("/search_similar")
-async def search_similar(
+def search_similar(
     file: UploadFile = File(...),
     limit: int = Form(5),
     # Optional: when the caller's (raw, pre-correction) GPS fix is known,
@@ -162,7 +221,10 @@ async def search_similar(
     _ensure_collection()
 
     started = time.perf_counter()
-    embedding = extract_embedding(file.file.read())
+    try:
+        embedding = extract_embedding(file.file.read())
+    except InvalidImageError as e:
+        raise HTTPException(status_code=400, detail="Not an image") from e
     embed_ms = round(1000 * (time.perf_counter() - started))
     query_filter = None
     if latitude is not None and longitude is not None:
@@ -201,7 +263,7 @@ async def search_similar(
 
 
 @app.delete("/index_photo/{photo_id}")
-async def delete_indexed_photo(photo_id: str, caller_id: str = Depends(get_caller_id)):
+def delete_indexed_photo(photo_id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     _ensure_collection()
@@ -210,7 +272,7 @@ async def delete_indexed_photo(photo_id: str, caller_id: str = Depends(get_calle
 
 
 @app.delete("/index_anchor/{anchor_point_id}")
-async def delete_indexed_anchor(
+def delete_indexed_anchor(
     anchor_point_id: str, caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
@@ -230,9 +292,7 @@ async def delete_indexed_anchor(
 
 
 @app.delete("/index_building/{building_id}")
-async def delete_indexed_building(
-    building_id: str, caller_id: str = Depends(get_caller_id)
-):
+def delete_indexed_building(building_id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     _ensure_collection()

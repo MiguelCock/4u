@@ -159,3 +159,40 @@ async def test_get_caller_id_does_not_cache_a_rejected_token():
         with pytest.raises(HTTPException):
             await db.get_caller_id("Bearer garbage")
     assert db.client.auth.get_user.call_count == 2
+
+
+def _profile_rows(db, rows):
+    db.client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = rows
+
+
+@pytest.mark.asyncio
+async def test_get_caller_id_refuses_a_deactivated_profile():
+    import time
+
+    db = _make_supabase()
+    db.client.auth.get_user.return_value.user.id = "a1b2c3"
+    _profile_rows(db, [{"is_active": False}])
+    token = _jwt(time.time() + 3600)
+    for _ in range(2):  # the cached answer refuses too
+        with pytest.raises(HTTPException) as exc_info:
+            await db.get_caller_id(f"Bearer {token}")
+        assert exc_info.value.status_code == 403
+    db.client.auth.get_user.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_caller_id_allows_a_missing_profile():
+    import time
+
+    db = _make_supabase()
+    db.client.auth.get_user.return_value.user.id = "a1b2c3"
+    _profile_rows(db, [])
+    assert await db.get_caller_id(f"Bearer {_jwt(time.time() + 3600)}") == "a1b2c3"
+
+
+def test_is_admin_needs_an_active_profile():
+    db = _make_supabase()
+    _profile_rows(db, [{"role_id": 2, "is_active": False}])
+    assert db.is_admin("a1") is False
+    _profile_rows(db, [{"role_id": 2, "is_active": True}])
+    assert db.is_admin("a1") is True

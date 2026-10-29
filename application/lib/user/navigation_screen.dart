@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -959,9 +958,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
                   'latitude': startPosition.latitude,
                   'longitude': startPosition.longitude,
                 },
-              'device_info': {
-                'platform': Platform.isAndroid ? 'android' : 'other',
-              },
+              'device_info': {'platform': defaultTargetPlatform.name},
             });
       // backend-navigation-management's POST /sessions returns Supabase's
       // insert result as-is, which is always a list (even for one row).

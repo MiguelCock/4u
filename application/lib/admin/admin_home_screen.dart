@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -250,6 +251,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   Future<void> _reindexVerified() async {
     final l10n = AppLocalizations.of(context)!;
     final messenger = ScaffoldMessenger.of(context);
+    // First drop index entries that shouldn't be there (deleted photos,
+    // unverified points); best effort, older servers lack it.
+    try {
+      await _aiTrainingApi.post('/reconcile', {});
+    } on ApiException {
+      // Re-indexing below still helps.
+    }
     final indexed = await fetchIndexedPhotoIds(_aiTrainingApi);
     if (!mounted) return;
     final targets = pointsMissingFromIndex(_anchorPoints, _photosOf, indexed);
@@ -386,6 +394,36 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     }
   }
 
+  /// Deactivated accounts are refused by every service (packages'
+  /// get_caller_id answers 403) until an admin activates them again.
+  Future<void> _setUserActive(Map<String, dynamic> user, bool active) async {
+    final l10n = AppLocalizations.of(context)!;
+    if (!active) {
+      final confirmed = await _confirm(
+        title: l10n.adminUserDeactivateTooltip,
+        content: l10n.adminUserDeactivateConfirm(
+          user['full_name'] as String? ?? user['id'] as String,
+        ),
+      );
+      if (!confirmed) return;
+    }
+    try {
+      await _userApi.patch('/profiles/${user['id']}', {'is_active': active});
+      await _loadUsers();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            l10n.adminUsersErrorUpdateFailed(
+              friendlyApiErrorMessage(context, e),
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _promoteOrDemote(Map<String, dynamic> user) async {
     const adminRoleId = 2;
     const userRoleId = 1;
@@ -474,6 +512,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                     final user = _users[index];
                     final isAdmin = user['role_id'] == 2;
                     final isSelf = user['id'] == currentUserId;
+                    final active = user['is_active'] as bool? ?? true;
                     return ListTile(
                       leading: Icon(
                         isAdmin
@@ -485,20 +524,47 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         user['full_name'] as String? ?? user['id'] as String,
                       ),
                       subtitle: Text(
-                        isAdmin
-                            ? l10n.adminUsersRoleAdmin
-                            : l10n.adminUsersRoleUser,
-                      ),
-                      trailing: IconButton(
-                        icon: Icon(
+                        [
                           isAdmin
-                              ? Icons.remove_moderator_outlined
-                              : Icons.admin_panel_settings_outlined,
-                        ),
-                        tooltip: isAdmin
-                            ? l10n.adminUsersDemote
-                            : l10n.adminUsersPromote,
-                        onPressed: isSelf ? null : () => _promoteOrDemote(user),
+                              ? l10n.adminUsersRoleAdmin
+                              : l10n.adminUsersRoleUser,
+                          if (!active) l10n.adminUserInactive,
+                        ].join(' · '),
+                        style: active
+                            ? null
+                            : const TextStyle(color: Colors.red),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(
+                              isAdmin
+                                  ? Icons.remove_moderator_outlined
+                                  : Icons.admin_panel_settings_outlined,
+                            ),
+                            tooltip: isAdmin
+                                ? l10n.adminUsersDemote
+                                : l10n.adminUsersPromote,
+                            onPressed: isSelf
+                                ? null
+                                : () => _promoteOrDemote(user),
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              active
+                                  ? Icons.person_off_outlined
+                                  : Icons.person_add_alt_outlined,
+                            ),
+                            tooltip: active
+                                ? l10n.adminUserDeactivateTooltip
+                                : l10n.adminUserActivateTooltip,
+                            // Not on your own row: no locking yourself out.
+                            onPressed: isSelf
+                                ? null
+                                : () => _setUserActive(user, !active),
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -1854,6 +1920,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     ];
   }
 
+  /// On a wide screen (the web app on a monitor) the drawer stays open as a
+  /// side menu instead of sliding over the page.
+  static const double _kPermanentDrawerWidth = 900;
+  bool _permanentDrawer = false;
+
+  void _closeDrawer() {
+    if (!_permanentDrawer) Navigator.of(context).pop();
+  }
+
   Widget _drawer() {
     final l10n = AppLocalizations.of(context)!;
     Widget item(int index, IconData icon, Color color, String label) {
@@ -1863,12 +1938,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         selected: _tabController.index == index,
         onTap: () {
           _tabController.animateTo(index);
-          Navigator.of(context).pop();
+          _closeDrawer();
         },
       );
     }
 
     return Drawer(
+      // Part of the page on a wide screen (see _scaffold).
+      elevation: _permanentDrawer ? 0 : null,
+      shape: _permanentDrawer ? const RoundedRectangleBorder() : null,
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
@@ -1905,7 +1983,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             leading: const Icon(Icons.my_location, color: Colors.teal),
             title: Text(l10n.adminSessions),
             onTap: () {
-              Navigator.of(context).pop();
+              _closeDrawer();
               Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const SessionsScreen()));
@@ -1915,7 +1993,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             leading: const Icon(Icons.comment_outlined, color: Colors.teal),
             title: Text(l10n.feedbackScreenTitle),
             onTap: () {
-              Navigator.of(context).pop();
+              _closeDrawer();
               Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const FeedbackScreen()));
@@ -1932,22 +2010,27 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 : null,
             enabled: !_reindexing && !_loading,
             onTap: () {
-              Navigator.of(context).pop();
+              _closeDrawer();
               _reindexVerified();
             },
           ),
-          ListTile(
-            leading: const Icon(Icons.visibility_outlined, color: Colors.teal),
-            title: Text(l10n.adminTestAsUser),
-            onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const UserHomeScreen(adminPreview: true),
-                ),
-              );
-            },
-          ),
+          // Trips need the phone's camera and sensors.
+          if (!kIsWeb)
+            ListTile(
+              leading: const Icon(
+                Icons.visibility_outlined,
+                color: Colors.teal,
+              ),
+              title: Text(l10n.adminTestAsUser),
+              onTap: () {
+                _closeDrawer();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const UserHomeScreen(adminPreview: true),
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );
@@ -1966,8 +2049,25 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   Widget _scaffold(AppLocalizations l10n) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _permanentDrawer = constraints.maxWidth >= _kPermanentDrawerWidth;
+        final scaffold = _scaffoldBody(l10n);
+        if (!_permanentDrawer) return scaffold;
+        return Row(
+          children: [
+            SizedBox(width: 280, child: _drawer()),
+            const VerticalDivider(width: 1),
+            Expanded(child: scaffold),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _scaffoldBody(AppLocalizations l10n) {
     return Scaffold(
-      drawer: _drawer(),
+      drawer: _permanentDrawer ? null : _drawer(),
       appBar: AppBar(
         title: Text(_sectionTitles[_tabController.index]),
         actions: [
