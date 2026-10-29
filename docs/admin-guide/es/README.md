@@ -228,6 +228,14 @@ Toca cualquiera para ver los detalles registrados ahí.
 
 **Cómo sostener el teléfono.** Para que las fotos se reconozcan, el teléfono va vertical frente al pecho, con la cámara trasera mirando hacia adelante. Explícaselo así al usuario; el tutorial de la app (botón **?**) también lo dice.
 
+## 6c. La aplicación web
+
+Todo lo de esta guía, salvo tomar fotos con la cámara y **Test as user**, también funciona en un navegador, en una pantalla más grande: **https://184-195-103-237.sslip.io/admin/**. Entra con tu cuenta de administrador; a una cuenta que no es de administrador se le indica usar la aplicación del teléfono.
+
+- **Menú lateral:** en una ventana ancha, el menú queda abierto a la izquierda en vez de deslizarse.
+- **Fotos:** la pantalla de fotos de un punto tiene **Subir fotos** en lugar de la cámara. Elige uno o más archivos de imagen tomados parado en el punto. Antes de subirlas, elige hacia dónde miran (N, NE, E…). Elige **No sé** si no estás seguro: esa foto nunca se descarta por mirar hacia otro lado.
+- **Usuarios:** cada fila tiene además **Desactivar cuenta**. Una cuenta desactivada no puede usar la aplicación ni la web hasta que un administrador la vuelva a activar. No puedes desactivarte a ti mismo.
+
 ## 7. Eliminar datos
 
 Las universidades y los edificios tienen un ícono de basura en su fila. En la fila de un punto de anclaje, **Agregar foto** y **Eliminar** están en el menú ⋮, junto a los botones de verificar y editar.

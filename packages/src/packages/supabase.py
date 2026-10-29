@@ -46,6 +46,14 @@ def _seconds_left(token: str) -> float | None:
         return None
 
 
+class AccountDeactivated(Exception):
+    """The token is valid but its profile has `is_active = false`."""
+
+
+def _deactivated(rows) -> bool:
+    return isinstance(rows, list) and bool(rows) and rows[0].get("is_active") is False
+
+
 class SupaBase:
     client: Client
 
@@ -127,40 +135,33 @@ class SupaBase:
         if rows:
             self.client.storage.from_("Photo").remove([rows[0]["name"]])
 
-    def sing_up(self, email: str, password: str):
-        self.client.auth.sign_up(
-            {
-                "email": email,
-                "password": password,
-            }
-        )
-
-    def log_in(self, email: str, password: str):
-        self.client.auth.sign_in_with_password(
-            {
-                "email": email,
-                "password": password,
-            }
-        )
-
-    def is_logged_in(self, token) -> bool:
-        return True
-
     def get_user_id_from_token(self, access_token: str) -> str:
         # Verifies the token for real against Supabase Auth itself (not a
         # local signature check) - confirmed live that an invalid/expired
         # token raises supabase.AuthApiError, which this lets propagate so
         # callers can turn it into a 401. This is what lets a backend
         # service trust a caller-supplied id instead of taking it on faith.
-        cache: dict[str, tuple[str, float]] = self.__dict__.setdefault(
+        # A deactivated profile (profiles.is_active = false) is refused too,
+        # with AccountDeactivated; it used to have no effect at all. No
+        # profile row is allowed: the app's self-heal creates it.
+        cache: dict[str, tuple[str, float, bool]] = self.__dict__.setdefault(
             "_token_cache", {}
         )
         key = hashlib.sha256(access_token.encode()).hexdigest()
         now = time.monotonic()
         hit = cache.get(key)
         if hit is not None and hit[1] > now:
+            if hit[2]:
+                raise AccountDeactivated(hit[0])
             return hit[0]
         user = self.client.auth.get_user(access_token).user
+        deactivated = _deactivated(
+            self.client.table("profiles")
+            .select("is_active")
+            .eq("id", user.id)
+            .execute()
+            .data
+        )
         if len(cache) >= _TOKEN_CACHE_MAX:
             for stale in [k for k, (_, until) in cache.items() if until <= now]:
                 del cache[stale]
@@ -171,7 +172,9 @@ class SupaBase:
         if left is not None:
             ttl = min(ttl, left)
         if ttl > 0:
-            cache[key] = (user.id, now + ttl)
+            cache[key] = (user.id, now + ttl, deactivated)
+        if deactivated:
+            raise AccountDeactivated(user.id)
         return user.id
 
     async def get_caller_id(
@@ -200,6 +203,8 @@ class SupaBase:
         try:
             # Off the event loop: it's a blocking network call on a miss.
             return await asyncio.to_thread(self.get_user_id_from_token, token)
+        except AccountDeactivated as e:
+            raise HTTPException(status_code=403, detail="Account deactivated") from e
         except AuthApiError as e:
             if e.code in _TOKEN_ERROR_CODES:
                 raise HTTPException(
@@ -231,8 +236,12 @@ class SupaBase:
         endpoint across all services."""
         result = (
             self.client.table("profiles")
-            .select("role_id")
+            .select("role_id,is_active")
             .eq("id", caller_id)
             .execute()
         )
-        return bool(result.data) and result.data[0]["role_id"] == self.ADMIN_ROLE_ID
+        return (
+            bool(result.data)
+            and result.data[0]["role_id"] == self.ADMIN_ROLE_ID
+            and result.data[0].get("is_active") is not False
+        )

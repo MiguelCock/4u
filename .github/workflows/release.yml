@@ -88,6 +88,13 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release
 
+      # The admin web app (served by the gateway at /admin/), built from the
+      # same code and .env. Deploy: unzip into gateway/admin-web/.
+      - name: Build admin web app
+        run: |
+          flutter build web --release --base-href /admin/
+          (cd build/web && zip -qr ../admin-web.zip .)
+
       - name: Remove signing material
         if: always()
         working-directory: application/android
@@ -97,7 +104,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          files: application/build/app/outputs/flutter-apk/app-release.apk
+          files: |
+            application/build/app/outputs/flutter-apk/app-release.apk
+            application/build/admin-web.zip
           body_path: release-notes.md
           # Appended below the CHANGELOG text: the list of merged PRs.
           generate_release_notes: true

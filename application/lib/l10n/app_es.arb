@@ -480,5 +480,15 @@
   "homeTutorialButton": "¿Cómo funciona?",
   "homeTutorialTitle": "Cómo funciona la aplicación",
   "homeTutorialText": "Esta aplicación te guía a pie por el campus. Elige a dónde ir: presiona \"Di a dónde quieres ir\" y di el lugar, o elígelo de la lista. Luego presiona \"Iniciar ruta\". Durante el recorrido, sostén el teléfono vertical frente a tu pecho, con la cámara trasera mirando hacia adelante. Te diré cuándo girar y cuántos pasos caminar. Presiona \"Repetir instrucción\" para volver a escuchar la última instrucción.",
-  "homeListeningShort": "Te escucho."
+  "homeListeningShort": "Te escucho.",
+  "capturePhotoWebDirectionLabel": "Las fotos miran hacia:",
+  "capturePhotoWebDirectionUnknown": "No sé",
+  "capturePhotoWebUploadButton": "Subir fotos ({count})",
+  "capturePhotoWebHint": "Fotos tomadas parado en el punto, una por dirección. Elige la dirección antes de subirlas; con \"No sé\" la foto nunca se descarta por mirar hacia otro lado.",
+  "webAdminOnlyTitle": "Solo para administradores",
+  "webAdminOnlyBody": "Esta aplicación web es para administradores. Para planear y recorrer rutas, usa la aplicación Eyes4U en el teléfono.",
+  "adminUserDeactivateTooltip": "Desactivar cuenta",
+  "adminUserActivateTooltip": "Activar cuenta",
+  "adminUserInactive": "Desactivada",
+  "adminUserDeactivateConfirm": "¿Desactivar a {name}? No podrá usar la aplicación hasta que un administrador vuelva a activar la cuenta."
 }

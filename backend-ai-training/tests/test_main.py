@@ -372,3 +372,40 @@ def test_index_status_is_admin_only():
     with patch("app.main.db.client", _mock_admin_check_client([{"role_id": 1}])):
         response = client.get("/index_status")
     assert response.status_code == 403
+
+
+def test_search_similar_rejects_a_corrupt_image_with_400():
+    with patch("app.main.qdrant", MagicMock()):
+        response = client.post(
+            "/search_similar",
+            files={"file": ("query.jpg", b"not-a-jpeg", "image/jpeg")},
+        )
+    assert response.status_code == 400
+
+
+def test_reconcile_removes_photos_that_should_not_be_searchable():
+    _as_caller("admin-1")
+    mock_qdrant = MagicMock()
+    mock_qdrant.client.scroll.return_value = (
+        [MagicMock(id="keep"), MagicMock(id="deleted"), MagicMock(id="pending")],
+        None,
+    )
+    with (
+        patch("app.main.db.is_admin", return_value=True),
+        patch("app.main.qdrant", mock_qdrant),
+        patch("app.main._searchable_photo_ids", return_value={"keep"}),
+    ):
+        response = client.post("/reconcile")
+    assert response.status_code == 200
+    assert response.json() == {"removed": 2, "kept": 1}
+    mock_qdrant.client.delete.assert_called_once()
+    assert mock_qdrant.client.delete.call_args.kwargs["points_selector"] == [
+        "deleted",
+        "pending",
+    ]
+
+
+def test_reconcile_is_admin_only():
+    _as_caller("user-1")
+    with patch("app.main.db.is_admin", return_value=False):
+        assert client.post("/reconcile").status_code == 403

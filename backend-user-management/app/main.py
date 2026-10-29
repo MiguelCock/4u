@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from packages.app_versions import install_app_version_guard, load_policy
-from packages.db_errors import install_db_error_handlers
+from packages.db_errors import install_db_error_handlers, select_all
 from packages.supabase import SupaBase
 from supabase import AuthError
 
@@ -70,8 +70,8 @@ async def list_profiles(
 ) -> list[ProfileResponse]:
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    result = db.client.table("profiles").select("*").execute()
-    return result.data
+    # Paged: a single select stops at Supabase's 1000-row cap.
+    return select_all(lambda: db.client.table("profiles").select("*").order("id"))
 
 
 _AUTH_USERS_PAGE_SIZE = 200
@@ -89,8 +89,13 @@ async def list_orphaned_profiles(
     be promoted or managed until it's repaired."""
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
+    # Paged like list_profiles: past 1000 profiles, real users would show
+    # up as "without a profile".
     existing_ids = {
-        row["id"] for row in db.client.table("profiles").select("id").execute().data
+        row["id"]
+        for row in select_all(
+            lambda: db.client.table("profiles").select("id").order("id")
+        )
     }
     orphaned: list[OrphanedUser] = []
     page = 1

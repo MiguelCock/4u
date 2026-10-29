@@ -359,3 +359,20 @@ async def test_a_wrong_match_fades_instead_of_sticking(monkeypatch):
     assert abs(effect[5]) > 0.5
     # ~70 s later, well under the initial pull.
     assert abs(effect[25]) < 0.6 * abs(effect[5])
+
+
+def test_limit_owner_keeps_the_most_recent_filters():
+    import time
+
+    from app.session_store import SessionStore
+
+    store = SessionStore()
+    now = time.monotonic()
+    for i in range(8):
+        store.get_lock(f"u1:s{i}", 6.2, -75.6)
+        store._sessions[f"u1:s{i}"].last_call = now - (8 - i)
+    store.get_lock("u2:s0", 6.2, -75.6)
+    store.limit_owner("u1:", keep=5)
+    assert sorted(store._sessions) == sorted(
+        ["u1:s3", "u1:s4", "u1:s5", "u1:s6", "u1:s7", "u2:s0"]
+    )

@@ -609,5 +609,17 @@
   "homeTutorialButton": "How does it work?",
   "homeTutorialTitle": "How the app works",
   "homeTutorialText": "This app guides you on foot across campus. Choose where to go: press \"Say where you want to go\" and say the place, or pick it from the list. Then press \"Start route\". During the trip, hold the phone upright in front of your chest with the back camera facing forward. I'll tell you when to turn and how many steps to walk. Press \"Repeat instruction\" to hear the last instruction again.",
-  "homeListeningShort": "I'm listening."
+  "homeListeningShort": "I'm listening.",
+  "capturePhotoWebDirectionLabel": "The photos face:",
+  "capturePhotoWebDirectionUnknown": "Unknown",
+  "capturePhotoWebUploadButton": "Upload photos ({count})",
+  "@capturePhotoWebUploadButton": {"placeholders": {"count": {"type": "int"}}},
+  "capturePhotoWebHint": "Photos taken standing on the point, one per direction. Choose the direction before uploading; with \"Unknown\" the photo is never refused for facing the wrong way.",
+  "webAdminOnlyTitle": "For administrators",
+  "webAdminOnlyBody": "This web app is for administrators. To plan and walk routes, use the Eyes4U phone app.",
+  "adminUserDeactivateTooltip": "Deactivate account",
+  "adminUserActivateTooltip": "Activate account",
+  "adminUserInactive": "Deactivated",
+  "adminUserDeactivateConfirm": "Deactivate {name}? They won't be able to use the app until an admin activates the account again.",
+  "@adminUserDeactivateConfirm": {"placeholders": {"name": {"type": "String"}}}
 }

@@ -1,6 +1,7 @@
 import logging
 import math
 import os
+import re
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
@@ -100,6 +101,20 @@ def _list_all(table: str) -> list[dict]:
     return select_all(lambda: db.client.table(table).select("*").order("id"))
 
 
+_ID_PATTERN = re.compile(r"[0-9A-Za-z-]{1,64}")
+
+
+def _either_end(anchor_id: str) -> str:
+    """The `.or_()` filter for connections touching [anchor_id]. The id goes
+    into a filter string, so only id characters are let through (letters,
+    digits, dashes - a UUID's); a comma, dot or parenthesis could add
+    conditions. Anything else is a 404, like a malformed id elsewhere
+    (packages.db_errors)."""
+    if not _ID_PATTERN.fullmatch(anchor_id):
+        raise HTTPException(status_code=404, detail="Anchor point not found")
+    return f"anchor_point_a_id.eq.{anchor_id},anchor_point_b_id.eq.{anchor_id}"
+
+
 def _recompute_connection_distances(anchor_id: str) -> None:
     """After a point moves, its connections' straight-line distances are
     stale (they weight the route search). Distances an admin typed by hand
@@ -107,7 +122,7 @@ def _recompute_connection_distances(anchor_id: str) -> None:
     connections = (
         db.client.table("anchor_point_connections")
         .select("id,anchor_point_a_id,anchor_point_b_id,distance_manual")
-        .or_(f"anchor_point_a_id.eq.{anchor_id},anchor_point_b_id.eq.{anchor_id}")
+        .or_(_either_end(anchor_id))
         .execute()
         .data
     )
@@ -420,7 +435,7 @@ async def list_anchor_point_connections_for_point(
     result = (
         db.client.table("anchor_point_connections")
         .select("*")
-        .or_(f"anchor_point_a_id.eq.{id},anchor_point_b_id.eq.{id}")
+        .or_(_either_end(id))
         .execute()
     )
     return result.data

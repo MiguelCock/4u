@@ -228,6 +228,14 @@ Tap any of them to see the details logged there.
 
 **How to hold the phone.** For photos to be recognised, hold the phone upright in front of the chest with the back camera facing forward. Explain it to the user this way; the app's tutorial (the **?** button) says it too.
 
+## 6c. The web app
+
+Everything in this guide except taking photos with the camera and **Test as user** also works in a browser, on a bigger screen: **https://184-195-103-237.sslip.io/admin/**. Sign in with your admin account; a non-admin account is told to use the phone app.
+
+- **Side menu:** on a wide window, the menu stays open at the left instead of sliding in.
+- **Photos:** a point's photo screen has **Upload photos** instead of the camera. Pick one or more image files taken standing on the point. Before uploading, choose which way they face (N, NE, E…). Choose **Unknown** if you're not sure: such a photo is never refused for facing the wrong way.
+- **Users:** each row also has **Deactivate account**. A deactivated account can't use the app or the web app until an admin activates it again. You can't deactivate yourself.
+
 ## 7. Deleting things
 
 Universities and buildings have a trash icon on their row. On an anchor point row, **Add photo** and **Delete** are in the ⋮ menu, next to the verify and edit buttons.

@@ -35,18 +35,25 @@ jobs:
               - 'packages/**'
             backend-data-collection:
               - 'backend-data-collection/**'
+              - 'packages/**'
             backend-map-management:
               - 'backend-map-management/**'
+              - 'packages/**'
             backend-route-management:
               - 'backend-route-management/**'
+              - 'packages/**'
             backend-user-management:
               - 'backend-user-management/**'
+              - 'packages/**'
             backend-navigation-management:
               - 'backend-navigation-management/**'
+              - 'packages/**'
             backend-ai-training:
               - 'backend-ai-training/**'
+              - 'packages/**'
             backend-positioning:
               - 'backend-positioning/**'
+              - 'packages/**'
             workflows:
               - '.github/workflows/**'
             # Add more services here
@@ -105,7 +112,7 @@ jobs:
         if: matrix.language == 'python'
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.14'
 
       # --- Python dependencies with uv ---
       - name: Install uv
@@ -244,6 +251,19 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Internal-only and size rules hold at the gateway
+        run: |
+          # Photo search is internal (positioning -> ai-training direct).
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/ai-training/search_similar)
+          echo "search_similar via gateway: $code"
+          [ "$code" = "404" ] || { echo "FAILED: search_similar is reachable through the gateway"; exit 1; }
+          # A 2 MB upload must reach the service (nginx's default 1 MB cap
+          # answers 413 before it does).
+          head -c 2000000 /dev/urandom > /tmp/big.jpg
+          code=$(curl -s -o /dev/null -w "%{http_code}" -F "file=@/tmp/big.jpg" http://localhost:8000/map/anchor-points/upload-image)
+          echo "2 MB upload via gateway: $code"
+          [ "$code" != "413" ] || { echo "FAILED: gateway refused a 2 MB upload"; exit 1; }
 
       - name: docker compose logs (always, for debugging)
         if: always()
