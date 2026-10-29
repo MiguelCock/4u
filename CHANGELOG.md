@@ -6,6 +6,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-10-29
+
+**For testers:** install `app-release.apk` from this release. Version 0.5.2 keeps working for now (it shows a "new version available" notice), and **0.5.1 no longer works**: anyone still on it sees "Update required". Admins can also use the web app at https://184-195-103-237.sslip.io/admin/. How to use the app: `docs/user-guide/`.
+
 ### Added
 - **Admin web app** at `/admin/` on the server: universities, buildings, anchor points, connections, users and sessions in a browser, with a side menu on wide screens. Photos are uploaded from files, with the direction they face chosen before uploading. Only admins can use it.
 - **Deactivate accounts** (admin, Users): a deactivated account can't use the app until it's activated again.
@@ -192,7 +196,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.2...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.3...develop
+[0.5.3]: https://github.com/MiguelCock/4u/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/MiguelCock/4u/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/MiguelCock/4u/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/MiguelCock/4u/compare/v0.4.0...v0.5.0
