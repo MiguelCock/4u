@@ -6,3 +6,5 @@ Una guía paso a paso para los administradores que usan la aplicación para agre
 
 - [English](en/README.md)
 - [Español](es/README.md)
+
+For the people who use the app to get around, see the [user guide](../user-guide/README.md) / Para quienes usan la aplicación para moverse, ver la [guía del usuario](../user-guide/README.md).

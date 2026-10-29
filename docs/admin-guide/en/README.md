@@ -2,20 +2,25 @@
 
 This guide is for administrators using the app to add and manage the data that powers the navigation system: places, buildings, anchor points, and the connections between them. It walks through what to do, in what order, and explains what every field on every screen actually means — not just whether it's required.
 
-> This guide describes the app as it exists today. The app's own screens are in English only, so every field below shows its exact on-screen label.
+> This guide describes the app as it exists today. The app is in English and Spanish (it follows the phone's language, or the one chosen in Settings). Field names below are the English labels; in Spanish the same screens show their translation. Everything here works in the phone app, and most of it in the [web app](#6c-the-web-app) too.
 
 ## 1. Getting started
 
 You reach the admin area automatically after logging in with an administrator account — there's no separate admin login, the app routes you to the admin view based on your account's role.
 
-Navigation lives in a side drawer, opened with the hamburger icon (☰) in the top-left corner of the screen. The drawer header shows "Admin" and your signed-in email, and below that, four sections:
+Navigation lives in a side menu (drawer), opened with the hamburger icon (☰) in the top-left corner of the screen. On a wide screen, such as the web app on a computer, it stays open at the left instead. The menu header shows "Admin" and your signed-in email, and below that, five sections:
 
-- **Places** (flag icon)
+- **Universities** (flag icon)
 - **Buildings** (building icon)
 - **Anchor points** (pin icon)
 - **Connections** (line icon)
+- **Users** (people icon), see [§6d](#6d-users)
 
-Tap a section to switch to it; the drawer closes automatically. The title at the top of the screen always tells you which section you're currently looking at. Two icons are always available in the top-right corner: a refresh icon (reloads everything from the server) and a logout icon (signs you out immediately, no confirmation).
+Below them are **Sessions** and **Feedback** ([§6b](#6b-testing-a-route-and-reviewing-it)), **Re-index verified points** ([§5.3](#53-reviewing-and-verifying)) and **Test as user** (phone only).
+
+Tap a section to switch to it; the menu closes automatically. The title at the top of the screen always tells you which section you're currently looking at. The top-right corner always has a refresh icon (reloads everything from the server), a settings icon (language, high contrast, text size, voice) and a logout icon (signs you out immediately, no confirmation).
+
+In this guide, "place" and "university" mean the same thing: the app calls places *universities*.
 
 ## 2. Recommended order of work
 
@@ -75,7 +80,7 @@ A **building** is one physical building within a place.
 
 ### Editing a building
 
-Tap the pencil icon on a building row. Like places, **Code** can't be changed after creation — and note that the **Place** field itself doesn't appear on the edit screen at all: moving a building to a different place isn't supported. If a building was assigned to the wrong place, delete and recreate it instead.
+Tap the pencil icon on a building row. Like places, **Code** can't be changed after creation. The **University** dropdown can: use it to move a building that was assigned to the wrong university.
 
 ### Deleting a building
 
@@ -85,7 +90,7 @@ Same cascade-warning pattern as places — you'll see how many anchor points, ph
 
 | On-screen label | Required? | What it means | Example |
 |---|---|---|---|
-| **Place** (add only) | Required | Which place this building belongs to. Filters the buildings list you'll see elsewhere in the app. | Main Campus |
+| **University** | Required | Which university this building belongs to. Filters the buildings list you'll see elsewhere in the app. Can be changed when editing. | Main Campus |
 | **Code** (add only) | Required | Same idea as a place's code — a short, unique, unchangeable identifier for this specific building. | `B1` |
 | **Name** | Required | The building's full name, shown throughout the app. | `Main Building` |
 | **Address (optional)** | Optional | Reference-only street address. | — |
@@ -116,8 +121,9 @@ An **anchor point** is a specific physical spot — a doorway, an intersection o
 | On-screen label | Required? | What it means | Example |
 |---|---|---|---|
 | **Place** / **Building** | Both required | Which building this point belongs to (the place dropdown just filters the building list). | — |
-| **Location type** | Required, defaults to "entrance" | What kind of spot this is. Full option list and meanings in [§8](#8-quick-reference). | `entrance` |
-| **Description** | Required | The point's human-readable name — shown everywhere. Describe the spot, not a generic label. | `Front door, north side` |
+| **Location type** | Required, new points start as "hallway" | What kind of spot this is, chosen in a searchable picker grouped by category. Full list in [§8](#8-quick-reference). | `entrance` |
+| **Floor** | Required | Which floor of the building the point is on. "Floor 1" is the ground floor; the list offers the building's floors. | `Floor 1` |
+| **Description** | Required for destination types (★ in [§8](#8-quick-reference)), optional otherwise | The point's human-readable name — the one users pick and hear. Describe the spot, not a generic label. | `Front door, north side` |
 | **Indoor location** (switch) | Defaults on | Inside vs. outside — see above for why it matters. | — |
 | **Lighting** (dropdown) | Optional, defaults "Not set" | Typical lighting at this exact spot: Bright / Moderate / Dim. Useful context for whoever reviews the photos later (a dark photo might just mean a dim hallway, not a bad photo), and this data is meant to help the visual-matching system handle different lighting conditions more reliably over time. | A spot by a large window at midday → `Bright`; an interior stairwell with only ceiling lights → `Dim` |
 | **Surface (optional)** | Optional, free text | The physical floor/ground surface. Can serve as a useful orientation cue (e.g. a change from tile to carpet marking a room boundary). | `tile`, `carpet`, `concrete`, `grass` |
@@ -160,11 +166,11 @@ To edit an anchor point: tap the pencil icon on its row. You'll see the same fie
 | **Manage photos** button | Opens the same photo screen from [§5.2](#52-taking-photos) to add or delete photos. |
 | **Move on map** button | Lets you re-pick the point's position on a map, e.g. if it turns out to be in the wrong spot. |
 
-**If verifying shows an indexing error:** the point is saved as Verified, but the photo search didn't receive it, so the app can't recognize it yet. Once the server problem is fixed, open the drawer and tap **Re-index verified points**. It re-sends every verified point that has photos and tells you how many succeeded.
+**If verifying shows an indexing error:** the point is saved as Verified, but the photo search didn't receive it, so the app can't recognize it yet. Once the server problem is fixed, open the menu and tap **Re-index verified points**. It first removes from the photo search anything that shouldn't be there any more (deleted photos, points that are no longer verified). Then it sends only the verified points whose photos aren't searchable yet, retries each failure twice, and ends with a list of any point that still failed. Whenever some verified photos aren't searchable, the menu entry shows a red "N photos not searchable" warning: that's the sign to run it.
 
 ## 6. Connections
 
-A **connection** records that a person can walk directly between two anchor points — it's building up a walkability graph, not just an arbitrary link between two pins. This is meant to eventually support step-by-step route guidance.
+A **connection** records that a person can walk directly between two anchor points. Together they form the walkability graph: routes are computed only along connections, and the turn-by-turn instructions follow them.
 
 There are two ways to create one — pick whichever fits the situation:
 
@@ -235,6 +241,17 @@ Everything in this guide except taking photos with the camera and **Test as user
 - **Side menu:** on a wide window, the menu stays open at the left instead of sliding in.
 - **Photos:** a point's photo screen has **Upload photos** instead of the camera. Pick one or more image files taken standing on the point. Before uploading, choose which way they face (N, NE, E…). Choose **Unknown** if you're not sure: such a photo is never refused for facing the wrong way.
 - **Users:** each row also has **Deactivate account**. A deactivated account can't use the app or the web app until an admin activates it again. You can't deactivate yourself.
+
+## 6d. Users
+
+The **Users** section lists every account.
+
+- **Promote / demote:** the shield icon on a row makes that person an admin, or takes admin rights away (with a confirmation). It's disabled on your own row.
+- **Deactivate / activate:** the person icon blocks an account without deleting it. A deactivated account can't use the app or the web app until it's activated again. It's disabled on your own row.
+- **Accounts without a profile:** if a sign-up didn't finish, the account appears in a highlighted card at the top. Its button creates the missing profile, and the person then appears in the normal list.
+- **The very first admin** has to be set by hand in the database (`UPDATE profiles SET role_id = 2 WHERE id = ...`), as the note at the top of the list says.
+
+**App versions.** The app works in its newest version and the one before it. Someone on the previous version sees "New version available" once each time they open the app, with a download button. Older versions show only "Update required" with the download link, until the new APK is installed. Releases are on the project's GitHub releases page. For testers, the [user guide](../../user-guide/README.md) explains installing and updating.
 
 ## 7. Deleting things
 

@@ -112,7 +112,7 @@ curl https://<domain>/ai-training/
 curl https://<domain>/positioning/
 ```
 
-(`<domain>` is the `sslip.io` hostname `provision.sh` printed, e.g. `34-201-1-2.sslip.io` — same thing `application/.env`'s `API_GATEWAY_URL` now points at.) Each is a service's `GET /` health check, proxied through Caddy then the gateway (see `gateway/nginx.conf` for the full path-prefix list). Confirmed live: all 7 respond `200 OK` once the stack settles — **if the very first request to any endpoint 502s or 504s, just retry once.** Two real, harmless timing issues found by actually doing this: nginx can briefly resolve a backend before it's fully listening right after `docker compose up -d` (502, self-resolves in a few seconds); and the very first real `/search_similar`/`/index_anchor` call anywhere downloads EfficientNet-B0's pretrained weights (~20.5MB) from `download.pytorch.org` at runtime, which took ~2.5 minutes on this connection and exceeded nginx's default 60s timeout (504 the first time, 200 OK on retry). Neither is fixed here — just don't mistake either for a real failure.
+(`<domain>` is the `sslip.io` hostname `provision.sh` printed, e.g. `34-201-1-2.sslip.io` — same thing `application/.env`'s `API_GATEWAY_URL` now points at.) Each is a service's `GET /` health check, proxied through Caddy then the gateway (see `gateway/nginx.conf` for the full path-prefix list). Confirmed live: all 7 respond `200 OK` once the stack settles — **if the very first request to any endpoint 502s or 504s, just retry once.** One real, harmless timing issue found by actually doing this: nginx can briefly resolve a backend before it's fully listening right after `docker compose up -d` (502, self-resolves in a few seconds; ai-training, which loads the model, takes longest). The model weights are baked into the ai-training image at build time, so the first photo search no longer downloads them. Also check the admin web app: `curl -I https://<domain>/admin/` and `https://<domain>/admin/assets/.env` should both be 200.
 
 ### 6. `application/.env` is already done
 
@@ -127,7 +127,14 @@ The fast path — AWS CLI, credentials, the key pair, security group, and Elasti
   ssh ec2-user@<instance-id> "cd ~/4u && sudo docker compose up -d"
   ```
 - **Pulled new code and want it live**: repeat step 3's `rsync`/`scp` commands, then step 4's `sudo docker compose up --build -d` again, on the already-running instance - followed by `sudo docker compose up -d --force-recreate gateway` every time (see step 4's note above), not only when `gateway/nginx.conf` itself changed. Every health check can return `200 OK` and the routing still be silently wrong otherwise.
-- **Redeploys: keep the server's `.env` files**: add `--exclude '.env'` to step 3's `rsync` on every redeploy. Otherwise your local copies of each service's `.env` overwrite the server's, undoing any fix made directly on the instance. This happened with `backend-ai-training/.env`'s Supabase key. Only the first deploy needs to copy them.
+- **Redeploys: keep the server's `.env` files**: add `--exclude '.env'` to step 3's `rsync` on every redeploy. Otherwise your local copies of each service's `.env` overwrite the server's, undoing any fix made directly on the instance. This happened with `backend-ai-training/.env`'s Supabase key. Only the first deploy needs to copy them. **But include the admin web app's own `.env`** (gateway URL and publishable key only), which the same rule would skip, leaving the web app unable to reach the API. Put the include first:
+  ```
+  rsync -az --include 'admin-web/assets/.env' --exclude '.venv' --exclude '.env' \
+    --exclude '__pycache__' --exclude '.pytest_cache' --exclude '.ruff_cache' \
+    docker-compose.yml gateway packages backend-* ec2-user@<instance-id>:~/4u/
+  ```
+  Build the web app into `gateway/admin-web/` first (`docs/SETUP.md` §5b), or unzip a release's `admin-web.zip` there.
+- **Free the disk after each redeploy**: `sudo docker image prune -af && sudo docker builder prune -f`. Old images once filled the instance's disk and a build failed half-way.
 - **Free disk space after redeploys**: every `--build` leaves the previous images behind. After about a dozen redeploys the 32 GB disk was 95% full (22 GB of unused images), and the next build failed partway with `No space left on device`. Confirmed live, and it left most services running the old code. After each redeploy, once the stack is up, run:
   ```
   ssh ec2-user@<instance-id> "sudo docker image prune -af && sudo docker builder prune -f && df -h /"

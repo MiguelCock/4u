@@ -10,12 +10,13 @@ Raw GPS is usually accurate to 5-20 meters, which isn't tight enough to safely g
 
 ## Features
 
-- **Visual GPS correction** — matches a live photo against indexed anchor-point photos (EfficientNet-B0 embeddings + Qdrant similarity search) and fuses the match with raw GPS via an Unscented Kalman filter.
-- **Trip planning & navigation** — pick a destination, get an auto-computed route over admin-built walkability connections, and follow a live guidance line on the map while navigating.
-- **Admin anchor-point tooling** — capture photos + coordinates, review and verify submissions, build the walkability graph between points, and manage the places/buildings hierarchy — all from the app.
+- **Visual GPS correction** — matches a live photo against indexed anchor-point photos (EigenPlaces place-recognition embeddings + Qdrant similarity search) and fuses the match with raw GPS via an Unscented Kalman filter that also learns the GPS's own slowly drifting offset.
+- **Trip planning & voice navigation** — say or pick a destination, confirm with **Start route**, and get an auto-computed route over admin-built walkability connections. Spoken turn-by-turn guidance in steps ("in about 10 steps, turn left"), with direction from the gyroscope and the walking direction rather than the compass alone.
+- **Admin anchor-point tooling** — capture photos + coordinates, review and verify submissions, build the walkability graph between points, and manage universities, buildings and users — from the app, or from the **admin web app** in a browser (`/admin/` on the server).
 - **Session review** — browse every user's past navigation sessions grouped by user, re-watch a session's logged trail against its planned route, and read the feedback comments they left.
 - **Admin "test as user"** — run the full trip-planning → navigation → feedback flow on your own admin account, no second test account needed.
-- **Accessibility settings** — high contrast, adjustable text size, and a fully localized UI (English/Spanish).
+- **Accessibility** — designed for TalkBack, a spoken first-run tutorial, a large Repeat-instruction button, high contrast, adjustable text size, and a fully localized UI (English/Spanish).
+- **Version support** — the newest app release and the one before it both work; older ones are asked to update.
 
 ## Architecture
 
@@ -40,9 +41,9 @@ A Python/Dart monorepo: a single Flutter app (serving both a `user` and an `admi
 
 | Layer | Technology |
 |---|---|
-| Mobile app | Flutter (Dart) |
+| Mobile & admin web app | Flutter (Dart) |
 | Backend | Python, FastAPI, `uv` |
-| Visual embeddings | PyTorch (EfficientNet-B0) |
+| Visual embeddings | PyTorch (EigenPlaces ResNet50; EfficientNet-B0 still selectable) |
 | Vector search | Qdrant |
 | Position fusion | Unscented Kalman filter (`filterpy`) |
 | Database & storage | Supabase (Postgres + S3-compatible storage) |
@@ -70,8 +71,10 @@ For the full walkthrough — exact schema order, Storage bucket setup, running e
 
 ## Usage
 
+- Using the app to get around (for users and the people helping them): [`docs/user-guide/`](docs/user-guide/README.md) (Spanish/English).
+- Using the admin flow (capturing anchor points, verifying them, building routes, the web app): [`docs/admin-guide/`](docs/admin-guide/README.md) (English/Spanish).
 - Using the app as a developer: [`application/README.md`](application/README.md).
-- Using the admin flow (capturing anchor points, verifying them, building routes): [`docs/admin-guide/`](docs/admin-guide/README.md) (English/Spanish).
+- Tuning the position correction and guidance from test walks: [`docs/TUNING.md`](docs/TUNING.md).
 
 ## Documentation
 

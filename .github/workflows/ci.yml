@@ -264,6 +264,14 @@ jobs:
           code=$(curl -s -o /dev/null -w "%{http_code}" -F "file=@/tmp/big.jpg" http://localhost:8000/map/anchor-points/upload-image)
           echo "2 MB upload via gateway: $code"
           [ "$code" != "413" ] || { echo "FAILED: gateway refused a 2 MB upload"; exit 1; }
+          # Rate limiting: one client's burst well past 30 r/s (+60) gets
+          # 429s, while a single request after a pause still passes.
+          codes=$(seq 1 200 | xargs -P 40 -I{} curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/map/ | sort | uniq -c)
+          echo "$codes"
+          echo "$codes" | grep -q " 429" || { echo "FAILED: no rate limiting"; exit 1; }
+          sleep 3
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/map/)
+          [ "$code" = "200" ] || { echo "FAILED: still limited after a pause ($code)"; exit 1; }
 
       - name: docker compose logs (always, for debugging)
         if: always()
