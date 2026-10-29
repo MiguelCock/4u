@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -35,7 +36,16 @@ void main() async {
     // Unknown version: requests go without X-App-Version.
   }
 
-  await LocationService().initialize();
+  // The web app is for admins managing data, who pick points on the map:
+  // no location prompt there. Never let a sensor problem keep the app from
+  // starting - a web-unsupported call here once left a blank page.
+  if (!kIsWeb) {
+    try {
+      await LocationService().initialize();
+    } catch (_) {
+      // LocationService.ensureReady retries when a position is needed.
+    }
+  }
   runApp(const MainApp());
 }
 
@@ -54,7 +64,7 @@ class MainApp extends StatelessWidget {
               valueListenable: textScaleNotifier,
               builder: (context, textScale, _) {
                 return MaterialApp(
-                  title: '4u',
+                  title: kIsWeb ? 'Eyes4U Admin' : '4u',
                   locale: locale,
                   localizationsDelegates:
                       AppLocalizations.localizationsDelegates,

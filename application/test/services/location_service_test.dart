@@ -73,6 +73,13 @@ void main() {
     expect((await ready)?.latitude, 6.3);
   });
 
+  test('a platform without a service-status stream still starts', () async {
+    final platform = _NoStatusPlatform()..enabled = true;
+    final service = LocationService.forTesting(platform);
+    expect(await service.initialize(), isNull);
+    expect(platform.streams, 1);
+  });
+
   test('ensureReady gives up quietly without a fix', () async {
     final platform = _FakePlatform()..enabled = true;
     final service = LocationService.forTesting(platform);
@@ -82,4 +89,10 @@ void main() {
     expect(position, isNull);
     expect(service.lastError, isNull);
   });
+}
+
+class _NoStatusPlatform extends _FakePlatform {
+  @override
+  Stream<ServiceStatus> serviceStatus() =>
+      throw UnsupportedError('getServiceStatusStream'); // like the web
 }
