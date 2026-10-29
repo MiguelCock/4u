@@ -113,7 +113,16 @@ flutter build web --release --base-href /admin/
 rm -rf ../gateway/admin-web/* && cp -r build/web/* ../gateway/admin-web/
 ```
 
-`docker-compose.yml` mounts `gateway/admin-web/` into the gateway (`location /admin/` in `gateway/nginx.conf`), so a rebuild only needs those files copied (and rsynced, on the server). No restart is required. Every release also attaches `admin-web.zip` with the same build; unzip it into `gateway/admin-web/` instead of building. The build reads the same `application/.env` as the phone app, which holds only client-safe values.
+`docker-compose.yml` mounts `gateway/admin-web/` into the gateway (`location /admin/` in `gateway/nginx.conf`), so a rebuild only needs those files copied (and rsynced, on the server). No restart is required. **Deploying it to a server:** the usual rsync excludes every `.env` so the server's own secrets survive, but the web build's `assets/.env` (gateway URL and publishable key only) must go along, or the web app loads but can't reach the API. Put the include first:
+
+```bash
+rsync -az --include 'admin-web/assets/.env' --exclude '.venv' --exclude '.env' \
+  --exclude '__pycache__' --exclude '.pytest_cache' --exclude '.ruff_cache' \
+  docker-compose.yml gateway packages backend-* <server>:~/4u/
+curl -s -o /dev/null -w "%{http_code}\n" https://<domain>/admin/assets/.env   # expect 200
+```
+
+Every release also attaches `admin-web.zip` with the same build; unzip it into `gateway/admin-web/` instead of building. The build reads the same `application/.env` as the phone app, which holds only client-safe values.
 
 ## 6. Run every automated test suite
 
