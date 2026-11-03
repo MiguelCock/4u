@@ -69,6 +69,15 @@ There's no service-to-service HTTP call here — only shared-table relationships
 6. **`POST /places`** / **`GET /places`** / **`GET /places/{id}`** — same CRUD pattern over `places` (`PlaceCreate`: `code`, `name`, `latitude`, `longitude`, plus optional `address`), via the app's `AddPlaceScreen`. **`PATCH /places/{id}`** / **`DELETE /places/{id}`** — edit/delete; delete cascades through buildings all the way to anchor points, photos, and connections in Postgres (so the app warns with counts before calling it), and best-effort deletes every affected photo's file from Storage.
 7. **`POST /anchor-point-connections`** — `AnchorPointConnectionCreate` (`anchor_point_a_id`, `anchor_point_b_id`, optional `distance_meters`, optional `notes`, `created_by`); 400s if the two ids are equal, normalizes their order, and computes `distance_meters` server-side when omitted (see the schema section above). **`GET /anchor-point-connections`** — every connection, flat, same "fetch all, join client-side" pattern as `anchor-point-photos`, via the app's Connections tab. **`GET /anchor-points/{id}/connections`** — connections touching one point (an `.or_()` filter, since the point could be on either side of the edge). **`DELETE /anchor-point-connections/{id}`** — no `PATCH`; fixing a wrong connection is delete-and-recreate (mirrors `backend-route-management`'s `routes`, which also has no `PATCH`).
 
+## Mapping guardrails
+
+Added after the Icesi test (2026-11-03), whose data had 36-76 m connections between buildings, points stacked on each other and a floor change between two hallways. Constants at the top of `app/main.py`; the app checks the same rules first (`application/lib/services/capture_checks.dart`), and both connection screens show these 400 `detail`s as-is, so older apps get readable refusals too.
+
+- **Connections** (`_require_short_connection`, used by `create_anchor_point_connection`, which now always loads both points): refused over `MAX_CONNECTION_METERS` (30 m) straight-line, even with a typed `distance_meters`, and between floors unless one end is a `VERTICAL_LOCATION_TYPE_IDS` type (elevator 3, stairwell 4, ramp 11; `app/models.py`). A typed distance may be longer than the straight line, never more than 1 m shorter.
+- **Moving a point or changing its floor/building** (`update_anchor_point` → `_require_connections_still_short`): refused if one of its connections would break the rule above.
+- **New point** (`create_anchor_point`): 409 when another point of the same building and floor is under `DUPLICATE_POINT_METERS` (1 m), unless the body has `allow_nearby: true` (not stored, excluded from the insert); 400 when it's more than `MAX_POINT_TO_BUILDING_METERS` (300 m) from its building's pin (`_require_near_building`, skipped when the building has no position). The move check above applies the building distance too.
+- `haversine_meters` now comes from `packages.geo`, shared with `backend-route-management`.
+
 ## Validation and integrity (CRUD audit)
 
 - **Errors and validation:**

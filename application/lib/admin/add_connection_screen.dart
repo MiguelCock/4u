@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/api_error_messages.dart';
+import '../services/capture_checks.dart';
 import '../services/location_types.dart' show anchorDisplayName;
 
 /// Dropdown-based fallback/precision flow for creating an anchor-point
@@ -107,6 +108,40 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
         : double.tryParse(distanceText);
     if (distanceText.isNotEmpty && (distance == null || distance <= 0)) {
       setState(() => _error = l10n.addConnectionErrorBadDistance);
+      return;
+    }
+
+    Map<String, dynamic> byId(String id) => _anchorPointsAll.firstWhere(
+      (p) => p['id'] == id,
+      orElse: () => {'id': id},
+    );
+    final a = byId(_anchorPointAId!);
+    final b = byId(_anchorPointBId!);
+    final straight = anchorDistance(a, b);
+    switch (connectionProblem(a, b)) {
+      case ConnectionProblem.tooLong:
+        setState(
+          () => _error = l10n.connectErrorTooFar(
+            _label(a),
+            _label(b),
+            straight!.toStringAsFixed(0),
+          ),
+        );
+        return;
+      case ConnectionProblem.floorChange:
+        setState(
+          () => _error = l10n.connectErrorFloorChange(_label(a), _label(b)),
+        );
+        return;
+      case null:
+        break;
+    }
+    if (distance != null && straight != null && distance < straight - 1) {
+      setState(
+        () => _error = l10n.addConnectionErrorDistanceTooShort(
+          straight.toStringAsFixed(1),
+        ),
+      );
       return;
     }
 

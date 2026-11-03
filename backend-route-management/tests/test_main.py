@@ -377,3 +377,111 @@ def test_delete_unknown_route_is_404():
     with patch("app.main.db.client", mock_client):
         response = client.delete("/routes/gone")
     assert response.status_code == 404
+
+
+# --- reachable start (Icesi, 2026-11-03) --------------------------------
+
+_LINE = [
+    {"anchor_point_a_id": "c1", "anchor_point_b_id": "c2", "distance_meters": 6.0},
+    {"anchor_point_a_id": "c2", "anchor_point_b_id": "end", "distance_meters": 6.0},
+]
+
+
+def _point(point_id, lat, floor=0, status="verified"):
+    return {
+        "id": point_id,
+        "latitude": lat,
+        "longitude": -76.53,
+        "floor": floor,
+        "status": status,
+        "building_id": "b1",
+        "location_description": None,
+    }
+
+
+def _reachable_client(points, connections=_LINE):
+    routes_table = MagicMock()
+    routes_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+    routes_table.insert.side_effect = lambda payload: MagicMock(
+        execute=MagicMock(return_value=MagicMock(data=[{**payload, "id": "r"}]))
+    )
+    connections_table = MagicMock()
+    connections_table.select.return_value.order.return_value.range.return_value.execute.return_value.data = connections
+    anchors_table = MagicMock()
+    anchors_table.select.return_value.order.return_value.range.return_value.execute.return_value.data = points
+    anchors_table.select.return_value.in_.return_value.execute.return_value.data = (
+        points
+    )
+    mock_client = _mock_multi_table_client(
+        {
+            "routes": routes_table,
+            "anchor_point_connections": connections_table,
+            "anchor_points": anchors_table,
+        }
+    )
+    return mock_client, routes_table
+
+
+def _find(mock_client, start="loose", end="end"):
+    with patch("app.main.db.client", mock_client):
+        return client.post(
+            "/routes/find_or_create",
+            json={"start_anchor_id": start, "end_anchor_id": end},
+        )
+
+
+def test_loose_start_routes_from_the_nearest_connected_point():
+    _as_caller("u1")
+    # 0.00009 deg of latitude is about 10 m.
+    points = [
+        _point("loose", 3.3400),
+        _point("c1", 3.34009),
+        _point("c2", 3.34018),
+        _point("end", 3.34027),
+    ]
+    mock_client, routes_table = _reachable_client(points)
+    response = _find(mock_client)
+    assert response.status_code == 200
+    payload = routes_table.insert.call_args.args[0]
+    assert payload["start_anchor_id"] == "c1"
+    assert payload["waypoint_anchor_ids"] == ["c2"]
+
+
+def test_loose_start_too_far_from_any_connected_point_is_404():
+    _as_caller("u1")
+    points = [_point("loose", 3.3400), _point("c1", 3.34054), _point("c2", 3.3406)]
+    mock_client, routes_table = _reachable_client(points)  # c1 is ~60 m away
+    response = _find(mock_client)
+    assert response.status_code == 404
+    assert "starting point" in response.json()["detail"]
+    routes_table.insert.assert_not_called()
+
+
+def test_connected_point_on_another_floor_is_not_used_as_the_start():
+    _as_caller("u1")
+    points = [
+        _point("loose", 3.3400),
+        _point("c1", 3.34001, floor=2),
+        _point("c2", 3.3406, floor=2),
+    ]
+    mock_client, _ = _reachable_client(points)
+    assert _find(mock_client).status_code == 404
+
+
+def test_unverified_connected_point_is_not_used_as_the_start():
+    _as_caller("u1")
+    points = [
+        _point("loose", 3.3400),
+        _point("c1", 3.34001, status="pending"),
+        _point("c2", 3.3406),
+    ]
+    mock_client, _ = _reachable_client(points)
+    assert _find(mock_client).status_code == 404
+
+
+def test_loose_destination_says_so():
+    _as_caller("u1")
+    mock_client, _ = _reachable_client([_point("c1", 3.34)])
+    response = _find(mock_client, start="c1", end="loose-end")
+    assert response.status_code == 404
+    assert "destination" in response.json()["detail"]

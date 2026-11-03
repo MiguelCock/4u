@@ -8,8 +8,10 @@ import '../services/location_types.dart';
 import 'location_picker_screen.dart';
 import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
+import '../services/capture_checks.dart';
 import '../services/destinations.dart';
 import '../widgets/floor_field.dart';
+import '../widgets/guardrail_dialogs.dart';
 import '../widgets/location_type_field.dart';
 
 const List<String> kAnchorPointStatuses = ['pending', 'verified', 'rejected'];
@@ -165,6 +167,36 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
         return;
       }
     }
+    final id = widget.anchorPoint['id'] as String;
+    final originalType = widget.anchorPoint['location_type_id'] as int?;
+    final originalName =
+        (widget.anchorPoint['location_description'] as String? ?? '').trim();
+    if ((_locationTypeId != originalType || description != originalName) &&
+        isNamedInBetweenPoint(_locationTypeId, description) &&
+        !await confirmInBetweenName(
+          context,
+          name: description,
+          locationTypeId: _locationTypeId ?? 10,
+        )) {
+      return;
+    }
+    if (_status == 'verified' && widget.anchorPoint['status'] != 'verified') {
+      try {
+        final connections = await _mapApi.get('/anchor-points/$id/connections');
+        if (!mounted) return;
+        if (connections is List &&
+            connections.isEmpty &&
+            !await confirmVerifyUnconnected(
+              context,
+              name: anchorDisplayName(l10n, widget.anchorPoint),
+            )) {
+          return;
+        }
+      } on ApiException {
+        // The warning is a convenience; saving still works without it.
+      }
+    }
+    if (!mounted) return;
     final moved = _position != _originalPosition;
 
     setState(() {

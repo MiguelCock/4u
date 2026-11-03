@@ -5,7 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// The values of the last anchor point an admin created on this phone, so
 /// the next one starts from them: points are usually captured in a row
 /// along one corridor, with the same building, type, floor and conditions.
-/// The description and position are never carried over.
+/// The description, position and indoor/outdoor are never carried over: a
+/// remembered "indoor" marked plazas as indoor (Icesi, 2026-11-03).
 class CaptureDefaults {
   static const _key = 'capture_defaults_v1';
 
@@ -13,7 +14,6 @@ class CaptureDefaults {
   final String? buildingId;
   final int? locationTypeId;
   final int? floor;
-  final bool? indoor;
   final String? lighting;
   final String? surface;
 
@@ -22,7 +22,6 @@ class CaptureDefaults {
     this.buildingId,
     this.locationTypeId,
     this.floor,
-    this.indoor,
     this.lighting,
     this.surface,
   });
@@ -32,7 +31,6 @@ class CaptureDefaults {
     'building_id': buildingId,
     'location_type_id': locationTypeId,
     'floor': floor,
-    'indoor': indoor,
     'lighting': lighting,
     'surface': surface,
   };
@@ -43,7 +41,6 @@ class CaptureDefaults {
         buildingId: json['building_id'] as String?,
         locationTypeId: json['location_type_id'] as int?,
         floor: json['floor'] as int?,
-        indoor: json['indoor'] as bool?,
         lighting: json['lighting'] as String?,
         surface: json['surface'] as String?,
       );

@@ -105,6 +105,27 @@ def _mock_multi_table_client(table_mocks):
     return mock_client
 
 
+def _points(*ids, step=0.00005, floor=0, type_id=10):
+    """Anchor points about 5.5 m apart (step degrees of latitude) on one floor."""
+    return [
+        {
+            "id": point_id,
+            "latitude": 6.2 + i * step,
+            "longitude": -75.58,
+            "floor": floor,
+            "location_type_id": type_id,
+            "location_description": None,
+        }
+        for i, point_id in enumerate(ids)
+    ]
+
+
+def _with_points(mock_client, points):
+    """Lets a single-table mock answer the connection endpoint's point lookup."""
+    mock_client.table.return_value.select.return_value.in_.return_value.execute.return_value.data = points
+    return mock_client
+
+
 def _profiles_table(admin: bool) -> MagicMock:
     profiles_table = MagicMock()
     profiles_table.select.return_value.eq.return_value.execute.return_value.data = (
@@ -568,6 +589,7 @@ def test_create_anchor_point_connection_uses_explicit_distance():
         "created_by": "someone-else",
     }
     mock_client = _mock_insert_result([{**payload, "id": "c1", "notes": None}])
+    _with_points(mock_client, _points("a1", "a2"))
     with patch("app.main.db.client", mock_client):
         response = client.post("/anchor-point-connections", json=payload)
     assert response.status_code == 200
@@ -584,6 +606,7 @@ def test_create_anchor_point_connection_forces_created_by():
         "created_by": "someone-else",
     }
     mock_client = _mock_insert_result([{}])
+    _with_points(mock_client, _points("a1", "a2"))
     with patch("app.main.db.client", mock_client):
         response = client.post("/anchor-point-connections", json=payload)
     assert response.status_code == 200
@@ -610,6 +633,7 @@ def test_create_anchor_point_connection_normalizes_id_order():
             }
         ]
     )
+    _with_points(mock_client, _points("aaaa", "zzzz"))
     with patch("app.main.db.client", mock_client):
         response = client.post("/anchor-point-connections", json=payload)
     assert response.status_code == 200
@@ -623,7 +647,7 @@ def test_create_anchor_point_connection_computes_distance_when_omitted():
     anchor_points_table = MagicMock()
     anchor_points_table.select.return_value.in_.return_value.execute.return_value.data = [
         {"id": "a1", "latitude": 6.2442, "longitude": -75.5812},
-        {"id": "a2", "latitude": 6.2445, "longitude": -75.5810},
+        {"id": "a2", "latitude": 6.2443, "longitude": -75.5811},
     ]
     anchor_points_table.select.return_value.in_.return_value.order.return_value.range.return_value.execute.return_value.data = [
         {"id": "a1", "latitude": 6.2442, "longitude": -75.5812},
@@ -1194,7 +1218,7 @@ def test_editing_without_moving_leaves_distances_alone():
     mock_client, _, connections_table = _anchor_patch_client(_CURRENT)
     with patch("app.main.db.client", mock_client):
         client.patch("/anchor-points/p1", json={"floor": 2})
-    connections_table.select.assert_not_called()
+    connections_table.update.assert_not_called()
 
 
 def test_photo_for_missing_anchor_point_is_404():
@@ -1236,10 +1260,15 @@ def test_a_typed_distance_is_marked_manual():
     _as_caller("admin1")
     connections_table = MagicMock()
     connections_table.insert.return_value.execute.return_value.data = [{"id": "c"}]
+    anchors = MagicMock()
+    anchors.select.return_value.in_.return_value.execute.return_value.data = _points(
+        "a", "b"
+    )
     mock_client = _mock_multi_table_client(
         {
             "profiles": _profiles_table(admin=True),
             "anchor_point_connections": connections_table,
+            "anchor_points": anchors,
         }
     )
     with patch("app.main.db.client", mock_client):
@@ -1338,3 +1367,169 @@ def test_connections_for_a_malformed_id_are_404_not_a_filter():
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 404
+
+
+# --- guardrails (Icesi data, 2026-11-03) --------------------------------
+
+
+def _connection_client(points):
+    connections_table = MagicMock()
+    connections_table.insert.return_value.execute.return_value.data = [{"id": "c"}]
+    anchors = MagicMock()
+    anchors.select.return_value.in_.return_value.execute.return_value.data = points
+    client_mock = _mock_multi_table_client(
+        {
+            "profiles": _profiles_table(admin=True),
+            "anchor_point_connections": connections_table,
+            "anchor_points": anchors,
+        }
+    )
+    return client_mock, connections_table
+
+
+def _connect(points, **extra):
+    mock_client, connections_table = _connection_client(points)
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/anchor-point-connections",
+            json={"anchor_point_a_id": "a", "anchor_point_b_id": "b", **extra},
+        )
+    return response, connections_table
+
+
+def test_connection_at_the_limit_is_allowed():
+    _as_caller("admin1")
+    # 0.00026 deg of latitude is about 28.9 m.
+    response, connections_table = _connect(_points("a", "b", step=0.00026))
+    assert response.status_code == 200
+    connections_table.insert.assert_called_once()
+
+
+def test_connection_over_30_m_is_refused():
+    _as_caller("admin1")
+    # 0.00045 deg is about 50 m, like the cross-building ones at Icesi.
+    response, connections_table = _connect(_points("a", "b", step=0.00045))
+    assert response.status_code == 400
+    assert "50 m apart" in response.json()["detail"]
+    connections_table.insert.assert_not_called()
+
+
+def test_long_connection_is_refused_even_with_a_typed_distance():
+    _as_caller("admin1")
+    response, connections_table = _connect(
+        _points("a", "b", step=0.00045), distance_meters=10
+    )
+    assert response.status_code == 400
+    connections_table.insert.assert_not_called()
+
+
+def test_typed_distance_shorter_than_the_straight_line_is_refused():
+    _as_caller("admin1")
+    response, _ = _connect(_points("a", "b", step=0.0001), distance_meters=3)
+    assert response.status_code == 400
+    assert "straight line" in response.json()["detail"]
+
+
+def test_typed_distance_longer_than_the_straight_line_is_kept():
+    _as_caller("admin1")
+    response, connections_table = _connect(
+        _points("a", "b", step=0.0001), distance_meters=25
+    )
+    assert response.status_code == 200
+    assert connections_table.insert.call_args.args[0]["distance_meters"] == 25
+
+
+def test_floor_change_between_hallways_is_refused():
+    _as_caller("admin1")
+    a, b = _points("a", "b")
+    response, connections_table = _connect([a, {**b, "floor": 1}])
+    assert response.status_code == 400
+    assert "different floors" in response.json()["detail"]
+    connections_table.insert.assert_not_called()
+
+
+def test_floor_change_through_stairs_is_allowed():
+    _as_caller("admin1")
+    a, b = _points("a", "b")
+    response, _ = _connect([a, {**b, "floor": 1, "location_type_id": 4}])
+    assert response.status_code == 200
+
+
+def _create_client(neighbours, building=None):
+    anchors = MagicMock()
+    anchors.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = neighbours
+    anchors.insert.return_value.execute.return_value.data = [{"id": "new"}]
+    buildings = MagicMock()
+    buildings.select.return_value.eq.return_value.execute.return_value.data = (
+        [building] if building else []
+    )
+    mock_client = _mock_multi_table_client(
+        {
+            "profiles": _profiles_table(admin=True),
+            "anchor_points": anchors,
+            "buildings": buildings,
+        }
+    )
+    return mock_client, anchors
+
+
+_NEW_POINT = {"building_id": "b1", "latitude": 6.2, "longitude": -75.58}
+
+
+def test_point_on_top_of_another_is_refused():
+    _as_caller("admin1")
+    existing = {**_points("old")[0], "location_description": "Baño mujeres"}
+    mock_client, anchors = _create_client([existing])
+    with patch("app.main.db.client", mock_client):
+        response = client.post("/anchor-points", json=_NEW_POINT)
+    assert response.status_code == 409
+    assert "Baño mujeres" in response.json()["detail"]
+    anchors.insert.assert_not_called()
+
+
+def test_point_on_top_of_another_is_saved_when_confirmed():
+    _as_caller("admin1")
+    mock_client, anchors = _create_client(_points("old"))
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/anchor-points", json={**_NEW_POINT, "allow_nearby": True}
+        )
+    assert response.status_code == 200
+    assert "allow_nearby" not in anchors.insert.call_args.args[0]
+
+
+def test_point_a_few_meters_away_is_saved():
+    _as_caller("admin1")
+    mock_client, anchors = _create_client(_points("x", "old")[1:])  # ~5.5 m
+    with patch("app.main.db.client", mock_client):
+        response = client.post("/anchor-points", json=_NEW_POINT)
+    assert response.status_code == 200
+    anchors.insert.assert_called_once()
+
+
+def test_point_far_from_its_building_is_refused():
+    _as_caller("admin1")
+    mock_client, anchors = _create_client(
+        [],
+        building={"latitude": 6.21, "longitude": -75.58},  # ~1.1 km
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.post("/anchor-points", json=_NEW_POINT)
+    assert response.status_code == 400
+    assert "from its building" in response.json()["detail"]
+    anchors.insert.assert_not_called()
+
+
+def test_moving_a_point_too_far_from_a_connected_one_is_refused():
+    _as_caller("admin1")
+    current = {**_CURRENT, "id": "p1", "floor": 0}
+    connections = [{"id": "c", "anchor_point_a_id": "p1", "anchor_point_b_id": "p2"}]
+    p2 = {**_points("p2")[0], "latitude": 6.2}
+    mock_client, anchors, _ = _anchor_patch_client(
+        current, connections=connections, points=[p2]
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.patch("/anchor-points/p1", json={"latitude": 6.2005})
+    assert response.status_code == 400
+    assert "apart" in response.json()["detail"]
+    anchors.update.assert_not_called()

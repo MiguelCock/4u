@@ -13,6 +13,10 @@ DESTINATION_LOCATION_TYPE_IDS = frozenset(
     {1, 5, 6, 7, 8, 13, 14, 15, 18, *range(19, 34)}
 )
 
+# Types a walk can change floor at: elevator, stairwell, ramp. A connection
+# between two floors needs one of these at one end.
+VERTICAL_LOCATION_TYPE_IDS = frozenset({3, 4, 11})
+
 
 Latitude = Field(ge=-90, le=90)
 Longitude = Field(ge=-180, le=180)
@@ -41,6 +45,9 @@ class AnchorPointCreate(BaseModel):
     altitude: float | None = None
     location_description: str | None = None
     metadata: AnchorPointMetadata = AnchorPointMetadata()
+    # Not stored: true when the admin confirmed saving a point within
+    # DUPLICATE_POINT_METERS of another on the same floor.
+    allow_nearby: bool = False
 
     _normalize_description = field_validator("location_description")(_blank_to_none)
 

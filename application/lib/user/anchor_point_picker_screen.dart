@@ -59,6 +59,7 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
         _mapApi.get('/buildings'),
         _mapApi.get('/anchor-points'),
       ]);
+      final connected = await fetchConnectedAnchorIds(_mapApi);
       if (!mounted) return;
       // Only real destinations (an important type with a name) are offered;
       // unnamed hallway/intersection points exist just to connect routes.
@@ -75,6 +76,8 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
                 a['status'] == 'verified' &&
                 active.contains(a['building_id']) &&
                 isDestinationAnchor(a) &&
+                // No route can reach a point with no connections.
+                (connected?.contains(a['id']) ?? true) &&
                 a['id'] != widget.excludeAnchorId,
           )
           .toList();

@@ -304,14 +304,16 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     if (start == true && mounted) _findRoute();
   }
 
-  /// Verified points in active buildings of active universities - the only
-  /// ones offered as a start or a destination.
+  /// Verified, connected points in active buildings of active universities
+  /// - the only ones offered as a start or a destination. An unconnected
+  /// start made every route at Icesi fail (2026-11-03).
   Future<List<Map<String, dynamic>>> _fetchVerifiedAnchors() async {
     final results = await Future.wait([
       _mapApi.get('/places'),
       _mapApi.get('/buildings'),
       _mapApi.get('/anchor-points'),
     ]);
+    final connected = await fetchConnectedAnchorIds(_mapApi);
     final buildings = (results[1] as List).cast<Map<String, dynamic>>();
     _buildingNames = {
       for (final b in buildings) b['id'] as String: b['name'] as String? ?? '',
@@ -323,7 +325,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     return (results[2] as List)
         .cast<Map<String, dynamic>>()
         .where(
-          (a) => a['status'] == 'verified' && active.contains(a['building_id']),
+          (a) =>
+              a['status'] == 'verified' &&
+              active.contains(a['building_id']) &&
+              (connected?.contains(a['id']) ?? true),
         )
         .toList();
   }
@@ -723,6 +728,18 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     return nearest;
   }
 
+  /// backend-route-management's 404 detail says which end isn't connected.
+  String _noPathMessage(AppLocalizations l10n, String? detail) {
+    if (detail == null) return l10n.homeErrorNoPath;
+    if (detail.startsWith('Your starting point')) {
+      return l10n.homeErrorNoPathStart;
+    }
+    if (detail.startsWith("The destination isn't")) {
+      return l10n.homeErrorNoPathDestination;
+    }
+    return l10n.homeErrorNoPath;
+  }
+
   Future<void> _findRoute() async {
     final end = _end;
     if (end == null) return;
@@ -803,7 +820,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       setState(() {
         _locatingStart = false;
         _error = e.statusCode == 404
-            ? AppLocalizations.of(context)!.homeErrorNoPath
+            ? _noPathMessage(AppLocalizations.of(context)!, e.detail)
             : AppLocalizations.of(context)!.homeErrorFailedToFindRoute(
                 friendlyApiErrorMessage(context, e),
               );

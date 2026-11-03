@@ -6,6 +6,19 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+### Added
+- **Guardrails for admins building the map**, after the Icesi test found connections of 50–76 m, points saved on top of each other and named places users couldn't choose:
+  - A new point's position must be set on purpose: pick it on the map, or tap **Use my location** while standing on the spot (only with GPS of ±8 m or better). The app no longer takes the GPS on its own.
+  - The app warns about another point less than 3 m away on the same floor, and asks whether a named point saved as a hallway is really a destination.
+  - Indoors/outdoors is asked for every point instead of being remembered.
+  - Connections longer than 30 m are refused, as are floor changes that don't go through stairs, an elevator or a ramp, and a moved point can't stretch its connections past 30 m. Above 15 m the app warns.
+  - Verifying a point with no connections asks first.
+  - The admin menu lists what needs fixing: verified points with no connections, named points users can't choose, and connections over 30 m.
+
+### Fixed
+- **"No walkable route" when the nearest point isn't connected.** The start of a trip is now the nearest point that has connections. For phones still on 0.5.3, the server starts from a connected point up to 40 m away on the same floor instead of failing. When no route exists, the message says whether the starting point or the destination isn't connected.
+- Users no longer see destinations that no route can reach.
+
 ## [0.5.3] - 2026-10-29
 
 **For testers:** install `app-release.apk` from this release. Version 0.5.2 keeps working for now (it shows a "new version available" notice), and **0.5.1 no longer works**: anyone still on it sees "Update required". Admins can also use the web app at https://184-195-103-237.sslip.io/admin/. How to use the app: `docs/user-guide/`.
