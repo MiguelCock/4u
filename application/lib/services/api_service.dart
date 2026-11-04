@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,6 +19,10 @@ class ApiException implements Exception {
   ApiException(this.statusCode, this.body);
 
   bool get isNetworkError => statusCode == networkError;
+
+  /// A network error because no answer came in time (not a dropped
+  /// connection).
+  bool timedOut = false;
 
   /// The backend's FastAPI `{"detail": "..."}` message, when the body is
   /// shaped that way and `detail` is a plain string (FastAPI's own
@@ -45,6 +50,13 @@ class ApiService {
   final String? Function() _getAccessToken;
   final Future<void> Function() _refreshSession;
 
+  /// The wait before [_sendRetrying]'s second try.
+  final Duration retryDelay;
+
+  /// Counts automatic retries (see [_sendRetrying]), so a screen that's
+  /// waiting can say "trying again" instead of staying silent.
+  static final retries = ValueNotifier<int>(0);
+
   /// [client]/[getAccessToken]/[refreshSession] exist for tests - every
   /// real caller uses the defaults (a plain client and the live Supabase
   /// session). The defaults are closures, so constructing an ApiService
@@ -54,6 +66,7 @@ class ApiService {
     http.Client? client,
     String? Function()? getAccessToken,
     Future<void> Function()? refreshSession,
+    this.retryDelay = const Duration(seconds: 1),
   }) : _client = client ?? http.Client(),
        _getAccessToken =
            getAccessToken ??
@@ -105,6 +118,29 @@ class ApiService {
     return _attempt(sender, extraHeaders, timeout);
   }
 
+  /// [_send], tried once more after [retryDelay] when the connection
+  /// dropped (not a timeout: that already waited long enough) or the
+  /// gateway answered 502/503/504. Only for requests that are safe to
+  /// repeat. A tester at Icesi got "couldn't connect to the server" from a
+  /// moment's drop on campus Wi-Fi (2026-11-03).
+  Future<http.Response> _sendRetrying(
+    Future<http.Response> Function(Map<String, String> headers) sender, [
+    Map<String, String>? extraHeaders,
+    Duration? timeout,
+  ]) async {
+    try {
+      final response = await _send(sender, extraHeaders, timeout);
+      if (!const {502, 503, 504}.contains(response.statusCode)) {
+        return response;
+      }
+    } on ApiException catch (e) {
+      if (!e.isNetworkError || e.timedOut) rethrow;
+    }
+    retries.value++;
+    await Future<void>.delayed(retryDelay);
+    return _send(sender, extraHeaders, timeout);
+  }
+
   /// One request, with a timeout, and with transport failures (no
   /// connection, DNS, timeout) turned into an [ApiException] - every screen
   /// already catches `ApiException`, so this way a dropped connection is
@@ -120,7 +156,8 @@ class ApiService {
         _authHeaders(extraHeaders),
       ).timeout(timeout ?? requestTimeout);
     } on TimeoutException catch (e) {
-      throw ApiException(ApiException.networkError, e.toString());
+      throw ApiException(ApiException.networkError, e.toString())
+        ..timedOut = true;
     } on http.ClientException catch (e) {
       throw ApiException(ApiException.networkError, e.message);
     }
@@ -134,20 +171,23 @@ class ApiService {
   static const upgradeRequired = 426;
 
   Future<dynamic> get(String path) async {
-    final response = await _send(
+    final response = await _sendRetrying(
       (headers) => _client.get(_uri(path), headers: headers),
     );
     return _handle(response);
   }
 
   /// [timeout] overrides [requestTimeout] for calls whose answer is only
-  /// useful quickly (navigation's per-tick calls).
+  /// useful quickly (navigation's per-tick calls). [retry] tries once more
+  /// on a dropped connection (see [_sendRetrying]); only for a request
+  /// that's safe to repeat, like find_or_create.
   Future<dynamic> post(
     String path,
     Map<String, dynamic> body, {
     Duration? timeout,
+    bool retry = false,
   }) async {
-    final response = await _send(
+    final response = await (retry ? _sendRetrying : _send)(
       (headers) =>
           _client.post(_uri(path), headers: headers, body: jsonEncode(body)),
       {'Content-Type': 'application/json'},

@@ -16,6 +16,11 @@ Navigation lives in a side menu (drawer), opened with the hamburger icon (☰) i
 - **Connections** (line icon)
 - **Users** (people icon), see [§6d](#6d-users)
 
+When there are mapping problems that affect users, the drawer shows orange notices; tapping each one opens what needs fixing:
+- **N verified points not connected** — opens the anchor point list filtered to them.
+- **N named points users can't choose** — named points of an in-between type; tap one to change its type.
+- **N connections over 30 m** — tap one to delete it, then reconnect that path through in-between points.
+
 Below them are **Sessions** and **Feedback** ([§6b](#6b-testing-a-route-and-reviewing-it)), **Re-index verified points** ([§5.3](#53-reviewing-and-verifying)) and **Test as user** (phone only).
 
 Tap a section to switch to it; the menu closes automatically. The title at the top of the screen always tells you which section you're currently looking at. The top-right corner always has a refresh icon (reloads everything from the server), a settings icon (language, high contrast, text size, voice) and a logout icon (signs you out immediately, no confirmation).
@@ -110,10 +115,14 @@ An **anchor point** is a specific physical spot — a doorway, an intersection o
 2. Tap the camera **+** button (bottom-right) — labeled "New anchor point."
 3. Choose the **Place**, then the **Building** (filtered to that place).
 4. Choose the **Location type** — what kind of spot this is (see the full list in [§8](#8-quick-reference)). For example, if you're standing at a building's main door, choose **entrance**.
-5. Fill in the **Description**. It is **required for destination types** (entrance, classroom, office, restroom, cafeteria, parking, lobby, auditorium, bus stop), because it's the name users pick and hear, so describe the actual spot: "Front door, north side" is far more useful than "Point 1." For **in-between types** (hallway, intersection, stairwell, elevator, ramp, outdoor path, courtyard, crosswalk, other), it's optional. Leave it empty and the point still works for routes and position correction, but it won't appear in the user's destination list. Admin lists show unnamed points by type, for example "Hallway · 3f2a". New points start as **hallway**.
-6. Set **Indoor location** (on by default) — whether this spot is inside a building or outside. This matters because GPS accuracy is much worse indoors, which is exactly why indoor anchor points matter most for the position-correction system.
+5. Fill in the **Description**. It is **required for destination types** (entrance, classroom, office, restroom, cafeteria, parking, lobby, auditorium, bus stop), because it's the name users pick and hear, so describe the actual spot: "Front door, north side" is far more useful than "Point 1." For **in-between types** (hallway, intersection, stairwell, elevator, ramp, outdoor path, courtyard, crosswalk, other), it's optional. Leave it empty and the point still works for routes and position correction, but it won't appear in the user's destination list. Admin lists show unnamed points by type, for example "Hallway · 3f2a". New points start as **hallway**. If you type a name and the type is an in-between one, the app asks whether it's a destination: users can only choose destinations, so a "Women's restroom" saved as a hallway never shows up in their list. Tap **Change type** unless it really is a named in-between spot (e.g. "Corridor to rooms 202").
+6. Choose **Indoors** or **Outdoors** (there's no default, it's asked every time) — whether this spot is inside a building or outside. This matters because GPS accuracy is much worse indoors, which is exactly why indoor anchor points matter most for the position-correction system.
 7. Optionally set **Lighting** (Bright / Moderate / Dim) and **Surface** (free text, e.g. "tile", "carpet", "concrete", "grass") — see the field table below for why these are worth filling in.
-8. Confirm the position — either your device's current GPS location (shown automatically) or, if you tap **Pick on map**, a location you tap on a map instead. A manual pick always overrides GPS. Use this when GPS drift (common near tall buildings) would otherwise place the point in the wrong spot.
+8. Set the position. **It's required**: the app no longer takes the GPS on its own, and **Create and add photos** stays disabled until you do one of two things:
+   - **Pick on map**: tap the exact spot on the map. This is the most precise, especially indoors.
+   - **Use my location (±N m)**: standing right on the spot, saves the GPS reading at that moment. Only available with an accuracy of ±8 m or better; if the GPS is worse, wait or use the map.
+
+   If another point is less than 3 m away in the same building and floor, the app warns before saving. It's almost always the same spot saved twice: add photos to the existing one instead of creating another. A point more than 300 m from its building is refused (wrong position).
 9. Tap **Create and add photos** — this saves the anchor point and takes you straight into the photo-capture screen ([§5.2](#52-taking-photos)).
 
 #### Anchor point fields (creation and editing)
@@ -124,12 +133,12 @@ An **anchor point** is a specific physical spot — a doorway, an intersection o
 | **Location type** | Required, new points start as "hallway" | What kind of spot this is, chosen in a searchable picker grouped by category. Full list in [§8](#8-quick-reference). | `entrance` |
 | **Floor** | Required | Which floor of the building the point is on. "Floor 1" is the ground floor; the list offers the building's floors. | `Floor 1` |
 | **Description** | Required for destination types (★ in [§8](#8-quick-reference)), optional otherwise | The point's human-readable name — the one users pick and hear. Describe the spot, not a generic label. | `Front door, north side` |
-| **Indoor location** (switch) | Defaults on | Inside vs. outside — see above for why it matters. | — |
+| **Indoors or outdoors?** | Required, no default | Inside vs. outside — see above for why it matters. | — |
 | **Lighting** (dropdown) | Optional, defaults "Not set" | Typical lighting at this exact spot: Bright / Moderate / Dim. Useful context for whoever reviews the photos later (a dark photo might just mean a dim hallway, not a bad photo), and this data is meant to help the visual-matching system handle different lighting conditions more reliably over time. | A spot by a large window at midday → `Bright`; an interior stairwell with only ceiling lights → `Dim` |
 | **Surface (optional)** | Optional, free text | The physical floor/ground surface. Can serve as a useful orientation cue (e.g. a change from tile to carpet marking a room boundary). | `tile`, `carpet`, `concrete`, `grass` |
-| **Location** | Required (GPS or map pick) | The point's actual coordinates. A map pick always takes priority over the device's live GPS reading. | — |
+| **Location** | Required: **Pick on map** or **Use my location** (GPS of ±8 m or better) | The point's actual coordinates. Whichever of the two you chose last is used. | — |
 
-**The form remembers your last point.** A new anchor point starts with the university, building, location type, floor, indoor setting, lighting and surface of the last one you created on this phone. Only the description and position start empty. If you opened the form while filtered to a building, that building is used instead.
+**The form remembers your last point.** A new anchor point starts with the university, building, location type, floor, lighting and surface of the last one you created on this phone. The description, position and indoors/outdoors start empty. If you opened the form while filtered to a building, that building is used instead.
 
 **Filtering the list.** The **Filters** button above the list (and map) narrows anchor points by category and type, floor, indoor or outdoor, lighting, and whether they have photos or connections. It combines with the status chips and search. **Clear filters** (or the back button) removes them.
 
@@ -147,7 +156,7 @@ You can always come back to add or remove photos later from an anchor point's **
 
 ### 5.3 Reviewing and verifying
 
-**Quick verify from the list or the map:** each anchor point row has a ✔ button that verifies it (or, on a verified point, puts it back to pending). A point needs at least one photo before it can be verified. The **List / Map** switch above the list shows the same points on a map, coloured by status: green verified, grey pending, red rejected. Tap a point on the map to see its details and to **Edit**, **Move**, verify, **Connect** or add photos. **Move** asks you to tap the new position; the pin's tip marks exactly where it will go, and **Save new position** stores it. Moving a verified point also updates photo search and the distances of its connections.
+**Quick verify from the list or the map:** each anchor point row has a ✔ button that verifies it (or, on a verified point, puts it back to pending). A point needs at least one photo before it can be verified. If it has no connections yet, the app warns you: a verified point with no connections can't be reached or used as a route's start, and users don't see it. The **List / Map** switch above the list shows the same points on a map, coloured by status: green verified, grey pending, red rejected. Tap a point on the map to see its details and to **Edit**, **Move**, verify, **Connect** or add photos. **Move** asks you to tap the new position; the pin's tip marks exactly where it will go, and **Save new position** stores it. Moving a verified point also updates photo search and the distances of its connections.
 
 
 The edit screen for an anchor point is also where you review it and decide whether it's ready for real use. This is more than just changing a label:
@@ -172,6 +181,17 @@ To edit an anchor point: tap the pencil icon on its row. You'll see the same fie
 
 A **connection** records that a person can walk directly between two anchor points. Together they form the walkability graph: routes are computed only along connections, and the turn-by-turn instructions follow them.
 
+**Rules** (the app and the server both apply them):
+- **At most 30 m** in a straight line. Guidance walks a straight line between two connected points, so a 50 m connection between buildings goes through whatever is in between. Capture in-between points every 6–8 m and chain-connect them. Above 15 m the app vibrates and warns.
+- **Change floors** only through a stairwell, elevator or ramp point.
+- A distance typed by hand can't be shorter than the straight line.
+- Moving a point can't stretch one of its connections past 30 m.
+- **Connections over 30 m made before this rule aren't used for routes**: a trip that needed one gets "no route" until it's redone. The menu lists them (**N connections over 30 m**).
+
+**Obstacles.** Users are warned before stairs, elevators and ramps when the point has that **Location type**, so give those points the right type. For anything else on the way (a step, a bin, vending machines, a narrow door), write a **Warning for users** on that connection: it's spoken as users start walking it ("Attention: three steps down"). The app can't see obstacles nobody has written down.
+
+**What users see.** Users only see, as a destination or as a starting point, verified points **with at least one connection**. A point with no connections doesn't show up.
+
 There are two ways to create one — pick whichever fits the situation:
 
 ### Tap-to-connect on a map
@@ -192,7 +212,7 @@ More precise — use this when you're not looking at a map, or you need to corre
 
 1. From the Connections screen, tap the list icon in the top-right — labeled "Add connection (form)."
 2. Choose **Place**, optionally a **Building** filter, then **Anchor point A** and **Anchor point B** from dropdowns.
-3. Optionally fill in **Distance** and **Notes** (see table).
+3. Optionally fill in **Distance** and **Warning for users** (see table).
 4. Tap **Save connection**.
 
 ### Connection fields (form)
@@ -202,9 +222,9 @@ More precise — use this when you're not looking at a map, or you need to corre
 | **Place** / **Building (optional filter)** | Place required, Building optional | Narrows down which anchor points appear in the dropdowns below. | — |
 | **Anchor point A** / **Anchor point B** | Both required, must be different points | The two anchor points being connected. | — |
 | **Distance in meters (optional)** | Optional | How far someone would actually walk between the two points. If you leave this blank, the app estimates it as a straight line between their coordinates — which is wrong if the real path bends (around a corner, say) or isn't a straight walk (via an elevator or stairs instead of a direct route). Fill this in whenever the straight-line guess wouldn't be accurate. | `12.5` |
-| **Notes (optional)** | Optional | Free text for anything worth flagging about this specific link. | `via elevator, not stairs`, `blocked during exam periods` |
+| **Warning for users (stairs, obstacles…)** | Optional | Spoken to users as they start walking this connection, after "Attention:". Write it for them, short. | `three steps down`, `vending machines on the right` |
 
-Deleting a connection has no cascade: it doesn't affect the two anchor points themselves. There's no edit option, so delete it and recreate it if you need to change it. There are two ways to delete one:
+To add or change a connection's warning, tap it in the **Connections** list. Anything else can't be edited: delete it and create it again. Deleting a connection has no cascade: it doesn't affect the two anchor points themselves. There are two ways to delete one:
 
 - In the **Connections** list, tap its trash icon.
 - On the **Connect on map** screen, tap the green line itself (away from the dots, since tapping near a dot selects the point) and confirm.

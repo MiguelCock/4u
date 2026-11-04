@@ -1,3 +1,5 @@
+import 'api_service.dart';
+
 /// Location types (db_schema/location_type.sql ids) that are places people
 /// go *to*: entrance, classroom, office, restroom, cafeteria, parking,
 /// lobby, auditorium, bus stop, plus every type from 19 on (shops,
@@ -63,4 +65,24 @@ Set<String> activeBuildingIds(
       if (b['is_active'] != false && activePlaces.contains(b['place_id']))
         b['id'] as String,
   };
+}
+
+/// Ids of points with at least one connection: the only ones a route can
+/// start or end at.
+Set<String> connectedAnchorIds(Iterable<Map<String, dynamic>> connections) => {
+  for (final c in connections) ...[
+    c['anchor_point_a_id'] as String,
+    c['anchor_point_b_id'] as String,
+  ],
+};
+
+/// [connectedAnchorIds] from the backend, or null when the connections
+/// can't be loaded, so callers filter nothing out rather than everything.
+Future<Set<String>?> fetchConnectedAnchorIds(MapManagementApi api) async {
+  try {
+    final rows = await api.get('/anchor-point-connections');
+    return connectedAnchorIds((rows as List).cast<Map<String, dynamic>>());
+  } on ApiException {
+    return null;
+  }
 }

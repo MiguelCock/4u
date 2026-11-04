@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../l10n/app_localizations.dart';
@@ -7,10 +10,12 @@ import '../services/location_service.dart';
 import 'capture_photo_screen.dart';
 import 'location_picker_screen.dart';
 import '../services/api_error_messages.dart';
+import '../services/capture_checks.dart';
 import '../services/capture_defaults.dart';
 import '../services/destinations.dart';
 import '../services/location_types.dart';
 import '../widgets/floor_field.dart';
+import '../widgets/guardrail_dialogs.dart';
 import '../widgets/location_type_field.dart';
 
 /// Creates a new `anchor_points` row (position + description only — no
@@ -46,8 +51,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
   // in-between ones, which don't need a description.
   int _selectedLocationTypeId = 10;
   int _floor = 0;
+  // The position is never taken silently from the phone: the admin either
+  // picks it on the map or taps "Use my location" while standing on the
+  // spot. Defaulting to the GPS fix saved points on top of each other.
   LatLng? _pickedPosition;
-  bool _indoor = true;
+  Position? _gpsFix;
+  Position? _livePosition;
+  StreamSubscription<Position>? _positionSubscription;
+  // Asked every time: remembering it marked plazas as indoor.
+  bool? _indoor;
+  List<Map<String, dynamic>> _anchors = [];
   String? _lighting;
   bool _loading = true;
   bool _submitting = false;
@@ -56,8 +69,41 @@ class _CaptureScreenState extends State<CaptureScreen> {
   @override
   void initState() {
     super.initState();
+    _livePosition = _locationService.lastPosition;
+    _positionSubscription = _locationService.positionStream.listen((position) {
+      if (mounted) setState(() => _livePosition = position);
+    });
     _loadData();
+    _loadAnchors();
   }
+
+  /// For the nearby-point warning; best effort, the backend still refuses
+  /// an exact duplicate.
+  Future<void> _loadAnchors() async {
+    try {
+      final anchors = await _mapApi.get('/anchor-points');
+      if (mounted) {
+        setState(
+          () => _anchors = (anchors as List).cast<Map<String, dynamic>>(),
+        );
+      }
+    } on ApiException {
+      // Without the list there's just no early warning.
+    }
+  }
+
+  LatLng? get _position =>
+      _pickedPosition ??
+      (_gpsFix == null ? null : LatLng(_gpsFix!.latitude, _gpsFix!.longitude));
+
+  bool get _liveFixIsGoodEnough =>
+      _livePosition != null &&
+      _livePosition!.accuracy <= kMaxCaptureGpsAccuracyMeters;
+
+  void _useMyLocation() => setState(() {
+    _gpsFix = _livePosition;
+    _pickedPosition = null;
+  });
 
   Future<void> _loadData() async {
     try {
@@ -109,7 +155,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (floor != null && floor >= 0 && floor < _selectedBuildingFloors) {
       _floor = floor;
     }
-    if (defaults.indoor != null) _indoor = defaults.indoor!;
     if (const ['bright', 'moderate', 'dim'].contains(defaults.lighting)) {
       _lighting = defaults.lighting;
     }
@@ -140,9 +185,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 
   Future<void> _pickOnMap() async {
-    final fallback = _locationService.lastPosition;
+    final fallback = _livePosition;
     final initial =
-        _pickedPosition ??
+        _position ??
         (fallback != null
             ? LatLng(fallback.latitude, fallback.longitude)
             : const LatLng(0, 0));
@@ -157,12 +202,17 @@ class _CaptureScreenState extends State<CaptureScreen> {
         ),
       ),
     );
-    if (result != null) setState(() => _pickedPosition = result);
+    if (result != null) {
+      setState(() {
+        _pickedPosition = result;
+        _gpsFix = null;
+      });
+    }
   }
 
   Future<void> _submit() async {
     final l10n = AppLocalizations.of(context)!;
-    final position = _locationService.lastPosition;
+    final position = _position;
     final description = _descriptionController.text.trim();
 
     if (_selectedPlaceId == null) {
@@ -178,10 +228,30 @@ class _CaptureScreenState extends State<CaptureScreen> {
       setState(() => _error = l10n.commonErrorDescriptionRequired);
       return;
     }
-    if (position == null && _pickedPosition == null) {
-      setState(() => _error = l10n.captureErrorLocationUnavailable);
+    if (position == null) {
+      setState(() => _error = l10n.captureErrorPositionRequired);
       return;
     }
+    if (_indoor == null) {
+      setState(() => _error = l10n.captureErrorIndoorRequired);
+      return;
+    }
+    if (isNamedInBetweenPoint(_selectedLocationTypeId, description) &&
+        !await confirmInBetweenName(
+          context,
+          name: description,
+          locationTypeId: _selectedLocationTypeId,
+        )) {
+      return;
+    }
+    final nearby = nearbyPoint(
+      _anchors,
+      buildingId: _selectedBuildingId,
+      floor: _floor,
+      position: position,
+    );
+    if (nearby != null && !await _confirmNearby(nearby)) return;
+    if (!mounted) return;
 
     setState(() {
       _submitting = true;
@@ -193,11 +263,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
       final result = await _mapApi.post('/anchor-points', {
         'building_id': _selectedBuildingId,
         'location_type_id': _selectedLocationTypeId,
-        'latitude': _pickedPosition?.latitude ?? position!.latitude,
-        'longitude': _pickedPosition?.longitude ?? position!.longitude,
+        'latitude': position.latitude,
+        'longitude': position.longitude,
         // The phone's GPS altitude only means something when the point is
         // where the phone is, not a spot picked on the map.
-        'altitude': _pickedPosition == null ? position?.altitude : null,
+        'altitude': _gpsFix?.altitude,
+        if (nearby != null && nearby.meters < kDuplicatePointMeters)
+          'allow_nearby': true,
         'floor': _floor,
         'location_description': description.isEmpty ? null : description,
         'metadata': {
@@ -212,7 +284,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
         buildingId: _selectedBuildingId,
         locationTypeId: _selectedLocationTypeId,
         floor: _floor,
-        indoor: _indoor,
         lighting: _lighting,
         surface: surface.isEmpty ? null : surface,
       ).save();
@@ -271,8 +342,38 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
+  Future<bool> _confirmNearby(
+    ({Map<String, dynamic> anchor, double meters}) nearby,
+  ) async {
+    final l10n = AppLocalizations.of(context)!;
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.captureNearbyTitle),
+        content: Text(
+          l10n.captureNearbyBody(
+            anchorDisplayName(l10n, nearby.anchor),
+            nearby.meters.toStringAsFixed(1),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.commonCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.captureNearbySave),
+          ),
+        ],
+      ),
+    );
+    return save ?? false;
+  }
+
   @override
   void dispose() {
+    _positionSubscription?.cancel();
     _descriptionController.dispose();
     _surfaceController.dispose();
     super.dispose();
@@ -369,12 +470,28 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l10n.commonIndoorLocationLabel),
-                      value: _indoor,
-                      onChanged: (value) => setState(() => _indoor = value),
+                    Text(l10n.captureIndoorQuestion),
+                    const SizedBox(height: 4),
+                    SegmentedButton<bool>(
+                      emptySelectionAllowed: true,
+                      segments: [
+                        ButtonSegment(
+                          value: true,
+                          label: Text(l10n.captureIndoor),
+                        ),
+                        ButtonSegment(
+                          value: false,
+                          label: Text(l10n.captureOutdoor),
+                        ),
+                      ],
+                      selected: _indoor == null ? <bool>{} : {_indoor!},
+                      onSelectionChanged: (selection) => setState(
+                        () => _indoor = selection.isEmpty
+                            ? null
+                            : selection.first,
+                      ),
                     ),
+                    const SizedBox(height: 12),
                     DropdownButtonFormField<String?>(
                       initialValue: _lighting,
                       decoration: InputDecoration(
@@ -415,14 +532,18 @@ class _CaptureScreenState extends State<CaptureScreen> {
                               _pickedPosition!.latitude.toStringAsFixed(6),
                               _pickedPosition!.longitude.toStringAsFixed(6),
                             )
-                          : _locationService.lastPosition != null
-                          ? l10n.captureLocationGpsText(
-                              _locationService.lastPosition!.latitude
-                                  .toStringAsFixed(6),
-                              _locationService.lastPosition!.longitude
-                                  .toStringAsFixed(6),
+                          : _gpsFix != null
+                          ? l10n.captureLocationGpsFixText(
+                              _gpsFix!.latitude.toStringAsFixed(6),
+                              _gpsFix!.longitude.toStringAsFixed(6),
+                              _gpsFix!.accuracy.toStringAsFixed(0),
                             )
-                          : l10n.captureLocationUnavailableText,
+                          : l10n.captureLocationNotSetText,
+                      style: _position == null
+                          ? TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            )
+                          : null,
                     ),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
@@ -430,13 +551,37 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       icon: const Icon(Icons.map),
                       label: Text(l10n.commonPickOnMap),
                     ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _liveFixIsGoodEnough ? _useMyLocation : null,
+                      icon: const Icon(Icons.my_location),
+                      label: Text(
+                        l10n.captureUseMyLocation(
+                          _livePosition?.accuracy.toStringAsFixed(0) ?? '?',
+                        ),
+                      ),
+                    ),
+                    if (!_liveFixIsGoodEnough)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          _livePosition == null
+                              ? l10n.captureGpsWaiting
+                              : l10n.captureGpsTooInaccurate(
+                                  _livePosition!.accuracy.toStringAsFixed(0),
+                                ),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
                     if (_error != null) ...[
                       const SizedBox(height: 12),
                       Text(_error!, style: const TextStyle(color: Colors.red)),
                     ],
                     const SizedBox(height: 16),
                     ElevatedButton(
-                      onPressed: _submitting ? null : _submit,
+                      onPressed: _submitting || _position == null
+                          ? null
+                          : _submit,
                       child: _submitting
                           ? const SizedBox(
                               width: 20,

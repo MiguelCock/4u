@@ -1,5 +1,4 @@
 import logging
-import math
 import os
 import re
 
@@ -7,14 +6,17 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from packages.app_versions import install_app_version_guard
 from packages.db_errors import install_db_error_handlers, select_all
+from packages.geo import haversine_meters
 from packages.supabase import SupaBase
 
 logger = logging.getLogger(__name__)
 
 from .models import (
     DESTINATION_LOCATION_TYPE_IDS,
+    VERTICAL_LOCATION_TYPE_IDS,
     AnchorPointConnectionCreate,
     AnchorPointConnectionResponse,
+    AnchorPointConnectionUpdate,
     AnchorPointCreate,
     AnchorPointPhotoCreate,
     AnchorPointPhotoResponse,
@@ -43,18 +45,17 @@ db = SupaBase(
 # app.dependency_overrides[get_caller_id] keep working unchanged.
 get_caller_id = db.get_caller_id
 
-_EARTH_RADIUS_METERS = 6_371_000
-
-
-def _haversine_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    d_phi = math.radians(lat2 - lat1)
-    d_lambda = math.radians(lng2 - lng1)
-    a = (
-        math.sin(d_phi / 2) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
-    )
-    return _EARTH_RADIUS_METERS * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+# Guardrails against the mistakes found in the Icesi data (2026-11-03).
+# Points are captured every 6-8 m; a longer connection makes guidance walk
+# a straight line through whatever is in between (36-76 m ones crossed
+# buildings there).
+MAX_CONNECTION_METERS = 30.0
+# Closer than this on the same floor is almost always the same spot saved
+# twice, or a GPS fix nobody adjusted.
+DUPLICATE_POINT_METERS = 1.0
+# Farther than this from its building's pin is a wrong position (0,0, the
+# admin's desk, another campus).
+MAX_POINT_TO_BUILDING_METERS = 300.0
 
 
 # An `in_` filter puts every id in the request URL; a big university could
@@ -145,7 +146,7 @@ def _recompute_connection_distances(anchor_id: str) -> None:
         b = by_id.get(c["anchor_point_b_id"])
         if a is None or b is None:
             continue
-        distance = _haversine_meters(
+        distance = haversine_meters(
             a["latitude"], a["longitude"], b["latitude"], b["longitude"]
         )
         db.client.table("anchor_point_connections").update(
@@ -230,6 +231,118 @@ def _require_description_for_destinations(
         )
 
 
+def _point_name(point: dict) -> str:
+    return point.get("location_description") or f"point {point['id'][:4]}"
+
+
+def _require_near_building(building_id: str, latitude: float, longitude: float):
+    rows = (
+        db.client.table("buildings")
+        .select("latitude,longitude")
+        .eq("id", building_id)
+        .execute()
+        .data
+    )
+    building = rows[0] if rows else {}
+    if building.get("latitude") is None or building.get("longitude") is None:
+        return
+    distance = haversine_meters(
+        latitude, longitude, building["latitude"], building["longitude"]
+    )
+    if distance > MAX_POINT_TO_BUILDING_METERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"This position is {distance:.0f} m from its building. "
+            "Pick the point's real position on the map.",
+        )
+
+
+def _require_no_duplicate(anchor_point: AnchorPointCreate):
+    neighbours = (
+        db.client.table("anchor_points")
+        .select("id,latitude,longitude,location_description")
+        .eq("building_id", anchor_point.building_id)
+        .eq("floor", anchor_point.floor)
+        .execute()
+        .data
+    )
+    for other in neighbours:
+        if (
+            haversine_meters(
+                anchor_point.latitude,
+                anchor_point.longitude,
+                other["latitude"],
+                other["longitude"],
+            )
+            < DUPLICATE_POINT_METERS
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=f'"{_point_name(other)}" is already at this spot on '
+                "this floor. Move the new point to where it really is, or add "
+                "photos to the existing one.",
+            )
+
+
+def _require_short_connection(a: dict, b: dict) -> float:
+    """The straight-line length of a connection between a and b, refused
+    when it's too long or changes floor without stairs, an elevator or a
+    ramp at either end."""
+    distance = haversine_meters(
+        a["latitude"], a["longitude"], b["latitude"], b["longitude"]
+    )
+    if distance > MAX_CONNECTION_METERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f'"{_point_name(a)}" and "{_point_name(b)}" are '
+            f"{distance:.0f} m apart (at most {MAX_CONNECTION_METERS:.0f} m). "
+            "Add points in between, every 6-8 m, so the guidance can follow "
+            "the path.",
+        )
+    if (a.get("floor") or 0) != (b.get("floor") or 0) and not (
+        a.get("location_type_id") in VERTICAL_LOCATION_TYPE_IDS
+        or b.get("location_type_id") in VERTICAL_LOCATION_TYPE_IDS
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f'"{_point_name(a)}" and "{_point_name(b)}" are on '
+            "different floors. Connect floors through a stairs, elevator or "
+            "ramp point.",
+        )
+    return distance
+
+
+def _require_connections_still_short(point: dict):
+    """Refuses moving a point (or changing its floor) when one of its
+    connections would break the rules a new connection must follow."""
+    connections = (
+        db.client.table("anchor_point_connections")
+        .select("anchor_point_a_id,anchor_point_b_id")
+        .or_(_either_end(point["id"]))
+        .execute()
+        .data
+    )
+    other_ids = sorted(
+        {
+            c["anchor_point_b_id"]
+            if c["anchor_point_a_id"] == point["id"]
+            else c["anchor_point_a_id"]
+            for c in connections
+        }
+    )
+    if not other_ids:
+        return
+    others = (
+        db.client.table("anchor_points")
+        .select("id,floor,location_type_id,location_description,latitude,longitude")
+        .in_("id", other_ids)
+        .execute()
+        .data
+    )
+    for other in others:
+        _require_short_connection(point, other)
+
+
 @app.post("/anchor-points")
 async def create_anchor_point(
     anchor_point: AnchorPointCreate, caller_id: str = Depends(get_caller_id)
@@ -239,8 +352,15 @@ async def create_anchor_point(
     _require_description_for_destinations(
         anchor_point.location_type_id, anchor_point.location_description
     )
+    _require_near_building(
+        anchor_point.building_id, anchor_point.latitude, anchor_point.longitude
+    )
+    if not anchor_point.allow_nearby:
+        _require_no_duplicate(anchor_point)
     result = (
-        db.client.table("anchor_points").insert(anchor_point.model_dump()).execute()
+        db.client.table("anchor_points")
+        .insert(anchor_point.model_dump(exclude={"allow_nearby"}))
+        .execute()
     )
     return result.data
 
@@ -271,7 +391,10 @@ async def update_anchor_point(
     changes = anchor_point.model_dump(exclude_unset=True)
     current = _require_found(
         db.client.table("anchor_points")
-        .select("location_type_id,location_description,latitude,longitude,status")
+        .select(
+            "id,building_id,floor,location_type_id,location_description,"
+            "latitude,longitude,status"
+        )
         .eq("id", id)
         .execute(),
         "Anchor point",
@@ -283,6 +406,19 @@ async def update_anchor_point(
     _require_description_for_destinations(
         merged.get("location_type_id"), merged.get("location_description")
     )
+    relocated = any(
+        key in changes and changes[key] != current.get(key)
+        for key in ("latitude", "longitude", "floor", "building_id")
+    )
+    has_position = (
+        merged.get("latitude") is not None and merged.get("longitude") is not None
+    )
+    if relocated and has_position:
+        if merged.get("building_id"):
+            _require_near_building(
+                merged["building_id"], merged["latitude"], merged["longitude"]
+            )
+        _require_connections_still_short({**merged, "id": id})
     if changes.get("status") == "verified" and current.get("status") != "verified":
         photos = (
             db.client.table("anchor_point_photos")
@@ -397,25 +533,29 @@ async def create_anchor_point_connection(
     payload["anchor_point_a_id"] = a_id
     payload["anchor_point_b_id"] = b_id
 
+    points = (
+        db.client.table("anchor_points")
+        .select("id,floor,location_type_id,location_description,latitude,longitude")
+        .in_("id", [a_id, b_id])
+        .execute()
+        .data
+    )
+    by_id = {p["id"]: p for p in points}
+    if a_id not in by_id or b_id not in by_id:
+        raise HTTPException(status_code=404, detail="Anchor point not found")
+    straight = _require_short_connection(by_id[a_id], by_id[b_id])
+
     payload["distance_manual"] = payload["distance_meters"] is not None
     if payload["distance_meters"] is None:
-        points = (
-            db.client.table("anchor_points")
-            .select("id,latitude,longitude")
-            .in_("id", [a_id, b_id])
-            .execute()
-            .data
+        payload["distance_meters"] = straight
+    elif payload["distance_meters"] < straight - 1:
+        # A walk can be longer than the straight line (a bend, stairs),
+        # never shorter.
+        raise HTTPException(
+            status_code=400,
+            detail=f"The distance can't be shorter than the straight line "
+            f"between the points ({straight:.1f} m).",
         )
-        by_id = {p["id"]: p for p in points}
-        if a_id not in by_id or b_id not in by_id:
-            raise HTTPException(status_code=404, detail="Anchor point not found")
-        if a_id in by_id and b_id in by_id:
-            payload["distance_meters"] = _haversine_meters(
-                by_id[a_id]["latitude"],
-                by_id[a_id]["longitude"],
-                by_id[b_id]["latitude"],
-                by_id[b_id]["longitude"],
-            )
 
     result = db.client.table("anchor_point_connections").insert(payload).execute()
     return result.data
@@ -439,6 +579,24 @@ async def list_anchor_point_connections_for_point(
         .execute()
     )
     return result.data
+
+
+@app.patch("/anchor-point-connections/{id}")
+async def update_anchor_point_connection(
+    id: str,
+    connection: AnchorPointConnectionUpdate,
+    caller_id: str = Depends(get_caller_id),
+) -> AnchorPointConnectionResponse:
+    if not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
+    notes = (connection.notes or "").strip() or None
+    return _require_found(
+        db.client.table("anchor_point_connections")
+        .update({"notes": notes})
+        .eq("id", id)
+        .execute(),
+        "Connection",
+    )[0]
 
 
 @app.delete("/anchor-point-connections/{id}")

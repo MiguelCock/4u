@@ -44,3 +44,15 @@ def test_missing_distance_meters_does_not_crash():
 def test_connection_is_undirected():
     connections = [_conn("a", "b", 5.0)]
     assert shortest_path(connections, "b", "a") == ["b", "a"]
+
+
+def test_connected_ids_follows_every_edge_both_ways():
+    from app.pathfinding import connected_ids
+
+    connections = [
+        {"anchor_point_a_id": "a", "anchor_point_b_id": "b", "distance_meters": 1},
+        {"anchor_point_a_id": "c", "anchor_point_b_id": "b", "distance_meters": 1},
+        {"anchor_point_a_id": "x", "anchor_point_b_id": "y", "distance_meters": 1},
+    ]
+    assert connected_ids(connections, "a") == {"a", "b", "c"}
+    assert connected_ids(connections, "loose") == set()

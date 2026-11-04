@@ -64,3 +64,19 @@ def shortest_path(
         path.append(previous[path[-1]])
     path.reverse()
     return path
+
+
+def connected_ids(connections: list[dict], node_id: str) -> set[str]:
+    """Every anchor point reachable from node_id (itself included), or an
+    empty set when node_id has no connections at all."""
+    graph = _build_adjacency(connections)
+    if node_id not in graph:
+        return set()
+    seen = {node_id}
+    stack = [node_id]
+    while stack:
+        for neighbor, _ in graph[stack.pop()]:
+            if neighbor not in seen:
+                seen.add(neighbor)
+                stack.append(neighbor)
+    return seen
