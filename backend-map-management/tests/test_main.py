@@ -1580,3 +1580,64 @@ def test_moving_a_point_too_far_from_a_connected_one_is_refused():
     assert response.status_code == 400
     assert "apart" in response.json()["detail"]
     anchors.update.assert_not_called()
+
+
+def _named_building_client(point_row=None):
+    """Bloque 20 at EAFIT, for the name a point is saved with."""
+    tables = {
+        name: MagicMock()
+        for name in ("anchor_points", "buildings", "places", "profiles")
+    }
+    tables[
+        "profiles"
+    ].select.return_value.eq.return_value.execute.return_value.data = _ADMIN_ROW
+    tables[
+        "buildings"
+    ].select.return_value.eq.return_value.execute.return_value.data = [
+        {"name": "Bloque 20", "place_id": "p1", "latitude": 6.24, "longitude": -75.58}
+    ]
+    tables["places"].select.return_value.eq.return_value.execute.return_value.data = [
+        {"name": "EAFIT"}
+    ]
+    points = tables["anchor_points"]
+    points.select.return_value.eq.return_value.execute.return_value.data = (
+        [point_row] if point_row else []
+    )
+    points.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+    points.insert.return_value.execute.return_value.data = [{"id": "1"}]
+    points.update.return_value.eq.return_value.execute.return_value.data = [{"id": "1"}]
+    mock_client = MagicMock()
+    mock_client.table.side_effect = lambda name: tables[name]
+    return mock_client, points
+
+
+def test_new_point_is_saved_without_its_building_name():
+    _as_caller("admin1")
+    mock_client, points = _named_building_client()
+    with patch("app.main.db.client", mock_client):
+        response = client.post(
+            "/anchor-points",
+            json={
+                "building_id": "b1",
+                "latitude": 6.24,
+                "longitude": -75.58,
+                "location_description": "Entrada sur bloque 20",
+                "allow_nearby": True,
+            },
+        )
+    assert response.status_code == 200
+    assert points.insert.call_args.args[0]["location_description"] == "Entrada sur"
+
+
+def test_renamed_point_is_saved_without_its_building_name():
+    _as_caller("admin1")
+    mock_client, points = _named_building_client(
+        {"id": "1", "building_id": "b1", "location_description": "Entrada"}
+    )
+    with patch("app.main.db.client", mock_client):
+        response = client.patch(
+            "/anchor-points/1",
+            json={"location_description": "Entrada norte bloque 20"},
+        )
+    assert response.status_code == 200
+    assert points.update.call_args.args[0]["location_description"] == "Entrada norte"

@@ -173,4 +173,24 @@ void main() {
       closeTo(sqrt(o.x * o.x + o.y * o.y), 0.01),
     );
   });
+
+  test('floorsNear lists the floors close by, lowest first', () {
+    const from = LatLng(3.34, -76.53);
+    Map<String, dynamic> point(double lat, int? floor) => {
+      'latitude': lat,
+      'longitude': -76.53,
+      'floor': floor,
+    };
+    // 0.00005 deg is about 5.5 m, 0.001 about 110 m.
+    expect(
+      floorsNear([
+        point(3.34005, 2),
+        point(3.34, null),
+        point(3.34005, 2),
+        point(3.341, 4),
+      ], from),
+      [0, 2],
+    );
+    expect(floorsNear([point(3.341, 1)], from), isEmpty);
+  });
 }

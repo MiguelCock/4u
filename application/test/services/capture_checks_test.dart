@@ -104,4 +104,32 @@ void main() {
     expect(namedHiddenPoints(anchors).map((a) => a['id']), ['far']);
     expect(longConnections(anchors, connections), [connections[1]]);
   });
+
+  test('floor changes with no stairs, elevator or ramp are listed', () {
+    Map<String, dynamic> point(String id, int floor, int type) => {
+      'id': id,
+      'floor': floor,
+      'location_type_id': type,
+    };
+    final anchors = [
+      point('lobby', 0, 14),
+      point('office', 1, 6),
+      point('stairs0', 0, 4),
+      point('stairs1', 1, 4),
+    ];
+    Map<String, dynamic> link(String a, String b) => {
+      'anchor_point_a_id': a,
+      'anchor_point_b_id': b,
+    };
+    final bad = link('lobby', 'office');
+    expect(
+      floorChangeConnections(anchors, [
+        bad,
+        link('stairs0', 'stairs1'),
+        link('lobby', 'stairs0'),
+        link('lobby', 'gone'),
+      ]),
+      [bad],
+    );
+  });
 }

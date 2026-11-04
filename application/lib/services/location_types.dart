@@ -145,6 +145,20 @@ List<LocationType> searchLocationTypes(AppLocalizations l10n, String query) {
 /// What admin screens call an anchor point: its description, or, for an
 /// unnamed in-between point, its location type plus a short id so several
 /// "Hallway" points can still be told apart.
+/// [anchorDisplayName] with its building, where points from several buildings
+/// appear together: names don't repeat their building, so a list can hold
+/// several "Entrada sur" ("Entrada sur · Bloque 20").
+String anchorLabel(
+  AppLocalizations l10n,
+  Map<String, dynamic>? point,
+  String? buildingName,
+) {
+  final name = anchorDisplayName(l10n, point);
+  return buildingName == null || buildingName.isEmpty
+      ? name
+      : '$name · $buildingName';
+}
+
 String anchorDisplayName(AppLocalizations l10n, Map<String, dynamic>? point) {
   final description = (point?['location_description'] as String? ?? '').trim();
   if (description.isNotEmpty) return description;

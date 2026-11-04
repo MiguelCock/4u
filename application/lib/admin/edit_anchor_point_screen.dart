@@ -142,6 +142,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
           showBuildings: true,
           showAnchorPoints: true,
           anchorPointsBuildingId: widget.anchorPoint['building_id'] as String?,
+          initialFloor: _floor,
         ),
       ),
     );

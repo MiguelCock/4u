@@ -190,6 +190,10 @@ Una **connection** registra que una persona puede caminar directamente entre dos
 
 **Obstáculos.** La app avisa a los usuarios antes de escaleras, ascensores y rampas cuando el punto tiene ese **Location type**, así que dales el tipo correcto. Para cualquier otra cosa en el camino (un escalón, una caneca, máquinas expendedoras, una puerta angosta), escribe un **Aviso para usuarios** en esa conexión: se dice cuando el usuario empieza a recorrerla ("Atención: tres escalones hacia abajo"). La app no puede ver obstáculos que nadie haya anotado.
 
+**Pisos.** Los mapas muestran un piso a la vez. Con los botones ▲ y ▼, como en un ascensor, cambias de piso. Los puntos del piso de arriba se ven como ▲ morados y los del piso de abajo como ▼ naranjas; **Solo este piso** los oculta. Para conectar pisos: captura un punto de escaleras, ascensor o rampa **en cada piso**, toca el del piso actual y luego el ▲ o ▼ del otro piso (la línea se ve punteada y el mapa pasa a ese piso, para seguir encadenando). Las rutas prefieren el ascensor, así que conéctalo si existe. Una conexión que cambia de piso sin esos puntos no se usa en las rutas; el menú las lista.
+
+**Entradas y nombres.** Cuando un usuario dice un edificio ("Edificio C"), la ruta termina en la entrada más cercana caminando, así que marca cada puerta con el tipo **entrance** y conéctala. Sin entradas marcadas, termina en el punto conectado más cercano del piso más bajo. Los nombres no repiten el edificio: "Entrada sur bloque 20" se guarda como "Entrada sur", y la app muestra el edificio al lado.
+
 **Lo que ve el usuario.** Los usuarios solo ven, como destino o como punto de partida, puntos verificados **con al menos una conexión**. Un punto sin conexiones no aparece.
 
 Hay dos formas de crear una — elige la que se ajuste a la situación:

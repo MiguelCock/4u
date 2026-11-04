@@ -6,6 +6,26 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-11-04
+
+**For testers:** install `app-release.apk` from this release. Version 0.5.4 keeps working for now (it shows a "new version available" notice), and **0.5.3 no longer works**: anyone still on it sees "Update required". Going between floors is new and being tested: the app listens for the floor change with the phone's barometer, and its settings are first guesses. **Admins:** mark each building door with the type **entrance**, and connect stairs and elevators with a point on each floor.
+
+### Added
+- **One floor at a time on the maps.** Connect on map, the Anchor points map, the location picker and the session view have up and down buttons, like an elevator, showing the selected floor. The floors directly above and below show as small purple ▲ and orange ▼, which can still be tapped (that's how stairs get connected across floors), and **Only this floor** hides them.
+- **Instructions across floors.** At stairs, an elevator or a ramp the app says where to go ("Toma el ascensor hasta el piso 3"), waits, and continues when the phone's barometer detects the new floor ("Llegaste al piso 3"). If it can't detect it, the trip carries on after a while and says so. It's being tested: the thresholds are first guesses.
+- **"Which floor are you on?"** when points on several floors are close by, since GPS can't tell floors apart. Destinations above the ground floor show their floor.
+- The admin menu lists connections that change floor without stairs, an elevator or a ramp.
+- **Say a building and go there.** Saying "Edificio C" goes to its entrance closest by walking, or, where none is marked yet, the closest connected point on its lowest floor. "Baño Edificio C" still means the bathroom. Letters are understood however the phone hears them ("edificio se", "edificio ene").
+
+### Changed
+- **Routes prefer elevators and stay on their floor.** A floor change now has a cost (lowest for elevators, highest for stairs), so a route no longer goes up and back down to save a few meters. Routes already saved keep their path until they're recomputed.
+- Routes no longer use connections that change floor without stairs, an elevator or a ramp.
+- **Point names no longer repeat their building.** "Entrada sur bloque 20" is saved as "Entrada sur", and saying "entrada sur bloque 20" still finds it. The admin views and the choices spoken to users show the building next to the name. When several places share a name, the nearest are offered first, and only on the user's campus.
+
+### Fixed
+- **Voice search suggested unrelated places**, such as a parking machine in Edificio N for "Edificio C": the word "edificio" alone counted as a match.
+- **Guidance skipped floor changes.** Reaching the stairs also counted as reaching the floor above, so the climb was never mentioned, and "you have arrived" could be said on the floor below the destination.
+
 ## [0.5.4] - 2026-11-03
 
 **For testers:** install `app-release.apk` from this release. Version 0.5.3 keeps working for now (it shows a "new version available" notice), and **0.5.2 no longer works**: anyone still on it sees "Update required". **Admins:** at Icesi, trips that used a connection over 30 m now say there's no route. The admin menu lists those connections; redo each one through points every 6–8 m, and add warnings for users where there are steps or obstacles.
@@ -223,7 +243,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.4...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.5...develop
+[0.5.5]: https://github.com/MiguelCock/4u/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/MiguelCock/4u/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/MiguelCock/4u/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/MiguelCock/4u/compare/v0.5.1...v0.5.2

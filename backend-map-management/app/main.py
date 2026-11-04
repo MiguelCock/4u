@@ -29,6 +29,7 @@ from .models import (
     PlaceResponse,
     PlaceUpdate,
 )
+from .names import name_without_building
 
 load_dotenv()
 
@@ -343,6 +344,30 @@ def _require_connections_still_short(point: dict):
         _require_short_connection(point, other)
 
 
+def _short_description(description: str | None, building_id: str | None) -> str | None:
+    """description without its building's name (see app/names.py)."""
+    if not description or not building_id:
+        return description
+    buildings = (
+        db.client.table("buildings")
+        .select("name,place_id")
+        .eq("id", building_id)
+        .execute()
+    ).data
+    if not buildings or not isinstance(buildings[0].get("name"), str):
+        return description
+    places = (
+        db.client.table("places")
+        .select("name")
+        .eq("id", buildings[0].get("place_id"))
+        .execute()
+    ).data
+    place = places[0].get("name") if places else None
+    return name_without_building(
+        description, buildings[0]["name"], place if isinstance(place, str) else None
+    )
+
+
 @app.post("/anchor-points")
 async def create_anchor_point(
     anchor_point: AnchorPointCreate, caller_id: str = Depends(get_caller_id)
@@ -357,11 +382,11 @@ async def create_anchor_point(
     )
     if not anchor_point.allow_nearby:
         _require_no_duplicate(anchor_point)
-    result = (
-        db.client.table("anchor_points")
-        .insert(anchor_point.model_dump(exclude={"allow_nearby"}))
-        .execute()
+    payload = anchor_point.model_dump(exclude={"allow_nearby"})
+    payload["location_description"] = _short_description(
+        anchor_point.location_description, anchor_point.building_id
     )
+    result = db.client.table("anchor_points").insert(payload).execute()
     return result.data
 
 
@@ -406,6 +431,10 @@ async def update_anchor_point(
     _require_description_for_destinations(
         merged.get("location_type_id"), merged.get("location_description")
     )
+    if "location_description" in changes:
+        changes["location_description"] = _short_description(
+            changes["location_description"], merged.get("building_id")
+        )
     relocated = any(
         key in changes and changes[key] != current.get(key)
         for key in ("latitude", "longitude", "floor", "building_id")

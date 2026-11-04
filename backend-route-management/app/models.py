@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class RouteCreate(BaseModel):
@@ -24,4 +24,13 @@ class RouteResponse(RouteCreate):
 
 class RouteFindOrCreate(BaseModel):
     start_anchor_id: str
-    end_anchor_id: str
+    # One or the other: a point, or a building, whose closest entrance by
+    # walking becomes the end.
+    end_anchor_id: str | None = None
+    end_building_id: str | None = None
+
+    @model_validator(mode="after")
+    def _one_destination(self):
+        if (self.end_anchor_id is None) == (self.end_building_id is None):
+            raise ValueError("Send either end_anchor_id or end_building_id")
+        return self

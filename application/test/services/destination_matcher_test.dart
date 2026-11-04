@@ -85,4 +85,154 @@ void main() {
     expect(matchDestinations('library', [cafeteria13, restroom]), isEmpty);
     expect(matchDestinations('', [cafeteria13]), isEmpty);
   });
+
+  group('buildings (Icesi, 2026-11-04)', () {
+    Map<String, dynamic> building(String id, String name, [String? code]) => {
+      'id': id,
+      'name': name,
+      'code': code ?? name,
+    };
+    final icesi = [
+      building('a', 'Edificio A'),
+      building('b', 'Edificio B - Saman', 'B - Saman'),
+      building('c', 'Edificio C'),
+      building('d', 'Edificio D'),
+      building('i', 'Bienestar Universitario - Edificio I', 'Edificio H'),
+      building('h', 'Edificio H Smurfit Kappa'),
+      building('n', 'Edificio N - Ingenierías'),
+      building('c1', 'coliseo 1'),
+      building('c2', 'coliseo 2'),
+      building('lib', 'Edificio Biblioteca Universidad Icesi'),
+    ];
+    String? winner(String spoken) =>
+        clearWinner(matchBuildings(spoken, icesi))?.anchor['id'] as String?;
+
+    test('a building by its letter, however it was heard', () {
+      expect(winner('Edificio C'), 'c');
+      expect(winner('edificio se'), 'c');
+      expect(winner('edificio ce'), 'c');
+      expect(winner('quiero ir al edificio ene'), 'n');
+      expect(winner('edificio n por favor'), 'n');
+    });
+
+    test('letters that are also stop words', () {
+      expect(winner('Edificio A'), 'a');
+      expect(winner('edificio de'), 'd');
+      expect(winner('edificio i'), 'i');
+    });
+
+    test('B and V are one letter', () {
+      expect(winner('edificio ve'), 'b');
+      expect(winner('edificio be'), 'b');
+    });
+
+    test('the rest of its name, without the letter', () {
+      expect(winner('edificio de ingenierias'), 'n');
+      expect(winner('biblioteca'), 'lib');
+    });
+
+    test('a name wins over another building\'s code', () {
+      expect(winner('edificio h'), 'h');
+    });
+
+    test('several buildings ask', () {
+      final matches = matchBuildings('coliseo', icesi);
+      expect(matches, hasLength(2));
+      expect(clearWinner(matches), isNull);
+    });
+
+    test('only saying "edificio" names none', () {
+      expect(matchBuildings('edificio', icesi), isEmpty);
+      expect(matchBuildings('', icesi), isEmpty);
+    });
+
+    test('a place in a building is not the building', () {
+      expect(matchBuildings('baño edificio n', icesi), isEmpty);
+    });
+
+    test('"edificio" alone does not suggest places', () {
+      final machine = {
+        'id': 'm',
+        'building_id': 'n',
+        'location_description': 'Maquina de pagar parqueadero Edificio N',
+      };
+      expect(matchDestinations('Edificio C', [machine]), isEmpty);
+    });
+
+    test('a place named with its building still works', () {
+      final restroom = {
+        'id': 'wc',
+        'building_id': 'n',
+        'location_description': 'Baño Edificio N',
+      };
+      expect(
+        clearWinner(
+          matchDestinations('baño edificio n', [restroom]),
+        )?.anchor['id'],
+        'wc',
+      );
+    });
+  });
+
+  group('names without their building', () {
+    final southLibrary = {
+      'id': 'lib',
+      'building_id': 'l',
+      'location_description': 'Entrada sur',
+    };
+    final south20 = {
+      'id': '20',
+      'building_id': 'b20',
+      'location_description': 'Entrada sur',
+    };
+    final names = {
+      'l': 'Edificio Biblioteca Universidad Icesi',
+      'b20': 'Bloque 20',
+    };
+
+    test('saying the building picks the right one', () {
+      expect(
+        clearWinner(
+          matchDestinations('entrada sur biblioteca', [
+            southLibrary,
+            south20,
+          ], buildingNames: names),
+        )?.anchor['id'],
+        'lib',
+      );
+      expect(
+        clearWinner(
+          matchDestinations('entrada sur bloque 20', [
+            southLibrary,
+            south20,
+          ], buildingNames: names),
+        )?.anchor['id'],
+        '20',
+      );
+    });
+
+    test('the name alone asks, nearest first', () {
+      final matches = matchDestinations('entrada sur', [
+        southLibrary,
+        south20,
+      ], buildingNames: names);
+      expect(clearWinner(matches), isNull);
+      final sorted = nearestFirst(
+        matches,
+        (anchor) => anchor['id'] == '20' ? 5 : 500,
+      );
+      expect(sorted.first.anchor['id'], '20');
+    });
+
+    test('exact names, alone or with the building', () {
+      List<String?> exact(String spoken) => exactPlaces(spoken, [
+        southLibrary,
+        south20,
+      ], buildingNames: names).map((a) => a['id'] as String?).toList();
+      expect(exact('entrada sur'), ['lib', '20']);
+      expect(exact('entrada sur bloque 20'), ['20']);
+      expect(exact('entrada'), isEmpty);
+      expect(exact(''), isEmpty);
+    });
+  });
 }

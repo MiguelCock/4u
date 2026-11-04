@@ -31,11 +31,17 @@ The first time you sign in, the app explains out loud how it works. To hear it a
 
 Two ways:
 - **By voice:** tap **Say where you want to go**. The phone vibrates when it starts listening. Say the place, for example "library" or "cafeteria". It vibrates again when it's done.
-- **From a list:** tap **Where to?** and pick the university, the building and the place.
+- **From a list:** tap **Choose a destination** and pick the university, the building and the place.
 
-Then **Go to …?** appears. Tap **Start route** to begin, or **Cancel** to choose another destination. The start point is the one nearest you by GPS.
+- **A building:** say "Edificio C" and the app takes you to its closest entrance. Say "Restroom Edificio C" for a place inside it.
+
+If several places share a name, you can also say the building ("Entrada sur Bloque 20"). Otherwise it offers the nearest ones.
+
+Then **Go to …?** appears. Tap **Start route** to begin, or **Change destination** to choose another. The start point is the one nearest you by GPS.
 
 If you hear that there's no route to that destination yet, the path still has to be connected on the map; tell an administrator.
+
+**If you're near several floors**, the app asks "Which floor are you on?", because GPS can't tell floors apart. Destinations that aren't on the first floor show their floor ("Restroom · Floor 2").
 
 ## 5. During the trip
 
@@ -56,6 +62,10 @@ Distances are approximate, in normal steps.
 - **End navigation**: ends the trip before arriving.
 
 Afterwards the app asks **How did it go?**. You can leave a comment or skip it; it helps improve the app.
+
+### Changing floors
+
+When you reach stairs, an elevator or a ramp, the app tells you where to go ("Take the elevator to floor 3. I'll tell you when you get there.") and stops giving directions while you go up or down. When the phone detects the new floor, it vibrates, says "You're on floor 3", and keeps guiding you. If it doesn't detect it within a few minutes, it tells you and continues from there. Some phones can't detect floors: the app says so and continues after a moment, so make sure you've arrived.
 
 ## 6. If you close the app half-way
 
