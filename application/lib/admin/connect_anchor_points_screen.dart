@@ -9,8 +9,10 @@ import '../services/api_service.dart';
 import '../services/map_tile_config.dart';
 import '../services/api_error_messages.dart';
 import '../services/capture_checks.dart';
-import '../services/location_types.dart' show anchorDisplayName;
+import '../services/floor_view.dart';
+import '../services/location_types.dart' show anchorLabel;
 import '../services/map_tap.dart';
+import '../widgets/floor_selector.dart';
 
 /// Map-tap flow for building the anchor-point walkability graph: tap one
 /// anchor point, then another, to create a connection between them. The
@@ -18,6 +20,11 @@ import '../services/map_tap.dart';
 /// tapping a third, fourth, etc. point to chain-connect along a corridor
 /// without re-entering the flow. Tapping a connection line (away from any
 /// point) offers to delete that connection.
+///
+/// One floor shows at a time (FloorSelector). The floors directly above and
+/// below show as small triangles that can be tapped, which is how stairs get
+/// connected across floors; connecting to one moves the view to its floor, so
+/// a chain carries on. The selected point always shows.
 ///
 /// The `initial*` params let a caller jump straight in from a specific
 /// anchor point (admin_home_screen.dart's anchor-point row tap): its
@@ -54,6 +61,8 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
   bool _loading = true;
   String? _error;
   final _mapController = MapController();
+  int? _floor;
+  bool _onlySelectedFloor = false;
 
   /// Pairs (see [_pairKey]) whose connection is still being saved.
   final Set<String> _pendingPairs = {};
@@ -65,6 +74,9 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
     _selectedBuildingId = widget.initialBuildingId;
     _selectedAnchorPointId = widget.initialAnchorPointId;
     _loadData();
+    loadOnlySelectedFloor().then((value) {
+      if (mounted) setState(() => _onlySelectedFloor = value);
+    });
   }
 
   @override
@@ -105,6 +117,8 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
         if (_selectedPlaceId == null && _places.isNotEmpty) {
           _selectedPlaceId = _places.first['id'] as String?;
         }
+        final selected = _selectedAnchorPointId;
+        if (selected != null) _floor = pointFloor(_pointById(selected));
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -129,6 +143,29 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
         .where((p) => buildingIds.contains(p['building_id']))
         .toList();
   }
+
+  int get _selectedFloor {
+    final floors = floorsOf(_visibleAnchorPoints);
+    return floorInRange(_floor ?? openingFloor(floors) ?? 0, floors) ?? 0;
+  }
+
+  FloorRelation _relation(Map<String, dynamic> point) =>
+      floorRelation(point, _selectedFloor, onlySelected: _onlySelectedFloor);
+
+  /// Drawn, tappable and joined by lines: the selected floor, those directly
+  /// next to it, and the selected point wherever it is.
+  bool _isShown(Map<String, dynamic> point) =>
+      point['id'] == _selectedAnchorPointId ||
+      _relation(point) != FloorRelation.hidden;
+
+  /// Whether the line between [a] and [b] is drawn (and can be tapped).
+  bool _showsLine(Map<String, dynamic> a, Map<String, dynamic> b) =>
+      floorShowsConnection(
+        a,
+        b,
+        _selectedFloor,
+        onlySelected: _onlySelectedFloor,
+      );
 
   /// A tap within this many logical pixels of a point's dot selects it -
   /// far more forgiving than the dot itself, which is what made taps feel
@@ -168,8 +205,13 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
     var nearestDistance = _kLineTapRadiusPx;
     for (final c in _connections) {
       if (c['pending'] == true) continue;
-      final a = screen(byId[c['anchor_point_a_id']]);
-      final b = screen(byId[c['anchor_point_b_id']]);
+      final pointA = byId[c['anchor_point_a_id']];
+      final pointB = byId[c['anchor_point_b_id']];
+      if (pointA == null || pointB == null || !_showsLine(pointA, pointB)) {
+        continue;
+      }
+      final a = screen(pointA);
+      final b = screen(pointB);
       if (a == null || b == null) continue;
       final distance = _distanceToSegment(tap, a, b);
       if (distance <= nearestDistance) {
@@ -240,13 +282,20 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
     }
   }
 
-  Map<String, dynamic>? _pointNear(LatLng tapped) => nearestOnScreen(
-    camera: _mapController.camera,
-    tapped: tapped,
-    items: _visibleAnchorPoints,
-    positionOf: anchorPosition,
-    radiusPx: _kTapRadiusPx,
-  );
+  /// The selected floor first: stairs on two floors are on top of each other.
+  Map<String, dynamic>? _pointNear(LatLng tapped) {
+    Map<String, dynamic>? nearest(
+      bool Function(Map<String, dynamic>) showing,
+    ) => nearestOnScreen(
+      camera: _mapController.camera,
+      tapped: tapped,
+      items: _visibleAnchorPoints.where(showing),
+      positionOf: anchorPosition,
+      radiusPx: _kTapRadiusPx,
+    );
+    return nearest((p) => _relation(p) == FloorRelation.current) ??
+        nearest(_isShown);
+  }
 
   static String _pairKey(String a, String b) =>
       a.compareTo(b) < 0 ? '$a|$b' : '$b|$a';
@@ -284,7 +333,10 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
     if (_alreadyConnected(fromId, id)) {
       // Nothing to send - just move on, so chaining along a corridor keeps
       // working when it crosses an existing line.
-      setState(() => _selectedAnchorPointId = id);
+      setState(() {
+        _selectedAnchorPointId = id;
+        _floor = pointFloor(point);
+      });
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -337,6 +389,7 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
       _pendingPairs.add(key);
       _connections = [..._connections, pending];
       _selectedAnchorPointId = id;
+      _floor = pointFloor(to);
     });
 
     try {
@@ -406,8 +459,23 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
   Map<String, dynamic> _pointById(String id) =>
       _anchorPoints.firstWhere((p) => p['id'] == id, orElse: () => {'id': id});
 
-  String _describePoint(String id) =>
-      anchorDisplayName(AppLocalizations.of(context)!, _pointById(id));
+  String? _buildingNameOf(Map<String, dynamic> point) {
+    for (final building in _buildings) {
+      if (building['id'] == point['building_id']) {
+        return building['name'] as String?;
+      }
+    }
+    return null;
+  }
+
+  String _describePoint(String id) {
+    final point = _pointById(id);
+    return anchorLabel(
+      AppLocalizations.of(context)!,
+      point,
+      _buildingNameOf(point),
+    );
+  }
 
   List<Polyline> _connectionLines() {
     final byId = {for (final p in _anchorPoints) p['id'] as String: p};
@@ -429,6 +497,7 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
       if (aLat == null || aLng == null || bLat == null || bLng == null) {
         continue;
       }
+      if (!_showsLine(a!, b!)) continue;
       final pending = c['pending'] == true;
       lines.add(
         Polyline(
@@ -437,7 +506,9 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
           strokeWidth: pending ? 2 : 3,
           pattern: pending
               ? const StrokePattern.dotted()
-              : const StrokePattern.solid(),
+              : pointFloor(a) == pointFloor(b)
+              ? const StrokePattern.solid()
+              : StrokePattern.dashed(segments: const [8, 6]),
         ),
       );
     }
@@ -445,7 +516,12 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
   }
 
   List<Marker> _anchorMarkers() {
-    return _visibleAnchorPoints
+    final shown = _visibleAnchorPoints.where(_isShown).toList();
+    bool onTop(Map<String, dynamic> p) =>
+        p['id'] == _selectedAnchorPointId ||
+        _relation(p) == FloorRelation.current;
+    // The other floors first, so the selected one is drawn on top.
+    return [...shown.where((p) => !onTop(p)), ...shown.where(onTop)]
         .map((point) {
           final lat = (point['latitude'] as num?)?.toDouble();
           final lng = (point['longitude'] as num?)?.toDouble();
@@ -453,6 +529,9 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
             return null;
           }
           final selected = point['id'] == _selectedAnchorPointId;
+          if (!onTop(point)) {
+            return floorPointMarker(LatLng(lat, lng), _relation(point));
+          }
           // Taps are handled by _onMapTap, not here - see its comment.
           return Marker(
             point: LatLng(lat, lng),
@@ -594,34 +673,53 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
                 if (_pendingPairs.isNotEmpty)
                   const LinearProgressIndicator(minHeight: 2),
                 Expanded(
-                  child: FlutterMap(
-                    mapController: _mapController,
-                    options: MapOptions(
-                      // Double-tap zoom off: it made every single tap wait
-                      // for a possible second one. Pinch still zooms.
-                      interactionOptions: const InteractionOptions(
-                        flags:
-                            InteractiveFlag.all &
-                            ~InteractiveFlag.doubleTapZoom,
-                      ),
-                      onTap: (_, latLng) => _onMapTap(latLng),
-                      initialCenter: _initialCenter(),
-                      initialZoom: widget.initialAnchorPointId != null
-                          ? 19.5
-                          : 18,
-                    ),
+                  child: Stack(
                     children: [
-                      TileLayer(
-                        urlTemplate: kMapTileUrlTemplate,
-                        userAgentPackageName: kMapUserAgentPackageName,
+                      _map(),
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: FloorSelector(
+                          floors: floorsOf(_visibleAnchorPoints),
+                          selected: _selectedFloor,
+                          onlySelected: _onlySelectedFloor,
+                          onFloorChanged: (floor) =>
+                              setState(() => _floor = floor),
+                          onOnlySelectedChanged: (value) {
+                            setState(() => _onlySelectedFloor = value);
+                            saveOnlySelectedFloor(value);
+                          },
+                        ),
                       ),
-                      PolylineLayer(polylines: _connectionLines()),
-                      MarkerLayer(markers: _anchorMarkers()),
                     ],
                   ),
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _map() {
+    return FlutterMap(
+      mapController: _mapController,
+      options: MapOptions(
+        // Double-tap zoom off: it made every single tap wait
+        // for a possible second one. Pinch still zooms.
+        interactionOptions: const InteractionOptions(
+          flags: InteractiveFlag.all & ~InteractiveFlag.doubleTapZoom,
+        ),
+        onTap: (_, latLng) => _onMapTap(latLng),
+        initialCenter: _initialCenter(),
+        initialZoom: widget.initialAnchorPointId != null ? 19.5 : 18,
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: kMapTileUrlTemplate,
+          userAgentPackageName: kMapUserAgentPackageName,
+        ),
+        PolylineLayer(polylines: _connectionLines()),
+        MarkerLayer(markers: _anchorMarkers()),
+      ],
     );
   }
 }

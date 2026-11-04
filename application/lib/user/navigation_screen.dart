@@ -21,6 +21,9 @@ import '../services/app_preferences.dart';
 import '../services/camera_helper.dart';
 import '../services/capture_checks.dart' show kVerticalLocationTypes;
 import '../services/destinations.dart';
+import '../services/floor_detector.dart';
+import '../services/floor_steps.dart';
+import '../services/floor_view.dart';
 import '../services/geo_utils.dart';
 import '../services/heading_tracker.dart';
 import '../services/image_utils.dart';
@@ -39,6 +42,9 @@ class _Waypoint {
   final LatLng point;
   final String? name;
 
+  /// 0-based, like `anchor_points.floor`.
+  final int floor;
+
   /// Stairwell, elevator or ramp (kVerticalLocationTypes): warned about
   /// before reaching it.
   final int? hazardType;
@@ -50,6 +56,7 @@ class _Waypoint {
   const _Waypoint({
     required this.point,
     this.name,
+    this.floor = 0,
     this.hazardType,
     this.legNotes = const [],
   });
@@ -64,7 +71,23 @@ const Set<String> _kInstructionCues = {
   'hazard',
   'away',
   'slow_turn',
+  'floor',
 };
+
+/// A floor change comes from the barometer. If nothing is heard by this long
+/// after the instruction, or this long per floor on a phone without one, the
+/// trip carries on rather than going silent for good.
+const Duration _kFloorWaitLimit = Duration(minutes: 3);
+const Duration _kNoBarometerWaitPerFloor = Duration(seconds: 60);
+
+/// No barometer reading this long after opening: the phone hasn't got one.
+const Duration _kBarometerProbe = Duration(seconds: 3);
+
+/// Location type of an elevator (kVerticalLocationTypes): which wording a
+/// floor change gets, and it wins when the two ends differ, like the backend's
+/// route cost.
+const int _kElevatorType = 3;
+const int _kRampType = 11;
 
 /// No progress cue for this long after the screen opens unless something
 /// else was said: "Preparing the route", then "One moment" every
@@ -154,6 +177,11 @@ class NavigationScreen extends StatefulWidget {
   /// new one.
   final String? resumeSessionId;
 
+  /// What to call the destination aloud: a building ("Edificio C"), when the
+  /// route ends at whichever of its doors is closest, or a point with its
+  /// building ("Entrada sur, Bloque 20"). Null: the end point's own name.
+  final String? destinationName;
+
   /// The admin's "Test as user" flow: shows the "Wrong instruction" button
   /// that records the last cue for tuning (backend guidance_reports).
   final bool adminPreview;
@@ -162,6 +190,7 @@ class NavigationScreen extends StatefulWidget {
     super.key,
     required this.route,
     this.resumeSessionId,
+    this.destinationName,
     this.adminPreview = false,
   });
 
@@ -188,6 +217,25 @@ class _NavigationScreenState extends State<NavigationScreen> {
   Timer? _periodicAnnouncementTimer;
   Timer? _guidanceTimer;
   Timer? _loadingTimer;
+  Timer? _barometerProbeTimer;
+  StreamSubscription<BarometerEvent>? _barometerSub;
+  final _floorDetector = FloorChangeDetector();
+  bool _barometerSeen = false;
+
+  /// The floor guidance believes the user is on: waypoints on another floor
+  /// can't be reached until a floor change gets them there.
+  int _currentFloor = 0;
+  int _startFloor = 0;
+  int? _startHazard;
+  List<int> _plannedFloors = const [];
+
+  /// The floor change being waited for, and since when. Guidance is paused
+  /// meanwhile.
+  FloorChange? _floorChange;
+  DateTime? _floorWaitSince;
+
+  /// A route starting at the foot of stairs was checked for that.
+  bool _startFloorChecked = false;
   StreamSubscription<CompassEvent>? _compassSub;
   final _heading = HeadingSmoother();
   final _tracker = HeadingTracker();
@@ -339,6 +387,17 @@ class _NavigationScreenState extends State<NavigationScreen> {
     });
     _guidanceTimer = Timer.periodic(_kGuidanceInterval, (_) => _guide());
     _loadingTimer = Timer(_kLoadingNotice, _sayStillLoading);
+    _barometerSub = barometerEventStream().listen((event) {
+      _barometerSeen = true;
+      _floorDetector.add(event.pressure, DateTime.now());
+    }, onError: _sensorError);
+    _barometerProbeTimer = Timer(_kBarometerProbe, () {
+      if (_barometerSeen) return;
+      _pendingEvents.add({
+        'at': DateTime.now().toUtc().toIso8601String(),
+        'type': 'barometer_missing',
+      });
+    });
   }
 
   /// Until the first real announcement: "Preparing the route", then "One
@@ -477,6 +536,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     final points = <LatLng>[];
     final names = <String?>[];
     final hazards = <int?>[];
+    final floors = <int>[];
     // The note of the connection arriving at each resolved point.
     final notes = <String?>[];
     String? pendingNote;
@@ -491,6 +551,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       pendingNote = null;
       final type = anchor['location_type_id'] as int?;
       hazards.add(kVerticalLocationTypes.contains(type) ? type : null);
+      floors.add(pointFloor(anchor));
       final point = LatLng(lat, lng);
       points.add(point);
       if (i == 0) {
@@ -513,12 +574,17 @@ class _NavigationScreenState extends State<NavigationScreen> {
     // Checkpoints use the corners alone (not named places), the same rule
     // backend-positioning/scripts/replay.py applies to score a walk.
     final checkpoints = CheckpointSequence(routeCorners(points).length);
-    // Stairs, elevators and ramps stay too: they're warned about.
+    // Stairs, elevators and ramps stay too: they're warned about. So do both
+    // ends of any floor change, wherever guidance has to wait for one.
     final corners = routeCorners(
       points,
       keep: {
         for (var i = 0; i < names.length; i++)
-          if (names[i] != null || hazards[i] != null) i,
+          if (names[i] != null ||
+              hazards[i] != null ||
+              (i > 0 && floors[i - 1] != floors[i]) ||
+              (i + 1 < floors.length && floors[i + 1] != floors[i]))
+            i,
       },
     );
     final waypoints = <_Waypoint>[];
@@ -530,6 +596,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
         _Waypoint(
           point: points[i],
           name: names[i],
+          floor: floors[i],
           hazardType: hazards[i],
           legNotes: [
             for (var j = from; j <= i; j++)
@@ -541,6 +608,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
     if (mounted) {
       setState(() {
         _plannedPath = points;
+        _plannedFloors = floors;
+        if (floors.isNotEmpty) {
+          _startFloor = floors.first;
+          _currentFloor = floors.first;
+          _startHazard = hazards.first;
+        }
         _waypoints = waypoints;
         _checkpoints = checkpoints;
       });
@@ -565,8 +638,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
     // Corners can be 40 m apart: if the user is already past the nearest
     // one along the next straight, aim at the corner after it instead of
-    // sending them back.
+    // sending them back. Never across a floor change.
     if (nearest + 1 < _waypoints.length &&
+        _waypoints[nearest + 1].floor == _waypoints[nearest].floor &&
         projectOntoSegment(
               here,
               _waypoints[nearest].point,
@@ -576,9 +650,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
       nearest++;
     }
     _nextWaypointIndex = nearest;
+    // GPS can't tell the floor: trust the waypoint it's nearest to.
+    _currentFloor = _waypoints[nearest].floor;
+    _startFloorChecked = true;
   }
 
   String _destinationName(AppLocalizations l10n) =>
+      widget.destinationName ??
       (_waypoints.isNotEmpty ? _waypoints.last.name : null) ??
       l10n.navYourDestination;
 
@@ -675,6 +753,19 @@ class _NavigationScreenState extends State<NavigationScreen> {
       return;
     }
     if (_nextWaypointIndex >= _waypoints.length) return;
+    if (_floorChange != null) {
+      _checkFloorChange();
+      return;
+    }
+    if (!_startFloorChecked) {
+      _startFloorChecked = true;
+      // The route starts at the foot of the stairs.
+      final change = _floorChangeAfter(-1);
+      if (change != null) {
+        _beginFloorChange(-1, change);
+        return;
+      }
+    }
     final here = _currentPosition();
     if (here == null) return;
     if (_checkProximity(here)) return;
@@ -765,6 +856,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
     );
     var reached = -1;
     for (var i = _nextWaypointIndex; i < _waypoints.length; i++) {
+      // GPS can't tell floors apart: the point above can't be reached, skipped
+      // to or arrived at from here.
+      if (_waypoints[i].floor != _currentFloor) break;
       final point = _waypoints[i].point;
       if (i < last && !_cornerReached(here, i)) continue;
       if (i == last &&
@@ -806,12 +900,111 @@ class _NavigationScreenState extends State<NavigationScreen> {
       return true;
     }
     _nextWaypointIndex = reached + 1;
+    final floorChange = _floorChangeAfter(reached);
+    if (floorChange != null) {
+      _beginFloorChange(reached, floorChange);
+      return true;
+    }
     _announceNextLeg(
       reached == 0 ? _startPoint : _waypoints[reached - 1].point,
       _waypoints[reached],
       _waypoints[_nextWaypointIndex],
     );
     return true;
+  }
+
+  /// The floor change right after waypoint [index] (-1: the route's start),
+  /// with [FloorChange.lastIndex] as a waypoint index.
+  FloorChange? _floorChangeAfter(int index) {
+    final change = floorChangeAfter([
+      _startFloor,
+      for (final waypoint in _waypoints) waypoint.floor,
+    ], index + 1);
+    return change == null
+        ? null
+        : (lastIndex: change.lastIndex - 1, floor: change.floor);
+  }
+
+  /// At the foot of the stairs (waypoint [from], -1: the route's start): which
+  /// way to go, then guidance waits for the barometer ([_checkFloorChange]).
+  void _beginFloorChange(int from, FloorChange change) {
+    final l10n = AppLocalizations.of(context)!;
+    final now = DateTime.now();
+    final floors = change.floor - _currentFloor;
+    final types = {
+      from < 0 ? _startHazard : _waypoints[from].hazardType,
+      _waypoints[change.lastIndex].hazardType,
+    };
+    final up = floors > 0;
+    final floor = change.floor + 1;
+    final String action;
+    if (types.contains(_kElevatorType)) {
+      action = l10n.navFloorElevator(floor);
+    } else if (types.contains(_kRampType)) {
+      action = up ? l10n.navFloorUpRamp(floor) : l10n.navFloorDownRamp(floor);
+    } else if (types.any((t) => t != null)) {
+      action = up
+          ? l10n.navFloorUpStairs(floor)
+          : l10n.navFloorDownStairs(floor);
+    } else {
+      action = up ? l10n.navFloorUp(floor) : l10n.navFloorDown(floor);
+    }
+    _floorChange = change;
+    _floorWaitSince = now;
+    _floorDetector.start(floors, now: now);
+    _pendingEvents.add({
+      'at': now.toUtc().toIso8601String(),
+      'type': 'floor_wait',
+      'from': _currentFloor,
+      'to': change.floor,
+      'pressure_hpa': _floorDetector.pressure,
+      'barometer': _barometerSeen,
+    });
+    _speak(
+      '$action ${_barometerSeen ? l10n.navFloorWillTell : l10n.navFloorNoSensor}',
+      cueType: 'floor',
+    );
+  }
+
+  /// While waiting at a floor change: has the barometer heard it, or has the
+  /// wait run out? Then guidance picks up from the far end.
+  void _checkFloorChange() {
+    final change = _floorChange!;
+    final now = DateTime.now();
+    final waited = now.difference(_floorWaitSince!);
+    final detected = _floorDetector.reached;
+    final limit = _barometerSeen
+        ? _kFloorWaitLimit
+        : _kNoBarometerWaitPerFloor * (change.floor - _currentFloor).abs();
+    if (!detected && waited < limit) return;
+    _pendingEvents.add({
+      'at': now.toUtc().toIso8601String(),
+      'type': detected ? 'floor_detected' : 'floor_timeout',
+      'to': change.floor,
+      'seconds': waited.inSeconds,
+      'delta_hpa': _floorDetector.delta,
+    });
+    _floorChange = null;
+    _floorDetector.stop();
+    _currentFloor = change.floor;
+    final l10n = AppLocalizations.of(context)!;
+    HapticFeedback.heavyImpact();
+    _speak(
+      detected
+          ? l10n.navFloorReached(change.floor + 1)
+          : l10n.navFloorTimeout(change.floor + 1),
+      cueType: 'floor',
+    );
+    setState(() {});
+    if (change.lastIndex == _waypoints.length - 1) {
+      _arrive();
+      return;
+    }
+    _nextWaypointIndex = change.lastIndex + 1;
+    _arrivalStreak = 0;
+    _resetProgress(null);
+    // Off the stairs, nothing says which way the user faces.
+    _needsStartCue = true;
   }
 
   /// Whether intermediate waypoint [i] counts as reached from [here]: close
@@ -841,7 +1034,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
       // raw compass made corners come early in a user test.
       heading: _reliableHeading(),
       legBearing: bearingDegrees(from, corner),
-      nextLegBearing: bearingDegrees(corner, _waypoints[i + 1].point),
+      // The next waypoint is on another floor, nearly overhead: no bearing.
+      nextLegBearing: _waypoints[i + 1].floor != _waypoints[i].floor
+          ? null
+          : bearingDegrees(corner, _waypoints[i + 1].point),
       reachedMeters: _kCornerMeters,
       warnMeters: _kTurnWarningMeters,
       maxCrossTrackMeters: _kCornerCrossTrackMeters,
@@ -870,6 +1066,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
         cueType: 'hazard',
       );
     }
+    if (_waypoints[i + 1].floor != _waypoints[i].floor) return;
     final turn = signedTurn(
       bearingDegrees(from, corner),
       bearingDegrees(corner, _waypoints[i + 1].point),
@@ -1049,6 +1246,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   void _announcePeriodicDistance() {
     if (!_guiding || _stopped || _arrived || !mounted) return;
     if (!_guidance.walking || _nextWaypointIndex >= _waypoints.length) return;
+    if (_floorChange != null) return;
     final lastSpoken = _lastSpokenAt;
     if (lastSpoken != null &&
         DateTime.now().difference(lastSpoken) < _kQuietBeforePeriodic) {
@@ -1241,6 +1439,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
       'heading': _tracker.value,
       'heading_source': _tracker.source,
       'heading_reliable': _tracker.reliable(DateTime.now()),
+      'pressure_hpa': _floorDetector.pressure,
+      'floor': _currentFloor,
+      'waiting_floor': _floorChange?.floor,
       'gyroscope': _tracker.hasGyroscope,
       // How far the compass (true) is from the tracked heading: magnetic
       // disturbance shows up here.
@@ -1505,6 +1706,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _pendingTickTimer?.cancel();
     _guidanceTimer?.cancel();
     _loadingTimer?.cancel();
+    _barometerProbeTimer?.cancel();
+    _barometerSub?.cancel();
     _periodicAnnouncementTimer?.cancel();
     _compassSub?.cancel();
     _gyroSub?.cancel();
@@ -1592,6 +1795,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _periodicAnnouncementTimer?.cancel();
     _guidanceTimer?.cancel();
     _loadingTimer?.cancel();
+    _barometerProbeTimer?.cancel();
+    _barometerSub?.cancel();
     _compassSub?.cancel();
     _gyroSub?.cancel();
     _accelSub?.cancel();
@@ -1685,6 +1890,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
                               child: SimpleMapWidget(
                                 onTap: _repeatLastAnnouncement,
                                 plannedPath: _plannedPath,
+                                plannedPathFloors: _plannedFloors,
+                                currentFloor: _currentFloor,
                                 extraMarkers:
                                     correctedLat != null &&
                                         correctedLong != null

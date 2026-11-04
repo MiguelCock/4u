@@ -238,6 +238,14 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
             (item['name'] ?? item['location_description'] ?? item['id'])
                 as String,
           ),
+          // Two "Baño" on different floors have to be told apart.
+          subtitle: ((item['floor'] as int?) ?? 0) == 0
+              ? null
+              : Text(
+                  AppLocalizations.of(
+                    context,
+                  )!.commonFloorOption((item['floor'] as int) + 1),
+                ),
           onTap: () => onTap(item),
         );
       },

@@ -166,3 +166,22 @@ List<int> routeCorners(
   corners.add(points.length - 1);
   return corners;
 }
+
+/// The floors of [anchors] within [meters] of [from], lowest first. More than
+/// one means GPS alone can't say which floor the user is on.
+List<int> floorsNear(
+  Iterable<Map<String, dynamic>> anchors,
+  LatLng from, {
+  double meters = 15,
+}) {
+  final floors = <int>{};
+  for (final anchor in anchors) {
+    final lat = (anchor['latitude'] as num?)?.toDouble();
+    final lng = (anchor['longitude'] as num?)?.toDouble();
+    if (lat == null || lng == null) continue;
+    if (haversineMeters(from, LatLng(lat, lng)) <= meters) {
+      floors.add((anchor['floor'] as int?) ?? 0);
+    }
+  }
+  return floors.toList()..sort();
+}

@@ -121,6 +121,23 @@ List<Map<String, dynamic>> namedHiddenPoints(
     )
     .toList();
 
+/// Connections that change floor with no stairs, elevator or ramp at either
+/// end, made before that rule. Routes don't use them.
+List<Map<String, dynamic>> floorChangeConnections(
+  Iterable<Map<String, dynamic>> anchors,
+  Iterable<Map<String, dynamic>> connections,
+) {
+  final byId = {for (final a in anchors) a['id']: a};
+  return connections.where((c) {
+    final a = byId[c['anchor_point_a_id']];
+    final b = byId[c['anchor_point_b_id']];
+    if (a == null || b == null) return false;
+    return ((a['floor'] as int?) ?? 0) != ((b['floor'] as int?) ?? 0) &&
+        !kVerticalLocationTypes.contains(a['location_type_id']) &&
+        !kVerticalLocationTypes.contains(b['location_type_id']);
+  }).toList();
+}
+
 /// Connections longer than [kMaxConnectionMeters], made before the limit.
 List<Map<String, dynamic>> longConnections(
   Iterable<Map<String, dynamic>> anchors,

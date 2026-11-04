@@ -199,6 +199,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
           showAnchorPoints: true,
           buildingsPlaceId: _selectedPlaceId,
           anchorPointsBuildingId: _selectedBuildingId,
+          initialFloor: _floor,
         ),
       ),
     );

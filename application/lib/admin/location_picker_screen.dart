@@ -5,7 +5,9 @@ import 'package:latlong2/latlong.dart';
 import '../l10n/app_localizations.dart';
 import '../map.dart' show locationPinMarker;
 import '../services/api_service.dart';
+import '../services/floor_view.dart';
 import '../services/map_tile_config.dart';
+import '../widgets/floor_selector.dart';
 
 /// Reusable "tap the map to pick a location" screen - pops with the tapped
 /// `LatLng` on confirm, or `null` if the admin just backs out. Used by
@@ -35,6 +37,10 @@ class LocationPickerScreen extends StatefulWidget {
   /// to whichever place is currently selected in the form.
   final String? buildingsPlaceId;
 
+  /// The floor of the point being placed: the anchor points overlay opens
+  /// on it. Changing floor here only changes the view.
+  final int? initialFloor;
+
   const LocationPickerScreen({
     super.key,
     required this.initialPosition,
@@ -43,6 +49,7 @@ class LocationPickerScreen extends StatefulWidget {
     this.showAnchorPoints = false,
     this.anchorPointsBuildingId,
     this.buildingsPlaceId,
+    this.initialFloor,
   });
 
   @override
@@ -55,12 +62,27 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   List<Map<String, dynamic>> _places = [];
   List<Map<String, dynamic>> _buildings = [];
   List<Map<String, dynamic>> _anchorPoints = [];
+  int? _floor;
+  bool _onlySelectedFloor = false;
 
   @override
   void initState() {
     super.initState();
     _picked = widget.initialPosition;
+    _floor = widget.initialFloor;
     _loadOverlayData();
+    loadOnlySelectedFloor().then((value) {
+      if (mounted) setState(() => _onlySelectedFloor = value);
+    });
+  }
+
+  /// The overlay's floors, plus the one the new point is going on.
+  List<int> get _floors =>
+      {...floorsOf(_anchorPoints), ?widget.initialFloor}.toList()..sort();
+
+  int get _selectedFloor {
+    final floors = _floors;
+    return floorInRange(_floor ?? openingFloor(floors) ?? 0, floors) ?? 0;
   }
 
   Future<void> _loadOverlayData() async {
@@ -189,10 +211,26 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       );
     }
 
+    // The other floors first, so the selected one is drawn on top.
+    final floor = _selectedFloor;
     for (final point in _anchorPoints) {
       final lat = (point['latitude'] as num?)?.toDouble();
       final lng = (point['longitude'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
+      final relation = floorRelation(
+        point,
+        floor,
+        onlySelected: _onlySelectedFloor,
+      );
+      if (relation == FloorRelation.above || relation == FloorRelation.below) {
+        markers.add(floorPointMarker(LatLng(lat, lng), relation));
+      }
+    }
+    for (final point in _anchorPoints) {
+      final lat = (point['latitude'] as num?)?.toDouble();
+      final lng = (point['longitude'] as num?)?.toDouble();
+      if (lat == null || lng == null) continue;
+      if (pointFloor(point) != floor) continue;
       final color = switch (point['status'] as String?) {
         'verified' => Colors.green,
         'rejected' => Colors.red,
@@ -225,19 +263,37 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           ),
         ],
       ),
-      body: FlutterMap(
-        options: MapOptions(
-          initialCenter: _picked,
-          initialZoom: 16,
-          onTap: (tapPosition, point) => setState(() => _picked = point),
-        ),
+      body: Stack(
         children: [
-          TileLayer(
-            urlTemplate: kMapTileUrlTemplate,
-            userAgentPackageName: kMapUserAgentPackageName,
+          FlutterMap(
+            options: MapOptions(
+              initialCenter: _picked,
+              initialZoom: 16,
+              onTap: (tapPosition, point) => setState(() => _picked = point),
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: kMapTileUrlTemplate,
+                userAgentPackageName: kMapUserAgentPackageName,
+              ),
+              MarkerLayer(markers: _overlayMarkers()),
+              MarkerLayer(markers: [locationPinMarker(_picked, Colors.red)]),
+            ],
           ),
-          MarkerLayer(markers: _overlayMarkers()),
-          MarkerLayer(markers: [locationPinMarker(_picked, Colors.red)]),
+          Positioned(
+            right: 8,
+            top: 8,
+            child: FloorSelector(
+              floors: _floors,
+              selected: _selectedFloor,
+              onlySelected: _onlySelectedFloor,
+              onFloorChanged: (floor) => setState(() => _floor = floor),
+              onOnlySelectedChanged: (value) {
+                setState(() => _onlySelectedFloor = value);
+                saveOnlySelectedFloor(value);
+              },
+            ),
+          ),
         ],
       ),
     );
