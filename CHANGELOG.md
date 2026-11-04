@@ -6,6 +6,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-11-03
+
+**For testers:** install `app-release.apk` from this release. Version 0.5.3 keeps working for now (it shows a "new version available" notice), and **0.5.2 no longer works**: anyone still on it sees "Update required". **Admins:** at Icesi, trips that used a connection over 30 m now say there's no route. The admin menu lists those connections; redo each one through points every 6–8 m, and add warnings for users where there are steps or obstacles.
+
 ### Added
 - **Guardrails for admins building the map**, after the Icesi test found connections of 50–76 m, points saved on top of each other and named places users couldn't choose:
   - A new point's position must be set on purpose: pick it on the map, or tap **Use my location** while standing on the spot (only with GPS of ±8 m or better). The app no longer takes the GPS on its own.
@@ -219,7 +223,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.3...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.4...develop
+[0.5.4]: https://github.com/MiguelCock/4u/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/MiguelCock/4u/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/MiguelCock/4u/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/MiguelCock/4u/compare/v0.5.0...v0.5.1
