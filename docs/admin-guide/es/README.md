@@ -16,6 +16,11 @@ La navegación vive en un menú lateral (drawer), que se abre con el ícono de h
 - **Conexiones** (ícono de línea)
 - **Usuarios** (ícono de personas), ver [§6d](#6d-usuarios)
 
+Cuando hay errores de mapa que afectan a los usuarios, el menú muestra avisos naranjas; tocar cada uno abre lo que hay que arreglar:
+- **N puntos verificados sin conexión** — abre la lista de puntos filtrada a esos.
+- **N puntos con nombre que los usuarios no pueden elegir** — puntos con nombre de un tipo intermedio; toca uno para cambiarle el tipo.
+- **N conexiones de más de 30 m** — toca una para borrarla, y vuelve a conectar ese camino con puntos intermedios.
+
 Debajo están **Sesiones** y **Comentarios** ([§6b](#6b-probar-una-ruta-y-revisarla)), **Reindexar puntos verificados** ([§5.3](#53-revisar-y-verificar)) y **Test as user** (solo en el teléfono).
 
 Toca una sección para cambiar a ella; el menú se cierra automáticamente. El título en la parte superior de la pantalla siempre indica en qué sección te encuentras. La esquina superior derecha siempre tiene un ícono de actualizar (recarga todo desde el servidor), uno de ajustes (idioma, alto contraste, tamaño del texto, voz) y uno de cerrar sesión (te desconecta de inmediato, sin confirmación).
@@ -110,10 +115,14 @@ Un **anchor point** es un punto físico específico — una puerta, una intersec
 2. Toca el botón **+** con ícono de cámara (abajo a la derecha) — etiquetado "New anchor point".
 3. Elige el **Place**, luego el **Building** (filtrado según ese lugar).
 4. Elige el **Location type** — qué tipo de lugar es este (ver la lista completa en [§8](#8-referencia-rápida)). Por ejemplo, si estás parado en la puerta principal de un edificio, elige **entrance**.
-5. Completa la **Description**. Es **obligatoria para los tipos de destino** (entrance, classroom, office, restroom, cafeteria, parking, lobby, auditorium, bus_stop), porque es el nombre que los usuarios eligen y escuchan, así que describe el lugar real: "Puerta principal, lado norte" es mucho más útil que "Punto 1". Para los **tipos intermedios** (hallway, intersection, stairwell, elevator, ramp, outdoor_path, courtyard, crosswalk, other) es opcional. Si la dejas vacía, el punto sigue sirviendo para rutas y para corregir la posición, pero no aparece en la lista de destinos del usuario. En las listas de administración los puntos sin nombre se muestran por su tipo, por ejemplo "Pasillo · 3f2a". Los puntos nuevos empiezan como **hallway**.
-6. Configura **Indoor location** (activado por defecto) — si el punto está dentro de un edificio o afuera. Esto importa porque la precisión del GPS es mucho peor en interiores, que es exactamente por qué los puntos de anclaje interiores son los más importantes para el sistema de corrección de posición.
+5. Completa la **Description**. Es **obligatoria para los tipos de destino** (entrance, classroom, office, restroom, cafeteria, parking, lobby, auditorium, bus_stop), porque es el nombre que los usuarios eligen y escuchan, así que describe el lugar real: "Puerta principal, lado norte" es mucho más útil que "Punto 1". Para los **tipos intermedios** (hallway, intersection, stairwell, elevator, ramp, outdoor_path, courtyard, crosswalk, other) es opcional. Si la dejas vacía, el punto sigue sirviendo para rutas y para corregir la posición, pero no aparece en la lista de destinos del usuario. En las listas de administración los puntos sin nombre se muestran por su tipo, por ejemplo "Pasillo · 3f2a". Los puntos nuevos empiezan como **hallway**. Si escribes un nombre y el tipo es intermedio, la app pregunta si es un destino: los usuarios solo pueden elegir destinos, así que un "Baño mujeres" guardado como hallway nunca aparece en su lista. Toca **Cambiar tipo** salvo que sea de verdad un punto de paso con nombre (por ejemplo "Pasillo hacia salas 202").
+6. Elige **Interior** o **Exterior** (no hay valor por defecto, se pregunta cada vez) — si el punto está dentro de un edificio o afuera. Esto importa porque la precisión del GPS es mucho peor en interiores, que es exactamente por qué los puntos de anclaje interiores son los más importantes para el sistema de corrección de posición.
 7. Opcionalmente configura **Lighting** (Bright / Moderate / Dim) y **Surface** (texto libre, ej. "tile", "carpet", "concrete", "grass") — ver la tabla de campos abajo para entender por qué vale la pena completarlos.
-8. Confirma la posición — ya sea la ubicación GPS actual del dispositivo (se muestra automáticamente) o, si tocas **Pick on map**, una ubicación que toques en un mapa. Una ubicación elegida manualmente siempre tiene prioridad sobre el GPS. Úsalo cuando la deriva del GPS (común cerca de edificios altos) ubicaría el punto en el lugar equivocado.
+8. Define la posición. **Es obligatorio**: la app ya no toma el GPS por su cuenta, y **Create and add photos** está desactivado hasta que hagas una de dos cosas:
+   - **Pick on map**: toca el lugar exacto en el mapa. Es lo más preciso, sobre todo en interiores.
+   - **Usar mi ubicación (±N m)**: parado justo en el punto, guarda la lectura del GPS en ese momento. Solo se puede usar con una precisión de ±8 m o mejor; si el GPS está peor, espera o usa el mapa.
+
+   Si ya hay otro punto a menos de 3 m en el mismo edificio y piso, la app avisa antes de guardar. Casi siempre es el mismo lugar guardado dos veces: agrégale fotos al que ya existe en vez de crear otro. Un punto a más de 300 m de su edificio se rechaza (posición equivocada).
 9. Toca **Create and add photos** — esto guarda el punto de anclaje y te lleva directamente a la pantalla de captura de fotos ([§5.2](#52-tomar-fotos)).
 
 #### Campos de Anchor point (creación y edición)
@@ -124,12 +133,12 @@ Un **anchor point** es un punto físico específico — una puerta, una intersec
 | **Location type** | Obligatorio, los puntos nuevos empiezan como "hallway" | Qué tipo de lugar es este, elegido en un selector con búsqueda agrupado por categorías. Lista completa en [§8](#8-referencia-rápida). | `entrance` |
 | **Floor** | Obligatorio | En qué piso del edificio está el punto. "Piso 1" es la planta baja; la lista ofrece los pisos del edificio. | `Piso 1` |
 | **Description** | Obligatoria para los tipos de destino (★ en [§8](#8-referencia-rápida)), opcional para los demás | El nombre legible del punto — el que los usuarios eligen y escuchan. Describe el lugar real, no una etiqueta genérica. | `Puerta principal, lado norte` |
-| **Indoor location** (interruptor) | Activado por defecto | Interior vs. exterior — ver arriba por qué importa. | — |
+| **¿Interior o exterior?** | Obligatorio, sin valor por defecto | Interior vs. exterior — ver arriba por qué importa. | — |
 | **Lighting** (menú desplegable) | Opcional, por defecto "Not set" | La iluminación típica de este lugar exacto: Bright / Moderate / Dim. Es un contexto útil para quien revise las fotos después (una foto oscura puede simplemente significar un pasillo con poca luz, no una mala foto), y con el tiempo esta información está pensada para ayudar a que el sistema de reconocimiento visual sea más confiable en distintas condiciones de luz. | Un lugar junto a una ventana grande al mediodía → `Bright`; una escalera interior con solo luces de techo → `Dim` |
 | **Surface (optional)** | Opcional, texto libre | La superficie física del suelo. Puede servir como una pista útil de orientación (por ejemplo, un cambio de baldosa a alfombra puede marcar el límite de una sala). | `tile`, `carpet`, `concrete`, `grass` |
-| **Location** | Obligatoria (GPS o selección en mapa) | Las coordenadas reales del punto. Una selección en el mapa siempre tiene prioridad sobre la lectura GPS en vivo del dispositivo. | — |
+| **Location** | Obligatoria: **Pick on map** o **Usar mi ubicación** (GPS de ±8 m o mejor) | Las coordenadas reales del punto. Se usa la última que elegiste de las dos. | — |
 
-**El formulario recuerda tu último punto.** Un punto de anclaje nuevo empieza con la universidad, el edificio, el tipo de lugar, el piso, el ajuste de interior, la iluminación y la superficie del último que creaste en este teléfono. Solo la descripción y la posición empiezan vacías. Si abriste el formulario filtrado a un edificio, se usa ese edificio.
+**El formulario recuerda tu último punto.** Un punto de anclaje nuevo empieza con la universidad, el edificio, el tipo de lugar, el piso, la iluminación y la superficie del último que creaste en este teléfono. La descripción, la posición e interior/exterior empiezan vacías. Si abriste el formulario filtrado a un edificio, se usa ese edificio.
 
 **Filtrar la lista.** El botón **Filtros** encima de la lista (y del mapa) acota los puntos de anclaje por categoría y tipo, piso, interior o exterior, iluminación, y si tienen fotos o conexiones. Se combina con los chips de estado y la búsqueda. **Quitar filtros** (o el botón atrás) los elimina.
 
@@ -147,7 +156,7 @@ Siempre puedes volver más adelante a agregar o quitar fotos desde el botón **M
 
 ### 5.3 Revisar y verificar
 
-**Verificación rápida desde la lista o el mapa:** cada fila de punto de anclaje tiene un botón ✔ que lo verifica (o, en un punto verificado, lo devuelve a pendiente). Un punto necesita al menos una foto antes de poder verificarse. El selector **Lista / Mapa** encima de la lista muestra los mismos puntos en un mapa, coloreados por estado: verde verificado, gris pendiente, rojo rechazado. Toca un punto en el mapa para ver sus datos y para **Editar**, **Mover**, verificar, **Conectar** o agregar fotos. **Mover** te pide tocar la nueva posición; la punta del pin marca exactamente dónde quedará, y **Guardar nueva posición** la guarda. Mover un punto verificado también actualiza la búsqueda por fotos y las distancias de sus conexiones.
+**Verificación rápida desde la lista o el mapa:** cada fila de punto de anclaje tiene un botón ✔ que lo verifica (o, en un punto verificado, lo devuelve a pendiente). Un punto necesita al menos una foto antes de poder verificarse. Si todavía no tiene conexiones, la app avisa: un punto verificado sin conexiones no sirve para llegar ni para empezar una ruta, y los usuarios no lo ven. El selector **Lista / Mapa** encima de la lista muestra los mismos puntos en un mapa, coloreados por estado: verde verificado, gris pendiente, rojo rechazado. Toca un punto en el mapa para ver sus datos y para **Editar**, **Mover**, verificar, **Conectar** o agregar fotos. **Mover** te pide tocar la nueva posición; la punta del pin marca exactamente dónde quedará, y **Guardar nueva posición** la guarda. Mover un punto verificado también actualiza la búsqueda por fotos y las distancias de sus conexiones.
 
 
 La pantalla de edición de un punto de anclaje es también donde lo revisas y decides si está listo para uso real. Esto es más que solo cambiar una etiqueta:
@@ -172,6 +181,17 @@ Para editar un punto de anclaje: toca el ícono de lápiz en su fila. Verás los
 
 Una **connection** registra que una persona puede caminar directamente entre dos puntos de anclaje. Juntas forman el grafo de transitabilidad: las rutas se calculan solo a lo largo de las conexiones, y las instrucciones paso a paso las siguen.
 
+**Reglas** (la app y el servidor las aplican):
+- **Máximo 30 m** en línea recta. La guía hace caminar en línea recta entre dos puntos conectados, así que una conexión de 50 m entre edificios atraviesa lo que haya en medio. Captura puntos intermedios cada 6–8 m y conéctalos en cadena. Por encima de 15 m la app vibra y avisa.
+- **Cambiar de piso** solo a través de un punto de escaleras (stairwell), ascensor (elevator) o rampa (ramp).
+- Si escribes una distancia a mano, no puede ser menor que la línea recta.
+- Mover un punto no puede dejar una de sus conexiones por encima de 30 m.
+- **Las conexiones de más de 30 m hechas antes de esta regla no se usan en las rutas**: un viaje que necesitaba una da "no hay ruta" hasta rehacerla. El menú las lista (**N conexiones de más de 30 m**).
+
+**Obstáculos.** La app avisa a los usuarios antes de escaleras, ascensores y rampas cuando el punto tiene ese **Location type**, así que dales el tipo correcto. Para cualquier otra cosa en el camino (un escalón, una caneca, máquinas expendedoras, una puerta angosta), escribe un **Aviso para usuarios** en esa conexión: se dice cuando el usuario empieza a recorrerla ("Atención: tres escalones hacia abajo"). La app no puede ver obstáculos que nadie haya anotado.
+
+**Lo que ve el usuario.** Los usuarios solo ven, como destino o como punto de partida, puntos verificados **con al menos una conexión**. Un punto sin conexiones no aparece.
+
 Hay dos formas de crear una — elige la que se ajuste a la situación:
 
 ### Conectar tocando en el mapa
@@ -192,7 +212,7 @@ Más preciso — úsalo cuando no estés mirando un mapa, o cuando necesites cor
 
 1. Desde la pantalla de Connections, toca el ícono de lista en la esquina superior derecha — etiquetado "Add connection (form)".
 2. Elige **Place**, opcionalmente un filtro de **Building**, luego **Anchor point A** y **Anchor point B** en los menús desplegables.
-3. Opcionalmente completa **Distance** y **Notes** (ver tabla).
+3. Opcionalmente completa **Distance** y **Aviso para usuarios** (ver tabla).
 4. Toca **Save connection**.
 
 ### Campos de Connection (formulario)
@@ -202,9 +222,9 @@ Más preciso — úsalo cuando no estés mirando un mapa, o cuando necesites cor
 | **Place** / **Building (optional filter)** | Place obligatorio, Building opcional | Acota qué puntos de anclaje aparecen en los menús desplegables de abajo. | — |
 | **Anchor point A** / **Anchor point B** | Ambos obligatorios, deben ser puntos distintos | Los dos puntos de anclaje que se están conectando. | — |
 | **Distance in meters (optional)** | Opcional | Cuánto caminaría realmente una persona entre los dos puntos. Si se deja en blanco, la aplicación la estima como una línea recta entre sus coordenadas — lo cual es incorrecto si el camino real tiene curvas (por ejemplo, al doblar una esquina) o no es un trayecto directo (por ejemplo, vía ascensor o escaleras en vez de un camino directo). Complétalo siempre que la estimación en línea recta no sea precisa. | `12.5` |
-| **Notes (optional)** | Opcional | Texto libre para anotar cualquier cosa relevante sobre esta conexión en particular. | `via elevator, not stairs`, `blocked during exam periods` |
+| **Aviso para usuarios (escaleras, obstáculos…)** | Opcional | Se le dice al usuario cuando empieza a recorrer esta conexión, después de "Atención:". Escríbelo para él, corto. | `tres escalones hacia abajo`, `máquinas expendedoras a la derecha` |
 
-Eliminar una conexión no tiene efecto en cascada: no afecta a los dos puntos de anclaje en sí. No hay opción de editar, así que elimínala y vuelve a crearla si necesitas cambiarla. Hay dos formas de eliminarla:
+Para agregar o cambiar el aviso de una conexión, tócala en la lista **Connections**. Lo demás no se puede editar: elimínala y vuelve a crearla. Eliminar una conexión no tiene efecto en cascada: no afecta a los dos puntos de anclaje en sí. Hay dos formas de eliminarla:
 
 - En la lista **Connections**, toca su ícono de basura.
 - En la pantalla **Connect on map**, toca la línea verde (lejos de los puntos, porque tocar cerca de un punto lo selecciona) y confirma.

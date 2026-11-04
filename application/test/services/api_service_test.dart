@@ -61,6 +61,54 @@ void main() {
     );
   });
 
+  group('retry after a dropped connection', () {
+    ApiService buildApi(List<Object> answers, List<String> sent) {
+      var call = 0;
+      return ApiService(
+        'http://api.example',
+        client: MockClient((request) async {
+          sent.add(request.method);
+          final answer = answers[call++];
+          if (answer is Exception) throw answer;
+          return http.Response('{"ok":true}', answer as int);
+        }),
+        getAccessToken: () => null,
+        refreshSession: () async {},
+        retryDelay: Duration.zero,
+      );
+    }
+
+    test('a GET is tried again once', () async {
+      final sent = <String>[];
+      final api = buildApi([http.ClientException('reset'), 200], sent);
+      final retriesBefore = ApiService.retries.value;
+      expect(await api.get('/thing'), {'ok': true});
+      expect(sent, ['GET', 'GET']);
+      expect(ApiService.retries.value, retriesBefore + 1);
+    });
+
+    test('a 503 is tried again once, then reported', () async {
+      final sent = <String>[];
+      final api = buildApi([503, 503], sent);
+      await expectLater(
+        api.get('/thing'),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'code', 503)),
+      );
+      expect(sent, hasLength(2));
+    });
+
+    test('a POST is only tried again when asked', () async {
+      final sent = <String>[];
+      final api = buildApi([http.ClientException('reset'), 200], sent);
+      await expectLater(api.post('/thing', {}), throwsA(isA<ApiException>()));
+      expect(sent, ['POST']);
+      final again = <String>[];
+      final retrying = buildApi([http.ClientException('reset'), 200], again);
+      expect(await retrying.post('/thing', {}, retry: true), {'ok': true});
+      expect(again, ['POST', 'POST']);
+    });
+  });
+
   group('401 refresh-and-retry', () {
     late List<String?> sentTokens;
     late int refreshCalls;

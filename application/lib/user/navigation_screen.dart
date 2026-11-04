@@ -19,6 +19,7 @@ import '../map.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
 import '../services/camera_helper.dart';
+import '../services/capture_checks.dart' show kVerticalLocationTypes;
 import '../services/destinations.dart';
 import '../services/geo_utils.dart';
 import '../services/heading_tracker.dart';
@@ -38,8 +39,39 @@ class _Waypoint {
   final LatLng point;
   final String? name;
 
-  const _Waypoint({required this.point, this.name});
+  /// Stairwell, elevator or ramp (kVerticalLocationTypes): warned about
+  /// before reaching it.
+  final int? hazardType;
+
+  /// The admins' warnings ("three steps down") on the connections of the
+  /// leg that ends here, spoken when that leg starts.
+  final List<String> legNotes;
+
+  const _Waypoint({
+    required this.point,
+    this.name,
+    this.hazardType,
+    this.legNotes = const [],
+  });
 }
+
+/// Cues that are instructions: a short vibration comes first, so a user
+/// holding the phone in front (not at the ear) knows to listen.
+const Set<String> _kInstructionCues = {
+  'turn',
+  'leg',
+  'turn_ahead',
+  'hazard',
+  'away',
+  'slow_turn',
+};
+
+/// No progress cue for this long after the screen opens unless something
+/// else was said: "Preparing the route", then "One moment" every
+/// [_kLoadingRepeat] until the first instruction. Testers didn't know
+/// whether the app was working (Icesi, 2026-11-03).
+const Duration _kLoadingNotice = Duration(milliseconds: 1500);
+const Duration _kLoadingRepeat = Duration(seconds: 6);
 
 /// A correction's offset from raw GPS is applied to the live fix for this
 /// long, then dropped in favour of raw GPS (the camera loop has stalled).
@@ -155,6 +187,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   Timer? _pendingTickTimer;
   Timer? _periodicAnnouncementTimer;
   Timer? _guidanceTimer;
+  Timer? _loadingTimer;
   StreamSubscription<CompassEvent>? _compassSub;
   final _heading = HeadingSmoother();
   final _tracker = HeadingTracker();
@@ -185,6 +218,11 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   /// "Loading the route" was said (the path is slow to arrive).
   bool _loadingAnnounced = false;
+
+  /// The distance to the next waypoint at the last periodic update (or the
+  /// leg's start), and the steps said then: see progressSince.
+  double? _progressMeters;
+  int? _progressSteps;
   DateTime? _staleSince;
   LatLng? _staleFrom;
 
@@ -300,6 +338,22 @@ class _NavigationScreenState extends State<NavigationScreen> {
       if (_correctionOffset != null && mounted) setState(() {});
     });
     _guidanceTimer = Timer.periodic(_kGuidanceInterval, (_) => _guide());
+    _loadingTimer = Timer(_kLoadingNotice, _sayStillLoading);
+  }
+
+  /// Until the first real announcement: "Preparing the route", then "One
+  /// moment" every [_kLoadingRepeat].
+  void _sayStillLoading() {
+    if (_stopped || !mounted || _lastAnnouncement != null || _error != null) {
+      return;
+    }
+    final l10n = AppLocalizations.of(context)!;
+    _speak(
+      _loadingAnnounced ? l10n.commonOneMoment : l10n.navLoadingRoute,
+      repeatable: false,
+    );
+    _loadingAnnounced = true;
+    _loadingTimer = Timer(_kLoadingRepeat, _sayStillLoading);
   }
 
   /// A sensor stream failed: logged with the next tick, so a phone whose
@@ -337,6 +391,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
       _lastCueType = cueType;
     }
     _lastSpokenAt = DateTime.now();
+    if (_kInstructionCues.contains(cueType)) {
+      HapticFeedback.mediumImpact();
+    } else if (cueType == 'start_walking') {
+      // The "I'll vibrate when you face the right way" of SlowTurnCue.
+      HapticFeedback.heavyImpact();
+    }
     _pendingCues.add({
       'at': DateTime.now().toUtc().toIso8601String(),
       'type': cueType,
@@ -389,14 +449,48 @@ class _NavigationScreenState extends State<NavigationScreen> {
         }
       }),
     );
+    // The admins' warnings on each connection along the route, best effort.
+    final connections = await Future.wait(
+      anchorIds.take(anchorIds.length - 1).map((id) async {
+        try {
+          return (await MapManagementApi().get('/anchor-points/$id/connections')
+                  as List)
+              .cast<Map<String, dynamic>>();
+        } on ApiException {
+          return const <Map<String, dynamic>>[];
+        }
+      }),
+    );
+    String? noteBetween(int i) {
+      final a = anchorIds[i];
+      final b = anchorIds[i + 1];
+      for (final c in connections[i]) {
+        final ends = {c['anchor_point_a_id'], c['anchor_point_b_id']};
+        if (ends.contains(a) && ends.contains(b)) {
+          final note = (c['notes'] as String? ?? '').trim();
+          return note.isEmpty ? null : note;
+        }
+      }
+      return null;
+    }
+
     final points = <LatLng>[];
     final names = <String?>[];
+    final hazards = <int?>[];
+    // The note of the connection arriving at each resolved point.
+    final notes = <String?>[];
+    String? pendingNote;
     var resolvedStart = false;
     for (var i = 0; i < anchors.length; i++) {
       final anchor = anchors[i];
       final lat = (anchor?['latitude'] as num?)?.toDouble();
       final lng = (anchor?['longitude'] as num?)?.toDouble();
+      if (i > 0) pendingNote ??= noteBetween(i - 1);
       if (anchor == null || lat == null || lng == null) continue;
+      notes.add(pendingNote);
+      pendingNote = null;
+      final type = anchor['location_type_id'] as int?;
+      hazards.add(kVerticalLocationTypes.contains(type) ? type : null);
       final point = LatLng(lat, lng);
       points.add(point);
       if (i == 0) {
@@ -419,18 +513,31 @@ class _NavigationScreenState extends State<NavigationScreen> {
     // Checkpoints use the corners alone (not named places), the same rule
     // backend-positioning/scripts/replay.py applies to score a walk.
     final checkpoints = CheckpointSequence(routeCorners(points).length);
+    // Stairs, elevators and ramps stay too: they're warned about.
     final corners = routeCorners(
       points,
       keep: {
         for (var i = 0; i < names.length; i++)
-          if (names[i] != null) i,
+          if (names[i] != null || hazards[i] != null) i,
       },
     );
-    final waypoints = [
-      for (final i in corners)
-        if (i > 0 || !resolvedStart)
-          _Waypoint(point: points[i], name: names[i]),
-    ];
+    final waypoints = <_Waypoint>[];
+    for (var k = 0; k < corners.length; k++) {
+      final i = corners[k];
+      if (i == 0 && resolvedStart) continue;
+      final from = k == 0 ? 0 : corners[k - 1] + 1;
+      waypoints.add(
+        _Waypoint(
+          point: points[i],
+          name: names[i],
+          hazardType: hazards[i],
+          legNotes: [
+            for (var j = from; j <= i; j++)
+              if (notes[j] != null) notes[j]!,
+          ],
+        ),
+      );
+    }
     if (mounted) {
       setState(() {
         _plannedPath = points;
@@ -608,7 +715,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
           cueType: 'turn',
         );
       case StartWalkingCue(:final steps):
+        _resetProgress(_lastTargetDistance);
         _speak(l10n.navGoStraightSteps(steps), cueType: 'start_walking');
+      case SlowTurnCue():
+        _speak(l10n.navSlowTurn, cueType: 'slow_turn');
       case null:
         break;
     }
@@ -624,6 +734,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// walking direction takes it from there.
   void _speakStartCue(LatLng here) {
     _needsStartCue = false;
+    _speakLegNotes(_waypoints[_nextWaypointIndex]);
+    _resetProgress(haversineMeters(here, _waypoints[_nextWaypointIndex].point));
     if (_reliableHeading() != null) {
       _guidance.reset(now: DateTime.now());
       return;
@@ -747,6 +859,17 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _warnedForWaypoint = i;
     final from = _segmentStart()!;
     final corner = _waypoints[i].point;
+    final hazard = _waypoints[i].hazardType;
+    if (hazard != null) {
+      final l10n = AppLocalizations.of(context)!;
+      _speak(
+        l10n.navHazardAhead(
+          _hazardLabel(l10n, hazard),
+          roundSteps(haversineMeters(here, corner)),
+        ),
+        cueType: 'hazard',
+      );
+    }
     final turn = signedTurn(
       bearingDegrees(from, corner),
       bearingDegrees(corner, _waypoints[i + 1].point),
@@ -763,6 +886,28 @@ class _NavigationScreenState extends State<NavigationScreen> {
           : l10n.navTurnAheadLeftSteps(steps),
       cueType: 'turn_ahead',
     );
+  }
+
+  String _hazardLabel(AppLocalizations l10n, int type) => switch (type) {
+    3 => l10n.navHazardElevator,
+    11 => l10n.navHazardRamp,
+    _ => l10n.navHazardStairs,
+  };
+
+  /// "Attention: three steps down" - the admins' warnings on the leg that
+  /// ends at [to], said as it starts.
+  void _speakLegNotes(_Waypoint to) {
+    final l10n = AppLocalizations.of(context)!;
+    for (final note in to.legNotes) {
+      _speak(l10n.navLegWarning(note), cueType: 'hazard');
+    }
+  }
+
+  /// Starts counting progress toward the next waypoint afresh, from
+  /// [meters] away (null: the next periodic update speaks regardless).
+  void _resetProgress(double? meters) {
+    _progressMeters = meters;
+    _progressSteps = meters == null ? null : roundSteps(meters);
   }
 
   /// At a waypoint: one sentence for what to do next. "At the cafeteria,
@@ -802,6 +947,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
       name == null ? action : '${l10n.navAtPlace(name)} $action',
       cueType: 'leg',
     );
+    _speakLegNotes(to);
+    _resetProgress(haversineMeters(from.point, to.point));
     // Walking: the user turns as told, and is corrected (once) only if a
     // trusted heading shows them going the wrong way.
     _guidance.reset(now: DateTime.now(), walking: true);
@@ -914,10 +1061,54 @@ class _NavigationScreenState extends State<NavigationScreen> {
       _waypoints[_nextWaypointIndex].point,
     );
     if (distance <= _kProximityThresholdMeters) return;
-    _speak(
-      AppLocalizations.of(context)!.navStepsAhead(roundSteps(distance)),
-      cueType: 'meters_ahead',
+    final l10n = AppLocalizations.of(context)!;
+    switch (progressSince(lastMeters: _progressMeters, meters: distance)) {
+      case Progress.same:
+        // Not getting closer: repeating "N steps to go" doesn't help.
+        return;
+      case Progress.closer:
+        final steps = roundSteps(distance);
+        _progressMeters = distance;
+        if (steps == _progressSteps) return;
+        _progressSteps = steps;
+        _speak(l10n.navStepsAhead(steps), cueType: 'meters_ahead');
+      case Progress.away:
+        _resetProgress(distance);
+        _speak(l10n.navMovingAway, cueType: 'away');
+        _turnBackTowardTarget(here);
+    }
+  }
+
+  /// After "you're moving away": with a trusted heading, face-then-walk
+  /// takes over (TurnGuidance orients again); otherwise, while walking,
+  /// the GPS direction of travel says which way to turn.
+  void _turnBackTowardTarget(LatLng here) {
+    final now = DateTime.now();
+    if (_reliableHeading() != null) {
+      _guidance.reset(now: now);
+      return;
+    }
+    final position = _locationService.lastPosition;
+    final segmentStart = _segmentStart();
+    if (position == null ||
+        position.speed < _kMinSpeedForGpsHeading ||
+        segmentStart == null) {
+      return;
+    }
+    final turn = signedTurn(
+      position.heading,
+      guidanceBearing(here, segmentStart, _waypoints[_nextWaypointIndex].point),
     );
+    if (turn.abs() <= TurnGuidance.alignedDegrees) return;
+    final l10n = AppLocalizations.of(context)!;
+    final cue = TurnCue.from(turn);
+    _speak(switch (cue) {
+      TurnCue(turnAround: true) => l10n.navTurnAround,
+      TurnCue(kind: TurnKind.slight, right: true) => l10n.navTurnSlightRight,
+      TurnCue(kind: TurnKind.slight) => l10n.navTurnSlightLeft,
+      TurnCue(right: true) => l10n.navTurnRightShort,
+      TurnCue() => l10n.navTurnLeftShort,
+    }, cueType: 'turn');
   }
 
   Future<void> _initCamera() async {
@@ -1313,6 +1504,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _guiding = false;
     _pendingTickTimer?.cancel();
     _guidanceTimer?.cancel();
+    _loadingTimer?.cancel();
     _periodicAnnouncementTimer?.cancel();
     _compassSub?.cancel();
     _gyroSub?.cancel();
@@ -1399,6 +1591,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     _pendingTickTimer?.cancel();
     _periodicAnnouncementTimer?.cancel();
     _guidanceTimer?.cancel();
+    _loadingTimer?.cancel();
     _compassSub?.cancel();
     _gyroSub?.cancel();
     _accelSub?.cancel();

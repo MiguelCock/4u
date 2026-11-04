@@ -8,6 +8,7 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/map_tile_config.dart';
 import '../services/api_error_messages.dart';
+import '../services/capture_checks.dart';
 import '../services/location_types.dart' show anchorDisplayName;
 import '../services/map_tap.dart';
 
@@ -292,6 +293,36 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
       return;
     }
 
+    // Refused before sending (the backend refuses it too): keep the
+    // selection, so a mistaken far tap doesn't lose the place in the chain.
+    final from = _pointById(fromId);
+    final to = _pointById(id);
+    final problem = connectionProblem(from, to);
+    final distance = anchorDistance(from, to);
+    if (problem != null) {
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 6),
+            content: Text(
+              problem == ConnectionProblem.tooLong
+                  ? l10n.connectErrorTooFar(
+                      _describePoint(fromId),
+                      _describePoint(id),
+                      distance!.toStringAsFixed(0),
+                    )
+                  : l10n.connectErrorFloorChange(
+                      _describePoint(fromId),
+                      _describePoint(id),
+                    ),
+            ),
+          ),
+        );
+      return;
+    }
+
     // Optimistic: draw the line and move the selection right away, so the
     // next tap works while this one is still being saved. Only a repeat of
     // this same pair is ignored until it's done.
@@ -325,17 +356,22 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
           created ?? {...pending, 'pending': false},
         ];
       });
-      HapticFeedback.lightImpact();
+      final long = distance != null && distance > kConnectionWarnMeters;
+      long ? HapticFeedback.mediumImpact() : HapticFeedback.lightImpact();
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            duration: const Duration(seconds: 2),
+            duration: Duration(seconds: long ? 4 : 2),
             content: Text(
-              l10n.connectSnackbarConnected(
-                _describePoint(fromId),
-                _describePoint(id),
-              ),
+              long
+                  ? l10n.connectSnackbarConnectedLong(
+                      distance.toStringAsFixed(0),
+                    )
+                  : l10n.connectSnackbarConnected(
+                      _describePoint(fromId),
+                      _describePoint(id),
+                    ),
             ),
           ),
         );
@@ -367,13 +403,11 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
     }
   }
 
-  String _describePoint(String id) {
-    final point = _anchorPoints.firstWhere(
-      (p) => p['id'] == id,
-      orElse: () => {'id': id},
-    );
-    return anchorDisplayName(AppLocalizations.of(context)!, point);
-  }
+  Map<String, dynamic> _pointById(String id) =>
+      _anchorPoints.firstWhere((p) => p['id'] == id, orElse: () => {'id': id});
+
+  String _describePoint(String id) =>
+      anchorDisplayName(AppLocalizations.of(context)!, _pointById(id));
 
   List<Polyline> _connectionLines() {
     final byId = {for (final p in _anchorPoints) p['id'] as String: p};

@@ -23,9 +23,11 @@ import '../user/user_home_screen.dart';
 import '../services/anchor_filters.dart';
 import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
+import '../services/capture_checks.dart';
 import '../services/exit_guard.dart';
 import '../services/location_types.dart';
 import '../services/map_tap.dart';
+import '../widgets/guardrail_dialogs.dart';
 import '../widgets/scrollable_message.dart';
 
 /// `admin`-role home screen: four tabs (places / buildings / anchor points /
@@ -760,6 +762,62 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  /// The connection's warning for users ("three steps down"), spoken as
+  /// they start walking it. Testers asked to be told about obstacles.
+  Future<void> _editConnectionWarning(Map<String, dynamic> connection) async {
+    final l10n = AppLocalizations.of(context)!;
+    final controller = TextEditingController(
+      text: connection['notes'] as String? ?? '',
+    );
+    final notes = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.connectionWarningLabel),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          decoration: InputDecoration(helperText: l10n.connectionWarningHint),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: Text(
+              MaterialLocalizations.of(dialogContext).saveButtonLabel,
+            ),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (notes == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _mapApi.patch('/anchor-point-connections/${connection['id']}', {
+        'notes': notes,
+      });
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.connectionWarningSaved)),
+      );
+      await _loadData();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            l10n.connectionWarningSaveFailed(
+              friendlyApiErrorMessage(context, e),
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _editPlace(Map<String, dynamic> place) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => EditPlaceScreen(place: place)),
@@ -1077,6 +1135,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
     if (status == 'verified' && photos.isEmpty) {
       show(l10n.editAnchorErrorVerifyNeedsPhoto);
+      return;
+    }
+    if (status == 'verified' &&
+        _connectionsOf(id).isEmpty &&
+        !await confirmVerifyUnconnected(context, name: name)) {
       return;
     }
     try {
@@ -1822,8 +1885,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       subtitle: Text(
                         '${aBuilding?['name'] as String? ?? l10n.commonUnknownBuilding} / '
                         '${bBuilding?['name'] as String? ?? l10n.commonUnknownBuilding}'
-                        '${distance != null ? ' · ${distance}m' : ''}',
+                        '${distance != null ? ' · ${distance}m' : ''}'
+                        '${(connection['notes'] as String? ?? '').isEmpty ? '' : '\n⚠ ${connection['notes']}'}',
                       ),
+                      onTap: () => _editConnectionWarning(connection),
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline),
                         tooltip: l10n.commonDelete,
@@ -1929,6 +1994,131 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     if (!_permanentDrawer) Navigator.of(context).pop();
   }
 
+  /// Mapping mistakes that break navigation, from the loaded lists (see
+  /// `capture_checks.dart`). Each opens what needs fixing; nothing shows
+  /// when the data is clean.
+  List<Widget> _dataHealthTiles(AppLocalizations l10n) {
+    if (_loading) return const [];
+    final unconnected = verifiedUnconnectedPoints(_anchorPoints, _connections);
+    final hidden = namedHiddenPoints(_anchorPoints);
+    final long = longConnections(_anchorPoints, _connections);
+    Widget tile(String text, IconData icon, VoidCallback onTap) => ListTile(
+      leading: Icon(icon, color: Colors.orange),
+      title: Text(text, style: const TextStyle(color: Colors.deepOrange)),
+      onTap: () {
+        _closeDrawer();
+        onTap();
+      },
+    );
+    return [
+      if (unconnected.isNotEmpty)
+        tile(
+          l10n.adminHealthUnconnected(unconnected.length),
+          Icons.link_off,
+          _showUnconnectedVerified,
+        ),
+      if (hidden.isNotEmpty)
+        tile(
+          l10n.adminHealthHiddenNamed(hidden.length),
+          Icons.visibility_off_outlined,
+          () => _showReviewList(
+            title: l10n.adminHealthHiddenNamed(hidden.length),
+            hint: l10n.adminHealthHiddenNamedHint,
+            items: [
+              for (final point in hidden)
+                (
+                  title: anchorDisplayName(l10n, point),
+                  subtitle: [
+                    locationTypeLabel(
+                      l10n,
+                      kLocationTypes[point['location_type_id']] ?? 'other',
+                    ),
+                    _buildingName(point['building_id'] as String?),
+                  ].join(' · '),
+                  onTap: () => _editAnchorPoint(point),
+                ),
+            ],
+          ),
+        ),
+      if (long.isNotEmpty)
+        tile(l10n.adminHealthLongConnections(long.length), Icons.straighten, () {
+          final byId = {for (final p in _anchorPoints) p['id']: p};
+          _showReviewList(
+            title: l10n.adminHealthLongConnections(long.length),
+            hint: l10n.adminHealthLongConnectionsHint,
+            items: [
+              for (final c in long)
+                (
+                  title:
+                      '${anchorDisplayName(l10n, byId[c['anchor_point_a_id']])}'
+                      ' ↔ '
+                      '${anchorDisplayName(l10n, byId[c['anchor_point_b_id']])}',
+                  subtitle: l10n.adminHealthConnectionSubtitle(
+                    anchorDistance(
+                      byId[c['anchor_point_a_id']]!,
+                      byId[c['anchor_point_b_id']]!,
+                    )!.toStringAsFixed(0),
+                  ),
+                  onTap: () => _deleteConnection(c),
+                ),
+            ],
+          );
+        }),
+    ];
+  }
+
+  String _buildingName(String? id) =>
+      _buildings.firstWhere(
+            (b) => b['id'] == id,
+            orElse: () => const {},
+          )['name']
+          as String? ??
+      '';
+
+  /// The Anchor points tab showing only verified points with no connection.
+  void _showUnconnectedVerified() {
+    setState(() {
+      _anchorPointsBuildingFilterId = null;
+      _anchorSearchController.clear();
+      _anchorStatusFilter = 'verified';
+      _anchorFilters = const AnchorFilters(hasConnections: false);
+    });
+    _tabController.animateTo(2);
+  }
+
+  Future<void> _showReviewList({
+    required String title,
+    required String hint,
+    required List<({String title, String subtitle, VoidCallback onTap})> items,
+  }) => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      builder: (context, controller) => ListView(
+        controller: controller,
+        children: [
+          ListTile(
+            title: Text(title, style: Theme.of(context).textTheme.titleMedium),
+            subtitle: Text(hint),
+          ),
+          const Divider(),
+          for (final item in items)
+            ListTile(
+              title: Text(item.title),
+              subtitle: Text(item.subtitle),
+              onTap: () {
+                Navigator.of(context).pop();
+                item.onTap();
+              },
+            ),
+        ],
+      ),
+    ),
+  );
+
   Widget _drawer() {
     final l10n = AppLocalizations.of(context)!;
     Widget item(int index, IconData icon, Color color, String label) {
@@ -2014,6 +2204,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               _reindexVerified();
             },
           ),
+          ..._dataHealthTiles(l10n),
           // Trips need the phone's camera and sensors.
           if (!kIsWeb)
             ListTile(

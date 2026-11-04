@@ -78,14 +78,12 @@ void main() {
       buildingId: 'b1',
       locationTypeId: 12,
       floor: 1,
-      indoor: false,
       lighting: 'bright',
     ).save();
     final loaded = await CaptureDefaults.load();
     expect(loaded.buildingId, 'b1');
     expect(loaded.locationTypeId, 12);
     expect(loaded.floor, 1);
-    expect(loaded.indoor, isFalse);
     expect(loaded.lighting, 'bright');
   });
 }
