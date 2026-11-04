@@ -16,6 +16,7 @@ from .models import (
     VERTICAL_LOCATION_TYPE_IDS,
     AnchorPointConnectionCreate,
     AnchorPointConnectionResponse,
+    AnchorPointConnectionUpdate,
     AnchorPointCreate,
     AnchorPointPhotoCreate,
     AnchorPointPhotoResponse,
@@ -578,6 +579,24 @@ async def list_anchor_point_connections_for_point(
         .execute()
     )
     return result.data
+
+
+@app.patch("/anchor-point-connections/{id}")
+async def update_anchor_point_connection(
+    id: str,
+    connection: AnchorPointConnectionUpdate,
+    caller_id: str = Depends(get_caller_id),
+) -> AnchorPointConnectionResponse:
+    if not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
+    notes = (connection.notes or "").strip() or None
+    return _require_found(
+        db.client.table("anchor_point_connections")
+        .update({"notes": notes})
+        .eq("id", id)
+        .execute(),
+        "Connection",
+    )[0]
 
 
 @app.delete("/anchor-point-connections/{id}")

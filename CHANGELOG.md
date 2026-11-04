@@ -14,10 +14,20 @@ Each release's section becomes its GitHub release description (`.github/workflow
   - Connections longer than 30 m are refused, as are floor changes that don't go through stairs, an elevator or a ramp, and a moved point can't stretch its connections past 30 m. Above 15 m the app warns.
   - Verifying a point with no connections asks first.
   - The admin menu lists what needs fixing: verified points with no connections, named points users can't choose, and connections over 30 m.
+- **Warnings for users on connections** (admin): tap a connection in the list to write one, such as "three steps down". It's spoken as users start walking it. Stairs, elevators and ramps on the route are announced on their own about 8 m before. The app can't see obstacles nobody wrote down, so users should keep using their cane.
+- **The app says what it's doing while it loads** (finding the route, loading destinations, preparing the trip) instead of staying silent, and says when it's trying again after the connection drops.
+- **A 3-page tutorial** on first launch, spoken page by page. It suggests one earphone and holding the phone in front, and it now also shows in admin "Test as user". The phone vibrates before each instruction, and the voice is at full volume.
+
+### Changed
+- **Routes no longer use connections over 30 m**, made before the limit. At Icesi every route walked used legs of 43–93 m, so "go straight" led into walls and no turn was given. Those trips now say there's no route until an admin redoes the connection with points in between.
+- **The destination row reads "Destination: X. Tap to change the destination"** instead of "Where to? X", and "Go to X?" has **Change destination** instead of Cancel. Every tester was unsure how to change it.
 
 ### Fixed
 - **"No walkable route" when the nearest point isn't connected.** The start of a trip is now the nearest point that has connections. For phones still on 0.5.3, the server starts from a connected point up to 40 m away on the same floor instead of failing. When no route exists, the message says whether the starting point or the destination isn't connected.
 - Users no longer see destinations that no route can reach.
+- **"Go straight, about 80 steps to go" repeated for minutes.** The periodic update only speaks when the user got closer. When they're moving away it says "You're moving away from the path. Stop for a moment" and gives the turn.
+- **Turn instructions in a loop** (11 in 2 minutes, and testers went round in circles). After 3 turn instructions in a minute the app says "Stop and turn slowly, I'll vibrate when you're facing the right way", and waits. Corrections while walking are at least 20 s apart.
+- **"Couldn't connect to the server"** after a moment's drop on campus Wi-Fi: loading data and finding a route are tried once more on their own.
 
 ## [0.5.3] - 2026-10-29
 

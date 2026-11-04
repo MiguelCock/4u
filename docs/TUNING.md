@@ -176,3 +176,19 @@ Two blind users walked the route with the non-admin account, on a phone with no 
 - **Distances:** in steps (`stepLengthMeters` 0.7).
 - **Walking:** while walking, a trusted heading more than 50° off for 5 s gets one correction, then 10 s of quiet. No loops.
 - **Route loading:** the admin walk was silent for two legs because the route's 23 anchors were fetched one by one (~90 s on mobile data). They now load in parallel.
+
+## 8. Icesi user tests (2026-11-03)
+
+Eight sessions, read from `navigation_sessions`/`navigation_logs.debug`, next to the test coordinator's notes (silence while loading, repeated and wrong instructions, no obstacle warnings, the phone held at the ear, the destination row, a connection error).
+
+**What the logs show:**
+- **Every route walked had legs of 43–93 m:** start→Syri [79 m], Syri→Parqueadero [76], Salas→Snack Café [62, 76, 93], Puerta 2→Bristol [2, 43]. A straight line between two points that far apart goes through buildings, and there are no corners on it to speak. That's where "go straight" led into walls and turns were missing.
+- **The repeats were the 25 s periodic update.** It said "Sigue recto, faltan unos 80 pasos" 13 times in 6 minutes while the user wasn't getting closer, and 80→90→100→120 steps while they walked away.
+- **The turn loop:** Syri→Parqueadero gave 11 turn cues in 2 minutes (left, right, around), each about 10 s apart (`repeatIdle`/`correctionGap`).
+- GPS accuracy was good (median ~3 m) in every session.
+
+**Changes:**
+- route-management ignores connections over 30 m (`MAX_CONNECTION_METERS`).
+- `progressSince` (`turn_guidance.dart`): the periodic update speaks only after 3 m of progress and never the same step count twice; 5 m farther says "you're moving away" and re-orients.
+- `TurnGuidance.maxTurnBurst`: after 3 turn cues within 60 s, one `SlowTurnCue`, then quiet for up to 30 s until the user faces the target (a strong vibration with the walk cue). `correctionGap` is 20 s.
+- Stairwell, elevator and ramp waypoints are kept and announced 8 m before; connection `notes` are spoken at the start of their leg.

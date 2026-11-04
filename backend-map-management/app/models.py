@@ -174,6 +174,12 @@ class AnchorPointConnectionCreate(BaseModel):
     created_by: str | None = None
 
 
+class AnchorPointConnectionUpdate(BaseModel):
+    # Spoken to users at the start of the leg ("Atención: three steps
+    # down"), so an admin can warn about obstacles along it. Empty clears it.
+    notes: str | None = None
+
+
 class AnchorPointConnectionResponse(AnchorPointConnectionCreate):
     id: str
     created_at: str

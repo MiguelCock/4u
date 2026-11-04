@@ -186,6 +186,9 @@ Una **connection** registra que una persona puede caminar directamente entre dos
 - **Cambiar de piso** solo a través de un punto de escaleras (stairwell), ascensor (elevator) o rampa (ramp).
 - Si escribes una distancia a mano, no puede ser menor que la línea recta.
 - Mover un punto no puede dejar una de sus conexiones por encima de 30 m.
+- **Las conexiones de más de 30 m hechas antes de esta regla no se usan en las rutas**: un viaje que necesitaba una da "no hay ruta" hasta rehacerla. El menú las lista (**N conexiones de más de 30 m**).
+
+**Obstáculos.** La app avisa a los usuarios antes de escaleras, ascensores y rampas cuando el punto tiene ese **Location type**, así que dales el tipo correcto. Para cualquier otra cosa en el camino (un escalón, una caneca, máquinas expendedoras, una puerta angosta), escribe un **Aviso para usuarios** en esa conexión: se dice cuando el usuario empieza a recorrerla ("Atención: tres escalones hacia abajo"). La app no puede ver obstáculos que nadie haya anotado.
 
 **Lo que ve el usuario.** Los usuarios solo ven, como destino o como punto de partida, puntos verificados **con al menos una conexión**. Un punto sin conexiones no aparece.
 
@@ -209,7 +212,7 @@ Más preciso — úsalo cuando no estés mirando un mapa, o cuando necesites cor
 
 1. Desde la pantalla de Connections, toca el ícono de lista en la esquina superior derecha — etiquetado "Add connection (form)".
 2. Elige **Place**, opcionalmente un filtro de **Building**, luego **Anchor point A** y **Anchor point B** en los menús desplegables.
-3. Opcionalmente completa **Distance** y **Notes** (ver tabla).
+3. Opcionalmente completa **Distance** y **Aviso para usuarios** (ver tabla).
 4. Toca **Save connection**.
 
 ### Campos de Connection (formulario)
@@ -219,9 +222,9 @@ Más preciso — úsalo cuando no estés mirando un mapa, o cuando necesites cor
 | **Place** / **Building (optional filter)** | Place obligatorio, Building opcional | Acota qué puntos de anclaje aparecen en los menús desplegables de abajo. | — |
 | **Anchor point A** / **Anchor point B** | Ambos obligatorios, deben ser puntos distintos | Los dos puntos de anclaje que se están conectando. | — |
 | **Distance in meters (optional)** | Opcional | Cuánto caminaría realmente una persona entre los dos puntos. Si se deja en blanco, la aplicación la estima como una línea recta entre sus coordenadas — lo cual es incorrecto si el camino real tiene curvas (por ejemplo, al doblar una esquina) o no es un trayecto directo (por ejemplo, vía ascensor o escaleras en vez de un camino directo). Complétalo siempre que la estimación en línea recta no sea precisa. | `12.5` |
-| **Notes (optional)** | Opcional | Texto libre para anotar cualquier cosa relevante sobre esta conexión en particular. | `via elevator, not stairs`, `blocked during exam periods` |
+| **Aviso para usuarios (escaleras, obstáculos…)** | Opcional | Se le dice al usuario cuando empieza a recorrer esta conexión, después de "Atención:". Escríbelo para él, corto. | `tres escalones hacia abajo`, `máquinas expendedoras a la derecha` |
 
-Eliminar una conexión no tiene efecto en cascada: no afecta a los dos puntos de anclaje en sí. No hay opción de editar, así que elimínala y vuelve a crearla si necesitas cambiarla. Hay dos formas de eliminarla:
+Para agregar o cambiar el aviso de una conexión, tócala en la lista **Connections**. Lo demás no se puede editar: elimínala y vuelve a crearla. Eliminar una conexión no tiene efecto en cascada: no afecta a los dos puntos de anclaje en sí. Hay dos formas de eliminarla:
 
 - En la lista **Connections**, toca su ícono de basura.
 - En la pantalla **Connect on map**, toca la línea verde (lejos de los puntos, porque tocar cerca de un punto lo selecciona) y confirma.

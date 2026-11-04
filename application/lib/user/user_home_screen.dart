@@ -59,6 +59,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Map<String, dynamic>? _start;
   Map<String, dynamic>? _end;
   bool _finding = false;
+  Timer? _stillFindingTimer;
+  static const Duration _kStillFindingEvery = Duration(seconds: 5);
   bool _locatingStart = false;
   int _startCheckProgress = 0;
   DateTime? _startCheckedAt;
@@ -84,7 +86,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     _loadAnchors();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _checkUnfinishedTrip();
-      if (!widget.adminPreview) await _showTutorialOnFirstRun();
+      // Admins' "Test as user" too: testers at Icesi used it.
+      await _showTutorialOnFirstRun();
     });
   }
 
@@ -100,6 +103,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   @override
   void dispose() {
+    _stillFindingTimer?.cancel();
     _positionSub?.cancel();
     _speech.cancel();
     _tts.stop();
@@ -108,8 +112,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   /// Shows [text] as the voice-search status (a live region) and, unless a
   /// screen reader is already reading that live region aloud, speaks it.
-  Future<void> _say(String text) async {
-    setState(() => _voiceStatus = text);
+  Future<void> _say(String text, {bool show = true}) async {
+    if (show) setState(() => _voiceStatus = text);
     if (!voiceGuidanceNotifier.value ||
         MediaQuery.of(context).accessibleNavigation) {
       return;
@@ -285,7 +289,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(l10n.commonCancel),
+            child: Text(l10n.homeChangeDestinationButton),
           ),
           FilledButton.icon(
             style: FilledButton.styleFrom(
@@ -301,7 +305,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       ),
     );
     await _tts.stop();
-    if (start == true && mounted) _findRoute();
+    if (!mounted) return;
+    if (start == true) {
+      _findRoute();
+    } else if (start == false) {
+      // "Change destination": every tester was unsure how to (2026-11-03).
+      _pickEnd();
+    }
   }
 
   /// Verified, connected points in active buildings of active universities
@@ -570,7 +580,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   /// A trip left open by closing the app mid-route: offer to continue it
   /// or finish it, instead of it staying "active" forever.
-  static const _kTutorialSeenKey = 'tutorial_seen_v1';
+  // v2: the 3-page tutorial, so the Icesi testers see it too.
+  static const _kTutorialSeenKey = 'tutorial_seen_v2';
 
   /// First launch: the spoken tutorial once, on its own.
   Future<void> _showTutorialOnFirstRun() async {
@@ -584,31 +595,45 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     if (mounted) await _showTutorial();
   }
 
-  /// "How does it work?": what the app does and how to use it, shown and
-  /// spoken (TalkBack reads the dialog itself). The first user test had to
-  /// explain every button by hand.
+  /// "How does it work?": what the app does and how to use it, a page at a
+  /// time, each shown and spoken (TalkBack reads the dialog itself). The
+  /// first user test had to explain every button by hand, and one long
+  /// paragraph was too much to take in at Icesi (2026-11-03).
   Future<void> _showTutorial() async {
     final l10n = AppLocalizations.of(context)!;
-    if (voiceGuidanceNotifier.value &&
-        !MediaQuery.of(context).accessibleNavigation) {
-      await _ttsReady;
-      await _tts.stop();
-      _tts.speak(l10n.homeTutorialText);
-    }
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.homeTutorialTitle),
-        content: SingleChildScrollView(child: Text(l10n.homeTutorialText)),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(MaterialLocalizations.of(dialogContext).okButtonLabel),
+    final pages = [
+      l10n.homeTutorialPage1,
+      l10n.homeTutorialPage2,
+      l10n.homeTutorialPage3,
+    ];
+    for (var i = 0; i < pages.length && mounted; i++) {
+      _say(pages[i], show: false);
+      final next = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(
+            '${l10n.homeTutorialTitle} '
+            '(${l10n.homeTutorialProgress(i + 1, pages.length)})',
           ),
-        ],
-      ),
-    );
+          content: SingleChildScrollView(
+            child: Text(pages[i], style: const TextStyle(fontSize: 18)),
+          ),
+          actions: [
+            FilledButton(
+              style: FilledButton.styleFrom(minimumSize: const Size(160, 56)),
+              autofocus: true,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(
+                i == pages.length - 1
+                    ? l10n.homeTutorialDone
+                    : l10n.homeTutorialNext,
+              ),
+            ),
+          ],
+        ),
+      );
+      if (next != true) break;
+    }
     await _tts.stop();
   }
 
@@ -749,7 +774,36 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     });
 
     final l10n = AppLocalizations.of(context)!;
-    if (_locationService.lastPosition == null) _say(l10n.homeSearchingLocation);
+    _say(
+      _locationService.lastPosition == null
+          ? l10n.homeSearchingLocation
+          : l10n.homeFindingRoute,
+    );
+    // Silence while it worked made testers think it was broken.
+    _stillFindingTimer?.cancel();
+    _stillFindingTimer = Timer.periodic(_kStillFindingEvery, (_) {
+      if (!mounted || !_finding) {
+        _stillFindingTimer?.cancel();
+        return;
+      }
+      _say(l10n.commonOneMoment);
+    });
+    void sayRetrying() {
+      if (mounted && _finding) _say(l10n.commonRetrying);
+    }
+
+    ApiService.retries.addListener(sayRetrying);
+    try {
+      await _findRouteFrom(l10n);
+    } finally {
+      ApiService.retries.removeListener(sayRetrying);
+      _stillFindingTimer?.cancel();
+      if (mounted && _error == null) setState(() => _voiceStatus = null);
+    }
+  }
+
+  Future<void> _findRouteFrom(AppLocalizations l10n) async {
+    final end = _end!;
     // Waits for a fix (and re-checks location) instead of giving up on the
     // first try: in battery saver that said "GPS off" while it was on.
     final position = await _locationService.ensureReady();
@@ -763,7 +817,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             : l10n.homeErrorNoGpsFix;
         _finding = false;
       });
-      _say(_error!);
+      _say(_error!, show: false);
       return;
     }
 
@@ -801,10 +855,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         return;
       }
 
+      // Same pair, same answer: safe to send again after a dropped
+      // connection.
       final route = await _routeApi.post('/routes/find_or_create', {
         'start_anchor_id': start['id'],
         'end_anchor_id': end['id'],
-      });
+      }, retry: true);
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -825,7 +881,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 friendlyApiErrorMessage(context, e),
               );
         _finding = false;
+        _voiceStatus = null;
       });
+      _say(_error!, show: false);
     }
   }
 
@@ -948,12 +1006,20 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             _end == null ? Icons.radio_button_unchecked : Icons.location_on,
             color: _end == null ? Colors.grey : Colors.blue,
           ),
-          title: Text(l10n.homeWhereTo),
+          // "¿A dónde vas? Biblioteca" read as a question about the place
+          // already chosen: no tester knew it was where to change it.
+          title: Text(
+            _end == null
+                ? l10n.homeChooseDestination
+                : l10n.homeDestinationLabel(
+                    _end!['location_description'] as String? ??
+                        _end!['id'] as String,
+                  ),
+          ),
           subtitle: Text(
             _end == null
                 ? l10n.homeTapToChooseDestination
-                : (_end!['location_description'] as String? ??
-                      _end!['id'] as String),
+                : l10n.homeTapToChangeDestination,
           ),
           trailing: const Icon(Icons.chevron_right),
           onTap: _pickEnd,
@@ -1003,10 +1069,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             ),
             onPressed: (_end != null && !_finding) ? _findRoute : null,
             child: _finding
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      semanticsLabel: l10n.homeFindingRoute,
+                    ),
                   )
                 : Text(l10n.homeFindRouteButton),
           ),

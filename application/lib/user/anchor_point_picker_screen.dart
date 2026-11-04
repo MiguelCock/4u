@@ -154,8 +154,23 @@ class _AnchorPointPickerScreenState extends State<AnchorPointPickerScreen> {
             onPressed: _goBack,
           ),
         ),
+        // Said, not just drawn: testers didn't know the app was working.
         body: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        AppLocalizations.of(context)!.homeLoadingDestinations,
+                      ),
+                    ),
+                  ],
+                ),
+              )
             : RefreshIndicator(
                 onRefresh: _load,
                 child: _error != null

@@ -726,6 +726,53 @@ def test_delete_anchor_point_connection_returns_ok():
     )
 
 
+_NOTED_CONNECTION = {
+    "id": "c1",
+    "anchor_point_a_id": "a",
+    "anchor_point_b_id": "b",
+    "distance_meters": 6.0,
+    "notes": "Tres escalones hacia abajo",
+    "created_at": "2026-11-03T00:00:00Z",
+}
+
+
+def test_update_connection_notes():
+    _as_caller("admin1")
+    mock_client = _mock_update_eq_result([_NOTED_CONNECTION])
+    with patch("app.main.db.client", mock_client):
+        response = client.patch(
+            "/anchor-point-connections/c1",
+            json={"notes": "  Tres escalones hacia abajo "},
+        )
+    assert response.status_code == 200
+    assert response.json()["notes"] == "Tres escalones hacia abajo"
+    mock_client.table.return_value.update.assert_called_once_with(
+        {"notes": "Tres escalones hacia abajo"}
+    )
+
+
+def test_blank_connection_notes_are_cleared():
+    _as_caller("admin1")
+    mock_client = _mock_update_eq_result([{**_NOTED_CONNECTION, "notes": None}])
+    with patch("app.main.db.client", mock_client):
+        client.patch("/anchor-point-connections/c1", json={"notes": "  "})
+    mock_client.table.return_value.update.assert_called_once_with({"notes": None})
+
+
+def test_update_connection_notes_forbidden_for_non_admin():
+    _as_caller("u1")
+    with patch("app.main.db.client", _mock_select_eq_result(_USER_ROW)):
+        response = client.patch("/anchor-point-connections/c1", json={"notes": "x"})
+    assert response.status_code == 403
+
+
+def test_update_unknown_connection_is_404():
+    _as_caller("admin1")
+    with patch("app.main.db.client", _mock_update_eq_result([])):
+        response = client.patch("/anchor-point-connections/gone", json={"notes": "x"})
+    assert response.status_code == 404
+
+
 _BUILDING_ROW = {
     "id": "1",
     "place_id": "p1",

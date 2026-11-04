@@ -186,6 +186,9 @@ A **connection** records that a person can walk directly between two anchor poin
 - **Change floors** only through a stairwell, elevator or ramp point.
 - A distance typed by hand can't be shorter than the straight line.
 - Moving a point can't stretch one of its connections past 30 m.
+- **Connections over 30 m made before this rule aren't used for routes**: a trip that needed one gets "no route" until it's redone. The menu lists them (**N connections over 30 m**).
+
+**Obstacles.** Users are warned before stairs, elevators and ramps when the point has that **Location type**, so give those points the right type. For anything else on the way (a step, a bin, vending machines, a narrow door), write a **Warning for users** on that connection: it's spoken as users start walking it ("Attention: three steps down"). The app can't see obstacles nobody has written down.
 
 **What users see.** Users only see, as a destination or as a starting point, verified points **with at least one connection**. A point with no connections doesn't show up.
 
@@ -209,7 +212,7 @@ More precise — use this when you're not looking at a map, or you need to corre
 
 1. From the Connections screen, tap the list icon in the top-right — labeled "Add connection (form)."
 2. Choose **Place**, optionally a **Building** filter, then **Anchor point A** and **Anchor point B** from dropdowns.
-3. Optionally fill in **Distance** and **Notes** (see table).
+3. Optionally fill in **Distance** and **Warning for users** (see table).
 4. Tap **Save connection**.
 
 ### Connection fields (form)
@@ -219,9 +222,9 @@ More precise — use this when you're not looking at a map, or you need to corre
 | **Place** / **Building (optional filter)** | Place required, Building optional | Narrows down which anchor points appear in the dropdowns below. | — |
 | **Anchor point A** / **Anchor point B** | Both required, must be different points | The two anchor points being connected. | — |
 | **Distance in meters (optional)** | Optional | How far someone would actually walk between the two points. If you leave this blank, the app estimates it as a straight line between their coordinates — which is wrong if the real path bends (around a corner, say) or isn't a straight walk (via an elevator or stairs instead of a direct route). Fill this in whenever the straight-line guess wouldn't be accurate. | `12.5` |
-| **Notes (optional)** | Optional | Free text for anything worth flagging about this specific link. | `via elevator, not stairs`, `blocked during exam periods` |
+| **Warning for users (stairs, obstacles…)** | Optional | Spoken to users as they start walking this connection, after "Attention:". Write it for them, short. | `three steps down`, `vending machines on the right` |
 
-Deleting a connection has no cascade: it doesn't affect the two anchor points themselves. There's no edit option, so delete it and recreate it if you need to change it. There are two ways to delete one:
+To add or change a connection's warning, tap it in the **Connections** list. Anything else can't be edited: delete it and create it again. Deleting a connection has no cascade: it doesn't affect the two anchor points themselves. There are two ways to delete one:
 
 - In the **Connections** list, tap its trash icon.
 - On the **Connect on map** screen, tap the green line itself (away from the dots, since tapping near a dot selects the point) and confirm.

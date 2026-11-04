@@ -48,6 +48,10 @@ No service-to-service HTTP calls — only shared-table relationships:
 
 The app picks the start as the verified point nearest the user (0.5.3 and older: connected or not). At Icesi most verified points had no connections, so every trip failed (2026-11-03). When `shortest_path` finds nothing, `find_or_create_route` calls `_reachable_start`: among the destination's connected group (`connected_ids` in `app/pathfinding.py`, minus the destination itself), the *verified* point nearest the requested start on the same floor, within `REACHABLE_START_METERS` (40 m), reading positions with `select_all` over `anchor_points` (only on this fallback). The route is then found or saved for *that* start (`_find_saved_route`), and the app guides from `route.start_anchor_id`. Otherwise the 404 `detail` says which end is the problem - "The destination isn't connected…" or "Your starting point isn't connected…" - and the app (0.5.4+) maps those prefixes to its own messages, so change them together.
 
+## Long connections aren't routed
+
+Before Dijkstra, `find_or_create_route` drops every connection whose two points are more than `MAX_CONNECTION_METERS` (30 m, the same limit `backend-map-management` enforces on new ones) apart in a straight line (`_short_connections`, positions from `_load_points`, read with `select_all` on every request). The older ones at Icesi (43-93 m) were every leg of every route walked on 2026-11-03: "go straight" into walls and no turns. A saved route over one fails `_route_still_walkable` too, so it's recomputed or 404s. A connection whose points have no position is kept.
+
 ## Known issues
 
 - No reverse-direction route matching (`B -> A` creates a separate row from an existing `A -> B` even though it's the same physical path reversed) - accepted tradeoff for simplicity; `waypoint_anchor_ids` would need reversing too, not just the start/end swap.

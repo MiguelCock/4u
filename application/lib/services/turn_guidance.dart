@@ -51,6 +51,14 @@ class StartWalkingCue extends GuidanceCue {
   const StartWalkingCue(this.steps);
 }
 
+/// "Stop and turn slowly; I'll vibrate when you face the right way." Said
+/// instead of a fourth turn cue within [TurnGuidance.turnBurstWindow]: a
+/// user test at Icesi got 11 turn cues in 2 minutes and went round in
+/// circles (2026-11-03).
+class SlowTurnCue extends GuidanceCue {
+  const SlowTurnCue();
+}
+
 /// Average step length (meters) used to speak distances as steps, which the
 /// user test asked for instead of meters.
 const double stepLengthMeters = 0.7;
@@ -90,10 +98,20 @@ class TurnGuidance {
   static const offCourseDegrees = 50.0;
   static const alignedHold = Duration(milliseconds: 1500);
   static const offCourseHold = Duration(seconds: 5);
-  static const correctionGap = Duration(seconds: 10);
+  // 10 s gave a correction every ~10 s for minutes at Icesi (2026-11-03).
+  static const correctionGap = Duration(seconds: 20);
   static const repeatMinGap = Duration(seconds: 4);
   static const repeatIdle = Duration(seconds: 10);
   static const repeatChangeDegrees = 20.0;
+
+  /// At most [maxTurnBurst] turn cues within [turnBurstWindow]; the next
+  /// one is a single [SlowTurnCue], then silence until the user faces the
+  /// target (the "start walking" cue) or [slowTurnFor] has passed.
+  static const maxTurnBurst = 3;
+  static const turnBurstWindow = Duration(seconds: 60);
+  static const slowTurnFor = Duration(seconds: 30);
+  final List<DateTime> _turnCueTimes = [];
+  DateTime? _slowTurnSince;
 
   /// A needed turn that moved more than this within [rotatingWindow] means
   /// the user is turning right now: no repeat until they stop. A field test
@@ -134,6 +152,8 @@ class TurnGuidance {
     _lastTurn = announcedTurn;
     _lastTurnAt = announcedTurn == null ? null : now;
     _recentTurns.clear();
+    _turnCueTimes.clear();
+    _slowTurnSince = null;
   }
 
   /// [turn] is [signedTurn] from the current heading to the target's
@@ -173,7 +193,7 @@ class TurnGuidance {
       _offCourseSince = null;
       _recentOff.clear();
       _lastCorrectionAt = now;
-      return TurnCue.from(turn);
+      return _turnOrSlow(TurnCue.from(turn), now);
     }
 
     if (off <= alignedDegrees) {
@@ -183,10 +203,18 @@ class TurnGuidance {
       _alignedSince = null;
       _lastTurn = null;
       _lastTurnAt = null;
+      _turnCueTimes.clear();
+      _slowTurnSince = null;
       return StartWalkingCue(roundSteps(metersToTarget));
     }
     _alignedSince = null;
     if (off < orientDegrees) return null;
+    final slowSince = _slowTurnSince;
+    if (slowSince != null) {
+      if (now.difference(slowSince) < slowTurnFor) return null;
+      _slowTurnSince = null;
+      _turnCueTimes.clear();
+    }
 
     final lastTurn = _lastTurn;
     final lastAt = _lastTurnAt;
@@ -211,10 +239,25 @@ class TurnGuidance {
         : (sorted[mid - 1] + sorted[mid]) / 2;
   }
 
-  TurnCue _turn(double turn, DateTime now) {
+  GuidanceCue _turn(double turn, DateTime now) {
     _lastTurn = turn;
     _lastTurnAt = now;
-    return TurnCue.from(turn);
+    return _turnOrSlow(TurnCue.from(turn), now);
+  }
+
+  /// [cue], unless it would be one turn cue too many (see [maxTurnBurst]).
+  /// Then the user is told to stop and turn slowly, and guidance stops
+  /// orienting until they face the target.
+  GuidanceCue _turnOrSlow(TurnCue cue, DateTime now) {
+    _turnCueTimes
+      ..removeWhere((t) => now.difference(t) > turnBurstWindow)
+      ..add(now);
+    if (_turnCueTimes.length <= maxTurnBurst) return cue;
+    _slowTurnSince = now;
+    _walking = false;
+    _offCourseSince = null;
+    _recentOff.clear();
+    return const SlowTurnCue();
   }
 }
 
@@ -326,4 +369,26 @@ CornerProgress cornerProgress({
     return CornerProgress.reached;
   }
   return near ? CornerProgress.warn : CornerProgress.approaching;
+}
+
+/// How the distance to the next waypoint changed since the last periodic
+/// update. The 25 s update said "80 steps to go" 13 times in 6 minutes at
+/// Icesi, and "go straight" while the distance grew from 80 to 120 steps
+/// (2026-11-03).
+enum Progress { closer, same, away }
+
+/// [closerMeters] nearer than [lastMeters] is progress, [awayMeters]
+/// farther is walking away; anything in between is no change. With no
+/// earlier distance it counts as progress, so the first update is said.
+Progress progressSince({
+  required double? lastMeters,
+  required double meters,
+  double closerMeters = 3,
+  double awayMeters = 5,
+}) {
+  if (lastMeters == null || meters <= lastMeters - closerMeters) {
+    return Progress.closer;
+  }
+  if (meters >= lastMeters + awayMeters) return Progress.away;
+  return Progress.same;
 }

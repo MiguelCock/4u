@@ -306,7 +306,9 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                     TextField(
                       controller: _notesController,
                       decoration: InputDecoration(
-                        labelText: l10n.addConnectionNotesLabel,
+                        labelText: l10n.connectionWarningLabel,
+                        helperText: l10n.connectionWarningHint,
+                        helperMaxLines: 3,
                       ),
                     ),
                     if (_error != null) ...[

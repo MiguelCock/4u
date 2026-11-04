@@ -81,9 +81,9 @@ void main() {
         cuedAt = ms;
       }
       expect(cue, isA<TurnCue>());
-      // One correction, then quiet: still walking, no repeat for 10 s.
+      // One correction, then quiet: still walking, no repeat for 20 s.
       expect(g.walking, isTrue);
-      for (var ms = cuedAt + 500; ms < cuedAt + 10000; ms += 500) {
+      for (var ms = cuedAt + 500; ms < cuedAt + 20000; ms += 500) {
         expect(g.update(turn: 70, metersToTarget: 10, now: at(ms)), isNull);
       }
     });
@@ -251,6 +251,50 @@ void main() {
         ),
         CornerProgress.warn,
       );
+    });
+  });
+
+  group('turn bursts (Icesi, 2026-11-03)', () {
+    test('a fourth turn cue within a minute asks to turn slowly', () {
+      final g = TurnGuidance()..reset(now: t0);
+      final cues = <GuidanceCue>[];
+      // Idle repeats every 10 s while the user faces 90 degrees off.
+      for (var ms = 0; ms < 60000; ms += 500) {
+        final cue = g.update(turn: 90, metersToTarget: 10, now: at(ms));
+        if (cue != null) cues.add(cue);
+      }
+      expect(cues.whereType<TurnCue>(), hasLength(3));
+      expect(cues[3], isA<SlowTurnCue>());
+      expect(cues, hasLength(4), reason: 'quiet after asking');
+    });
+
+    test('facing the target after a slow turn gives the walk cue', () {
+      final g = TurnGuidance()..reset(now: t0);
+      for (var ms = 0; ms <= 31000; ms += 500) {
+        g.update(turn: 90, metersToTarget: 10, now: at(ms));
+      }
+      GuidanceCue? cue;
+      for (var ms = 31500; ms <= 34000 && cue == null; ms += 500) {
+        cue = g.update(turn: 5, metersToTarget: 10, now: at(ms));
+      }
+      expect(cue, isA<StartWalkingCue>());
+    });
+  });
+
+  group('progressSince', () {
+    test('first update counts as progress', () {
+      expect(progressSince(lastMeters: null, meters: 56), Progress.closer);
+    });
+
+    test('three meters nearer is progress, less is no change', () {
+      expect(progressSince(lastMeters: 56, meters: 52), Progress.closer);
+      expect(progressSince(lastMeters: 56, meters: 54), Progress.same);
+      expect(progressSince(lastMeters: 56, meters: 59), Progress.same);
+    });
+
+    test('five meters farther is walking away', () {
+      // Salas -> Snack: 80, 90, 100, 120 steps while told "go straight".
+      expect(progressSince(lastMeters: 56, meters: 63), Progress.away);
     });
   });
 }

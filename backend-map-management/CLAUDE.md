@@ -69,6 +69,10 @@ There's no service-to-service HTTP call here — only shared-table relationships
 6. **`POST /places`** / **`GET /places`** / **`GET /places/{id}`** — same CRUD pattern over `places` (`PlaceCreate`: `code`, `name`, `latitude`, `longitude`, plus optional `address`), via the app's `AddPlaceScreen`. **`PATCH /places/{id}`** / **`DELETE /places/{id}`** — edit/delete; delete cascades through buildings all the way to anchor points, photos, and connections in Postgres (so the app warns with counts before calling it), and best-effort deletes every affected photo's file from Storage.
 7. **`POST /anchor-point-connections`** — `AnchorPointConnectionCreate` (`anchor_point_a_id`, `anchor_point_b_id`, optional `distance_meters`, optional `notes`, `created_by`); 400s if the two ids are equal, normalizes their order, and computes `distance_meters` server-side when omitted (see the schema section above). **`GET /anchor-point-connections`** — every connection, flat, same "fetch all, join client-side" pattern as `anchor-point-photos`, via the app's Connections tab. **`GET /anchor-points/{id}/connections`** — connections touching one point (an `.or_()` filter, since the point could be on either side of the edge). **`DELETE /anchor-point-connections/{id}`** — no `PATCH`; fixing a wrong connection is delete-and-recreate (mirrors `backend-route-management`'s `routes`, which also has no `PATCH`).
 
+## Connection warnings
+
+`PATCH /anchor-point-connections/{id}` (admin) changes only `notes`, trimmed, blank → null (`AnchorPointConnectionUpdate`). The app speaks it to users as the "warning for users" when they start that leg ("Atención: tres escalones hacia abajo"), so it's written for them. Everything else about a connection is still delete-and-recreate.
+
 ## Mapping guardrails
 
 Added after the Icesi test (2026-11-03), whose data had 36-76 m connections between buildings, points stacked on each other and a floor change between two hallways. Constants at the top of `app/main.py`; the app checks the same rules first (`application/lib/services/capture_checks.dart`), and both connection screens show these 400 `detail`s as-is, so older apps get readable refusals too.

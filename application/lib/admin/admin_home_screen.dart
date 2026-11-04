@@ -762,6 +762,62 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  /// The connection's warning for users ("three steps down"), spoken as
+  /// they start walking it. Testers asked to be told about obstacles.
+  Future<void> _editConnectionWarning(Map<String, dynamic> connection) async {
+    final l10n = AppLocalizations.of(context)!;
+    final controller = TextEditingController(
+      text: connection['notes'] as String? ?? '',
+    );
+    final notes = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.connectionWarningLabel),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          decoration: InputDecoration(helperText: l10n.connectionWarningHint),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: Text(
+              MaterialLocalizations.of(dialogContext).saveButtonLabel,
+            ),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (notes == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _mapApi.patch('/anchor-point-connections/${connection['id']}', {
+        'notes': notes,
+      });
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.connectionWarningSaved)),
+      );
+      await _loadData();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            l10n.connectionWarningSaveFailed(
+              friendlyApiErrorMessage(context, e),
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _editPlace(Map<String, dynamic> place) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => EditPlaceScreen(place: place)),
@@ -1829,8 +1885,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       subtitle: Text(
                         '${aBuilding?['name'] as String? ?? l10n.commonUnknownBuilding} / '
                         '${bBuilding?['name'] as String? ?? l10n.commonUnknownBuilding}'
-                        '${distance != null ? ' · ${distance}m' : ''}',
+                        '${distance != null ? ' · ${distance}m' : ''}'
+                        '${(connection['notes'] as String? ?? '').isEmpty ? '' : '\n⚠ ${connection['notes']}'}',
                       ),
+                      onTap: () => _editConnectionWarning(connection),
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline),
                         tooltip: l10n.commonDelete,

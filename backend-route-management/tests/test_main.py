@@ -195,7 +195,11 @@ def test_find_or_create_returns_existing_match():
         {"anchor_point_a_id": "a1", "anchor_point_b_id": "a2", "distance_meters": 5.0},
     ]
     mock_client = _mock_multi_table_client(
-        {"routes": routes_table, "anchor_point_connections": connections_table}
+        {
+            "routes": routes_table,
+            "anchor_point_connections": connections_table,
+            "anchor_points": MagicMock(),
+        }
     )
     with patch("app.main.db.client", mock_client):
         response = client.post(
@@ -264,7 +268,11 @@ def test_find_or_create_404_when_no_path_exists():
     connections_table.select.return_value.execute.return_value.data = []
     connections_table.select.return_value.order.return_value.range.return_value.execute.return_value.data = []
     mock_client = _mock_multi_table_client(
-        {"routes": routes_table, "anchor_point_connections": connections_table}
+        {
+            "routes": routes_table,
+            "anchor_point_connections": connections_table,
+            "anchor_points": MagicMock(),
+        }
     )
     with patch("app.main.db.client", mock_client):
         response = client.post(
@@ -326,7 +334,11 @@ def test_find_or_create_404_when_cached_route_is_no_longer_connected():
     connections_table.select.return_value.execute.return_value.data = []
     connections_table.select.return_value.order.return_value.range.return_value.execute.return_value.data = []
     mock_client = _mock_multi_table_client(
-        {"routes": routes_table, "anchor_point_connections": connections_table}
+        {
+            "routes": routes_table,
+            "anchor_point_connections": connections_table,
+            "anchor_points": MagicMock(),
+        }
     )
     with patch("app.main.db.client", mock_client):
         response = client.post(
@@ -485,3 +497,37 @@ def test_loose_destination_says_so():
     response = _find(mock_client, start="c1", end="loose-end")
     assert response.status_code == 404
     assert "destination" in response.json()["detail"]
+
+
+def test_connections_longer_than_the_limit_are_not_routed():
+    _as_caller("u1")
+    # c2-end is about 50 m: an old connection made before the limit.
+    points = [_point("c1", 3.3400), _point("c2", 3.34006), _point("end", 3.34051)]
+    mock_client, routes_table = _reachable_client(points)
+    response = _find(mock_client, start="c1")
+    assert response.status_code == 404
+    routes_table.insert.assert_not_called()
+
+
+def test_short_connections_are_routed():
+    _as_caller("u1")
+    # About 7 m and 18 m.
+    points = [_point("c1", 3.3400), _point("c2", 3.34006), _point("end", 3.34022)]
+    mock_client, routes_table = _reachable_client(points)
+    assert _find(mock_client, start="c1").status_code == 200
+    assert routes_table.insert.call_args.args[0]["waypoint_anchor_ids"] == ["c2"]
+
+
+def test_saved_route_over_a_long_connection_is_not_returned():
+    _as_caller("u1")
+    points = [_point("c1", 3.3400), _point("c2", 3.34006), _point("end", 3.34051)]
+    mock_client, routes_table = _reachable_client(points)
+    routes_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        {
+            **_ROUTE_ROW,
+            "start_anchor_id": "c1",
+            "end_anchor_id": "end",
+            "waypoint_anchor_ids": ["c2"],
+        }
+    ]
+    assert _find(mock_client, start="c1").status_code == 404
