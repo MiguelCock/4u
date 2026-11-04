@@ -6,11 +6,13 @@ import 'package:latlong2/latlong.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/floor_view.dart';
 import '../services/geo_utils.dart' show routeCorners;
 import '../services/location_types.dart' show anchorDisplayName;
 import '../services/map_tap.dart';
 import '../services/map_tile_config.dart';
 import '../services/route_error.dart';
+import '../widgets/floor_selector.dart';
 
 /// Admin: one navigation session on a map, for checking how the GPS
 /// correction and guidance behaved. Draws the planned route, the raw GPS
@@ -40,6 +42,10 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
   List<Map<String, dynamic>> _logs = [];
   List<Map<String, dynamic>> _reports = [];
   List<LatLng> _plannedPath = [];
+  List<int> _plannedFloors = [];
+
+  /// The route's floor being shown, when it spans several (FloorSelector).
+  int? _floor;
   Map<String, Map<String, dynamic>> _anchors = {};
 
   bool get _active => widget.session['status'] == 'active';
@@ -72,13 +78,23 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
         route['end_anchor_id'] as String,
       ];
       final points = <LatLng>[];
+      final floors = <int>[];
       for (final id in anchorIds) {
         final anchor =
             await _mapApi.get('/anchor-points/$id') as Map<String, dynamic>;
         final position = anchorPosition(anchor);
-        if (position != null) points.add(position);
+        if (position != null) {
+          points.add(position);
+          floors.add(pointFloor(anchor));
+        }
       }
-      if (!_stopped) setState(() => _plannedPath = points);
+      if (!_stopped) {
+        setState(() {
+          _plannedPath = points;
+          _plannedFloors = floors;
+          _floor = floors.isEmpty ? null : floors.first;
+        });
+      }
     } on ApiException {
       // The planned route is context; the trails still show without it.
     }
@@ -434,11 +450,16 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
                     ),
                     PolylineLayer(
                       polylines: [
-                        if (_plannedPath.length > 1)
+                        // Stretches away from the selected floor are faint.
+                        for (var i = 0; i + 1 < _plannedPath.length; i++)
                           Polyline(
-                            points: _plannedPath,
+                            points: [_plannedPath[i], _plannedPath[i + 1]],
                             strokeWidth: 3,
-                            color: Colors.blueGrey,
+                            color:
+                                _plannedFloors[i] == _floor ||
+                                    _plannedFloors[i + 1] == _floor
+                                ? Colors.blueGrey
+                                : Colors.blueGrey.withValues(alpha: 0.3),
                           ),
                         if (raw.length > 1)
                           Polyline(
@@ -530,6 +551,18 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
                 if (errorCard != null)
                   Positioned(left: 8, top: 8, right: 8, child: errorCard),
                 Positioned(left: 8, bottom: 8, right: 80, child: _legend(l10n)),
+                if (_floor != null)
+                  Positioned(
+                    right: 8,
+                    top: errorCard == null ? 8 : 88,
+                    child: FloorSelector(
+                      floors: _plannedFloors.toSet().toList()..sort(),
+                      selected: _floor!,
+                      onlySelected: false,
+                      showAdjacent: false,
+                      onFloorChanged: (floor) => setState(() => _floor = floor),
+                    ),
+                  ),
               ],
             ),
     );

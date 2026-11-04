@@ -39,6 +39,11 @@ class SimpleMapWidget extends StatefulWidget {
   /// Empty for every other call site, so this is purely additive too.
   final List<LatLng> plannedPath;
 
+  /// Each [plannedPath] point's floor, with [currentFloor]: stretches away
+  /// from that floor are drawn faint. Null: one solid line.
+  final List<int>? plannedPathFloors;
+  final int? currentFloor;
+
   /// Called on a tap anywhere on the map (not a drag/zoom gesture).
   final VoidCallback? onTap;
 
@@ -46,6 +51,8 @@ class SimpleMapWidget extends StatefulWidget {
     super.key,
     this.extraMarkers = const [],
     this.plannedPath = const [],
+    this.plannedPathFloors,
+    this.currentFloor,
     this.onTap,
   });
 
@@ -108,6 +115,25 @@ class _SimpleMapWidgetState extends State<SimpleMapWidget> {
     );
   }
 
+  List<Polyline> _pathLines() {
+    final path = widget.plannedPath;
+    final floors = widget.plannedPathFloors;
+    final floor = widget.currentFloor;
+    if (floors == null || floor == null || floors.length != path.length) {
+      return [Polyline(points: path, strokeWidth: 4, color: Colors.blueGrey)];
+    }
+    return [
+      for (var i = 0; i + 1 < path.length; i++)
+        Polyline(
+          points: [path[i], path[i + 1]],
+          strokeWidth: 4,
+          color: floors[i] == floor || floors[i + 1] == floor
+              ? Colors.blueGrey
+              : Colors.blueGrey.withValues(alpha: 0.3),
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return FlutterMap(
@@ -127,15 +153,7 @@ class _SimpleMapWidgetState extends State<SimpleMapWidget> {
           userAgentPackageName: kMapUserAgentPackageName,
         ),
         if (widget.plannedPath.length > 1)
-          PolylineLayer(
-            polylines: [
-              Polyline(
-                points: widget.plannedPath,
-                strokeWidth: 4,
-                color: Colors.blueGrey,
-              ),
-            ],
-          ),
+          PolylineLayer(polylines: _pathLines()),
         MarkerLayer(
           markers: [
             locationPinMarker(_position, Colors.blue),

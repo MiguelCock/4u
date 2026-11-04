@@ -547,5 +547,23 @@
   "connectionWarningLabel": "Aviso para usuarios (escaleras, obstáculos…)",
   "connectionWarningHint": "Se dice cuando el usuario empieza este tramo, por ejemplo \"tres escalones hacia abajo\". Déjalo vacío si no hay.",
   "connectionWarningSaved": "Aviso guardado.",
-  "connectionWarningSaveFailed": "No se pudo guardar el aviso: {error}"
+  "connectionWarningSaveFailed": "No se pudo guardar el aviso: {error}",
+
+  "mapFloorUp": "Subir un piso",
+  "mapFloorDown": "Bajar un piso",
+  "mapOnlyThisFloor": "Solo este piso",
+  "navFloorElevator": "Toma el ascensor hasta el piso {floor}.",
+  "navFloorUpStairs": "Sube por las escaleras hasta el piso {floor}.",
+  "navFloorDownStairs": "Baja por las escaleras hasta el piso {floor}.",
+  "navFloorUpRamp": "Sube por la rampa hasta el piso {floor}.",
+  "navFloorDownRamp": "Baja por la rampa hasta el piso {floor}.",
+  "navFloorUp": "Sube al piso {floor}.",
+  "navFloorDown": "Baja al piso {floor}.",
+  "navFloorWillTell": "Te avisaré cuando llegues.",
+  "navFloorNoSensor": "Este teléfono no puede detectar los pisos, así que continuaré en un momento.",
+  "navFloorReached": "Llegaste al piso {floor}.",
+  "navFloorTimeout": "No pude confirmar que llegaste al piso {floor}. Sigo guiándote desde allí.",
+  "homeWhichFloorTitle": "¿En qué piso estás?",
+  "adminHealthFloorChange": "{count} conexiones que cambian de piso sin escaleras",
+  "adminHealthFloorChangeHint": "Las rutas no las usan. Borra cada una y conecta los pisos a través de un punto de escaleras, ascensor o rampa en cada piso."
 }

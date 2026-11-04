@@ -31,11 +31,13 @@ La primera vez que entras, la aplicación te explica en voz alta cómo funciona.
 
 Hay dos formas:
 - **Por voz:** toca **Di a dónde quieres ir**. El teléfono vibra cuando empieza a escuchar. Di el lugar, por ejemplo "biblioteca" o "cafetería". Vuelve a vibrar cuando termina.
-- **De una lista:** toca **¿A dónde vas?** y elige la universidad, el edificio y el lugar.
+- **De una lista:** toca **Elegir destino** y elige la universidad, el edificio y el lugar.
 
-Luego aparece **¿Ir a …?**. Toca **Iniciar ruta** para empezar, o **Cancelar** para elegir otro destino. El punto de partida es el más cercano a ti según el GPS.
+Luego aparece **¿Ir a …?**. Toca **Iniciar ruta** para empezar, o **Cambiar destino** para elegir otro. El punto de partida es el más cercano a ti según el GPS.
 
 Si oyes que todavía no hay una ruta a ese destino, es que falta conectar el camino en el mapa; avisa a un administrador.
+
+**Si estás cerca de varios pisos**, la aplicación pregunta "¿En qué piso estás?", porque el GPS no distingue los pisos. Los destinos que no están en el primer piso muestran su piso ("Baño · Piso 2").
 
 ## 5. Durante el recorrido
 
@@ -56,6 +58,10 @@ Las distancias son aproximadas, en pasos normales.
 - **Terminar navegación**: termina el recorrido antes de llegar.
 
 Al terminar, la aplicación pregunta **¿Cómo te fue?**. Puedes dejar un comentario o saltarlo; ayuda a mejorar la aplicación.
+
+### Cambiar de piso
+
+Al llegar a unas escaleras, un ascensor o una rampa, la aplicación te dice a dónde ir ("Toma el ascensor hasta el piso 3. Te avisaré cuando llegues.") y deja de dar indicaciones mientras subes o bajas. Cuando el teléfono detecta el cambio de piso, vibra y dice "Llegaste al piso 3", y sigue guiándote. Si no lo detecta en unos minutos, te lo dice y sigue desde allí. Algunos teléfonos no pueden detectar los pisos: en ese caso lo dice y continúa después de un momento, así que asegúrate de haber llegado.
 
 ## 6. Si cierras la aplicación a mitad de camino
 

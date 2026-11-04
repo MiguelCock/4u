@@ -531,3 +531,93 @@ def test_saved_route_over_a_long_connection_is_not_returned():
         }
     ]
     assert _find(mock_client, start="c1").status_code == 404
+
+
+# --- floors --------------------------------------------------------------
+
+
+def _floor_point(point_id, lat, floor=0, type_id=10):
+    return {**_point(point_id, lat, floor=floor), "location_type_id": type_id}
+
+
+def _edge(a, b, meters=2.0):
+    return {"anchor_point_a_id": a, "anchor_point_b_id": b, "distance_meters": meters}
+
+
+def _waypoints_found(points, connections, start, end):
+    mock_client, routes_table = _reachable_client(points, connections)
+    response = _find(mock_client, start=start, end=end)
+    assert response.status_code == 200
+    return routes_table.insert.call_args.args[0]["waypoint_anchor_ids"]
+
+
+def test_nearby_elevator_is_preferred_over_stairs():
+    _as_caller("u1")
+    points = [
+        _floor_point("start", 3.3400),
+        _floor_point("stairs0", 3.34002, type_id=4),
+        _floor_point("lift0", 3.34004, type_id=3),
+        _floor_point("stairs1", 3.34002, floor=1, type_id=4),
+        _floor_point("lift1", 3.34004, floor=1, type_id=3),
+        _floor_point("end", 3.34003, floor=1),
+    ]
+    connections = [
+        _edge("start", "stairs0"),
+        _edge("start", "lift0", 4.0),
+        _edge("stairs0", "stairs1", 0.5),
+        _edge("lift0", "lift1", 0.5),
+        _edge("stairs1", "end"),
+        _edge("lift1", "end"),
+    ]
+    assert _waypoints_found(points, connections, "start", "end") == ["lift0", "lift1"]
+
+
+def test_stairs_win_when_the_elevator_is_far():
+    _as_caller("u1")
+    points = [
+        _floor_point("start", 3.3400),
+        _floor_point("stairs0", 3.34002, type_id=4),
+        _floor_point("lift0", 3.34024, type_id=3),
+        _floor_point("stairs1", 3.34002, floor=1, type_id=4),
+        _floor_point("lift1", 3.34024, floor=1, type_id=3),
+        _floor_point("end", 3.34003, floor=1),
+    ]
+    connections = [
+        _edge("start", "stairs0"),
+        _edge("start", "lift0", 28.0),
+        _edge("stairs0", "stairs1", 0.5),
+        _edge("lift0", "lift1", 0.5),
+        _edge("stairs1", "end"),
+        _edge("lift1", "end", 28.0),
+    ]
+    assert _waypoints_found(points, connections, "start", "end") == [
+        "stairs0",
+        "stairs1",
+    ]
+
+
+def test_route_stays_on_its_floor_rather_than_going_up_and_back():
+    _as_caller("u1")
+    points = [
+        _floor_point("start", 3.3400, type_id=4),
+        _floor_point("middle", 3.34009),
+        _floor_point("end", 3.34018, type_id=4),
+        _floor_point("up0", 3.3400, floor=1, type_id=4),
+        _floor_point("up1", 3.34018, floor=1, type_id=4),
+    ]
+    connections = [
+        _edge("start", "middle", 10.0),
+        _edge("middle", "end", 10.0),
+        _edge("start", "up0", 0.5),
+        _edge("up0", "up1", 18.0),
+        _edge("up1", "end", 0.5),
+    ]
+    assert _waypoints_found(points, connections, "start", "end") == ["middle"]
+
+
+def test_floor_change_without_a_vertical_point_is_not_routed():
+    _as_caller("u1")
+    points = [_floor_point("lobby", 3.3400), _floor_point("office", 3.34001, floor=1)]
+    mock_client, routes_table = _reachable_client(points, [_edge("lobby", "office")])
+    assert _find(mock_client, start="lobby", end="office").status_code == 404
+    routes_table.insert.assert_not_called()

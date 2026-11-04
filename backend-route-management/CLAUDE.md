@@ -52,6 +52,10 @@ The app picks the start as the verified point nearest the user (0.5.3 and older:
 
 Before Dijkstra, `find_or_create_route` drops every connection whose two points are more than `MAX_CONNECTION_METERS` (30 m, the same limit `backend-map-management` enforces on new ones) apart in a straight line (`_short_connections`, positions from `_load_points`, read with `select_all` on every request). The older ones at Icesi (43-93 m) were every leg of every route walked on 2026-11-03: "go straight" into walls and no turns. A saved route over one fails `_route_still_walkable` too, so it's recomputed or 404s. A connection whose points have no position is kept.
 
+## Floors
+
+Each floor change adds to a connection's weight (`FLOOR_CHANGE_METERS`: elevator 10, ramp 15, stairs 30 m per floor; an elevator at either end counts as the elevator), in `_routable_connections`, on copies of the rows. Before this it cost about 0 m, so a route could climb a floor and come back. A floor change with no vertical point at either end is dropped, like a long connection. Because a saved route is returned while it's still walkable, routes saved before this keep their path until a connection on them goes.
+
 ## Known issues
 
 - No reverse-direction route matching (`B -> A` creates a separate row from an existing `A -> B` even though it's the same physical path reversed) - accepted tradeoff for simplicity; `waypoint_anchor_ids` would need reversing too, not just the start/end swap.

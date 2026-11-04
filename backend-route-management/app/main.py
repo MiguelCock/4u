@@ -40,6 +40,23 @@ REACHABLE_START_METERS = 40.0
 # building, and the admin app lists them to redo.
 MAX_CONNECTION_METERS = 30.0
 
+# Where a connection may change floor (backend-map-management's
+# VERTICAL_LOCATION_TYPE_IDS): an elevator, a stairwell or a ramp. One between
+# any other two points was made before that rule and isn't routed.
+ELEVATOR_LOCATION_TYPE_ID = 3
+STAIRWELL_LOCATION_TYPE_ID = 4
+RAMP_LOCATION_TYPE_ID = 11
+
+# What changing one floor adds to a connection's length in route-finding. The
+# two ends of a floor change are nearly on top of each other, so without this
+# it cost about 0 m: a route could climb a floor and come back to save a few
+# metres. Elevators are cheapest, as the safest way up for these users.
+FLOOR_CHANGE_METERS = {
+    ELEVATOR_LOCATION_TYPE_ID: 10.0,
+    RAMP_LOCATION_TYPE_ID: 15.0,
+    STAIRWELL_LOCATION_TYPE_ID: 30.0,
+}
+
 
 @app.get("/")
 async def root():
@@ -112,22 +129,37 @@ def _load_points() -> dict[str, dict]:
     points = select_all(
         lambda: (
             db.client.table("anchor_points")
-            .select("id,latitude,longitude,floor,status")
+            .select("id,latitude,longitude,floor,status,location_type_id")
             .order("id")
         )
     )
     return {p["id"]: p for p in points}
 
 
-def _short_connections(connections: list[dict], by_id: dict[str, dict]) -> list[dict]:
-    """The connections at most MAX_CONNECTION_METERS long. One whose ends
-    have no position can't be measured and is kept."""
+def _floor_change_meters(a: dict, b: dict) -> float | None:
+    """What going between a and b costs for changing floor: 0 on one floor,
+    None when they change floor with no vertical point at either end. An
+    elevator at either end counts as the elevator."""
+    floors = abs((a.get("floor") or 0) - (b.get("floor") or 0))
+    if floors == 0:
+        return 0.0
+    costs = [
+        FLOOR_CHANGE_METERS[t]
+        for t in (a.get("location_type_id"), b.get("location_type_id"))
+        if t in FLOOR_CHANGE_METERS
+    ]
+    return floors * min(costs) if costs else None
 
-    def length(connection: dict) -> float | None:
-        a = by_id.get(connection["anchor_point_a_id"])
-        b = by_id.get(connection["anchor_point_b_id"])
-        if not a or not b:
-            return None
+
+def _routable_connections(
+    connections: list[dict], by_id: dict[str, dict]
+) -> list[dict]:
+    """The connections routes may use, with distance_meters including the cost
+    of changing floor: at most MAX_CONNECTION_METERS long, and any floor change
+    through a vertical point. One whose ends have no position can't be measured
+    and is kept. Copies: the rows themselves stay as stored."""
+
+    def length(a: dict, b: dict) -> float | None:
         if None in (a.get("latitude"), a.get("longitude")):
             return None
         if None in (b.get("latitude"), b.get("longitude")):
@@ -136,11 +168,26 @@ def _short_connections(connections: list[dict], by_id: dict[str, dict]) -> list[
             a["latitude"], a["longitude"], b["latitude"], b["longitude"]
         )
 
-    return [
-        c
-        for c in connections
-        if (meters := length(c)) is None or meters <= MAX_CONNECTION_METERS
-    ]
+    routable = []
+    for connection in connections:
+        a = by_id.get(connection["anchor_point_a_id"])
+        b = by_id.get(connection["anchor_point_b_id"])
+        if not a or not b:
+            routable.append(connection)
+            continue
+        meters = length(a, b)
+        if meters is not None and meters > MAX_CONNECTION_METERS:
+            continue
+        floor_cost = _floor_change_meters(a, b)
+        if floor_cost is None:
+            continue
+        distance = connection.get("distance_meters")
+        routable.append(
+            connection
+            if not floor_cost or distance is None
+            else {**connection, "distance_meters": distance + floor_cost}
+        )
+    return routable
 
 
 def _reachable_start(
@@ -192,9 +239,9 @@ async def find_or_create_route(
     # compute a new one.
     # Every connection, paged: a graph silently truncated at Supabase's
     # 1000-row cap gave false "no walkable path" errors.
-    # Positions too: connections over MAX_CONNECTION_METERS aren't routed.
+    # Positions and floors too: see _routable_connections.
     by_id = _load_points()
-    connections = _short_connections(
+    connections = _routable_connections(
         select_all(
             lambda: db.client.table("anchor_point_connections").select("*").order("id")
         ),

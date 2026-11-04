@@ -192,3 +192,19 @@ Eight sessions, read from `navigation_sessions`/`navigation_logs.debug`, next to
 - `progressSince` (`turn_guidance.dart`): the periodic update speaks only after 3 m of progress and never the same step count twice; 5 m farther says "you're moving away" and re-orients.
 - `TurnGuidance.maxTurnBurst`: after 3 turn cues within 60 s, one `SlowTurnCue`, then quiet for up to 30 s until the user faces the target (a strong vibration with the walk cue). `correctionGap` is 20 s.
 - Stairwell, elevator and ramp waypoints are kept and announced 8 m before; connection `notes` are spoken at the start of their leg.
+
+## 9. Floor changes (barometer)
+
+`FloorChangeDetector` (`application/lib/services/floor_detector.dart`). At Cali's altitude a floor of about 3.5 m is about 0.36 hPa.
+
+| Constant | Value | Effect |
+|---|---|---|
+| `hPaPerFloor` | 0.28 | Lower hears a floor change sooner, and hears more that isn't one |
+| `hold` | 3 s | How long the change must last; a door or a gust is shorter |
+| `baselineWindow` | 5 s | The pressure of the floor being left |
+| `smoothWindow` | 2 s | Averages out sensor noise |
+| `_kFloorWaitLimit` (`navigation_screen.dart`) | 3 min | Carry on when nothing is heard |
+
+None of these has been tested on a real phone or in a real building yet.
+
+**To tune:** walk a route by stairs and one by elevator. In the session's `navigation_logs.debug`, ticks carry `pressure_hpa`, `floor` and `waiting_floor`. The events are `floor_wait` (from, to, starting pressure), `floor_detected` (seconds, `delta_hpa`), `floor_timeout` and `barometer_missing`. Compare `delta_hpa` with the threshold, and look at the noise in `pressure_hpa` while standing still. Elevator shafts and air conditioning may shift pressure by themselves. If detection isn't reliable enough, the fallback is a "Ya estoy en el piso N" button.

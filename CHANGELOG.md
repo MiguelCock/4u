@@ -6,6 +6,19 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+### Added
+- **One floor at a time on the maps.** Connect on map, the Anchor points map, the location picker and the session view have up and down buttons, like an elevator, showing the selected floor. The floors directly above and below show as small purple ▲ and orange ▼, which can still be tapped (that's how stairs get connected across floors), and **Only this floor** hides them.
+- **Instructions across floors.** At stairs, an elevator or a ramp the app says where to go ("Toma el ascensor hasta el piso 3"), waits, and continues when the phone's barometer detects the new floor ("Llegaste al piso 3"). If it can't detect it, the trip carries on after a while and says so. It's being tested: the thresholds are first guesses.
+- **"Which floor are you on?"** when points on several floors are close by, since GPS can't tell floors apart. Destinations above the ground floor show their floor.
+- The admin menu lists connections that change floor without stairs, an elevator or a ramp.
+
+### Changed
+- **Routes prefer elevators and stay on their floor.** A floor change now has a cost (lowest for elevators, highest for stairs), so a route no longer goes up and back down to save a few meters. Routes already saved keep their path until they're recomputed.
+- Routes no longer use connections that change floor without stairs, an elevator or a ramp.
+
+### Fixed
+- **Guidance skipped floor changes.** Reaching the stairs also counted as reaching the floor above, so the climb was never mentioned, and "you have arrived" could be said on the floor below the destination.
+
 ## [0.5.4] - 2026-11-03
 
 **For testers:** install `app-release.apk` from this release. Version 0.5.3 keeps working for now (it shows a "new version available" notice), and **0.5.2 no longer works**: anyone still on it sees "Update required". **Admins:** at Icesi, trips that used a connection over 30 m now say there's no route. The admin menu lists those connections; redo each one through points every 6–8 m, and add warnings for users where there are steps or obstacles.

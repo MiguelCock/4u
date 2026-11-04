@@ -2002,6 +2002,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final unconnected = verifiedUnconnectedPoints(_anchorPoints, _connections);
     final hidden = namedHiddenPoints(_anchorPoints);
     final long = longConnections(_anchorPoints, _connections);
+    final floorChange = floorChangeConnections(_anchorPoints, _connections);
     Widget tile(String text, IconData icon, VoidCallback onTap) => ListTile(
       leading: Icon(icon, color: Colors.orange),
       title: Text(text, style: const TextStyle(color: Colors.deepOrange)),
@@ -2058,6 +2059,32 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       byId[c['anchor_point_a_id']]!,
                       byId[c['anchor_point_b_id']]!,
                     )!.toStringAsFixed(0),
+                  ),
+                  onTap: () => _deleteConnection(c),
+                ),
+            ],
+          );
+        }),
+      if (floorChange.isNotEmpty)
+        tile(l10n.adminHealthFloorChange(floorChange.length), Icons.stairs, () {
+          final byId = {for (final p in _anchorPoints) p['id']: p};
+          _showReviewList(
+            title: l10n.adminHealthFloorChange(floorChange.length),
+            hint: l10n.adminHealthFloorChangeHint,
+            items: [
+              for (final c in floorChange)
+                (
+                  title:
+                      '${anchorDisplayName(l10n, byId[c['anchor_point_a_id']])}'
+                      ' ↔ '
+                      '${anchorDisplayName(l10n, byId[c['anchor_point_b_id']])}',
+                  subtitle: l10n.adminHealthConnectionSubtitle(
+                    (anchorDistance(
+                              byId[c['anchor_point_a_id']]!,
+                              byId[c['anchor_point_b_id']]!,
+                            ) ??
+                            0)
+                        .toStringAsFixed(0),
                   ),
                   onTap: () => _deleteConnection(c),
                 ),

@@ -190,6 +190,8 @@ A **connection** records that a person can walk directly between two anchor poin
 
 **Obstacles.** Users are warned before stairs, elevators and ramps when the point has that **Location type**, so give those points the right type. For anything else on the way (a step, a bin, vending machines, a narrow door), write a **Warning for users** on that connection: it's spoken as users start walking it ("Attention: three steps down"). The app can't see obstacles nobody has written down.
 
+**Floors.** Maps show one floor at a time. The ▲ and ▼ buttons change floor, like an elevator. Points on the floor above show as purple ▲ and on the floor below as orange ▼; **Only this floor** hides them. To connect floors: capture a stairwell, elevator or ramp point **on each floor**, tap the one on this floor, then the ▲ or ▼ of the other floor (the line is dashed, and the map moves to that floor so you can keep chaining). Routes prefer elevators, so connect one if it exists. A connection that changes floor without those points isn't used for routes; the menu lists them.
+
 **What users see.** Users only see, as a destination or as a starting point, verified points **with at least one connection**. A point with no connections doesn't show up.
 
 There are two ways to create one — pick whichever fits the situation:

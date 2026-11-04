@@ -3,15 +3,19 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../map.dart' show locationPinMarker;
+import '../services/floor_view.dart';
 import '../services/map_tap.dart';
 import '../services/map_tile_config.dart';
+import '../widgets/floor_selector.dart';
 
 /// Map view of the admin Anchor points tab: the same filtered points as the
 /// list, coloured by status, with the connections between them drawn
 /// faintly. A tap near a point reports it ([onPointTapped]). While a point
 /// is being moved ([movingPointId] set), a tap reports the new position
 /// instead ([onMoveTargetTapped]) and [moveTarget] is shown as a pin whose
-/// tip sits exactly on that spot.
+/// tip sits exactly on that spot. One floor shows at a time (FloorSelector),
+/// with the floors directly above and below as small triangles that can be
+/// tapped too; the point being moved always shows.
 class AnchorPointsMap extends StatefulWidget {
   final List<Map<String, dynamic>> points;
   final List<Map<String, dynamic>> connections;
@@ -36,6 +40,36 @@ class AnchorPointsMap extends StatefulWidget {
 
 class _AnchorPointsMapState extends State<AnchorPointsMap> {
   final _controller = MapController();
+  int? _floor;
+  bool _onlySelectedFloor = false;
+
+  @override
+  void initState() {
+    super.initState();
+    loadOnlySelectedFloor().then((value) {
+      if (mounted) setState(() => _onlySelectedFloor = value);
+    });
+  }
+
+  @override
+  void didUpdateWidget(AnchorPointsMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Starting a move shows the floor of the point being moved.
+    final moving = widget.movingPointId;
+    if (moving != null && moving != oldWidget.movingPointId) {
+      for (final point in widget.points) {
+        if (point['id'] == moving) _floor = pointFloor(point);
+      }
+    }
+  }
+
+  int get _selectedFloor {
+    final floors = floorsOf(widget.points);
+    return floorInRange(_floor ?? openingFloor(floors) ?? 0, floors) ?? 0;
+  }
+
+  FloorRelation _relation(Map<String, dynamic> point) =>
+      floorRelation(point, _selectedFloor, onlySelected: _onlySelectedFloor);
 
   @override
   void dispose() {
@@ -73,12 +107,17 @@ class _AnchorPointsMapState extends State<AnchorPointsMap> {
       widget.onMoveTargetTapped(tapped);
       return;
     }
-    final point = nearestOnScreen(
-      camera: _controller.camera,
-      tapped: tapped,
-      items: widget.points,
-      positionOf: anchorPosition,
-    );
+    // The selected floor first: stairs on two floors are on top of each other.
+    Map<String, dynamic>? nearest(bool Function(FloorRelation) showing) =>
+        nearestOnScreen(
+          camera: _controller.camera,
+          tapped: tapped,
+          items: widget.points.where((p) => showing(_relation(p))),
+          positionOf: anchorPosition,
+        );
+    final point =
+        nearest((r) => r == FloorRelation.current) ??
+        nearest((r) => r != FloorRelation.hidden);
     if (point != null) widget.onPointTapped(point);
   }
 
@@ -86,24 +125,62 @@ class _AnchorPointsMapState extends State<AnchorPointsMap> {
   Widget build(BuildContext context) {
     final byId = {
       for (final p in widget.points)
-        if (anchorPosition(p) != null) p['id'] as String: anchorPosition(p)!,
+        if (anchorPosition(p) != null) p['id'] as String: p,
     };
-    final lines = [
-      for (final c in widget.connections)
-        if (byId.containsKey(c['anchor_point_a_id']) &&
-            byId.containsKey(c['anchor_point_b_id']))
-          Polyline(
-            points: [
-              byId[c['anchor_point_a_id']]!,
-              byId[c['anchor_point_b_id']]!,
-            ],
-            color: Colors.teal.withValues(alpha: 0.5),
-            strokeWidth: 2,
-          ),
-    ];
+    final floor = _selectedFloor;
+    final lines = <Polyline>[];
+    for (final c in widget.connections) {
+      final a = byId[c['anchor_point_a_id']];
+      final b = byId[c['anchor_point_b_id']];
+      if (a == null || b == null) continue;
+      if (!floorShowsConnection(
+        a,
+        b,
+        floor,
+        onlySelected: _onlySelectedFloor,
+      )) {
+        continue;
+      }
+      lines.add(
+        Polyline(
+          points: [anchorPosition(a)!, anchorPosition(b)!],
+          color: Colors.teal.withValues(alpha: 0.5),
+          strokeWidth: 2,
+          pattern: pointFloor(a) == pointFloor(b)
+              ? const StrokePattern.solid()
+              : StrokePattern.dashed(segments: const [6, 4]),
+        ),
+      );
+    }
     final positions = _positions;
     final moveTarget = widget.moveTarget;
 
+    return Stack(
+      children: [
+        _map(lines, positions, moveTarget),
+        Positioned(
+          right: 8,
+          top: 8,
+          child: FloorSelector(
+            floors: floorsOf(widget.points),
+            selected: floor,
+            onlySelected: _onlySelectedFloor,
+            onFloorChanged: (value) => setState(() => _floor = value),
+            onOnlySelectedChanged: (value) {
+              setState(() => _onlySelectedFloor = value);
+              saveOnlySelectedFloor(value);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _map(
+    List<Polyline> lines,
+    List<LatLng> positions,
+    LatLng? moveTarget,
+  ) {
     return FlutterMap(
       mapController: _controller,
       options: MapOptions(
@@ -126,8 +203,17 @@ class _AnchorPointsMapState extends State<AnchorPointsMap> {
         PolylineLayer(polylines: lines),
         MarkerLayer(
           markers: [
+            // The other floors first, so the selected one is drawn on top.
             for (final point in widget.points)
-              if (anchorPosition(point) != null)
+              if (anchorPosition(point) != null &&
+                  point['id'] != widget.movingPointId &&
+                  (_relation(point) == FloorRelation.above ||
+                      _relation(point) == FloorRelation.below))
+                floorPointMarker(anchorPosition(point)!, _relation(point)),
+            for (final point in widget.points)
+              if (anchorPosition(point) != null &&
+                  (_relation(point) == FloorRelation.current ||
+                      point['id'] == widget.movingPointId))
                 Marker(
                   point: anchorPosition(point)!,
                   width: 40,

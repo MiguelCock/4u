@@ -60,6 +60,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Map<String, dynamic>? _end;
   bool _finding = false;
   Timer? _stillFindingTimer;
+
+  /// The user's answer to "which floor are you on?", kept until they've moved
+  /// (see _startFloor).
+  int? _answeredFloor;
+  LatLng? _answeredFloorFrom;
+  bool _askingFloor = false;
   static const Duration _kStillFindingEvery = Duration(seconds: 5);
   bool _locatingStart = false;
   int _startCheckProgress = 0;
@@ -130,7 +136,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   String _destinationLabel(Map<String, dynamic> anchor) {
     final name = anchor['location_description'] as String? ?? '';
     final building = _buildingNames[anchor['building_id']];
-    return building == null || building.isEmpty ? name : '$name · $building';
+    final floor = (anchor['floor'] as int?) ?? 0;
+    return [
+      name,
+      // Two "Baño" on different floors have to be told apart.
+      if (floor != 0)
+        AppLocalizations.of(context)!.commonFloorOption(floor + 1),
+      if (building != null && building.isNotEmpty) building,
+    ].join(' · ');
   }
 
   /// The recognizer locale for the app language (es-CO first, like the
@@ -753,6 +766,55 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     return nearest;
   }
 
+  /// Which of [floors] the user is on: their earlier answer until they've
+  /// moved [_kStartCheckRadiusMeters], else asked, spoken, with one big button
+  /// per floor. Null if they back out.
+  Future<int?> _startFloor(List<int> floors, LatLng here) async {
+    final answered = _answeredFloor;
+    final from = _answeredFloorFrom;
+    if (answered != null &&
+        from != null &&
+        floors.contains(answered) &&
+        haversineMeters(from, here) < _kStartCheckRadiusMeters) {
+      return answered;
+    }
+    final l10n = AppLocalizations.of(context)!;
+    _askingFloor = true;
+    final labels = [for (final f in floors) l10n.commonFloorOption(f + 1)];
+    _say('${l10n.homeWhichFloorTitle} ${labels.join(', ')}.', show: false);
+    final floor = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.homeWhichFloorTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < floors.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(64),
+                    textStyle: Theme.of(dialogContext).textTheme.titleLarge,
+                  ),
+                  onPressed: () => Navigator.of(dialogContext).pop(floors[i]),
+                  child: Text(labels[i]),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+    _askingFloor = false;
+    await _tts.stop();
+    if (floor != null) {
+      _answeredFloor = floor;
+      _answeredFloorFrom = here;
+    }
+    return floor;
+  }
+
   /// backend-route-management's 404 detail says which end isn't connected.
   String _noPathMessage(AppLocalizations l10n, String? detail) {
     if (detail == null) return l10n.homeErrorNoPath;
@@ -786,7 +848,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         _stillFindingTimer?.cancel();
         return;
       }
-      _say(l10n.commonOneMoment);
+      if (!_askingFloor) _say(l10n.commonOneMoment);
     });
     void sayRetrying() {
       if (mounted && _finding) _say(l10n.commonRetrying);
@@ -826,18 +888,36 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       // ("photo 0 of 6, turn around") confused everyone in the first user
       // test, and navigation's own correction takes over from the first
       // ticks. Admins testing keep it (tapping Start, or Find route).
-      final Map<String, dynamic>? start;
+      Map<String, dynamic>? start;
+      final here = LatLng(position.latitude, position.longitude);
       if (widget.adminPreview) {
         start = _startCheckIsFresh ? _start : await _locateStart();
       } else {
         _verifiedAnchors = await _fetchVerifiedAnchors();
-        start = _nearestAnchor(
-          _verifiedAnchors,
-          LatLng(position.latitude, position.longitude),
-        );
+        start = _nearestAnchor(_verifiedAnchors, here);
         if (mounted) setState(() => _start = start);
       }
       if (!mounted) return;
+      // GPS can't tell floors apart: the nearest point may be overhead.
+      final floors = floorsNear(_verifiedAnchors, here);
+      if (start != null && floors.length > 1) {
+        final floor = await _startFloor(floors, here);
+        if (!mounted) return;
+        if (floor == null) {
+          setState(() {
+            _finding = false;
+            _voiceStatus = null;
+          });
+          return;
+        }
+        start = _nearestAnchor(
+          _verifiedAnchors
+              .where((a) => (a['floor'] as int? ?? 0) == floor)
+              .toList(),
+          here,
+        );
+        setState(() => _start = start);
+      }
       if (start == null) {
         setState(() {
           _error = AppLocalizations.of(context)!.homeErrorNoVerifiedAnchors;
