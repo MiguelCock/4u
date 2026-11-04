@@ -8,7 +8,7 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/floor_view.dart';
 import '../services/geo_utils.dart' show routeCorners;
-import '../services/location_types.dart' show anchorDisplayName;
+import '../services/location_types.dart' show anchorLabel;
 import '../services/map_tap.dart';
 import '../services/map_tile_config.dart';
 import '../services/route_error.dart';
@@ -43,6 +43,7 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
   List<Map<String, dynamic>> _reports = [];
   List<LatLng> _plannedPath = [];
   List<int> _plannedFloors = [];
+  Map<String, String> _buildingNames = {};
 
   /// The route's floor being shown, when it spans several (FloorSelector).
   int? _floor;
@@ -103,9 +104,17 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
   /// Every anchor point once, to draw where each photo match pointed.
   Future<void> _loadAnchors() async {
     try {
-      final anchors = await _mapApi.get('/anchor-points') as List;
+      final results = await Future.wait([
+        _mapApi.get('/anchor-points'),
+        _mapApi.get('/buildings'),
+      ]);
+      final anchors = results[0] as List;
       if (_stopped) return;
       setState(() {
+        _buildingNames = {
+          for (final b in (results[1] as List).cast<Map<String, dynamic>>())
+            b['id'] as String: b['name'] as String? ?? '',
+        };
         _anchors = {
           for (final a in anchors.cast<Map<String, dynamic>>())
             a['id'] as String: a,
@@ -272,7 +281,7 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
         l10n.trackingFieldMatch,
         matchId == null
             ? l10n.trackingNoMatch
-            : '${anchorDisplayName(l10n, _anchors[matchId] ?? {'id': matchId})}'
+            : '${anchorLabel(l10n, _anchors[matchId] ?? {'id': matchId}, _buildingNames[_anchors[matchId]?['building_id']])}'
                   ' (${_num(log['confidence_score'], digits: 2)})',
       ),
       if (cues.isNotEmpty) (l10n.trackingFieldSaid, cues),

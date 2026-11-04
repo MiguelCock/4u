@@ -11,12 +11,15 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - **Instructions across floors.** At stairs, an elevator or a ramp the app says where to go ("Toma el ascensor hasta el piso 3"), waits, and continues when the phone's barometer detects the new floor ("Llegaste al piso 3"). If it can't detect it, the trip carries on after a while and says so. It's being tested: the thresholds are first guesses.
 - **"Which floor are you on?"** when points on several floors are close by, since GPS can't tell floors apart. Destinations above the ground floor show their floor.
 - The admin menu lists connections that change floor without stairs, an elevator or a ramp.
+- **Say a building and go there.** Saying "Edificio C" goes to its entrance closest by walking, or, where none is marked yet, the closest connected point on its lowest floor. "Baño Edificio C" still means the bathroom. Letters are understood however the phone hears them ("edificio se", "edificio ene").
 
 ### Changed
 - **Routes prefer elevators and stay on their floor.** A floor change now has a cost (lowest for elevators, highest for stairs), so a route no longer goes up and back down to save a few meters. Routes already saved keep their path until they're recomputed.
 - Routes no longer use connections that change floor without stairs, an elevator or a ramp.
+- **Point names no longer repeat their building.** "Entrada sur bloque 20" is saved as "Entrada sur", and saying "entrada sur bloque 20" still finds it. The admin views and the choices spoken to users show the building next to the name. When several places share a name, the nearest are offered first, and only on the user's campus.
 
 ### Fixed
+- **Voice search suggested unrelated places**, such as a parking machine in Edificio N for "Edificio C": the word "edificio" alone counted as a match.
 - **Guidance skipped floor changes.** Reaching the stairs also counted as reaching the floor above, so the climb was never mentioned, and "you have arrived" could be said on the floor below the destination.
 
 ## [0.5.4] - 2026-11-03

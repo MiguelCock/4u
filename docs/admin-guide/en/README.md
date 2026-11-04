@@ -192,6 +192,8 @@ A **connection** records that a person can walk directly between two anchor poin
 
 **Floors.** Maps show one floor at a time. The ▲ and ▼ buttons change floor, like an elevator. Points on the floor above show as purple ▲ and on the floor below as orange ▼; **Only this floor** hides them. To connect floors: capture a stairwell, elevator or ramp point **on each floor**, tap the one on this floor, then the ▲ or ▼ of the other floor (the line is dashed, and the map moves to that floor so you can keep chaining). Routes prefer elevators, so connect one if it exists. A connection that changes floor without those points isn't used for routes; the menu lists them.
 
+**Entrances and names.** When a user says a building ("Edificio C"), the route ends at the entrance closest by walking, so give each door the **entrance** type and connect it. With no entrance marked, it ends at the closest connected point on the lowest floor. Names don't repeat the building: "Entrada sur bloque 20" is saved as "Entrada sur", and the app shows the building next to it.
+
 **What users see.** Users only see, as a destination or as a starting point, verified points **with at least one connection**. A point with no connections doesn't show up.
 
 There are two ways to create one — pick whichever fits the situation:

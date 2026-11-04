@@ -10,7 +10,7 @@ from packages.supabase import SupaBase
 from postgrest.exceptions import APIError
 
 from .models import RouteCreate, RouteFindOrCreate, RouteResponse
-from .pathfinding import connected_ids, shortest_path
+from .pathfinding import connected_ids, nearest_of, shortest_path
 
 load_dotenv()
 
@@ -43,6 +43,7 @@ MAX_CONNECTION_METERS = 30.0
 # Where a connection may change floor (backend-map-management's
 # VERTICAL_LOCATION_TYPE_IDS): an elevator, a stairwell or a ramp. One between
 # any other two points was made before that rule and isn't routed.
+ENTRANCE_LOCATION_TYPE_ID = 1
 ELEVATOR_LOCATION_TYPE_ID = 3
 STAIRWELL_LOCATION_TYPE_ID = 4
 RAMP_LOCATION_TYPE_ID = 11
@@ -129,7 +130,7 @@ def _load_points() -> dict[str, dict]:
     points = select_all(
         lambda: (
             db.client.table("anchor_points")
-            .select("id,latitude,longitude,floor,status,location_type_id")
+            .select("id,latitude,longitude,floor,status,location_type_id,building_id")
             .order("id")
         )
     )
@@ -190,13 +191,71 @@ def _routable_connections(
     return routable
 
 
+def _building_targets(
+    connections: list[dict], by_id: dict[str, dict], building_id: str
+) -> set[str]:
+    """Where a route to a whole building may end: its entrances. Most buildings
+    at Icesi have none marked yet (2026-11-04), so otherwise any point on its
+    lowest floor, the one people come in on. Verified and connected only."""
+    connected = {
+        end
+        for c in connections
+        for end in (c["anchor_point_a_id"], c["anchor_point_b_id"])
+    }
+    points = [
+        p
+        for p in by_id.values()
+        if p.get("building_id") == building_id
+        and p.get("status") == "verified"
+        and p["id"] in connected
+    ]
+    entrances = {
+        p["id"]
+        for p in points
+        if p.get("location_type_id") == ENTRANCE_LOCATION_TYPE_ID
+    }
+    if entrances or not points:
+        return entrances
+    lowest = min(p.get("floor") or 0 for p in points)
+    return {p["id"] for p in points if (p.get("floor") or 0) == lowest}
+
+
+def _building_end(
+    connections: list[dict],
+    by_id: dict[str, dict],
+    start_id: str,
+    building_id: str,
+) -> tuple[str, str]:
+    """The (start, end) of a route to a building: its target closest by walking.
+    The start can change just as for a point (see _reachable_start)."""
+    targets = _building_targets(connections, by_id, building_id)
+    if not targets:
+        raise HTTPException(
+            status_code=404,
+            detail="The destination isn't connected to any path yet - an admin "
+            "needs to connect it.",
+        )
+    if start_id in targets:
+        raise HTTPException(status_code=400, detail="You're already at that building.")
+    path = nearest_of(connections, start_id, targets)
+    if path is None:
+        start_id = _reachable_start(connections, by_id, start_id, targets)
+        path = nearest_of(connections, start_id, targets)
+    return start_id, path[-1]
+
+
 def _reachable_start(
-    connections: list[dict], by_id: dict[str, dict], start_id: str, end_id: str
+    connections: list[dict],
+    by_id: dict[str, dict],
+    start_id: str,
+    end_ids: set[str],
 ) -> str:
     """The verified point nearest start_id, on its floor and within
-    REACHABLE_START_METERS, that has a path to end_id. A 404 says which end
-    isn't connected."""
-    reachable = connected_ids(connections, end_id) - {end_id}
+    REACHABLE_START_METERS, that has a path to one of end_ids. A 404 says which
+    end isn't connected."""
+    reachable = (
+        set().union(*(connected_ids(connections, end) for end in end_ids)) - end_ids
+    )
     if not reachable:
         raise HTTPException(
             status_code=404,
@@ -247,7 +306,12 @@ async def find_or_create_route(
         ),
         by_id,
     )
-    cached = _find_saved_route(start_id, request.end_anchor_id)
+    end_id = request.end_anchor_id
+    if request.end_building_id is not None:
+        start_id, end_id = _building_end(
+            connections, by_id, start_id, request.end_building_id
+        )
+    cached = _find_saved_route(start_id, end_id)
     if cached and _route_still_walkable(cached, connections):
         return cached
 
@@ -258,25 +322,25 @@ async def find_or_create_route(
     # service-to-service HTTP call just to fetch rows this service's own
     # SupaBase client can already reach. First time this repo reads a
     # table outside the reading service's own domain.
-    path = shortest_path(connections, start_id, request.end_anchor_id)
+    path = shortest_path(connections, start_id, end_id)
     if path is None:
         # Start from the nearest connected point instead. The saved route
         # carries that start, and the app guides from route.start_anchor_id.
-        start_id = _reachable_start(connections, by_id, start_id, request.end_anchor_id)
-        cached = _find_saved_route(start_id, request.end_anchor_id)
+        start_id = _reachable_start(connections, by_id, start_id, {end_id})
+        cached = _find_saved_route(start_id, end_id)
         if cached and _route_still_walkable(cached, connections):
             return cached
-        path = shortest_path(connections, start_id, request.end_anchor_id)
+        path = shortest_path(connections, start_id, end_id)
 
     anchors = (
         db.client.table("anchor_points")
         .select("id,building_id,location_description")
-        .in_("id", [start_id, request.end_anchor_id])
+        .in_("id", [start_id, end_id])
         .execute()
     )
     by_id = {a["id"]: a for a in anchors.data}
     start_anchor = by_id.get(start_id)
-    end_anchor = by_id.get(request.end_anchor_id)
+    end_anchor = by_id.get(end_id)
     start_desc = (
         start_anchor["location_description"] if start_anchor else "start"
     ) or "start"
@@ -298,7 +362,7 @@ async def find_or_create_route(
         "building_id": start_anchor["building_id"] if start_anchor else None,
         "name": f"{start_desc} to {end_desc}",
         "start_anchor_id": start_id,
-        "end_anchor_id": request.end_anchor_id,
+        "end_anchor_id": end_id,
         "waypoint_anchor_ids": path[1:-1],
         "created_by": caller_id,
     }
@@ -313,7 +377,7 @@ async def find_or_create_route(
             db.client.table("routes")
             .select("*")
             .eq("start_anchor_id", start_id)
-            .eq("end_anchor_id", request.end_anchor_id)
+            .eq("end_anchor_id", end_id)
             .execute()
         )
     return result.data[0]

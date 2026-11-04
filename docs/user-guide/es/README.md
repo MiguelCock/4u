@@ -33,6 +33,10 @@ Hay dos formas:
 - **Por voz:** toca **Di a dónde quieres ir**. El teléfono vibra cuando empieza a escuchar. Di el lugar, por ejemplo "biblioteca" o "cafetería". Vuelve a vibrar cuando termina.
 - **De una lista:** toca **Elegir destino** y elige la universidad, el edificio y el lugar.
 
+- **Un edificio:** di "Edificio C" y la aplicación te lleva a su entrada más cercana. Di "Baño Edificio C" si buscas un lugar dentro de él.
+
+Si hay varios lugares con el mismo nombre, puedes decir también el edificio ("Entrada sur Bloque 20"). Si no, te ofrece los más cercanos.
+
 Luego aparece **¿Ir a …?**. Toca **Iniciar ruta** para empezar, o **Cambiar destino** para elegir otro. El punto de partida es el más cercano a ti según el GPS.
 
 Si oyes que todavía no hay una ruta a ese destino, es que falta conectar el camino en el mapa; avisa a un administrador.

@@ -28,11 +28,19 @@ def shortest_path(
     Returns the full path [start_id, ..., end_id] (inclusive of both ends),
     or None if start_id and end_id aren't connected by any chain of edges.
     """
-    if start_id == end_id:
+    return nearest_of(connections, start_id, {end_id})
+
+
+def nearest_of(
+    connections: list[dict], start_id: str, target_ids: set[str]
+) -> list[str] | None:
+    """The path from start_id to whichever of target_ids is closest along the
+    connections (not in a straight line), or None if none can be reached."""
+    if start_id in target_ids:
         return [start_id]
 
     graph = _build_adjacency(connections)
-    if start_id not in graph or end_id not in graph:
+    if start_id not in graph:
         return None
 
     distances: dict[str, float] = {start_id: 0.0}
@@ -45,8 +53,12 @@ def shortest_path(
         if node in visited:
             continue
         visited.add(node)
-        if node == end_id:
-            break
+        if node in target_ids:
+            path = [node]
+            while path[-1] != start_id:
+                path.append(previous[path[-1]])
+            path.reverse()
+            return path
         for neighbor, weight in graph.get(node, []):
             if neighbor in visited:
                 continue
@@ -55,15 +67,7 @@ def shortest_path(
                 distances[neighbor] = candidate
                 previous[neighbor] = node
                 heapq.heappush(queue, (candidate, neighbor))
-
-    if end_id not in visited:
-        return None
-
-    path = [end_id]
-    while path[-1] != start_id:
-        path.append(previous[path[-1]])
-    path.reverse()
-    return path
+    return None
 
 
 def connected_ids(connections: list[dict], node_id: str) -> set[str]:

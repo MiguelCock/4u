@@ -325,7 +325,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   ),
                 ),
                 for (final point in failed)
-                  Text('• ${anchorDisplayName(l10n, point)}'),
+                  Text('• ${_pointLabel(l10n, point)}'),
               ],
             ],
           ),
@@ -1127,7 +1127,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final l10n = AppLocalizations.of(context)!;
     final messenger = ScaffoldMessenger.of(context);
     final id = point['id'] as String;
-    final name = anchorDisplayName(l10n, point);
+    final name = _pointLabel(l10n, point);
     final photos = _photosOf(id);
     void show(String text) => messenger
       ..hideCurrentSnackBar()
@@ -1324,7 +1324,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     if (point == null || target == null) return;
     final l10n = AppLocalizations.of(context)!;
     final messenger = ScaffoldMessenger.of(context);
-    final name = anchorDisplayName(l10n, point);
+    final name = _pointLabel(l10n, point);
     try {
       await _mapApi.patch('/anchor-points/${point['id']}', {
         'latitude': target.latitude,
@@ -1401,9 +1401,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       child: Semantics(
                         liveRegion: true,
                         child: Text(
-                          l10n.adminAnchorMoveBanner(
-                            anchorDisplayName(l10n, moving),
-                          ),
+                          l10n.adminAnchorMoveBanner(_pointLabel(l10n, moving)),
                         ),
                       ),
                     ),
@@ -2042,29 +2040,33 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           ),
         ),
       if (long.isNotEmpty)
-        tile(l10n.adminHealthLongConnections(long.length), Icons.straighten, () {
-          final byId = {for (final p in _anchorPoints) p['id']: p};
-          _showReviewList(
-            title: l10n.adminHealthLongConnections(long.length),
-            hint: l10n.adminHealthLongConnectionsHint,
-            items: [
-              for (final c in long)
-                (
-                  title:
-                      '${anchorDisplayName(l10n, byId[c['anchor_point_a_id']])}'
-                      ' ↔ '
-                      '${anchorDisplayName(l10n, byId[c['anchor_point_b_id']])}',
-                  subtitle: l10n.adminHealthConnectionSubtitle(
-                    anchorDistance(
-                      byId[c['anchor_point_a_id']]!,
-                      byId[c['anchor_point_b_id']]!,
-                    )!.toStringAsFixed(0),
+        tile(
+          l10n.adminHealthLongConnections(long.length),
+          Icons.straighten,
+          () {
+            final byId = {for (final p in _anchorPoints) p['id']: p};
+            _showReviewList(
+              title: l10n.adminHealthLongConnections(long.length),
+              hint: l10n.adminHealthLongConnectionsHint,
+              items: [
+                for (final c in long)
+                  (
+                    title:
+                        '${_pointLabel(l10n, byId[c['anchor_point_a_id']])}'
+                        ' ↔ '
+                        '${_pointLabel(l10n, byId[c['anchor_point_b_id']])}',
+                    subtitle: l10n.adminHealthConnectionSubtitle(
+                      anchorDistance(
+                        byId[c['anchor_point_a_id']]!,
+                        byId[c['anchor_point_b_id']]!,
+                      )!.toStringAsFixed(0),
+                    ),
+                    onTap: () => _deleteConnection(c),
                   ),
-                  onTap: () => _deleteConnection(c),
-                ),
-            ],
-          );
-        }),
+              ],
+            );
+          },
+        ),
       if (floorChange.isNotEmpty)
         tile(l10n.adminHealthFloorChange(floorChange.length), Icons.stairs, () {
           final byId = {for (final p in _anchorPoints) p['id']: p};
@@ -2075,9 +2077,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               for (final c in floorChange)
                 (
                   title:
-                      '${anchorDisplayName(l10n, byId[c['anchor_point_a_id']])}'
+                      '${_pointLabel(l10n, byId[c['anchor_point_a_id']])}'
                       ' ↔ '
-                      '${anchorDisplayName(l10n, byId[c['anchor_point_b_id']])}',
+                      '${_pointLabel(l10n, byId[c['anchor_point_b_id']])}',
                   subtitle: l10n.adminHealthConnectionSubtitle(
                     (anchorDistance(
                               byId[c['anchor_point_a_id']]!,
@@ -2092,6 +2094,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           );
         }),
     ];
+  }
+
+  /// A point's name with its building: names don't repeat it.
+  String _pointLabel(AppLocalizations l10n, Map<String, dynamic>? point) {
+    for (final building in _buildings) {
+      if (building['id'] == point?['building_id']) {
+        return anchorLabel(l10n, point, building['name'] as String?);
+      }
+    }
+    return anchorDisplayName(l10n, point);
   }
 
   String _buildingName(String? id) =>

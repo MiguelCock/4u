@@ -5,7 +5,7 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/api_error_messages.dart';
 import '../services/capture_checks.dart';
-import '../services/location_types.dart' show anchorDisplayName;
+import '../services/location_types.dart' show anchorDisplayName, anchorLabel;
 
 /// Dropdown-based fallback/precision flow for creating an anchor-point
 /// connection - mirrors the map-tap flow in `ConnectAnchorPointsScreen` but
@@ -81,8 +81,20 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
         .toList();
   }
 
-  String _label(Map<String, dynamic> point) =>
-      anchorDisplayName(AppLocalizations.of(context)!, point);
+  /// With its building: with "all buildings" a list can hold several
+  /// "Entrada sur".
+  String _label(Map<String, dynamic> point) {
+    for (final building in _buildingsAll) {
+      if (building['id'] == point['building_id']) {
+        return anchorLabel(
+          AppLocalizations.of(context)!,
+          point,
+          building['name'] as String?,
+        );
+      }
+    }
+    return anchorDisplayName(AppLocalizations.of(context)!, point);
+  }
 
   Future<void> _submit() async {
     final l10n = AppLocalizations.of(context)!;

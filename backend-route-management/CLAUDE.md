@@ -52,6 +52,10 @@ The app picks the start as the verified point nearest the user (0.5.3 and older:
 
 Before Dijkstra, `find_or_create_route` drops every connection whose two points are more than `MAX_CONNECTION_METERS` (30 m, the same limit `backend-map-management` enforces on new ones) apart in a straight line (`_short_connections`, positions from `_load_points`, read with `select_all` on every request). The older ones at Icesi (43-93 m) were every leg of every route walked on 2026-11-03: "go straight" into walls and no turns. A saved route over one fails `_route_still_walkable` too, so it's recomputed or 404s. A connection whose points have no position is kept.
 
+## A whole building as the destination
+
+`POST /routes/find_or_create` takes `end_building_id` instead of `end_anchor_id` (exactly one, else 422). `_building_targets`: the building's verified, connected entrances (type 1), else its points on the lowest floor among those. `_building_end` picks the closest by walking (`nearest_of`), using `_reachable_start` when the start has no path, and then the usual saved-route code runs for that `(start, end)` pair. A start that's one of the targets gets a 400; none at all a 404 with the same "The destination isn't…" detail as a point.
+
 ## Floors
 
 Each floor change adds to a connection's weight (`FLOOR_CHANGE_METERS`: elevator 10, ramp 15, stairs 30 m per floor; an elevator at either end counts as the elevator), in `_routable_connections`, on copies of the rows. Before this it cost about 0 m, so a route could climb a floor and come back. A floor change with no vertical point at either end is dropped, like a long connection. Because a saved route is returned while it's still walkable, routes saved before this keep their path until a connection on them goes.

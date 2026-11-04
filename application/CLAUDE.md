@@ -214,6 +214,10 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 
 - `lib/services/location_service.dart` — singleton wrapping `Geolocator`; exposes a broadcast `Stream<Position>` (`positionStream`) and a cached `lastPosition`. Widgets subscribe to the stream independently rather than receiving position via a shared parent widget — follow this pattern (thread through `LocationService`, not widget constructors) for any new widget that needs live position.
 
+## Voice destinations
+
+`_handleSpoken` tries, in order: a place whose whole name (alone or with its building's) is the phrase (`exactPlaces`); a building the phrase names and only names (`matchBuildings`, by `name`, then `code`), sent as `end_building_id` so the server picks the door; then `matchDestinations`, where "edificio"/"bloque" alone no longer count as naming a place. A word after one of those, last in the phrase, is read as a letter (`_spokenTokens`: "se" is C, "de" is D; B and V are one). Buildings and places are limited to the start's campus, and same-named places are offered nearest first (`nearestFirst`). `NavigationScreen.destinationName` is what's said aloud; a resumed trip falls back to the end point's own name.
+
 ## Floors
 
 - **Maps.** `lib/services/floor_view.dart` (pure) decides what shows; `lib/widgets/floor_selector.dart` is the elevator control and `floorPointMarker`. `connect_anchor_points_screen.dart`, `anchor_points_map.dart` and `location_picker_screen.dart` show the selected floor in their own colors, ±1 floor as ▲/▼ (tappable, the selected floor winning a tap), and lines only with an end on the selected floor (dashed across floors). `session_tracking_screen.dart` and `SimpleMapWidget` show a route, not points: its stretches away from the floor are faint.

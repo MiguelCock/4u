@@ -84,6 +84,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   String _heard = '';
   String? _voiceStatus;
   Map<String, String> _buildingNames = {};
+  List<Map<String, dynamic>> _buildings = [];
+
+  /// Known once the universities have loaded (see _fetchVerifiedAnchors).
+  Set<String>? _activeBuildingIds;
 
   @override
   void initState() {
@@ -129,12 +133,68 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     await _tts.speak(text);
   }
 
-  List<Map<String, dynamic>> get _destinationCandidates => _verifiedAnchors
-      .where((a) => isDestinationAnchor(a) && a['id'] != _start?['id'])
-      .toList();
+  /// Buildings a user can be sent to: active, on the campus they're on. A
+  /// route can't cross campuses, and every campus has an "Edificio A".
+  List<Map<String, dynamic>> get _campusBuildings {
+    final active = _activeBuildingIds;
+    final startBuilding = _start?['building_id'];
+    String? campus;
+    for (final building in _buildings) {
+      if (building['id'] == startBuilding) {
+        campus = building['place_id'] as String?;
+      }
+    }
+    return _buildings
+        .where(
+          (b) =>
+              (active?.contains(b['id']) ?? b['is_active'] != false) &&
+              (campus == null || b['place_id'] == campus),
+        )
+        .toList();
+  }
+
+  List<Map<String, dynamic>> get _destinationCandidates {
+    final campus = {for (final b in _campusBuildings) b['id']};
+    return _verifiedAnchors
+        .where(
+          (a) =>
+              isDestinationAnchor(a) &&
+              a['id'] != _start?['id'] &&
+              (campus.isEmpty || campus.contains(a['building_id'])),
+        )
+        .toList();
+  }
+
+  /// A building as a destination, in the shape of a point: the server picks
+  /// the door when the route is requested.
+  Map<String, dynamic> _wholeBuilding(Map<String, dynamic> building) => {
+    'id': 'building:${building['id']}',
+    'building_id': building['id'],
+    'location_description': building['name'],
+    'latitude': building['latitude'],
+    'longitude': building['longitude'],
+    'whole_building': true,
+  };
+
+  /// [_destinationLabel] to be read aloud.
+  String _spokenLabel(Map<String, dynamic> anchor) =>
+      _destinationLabel(anchor).replaceAll(' · ', ', ');
+
+  /// Meters from the user, for the nearest-first order of same-named places.
+  double _distanceFromUser(Map<String, dynamic> anchor) {
+    final position = _locationService.lastPosition;
+    final lat = (anchor['latitude'] as num?)?.toDouble();
+    final lng = (anchor['longitude'] as num?)?.toDouble();
+    if (position == null || lat == null || lng == null) return double.infinity;
+    return haversineMeters(
+      LatLng(position.latitude, position.longitude),
+      LatLng(lat, lng),
+    );
+  }
 
   String _destinationLabel(Map<String, dynamic> anchor) {
     final name = anchor['location_description'] as String? ?? '';
+    if (anchor['whole_building'] == true) return name;
     final building = _buildingNames[anchor['building_id']];
     final floor = (anchor['floor'] as int?) ?? 0;
     return [
@@ -173,9 +233,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     if (_verifiedAnchors.isEmpty) await _loadAnchors();
     if (_buildingNames.isEmpty) {
       try {
-        final buildings = await _mapApi.get('/buildings') as List;
+        _buildings = (await _mapApi.get('/buildings') as List)
+            .cast<Map<String, dynamic>>();
         _buildingNames = {
-          for (final b in buildings.cast<Map<String, dynamic>>())
+          for (final b in _buildings)
             b['id'] as String: b['name'] as String? ?? '',
         };
       } on ApiException {
@@ -234,24 +295,54 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       await _say(l10n.homeVoiceNothingHeard);
       return;
     }
-    final matches = matchDestinations(
-      heard,
-      _destinationCandidates,
-      buildingNames: _buildingNames,
-    );
-    final winner = clearWinner(matches);
-    if (winner != null) {
-      _chooseVoiceDestination(winner.anchor);
+    final candidates = _destinationCandidates;
+    // A place called exactly that first: there may be a "Cafetería central"
+    // both as a place and as a building.
+    final exact = exactPlaces(heard, candidates, buildingNames: _buildingNames);
+    if (exact.isNotEmpty) {
+      await _chooseFrom(
+        nearestFirst([
+          for (final place in exact) DestinationMatch(place, 1),
+        ], _distanceFromUser).map((m) => m.anchor).toList(),
+      );
       return;
     }
+    // Then a building: "Edificio C" means its closest entrance. Saying more
+    // than the building ("baño edificio C") is a place in it, below.
+    final buildings = matchBuildings(heard, _campusBuildings);
+    if (buildings.isNotEmpty) {
+      final winner = clearWinner(buildings);
+      await _chooseFrom(
+        winner != null
+            ? [_wholeBuilding(winner.anchor)]
+            : [for (final match in buildings) _wholeBuilding(match.anchor)],
+      );
+      return;
+    }
+    final matches = nearestFirst(
+      matchDestinations(heard, candidates, buildingNames: _buildingNames),
+      _distanceFromUser,
+    );
     if (matches.isEmpty) {
       await _say(l10n.homeVoiceNoMatch(heard));
       return;
     }
-    final options = matches.take(3).map((m) => m.anchor).toList();
-    _say(
-      l10n.homeVoiceSeveralMatches(options.map(_destinationLabel).join(', ')),
+    final winner = clearWinner(matches);
+    await _chooseFrom(
+      winner != null ? [winner.anchor] : matches.map((m) => m.anchor).toList(),
     );
+  }
+
+  /// One option goes straight to "Go to X?", several to a choice of the first
+  /// few.
+  Future<void> _chooseFrom(List<Map<String, dynamic>> found) async {
+    if (found.length == 1) {
+      _chooseVoiceDestination(found.single);
+      return;
+    }
+    final l10n = AppLocalizations.of(context)!;
+    final options = found.take(3).toList();
+    _say(l10n.homeVoiceSeveralMatches(options.map(_spokenLabel).join('; ')));
     final picked = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       builder: (context) => SafeArea(
@@ -292,7 +383,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     });
     final l10n = AppLocalizations.of(context)!;
     final title = l10n.homeGoToTitle(_destinationLabel(anchor));
-    if (!MediaQuery.of(context).accessibleNavigation) _say(title);
+    if (!MediaQuery.of(context).accessibleNavigation) {
+      _say(l10n.homeGoToTitle(_spokenLabel(anchor)));
+    }
     final start = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -338,6 +431,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     ]);
     final connected = await fetchConnectedAnchorIds(_mapApi);
     final buildings = (results[1] as List).cast<Map<String, dynamic>>();
+    _buildings = buildings;
     _buildingNames = {
       for (final b in buildings) b['id'] as String: b['name'] as String? ?? '',
     };
@@ -345,6 +439,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       (results[0] as List).cast<Map<String, dynamic>>(),
       buildings,
     );
+    _activeBuildingIds = active;
     return (results[2] as List)
         .cast<Map<String, dynamic>>()
         .where(
@@ -377,7 +472,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   String _startLabel(AppLocalizations l10n, Map<String, dynamic> start) {
     final description = (start['location_description'] as String? ?? '').trim();
     if (description.isNotEmpty) {
-      return l10n.homeStartNearestSubtitle(description);
+      return l10n.homeStartNearestSubtitle(_destinationLabel(start));
     }
     final position = _locationService.lastPosition;
     final lat = (start['latitude'] as num?)?.toDouble();
@@ -925,7 +1020,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         });
         return;
       }
-      if (start['id'] == end['id']) {
+      if (start['id'] == end['id'] ||
+          (end['whole_building'] == true &&
+              start['building_id'] == end['building_id'])) {
         setState(() {
           _error = AppLocalizations.of(context)!.homeErrorAlreadyAtDestination(
             end['location_description'] as String? ?? end['id'] as String,
@@ -939,13 +1036,17 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       // connection.
       final route = await _routeApi.post('/routes/find_or_create', {
         'start_anchor_id': start['id'],
-        'end_anchor_id': end['id'],
+        if (end['whole_building'] == true)
+          'end_building_id': end['building_id']
+        else
+          'end_anchor_id': end['id'],
       }, retry: true);
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => NavigationScreen(
             route: route as Map<String, dynamic>,
+            destinationName: _spokenLabel(end),
             adminPreview: widget.adminPreview,
           ),
         ),

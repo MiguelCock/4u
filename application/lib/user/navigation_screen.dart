@@ -177,6 +177,11 @@ class NavigationScreen extends StatefulWidget {
   /// new one.
   final String? resumeSessionId;
 
+  /// What to call the destination aloud: a building ("Edificio C"), when the
+  /// route ends at whichever of its doors is closest, or a point with its
+  /// building ("Entrada sur, Bloque 20"). Null: the end point's own name.
+  final String? destinationName;
+
   /// The admin's "Test as user" flow: shows the "Wrong instruction" button
   /// that records the last cue for tuning (backend guidance_reports).
   final bool adminPreview;
@@ -185,6 +190,7 @@ class NavigationScreen extends StatefulWidget {
     super.key,
     required this.route,
     this.resumeSessionId,
+    this.destinationName,
     this.adminPreview = false,
   });
 
@@ -650,6 +656,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   }
 
   String _destinationName(AppLocalizations l10n) =>
+      widget.destinationName ??
       (_waypoints.isNotEmpty ? _waypoints.last.name : null) ??
       l10n.navYourDestination;
 

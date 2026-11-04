@@ -33,6 +33,10 @@ Two ways:
 - **By voice:** tap **Say where you want to go**. The phone vibrates when it starts listening. Say the place, for example "library" or "cafeteria". It vibrates again when it's done.
 - **From a list:** tap **Choose a destination** and pick the university, the building and the place.
 
+- **A building:** say "Edificio C" and the app takes you to its closest entrance. Say "Restroom Edificio C" for a place inside it.
+
+If several places share a name, you can also say the building ("Entrada sur Bloque 20"). Otherwise it offers the nearest ones.
+
 Then **Go to …?** appears. Tap **Start route** to begin, or **Change destination** to choose another. The start point is the one nearest you by GPS.
 
 If you hear that there's no route to that destination yet, the path still has to be connected on the map; tell an administrator.

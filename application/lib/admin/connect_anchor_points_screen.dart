@@ -10,7 +10,7 @@ import '../services/map_tile_config.dart';
 import '../services/api_error_messages.dart';
 import '../services/capture_checks.dart';
 import '../services/floor_view.dart';
-import '../services/location_types.dart' show anchorDisplayName;
+import '../services/location_types.dart' show anchorLabel;
 import '../services/map_tap.dart';
 import '../widgets/floor_selector.dart';
 
@@ -459,8 +459,23 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
   Map<String, dynamic> _pointById(String id) =>
       _anchorPoints.firstWhere((p) => p['id'] == id, orElse: () => {'id': id});
 
-  String _describePoint(String id) =>
-      anchorDisplayName(AppLocalizations.of(context)!, _pointById(id));
+  String? _buildingNameOf(Map<String, dynamic> point) {
+    for (final building in _buildings) {
+      if (building['id'] == point['building_id']) {
+        return building['name'] as String?;
+      }
+    }
+    return null;
+  }
+
+  String _describePoint(String id) {
+    final point = _pointById(id);
+    return anchorLabel(
+      AppLocalizations.of(context)!,
+      point,
+      _buildingNameOf(point),
+    );
+  }
 
   List<Polyline> _connectionLines() {
     final byId = {for (final p in _anchorPoints) p['id'] as String: p};
