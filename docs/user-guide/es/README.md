@@ -45,6 +45,8 @@ Si oyes que todavía no hay una ruta a ese destino, es que falta conectar el cam
 
 ## 5. Durante el recorrido
 
+El teléfono mantiene la pantalla encendida durante el recorrido. Si no avanzas o estás en un espacio abierto, la aplicación te indica hacia dónde ir usando la brújula; si esa indicación no coincide con el camino, avisa a quien te acompaña o termina la ruta.
+
 **Cómo sostener el teléfono:** vertical, frente al pecho, con la cámara trasera mirando hacia adelante. Así la aplicación puede reconocer el lugar. No tapes la cámara: si queda tapada, la aplicación te lo dice.
 
 **Lo que vas a escuchar:**

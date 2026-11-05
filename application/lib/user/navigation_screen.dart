@@ -12,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../l10n/app_localizations.dart';
 import '../location.dart';
@@ -88,6 +89,18 @@ const Duration _kBarometerProbe = Duration(seconds: 3);
 /// route cost.
 const int _kElevatorType = 3;
 const int _kRampType = 11;
+const int _kHallwayType = 10;
+
+/// This much nearer the next stop counts as progress (see isStalled).
+const double _kStallProgressMeters = 3;
+
+/// With no progress, "keep walking" at most this often.
+const Duration _kQuietBeforeKeepWalking = Duration(seconds: 30);
+
+/// A GPS fix this old advances nothing; this old, it's announced and the
+/// stream restarted. A trip ran on a 4-minute-old fix (Icesi, 2026-11-04).
+const Duration _kStaleFix = Duration(seconds: 15);
+const Duration _kStaleFixAnnounce = Duration(seconds: 25);
 
 /// No progress cue for this long after the screen opens unless something
 /// else was said: "Preparing the route", then "One moment" every
@@ -198,7 +211,8 @@ class NavigationScreen extends StatefulWidget {
   State<NavigationScreen> createState() => _NavigationScreenState();
 }
 
-class _NavigationScreenState extends State<NavigationScreen> {
+class _NavigationScreenState extends State<NavigationScreen>
+    with WidgetsBindingObserver {
   final _navigationApi = NavigationManagementApi();
   final _positioningApi = PositioningApi();
   final _locationService = LocationService();
@@ -227,6 +241,19 @@ class _NavigationScreenState extends State<NavigationScreen> {
   int _currentFloor = 0;
   int _startFloor = 0;
   int? _startHazard;
+  int? _startTypeId;
+
+  /// Real progress toward the next stop (see isStalled): the nearest it has
+  /// been, and when.
+  double? _bestMeters;
+  DateTime? _lastProgressAt;
+
+  final _recentFixes = RecentFixes();
+
+  /// When the app was paused (the screen went off, say), and whether the
+  /// current GPS silence was already announced.
+  DateTime? _pausedAt;
+  bool _gpsStaleAnnounced = false;
   List<int> _plannedFloors = const [];
 
   /// The floor change being waited for, and since when. Guidance is paused
@@ -380,8 +407,21 @@ class _NavigationScreenState extends State<NavigationScreen> {
           (e) => _tracker.gyro(e.x, e.y, e.z, DateTime.now()),
           onError: _sensorError,
         );
+    WidgetsBinding.instance.addObserver(this);
+    // A screen that turns off stops the camera, GPS and timers without a word.
+    WakelockPlus.enable().catchError((_) {});
     _positionSub = _locationService.positionStream.listen((position) {
-      _tracker.gpsCourse(position.heading, position.speed, position.timestamp);
+      _recentFixes.add(
+        LatLng(position.latitude, position.longitude),
+        position.timestamp,
+      );
+      _tracker.gpsCourse(
+        position.heading,
+        position.speed,
+        position.timestamp,
+        accuracy: position.accuracy,
+        movedMeters: _recentFixes.movedMeters,
+      );
       // The corrected marker follows the live fix (see _liveCorrected).
       if (_correctionOffset != null && mounted) setState(() {});
     });
@@ -533,6 +573,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       return null;
     }
 
+    final startType = anchors.first?['location_type_id'] as int?;
     final points = <LatLng>[];
     final names = <String?>[];
     final hazards = <int?>[];
@@ -613,6 +654,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
           _startFloor = floors.first;
           _currentFloor = floors.first;
           _startHazard = hazards.first;
+          _startTypeId = startType;
         }
         _waypoints = waypoints;
         _checkpoints = checkpoints;
@@ -768,10 +810,21 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
     final here = _currentPosition();
     if (here == null) return;
-    if (_checkProximity(here)) return;
-    _warnTurnAhead(here);
+    final fix = _locationService.lastPosition;
+    final fixAge = fix == null
+        ? Duration.zero
+        : DateTime.now().difference(fix.timestamp);
+    if (fixAge >= _kStaleFix) {
+      // The position is old news: nothing can be reached on its strength.
+      _sayGpsStale(fixAge);
+    } else {
+      _gpsStaleAnnounced = false;
+      if (_checkProximity(here)) return;
+      _warnTurnAhead(here);
+    }
 
     if (_needsStartCue) _speakStartCue(here);
+    _checkStall(here);
 
     final heading = _currentHeading();
     if (heading == null) return;
@@ -831,6 +884,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
       _guidance.reset(now: DateTime.now());
       return;
     }
+    // A hallway leads the way; a plaza doesn't, and "walk forward" there left
+    // people standing at the start (Icesi, 2026-11-05).
+    if (_startTypeId != _kHallwayType && _speakCompassDirection(here)) {
+      _guidance.reset(now: DateTime.now(), walking: true);
+      return;
+    }
     _speak(
       AppLocalizations.of(context)!.navWalkForward(
         roundSteps(haversineMeters(here, _waypoints[_nextWaypointIndex].point)),
@@ -838,6 +897,112 @@ class _NavigationScreenState extends State<NavigationScreen> {
       cueType: 'start_walking',
     );
     _guidance.reset(now: DateTime.now(), walking: true);
+  }
+
+  /// "Turn left and walk about N steps", from the compass to this stretch's
+  /// own direction (the position is too noisy to aim from). The last resort
+  /// when there's no trusted heading and nothing else says which way: a
+  /// compass can be far off, so it's never used for corners. Returns false
+  /// without a compass reading.
+  bool _speakCompassDirection(LatLng here) {
+    final compass = _heading.value;
+    if (compass == null) return false;
+    final target = _waypoints[_nextWaypointIndex].point;
+    final from = _segmentStart();
+    final bearing = from == null || haversineMeters(from, target) < 1
+        ? bearingDegrees(here, target)
+        : bearingDegrees(from, target);
+    final turn = signedTurn(trueHeading(compass, _declination), bearing);
+    final steps = roundSteps(haversineMeters(here, target));
+    final l10n = AppLocalizations.of(context)!;
+    _pendingEvents.add({
+      'at': DateTime.now().toUtc().toIso8601String(),
+      'type': 'stall',
+      'compass': compass,
+      'bearing': bearing,
+      'turn': turn,
+    });
+    final String text;
+    if (turn.abs() <= TurnGuidance.alignedDegrees) {
+      text = l10n.navContinueStraightSteps(steps);
+    } else {
+      text = switch (TurnCue.from(turn)) {
+        TurnCue(turnAround: true) => l10n.navLegAround(steps),
+        TurnCue(kind: TurnKind.slight, right: true) => l10n.navLegSlightRight(
+          steps,
+        ),
+        TurnCue(kind: TurnKind.slight) => l10n.navLegSlightLeft(steps),
+        TurnCue(right: true) => l10n.navLegRight(steps),
+        TurnCue() => l10n.navLegLeft(steps),
+      };
+    }
+    _speak(text, cueType: 'turn');
+    return true;
+  }
+
+  /// Tracks real progress to the next stop. With none for a while and no
+  /// trusted heading, nothing else would speak: says which way to go by the
+  /// compass, or else to keep walking.
+  void _checkStall(LatLng here) {
+    final now = DateTime.now();
+    final meters = haversineMeters(here, _waypoints[_nextWaypointIndex].point);
+    final best = _bestMeters;
+    if (best == null || meters <= best - _kStallProgressMeters) {
+      _bestMeters = meters;
+      _lastProgressAt = now;
+      return;
+    }
+    if (_reliableHeading() != null ||
+        !isStalled(lastProgressAt: _lastProgressAt, now: now)) {
+      return;
+    }
+    _lastProgressAt = now;
+    if (!_speakCompassDirection(here)) _sayKeepWalking(meters);
+  }
+
+  void _sayKeepWalking(double meters) {
+    _speak(
+      AppLocalizations.of(context)!.navKeepWalking(roundSteps(meters)),
+      cueType: 'stall',
+    );
+  }
+
+  /// GPS has stopped answering: said once, and its stream is started again.
+  void _sayGpsStale(Duration age) {
+    if (_gpsStaleAnnounced || age < _kStaleFixAnnounce) return;
+    _gpsStaleAnnounced = true;
+    _pendingEvents.add({
+      'at': DateTime.now().toUtc().toIso8601String(),
+      'type': 'gps_stale',
+      'age_s': age.inSeconds,
+    });
+    _speak(
+      AppLocalizations.of(context)!.homeSearchingLocation,
+      repeatable: false,
+    );
+    _locationService.restart();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final now = DateTime.now();
+    if (state == AppLifecycleState.paused) {
+      _pausedAt = now;
+      _pendingEvents.add({
+        'at': now.toUtc().toIso8601String(),
+        'type': 'app_paused',
+      });
+    } else if (state == AppLifecycleState.resumed) {
+      final pausedAt = _pausedAt;
+      if (pausedAt == null) return;
+      _pausedAt = null;
+      _pendingEvents.add({
+        'at': now.toUtc().toIso8601String(),
+        'type': 'app_resumed',
+        'gap_s': now.difference(pausedAt).inSeconds,
+      });
+      if (mounted && !_stopped) _repeatLastAnnouncement();
+    }
   }
 
   /// Waypoint progress. Reaching any upcoming waypoint counts, not only
@@ -869,6 +1034,19 @@ class _NavigationScreenState extends State<NavigationScreen> {
       // the corrected position alone let one bad photo match jump the trip
       // forward: raw GPS has to agree too.
       final skips = i > _nextWaypointIndex || i == last;
+      if (i > _nextWaypointIndex &&
+          i < last &&
+          (raw == null ||
+              !maySkipTo(
+                metersToNext: haversineMeters(
+                  raw,
+                  _waypoints[_nextWaypointIndex].point,
+                ),
+                metersToLater: haversineMeters(raw, point),
+                maxMeters: _kProximityThresholdMeters,
+              ))) {
+        continue;
+      }
       if (skips &&
           (raw == null ||
               haversineMeters(raw, point) >
@@ -1103,6 +1281,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
   /// Starts counting progress toward the next waypoint afresh, from
   /// [meters] away (null: the next periodic update speaks regardless).
   void _resetProgress(double? meters) {
+    _bestMeters = null;
+    _lastProgressAt = null;
     _progressMeters = meters;
     _progressSteps = meters == null ? null : roundSteps(meters);
   }
@@ -1262,7 +1442,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
     final l10n = AppLocalizations.of(context)!;
     switch (progressSince(lastMeters: _progressMeters, meters: distance)) {
       case Progress.same:
-        // Not getting closer: repeating "N steps to go" doesn't help.
+        // Not getting closer: "N steps to go" as if it were progress doesn't
+        // help, but neither did the silence (Icesi, 2026-11-05).
+        final spoken = _lastSpokenAt;
+        if (spoken == null ||
+            DateTime.now().difference(spoken) >= _kQuietBeforeKeepWalking) {
+          _sayKeepWalking(distance);
+        }
         return;
       case Progress.closer:
         final steps = roundSteps(distance);
@@ -1791,6 +1977,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
   @override
   void dispose() {
     _stopped = true;
+    WidgetsBinding.instance.removeObserver(this);
+    WakelockPlus.disable().catchError((_) {});
     _pendingTickTimer?.cancel();
     _periodicAnnouncementTimer?.cancel();
     _guidanceTimer?.cancel();

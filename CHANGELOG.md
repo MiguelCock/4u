@@ -6,6 +6,23 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-11-05
+
+**For testers:** install `app-release.apk` from this release. Version 0.5.5 keeps working for now (it shows a "new version available" notice), and **0.5.4 no longer works**: anyone still on it sees "Update required". This release fixes the app making people spin near buildings, and getting stuck at the start in plazas. When it gives a direction in the open it uses the phone's compass, so please tell us if that direction is wrong.
+
+### Added
+- **Illustrated user guide for admins in the web app.** A **User guide** entry in the web menu opens every page explained in its own tab, in Spanish or English: the whole workflow, what each button does, and numbered screenshots. A **?** button in the top bar opens the section for the page you're on. It's only in the web app, not on the phone.
+
+### Fixed
+- **The app made people spin** ("turn right, turn left…"), as seen in Edificio C. Weak GPS near buildings claimed a walk in a jumping direction, and the app believed it. Only real movement with good GPS now sets the user's direction.
+- **Stuck at the start in plazas**, like Plaza Samán. "Walk forward" means nothing in an open space, and nothing else was said. Starting outside a hallway, or with no progress for 20 s, the app now gives a direction by the compass, and it's never silent for long.
+- **Guidance stopped when the screen turned off.** The screen now stays on during a trip.
+- **A photo match could skip a stop** the user was standing next to. Guidance only jumps ahead when GPS is really nearer the later stop.
+- **A GPS that stopped answering** no longer moves the trip along; the app says it's looking for the location and restarts it.
+- **The Anchor points map had no background** in the web app: the map's tiles were cancelled as soon as it framed the points.
+- **Pick on map no longer opens in the ocean** in the web app, which has no GPS, when creating a point or a building. It opens at the chosen building or university.
+- While moving a point on the map, the floor buttons were hidden behind the banner.
+
 ## [0.5.5] - 2026-11-04
 
 **For testers:** install `app-release.apk` from this release. Version 0.5.4 keeps working for now (it shows a "new version available" notice), and **0.5.3 no longer works**: anyone still on it sees "Update required". Going between floors is new and being tested: the app listens for the floor change with the phone's barometer, and its settings are first guesses. **Admins:** mark each building door with the type **entrance**, and connect stairs and elevators with a point on each floor.
@@ -243,7 +260,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.5...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.6...develop
+[0.5.6]: https://github.com/MiguelCock/4u/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/MiguelCock/4u/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/MiguelCock/4u/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/MiguelCock/4u/compare/v0.5.2...v0.5.3

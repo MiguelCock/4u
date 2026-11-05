@@ -85,6 +85,55 @@ void main() {
     expect(t.value, closeTo(0, 1e-9));
   });
 
+  group('Icesi, 2026-11-05', () {
+    HeadingTracker facingNorth() {
+      final t = HeadingTracker();
+      t.accelerometer(0, 9.81, 0);
+      t.compass(0, _at(0));
+      t.gyro(0, 0, 0, _at(0));
+      t.gyro(0, 0, 0, _at(0.5));
+      return t;
+    }
+
+    test('bad GPS claiming a walk does not set the direction', () {
+      // Trip b73b686d: ±23 m and 2 m/s, a steady-looking course, little real
+      // movement. The heading stayed trusted and the user spun round.
+      final t = facingNorth();
+      for (var s = 1; s <= 10; s++) {
+        t.gpsCourse(90, 2.1, _at(s.toDouble()), accuracy: 23, movedMeters: 1.5);
+      }
+      expect(t.value, closeTo(0, 1e-9));
+      expect(t.reliable(_at(10)), isFalse);
+    });
+
+    test('good accuracy without moving does not either', () {
+      final t = facingNorth();
+      for (var s = 1; s <= 10; s++) {
+        t.gpsCourse(90, 1.5, _at(s.toDouble()), accuracy: 9, movedMeters: 1);
+      }
+      expect(t.reliable(_at(10)), isFalse);
+    });
+
+    test('real walking still does', () {
+      // Trip 72294926: ±9 m, about 5 m walked in 5 s.
+      final t = facingNorth();
+      for (var s = 1; s <= 10; s++) {
+        t.gpsCourse(90, 1.1, _at(s.toDouble()), accuracy: 9, movedMeters: 5);
+      }
+      expect(t.reliable(_at(10)), isTrue);
+      expect(signedTurn(t.value!, 90).abs(), lessThan(40));
+    });
+
+    test('a walking anchor stops counting after 2 minutes', () {
+      final t = facingNorth();
+      for (var s = 1; s <= 4; s++) {
+        t.gpsCourse(90, 1.1, _at(s.toDouble()), accuracy: 9, movedMeters: 5);
+      }
+      expect(t.reliable(_at(120)), isTrue);
+      expect(t.reliable(_at(125)), isFalse);
+    });
+  });
+
   test('wraps around north', () {
     final t = HeadingTracker();
     t.accelerometer(0, 9.81, 0);

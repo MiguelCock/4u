@@ -1,325 +1,619 @@
-# Guía del administrador
+# Guía de uso para administradores
 
-Esta guía es para los administradores que usan la aplicación para agregar y gestionar los datos que hacen funcionar el sistema de navegación: lugares (places), edificios (buildings), puntos de anclaje (anchor points) y las conexiones entre ellos. Explica qué hacer, en qué orden, y qué significa realmente cada campo de cada pantalla — no solo si es obligatorio u opcional.
+Esta guía explica cómo construir y mantener el mapa con el que Eyes4U guía a las personas con discapacidad visual: cada pantalla de la aplicación web, para qué sirve cada botón y el trabajo completo, de principio a fin.
 
-> Esta guía describe la aplicación tal como existe hoy. La aplicación está en español e inglés (sigue el idioma del teléfono, o el elegido en Ajustes). Los nombres de campos de abajo son las etiquetas en inglés; en español las mismas pantallas muestran su traducción. Todo esto funciona en la aplicación del teléfono, y casi todo también en la [aplicación web](#6c-la-aplicación-web).
+Las imágenes son de una **universidad de ejemplo** con datos inventados. Los números rojos de cada imagen corresponden a la tabla que tiene debajo.
+
+<a id="getting-started"></a>
 
 ## 1. Primeros pasos
 
-Se accede al área de administración automáticamente al iniciar sesión con una cuenta de administrador — no hay un inicio de sesión separado para administradores; la aplicación te dirige a la vista de administración según el rol de tu cuenta.
+### Entrar
 
-La navegación vive en un menú lateral (drawer), que se abre con el ícono de hamburguesa (☰) en la esquina superior izquierda de la pantalla. En una pantalla ancha, como la aplicación web en un computador, queda abierto a la izquierda. El encabezado del menú muestra "Admin" y tu correo electrónico de la sesión iniciada, y debajo, cinco secciones:
+No hay un inicio de sesión aparte para administradores: la aplicación te lleva a esta vista según el rol de tu cuenta. Una cuenta que no es de administrador no puede usar la web, y se le indica usar la aplicación del teléfono.
 
-- **Universidades** (ícono de bandera)
-- **Edificios** (ícono de edificio)
-- **Puntos de anclaje** (ícono de pin)
-- **Conexiones** (ícono de línea)
-- **Usuarios** (ícono de personas), ver [§6d](#6d-usuarios)
+![Pantalla de inicio de sesión](../images/es/login.webp)
 
-Cuando hay errores de mapa que afectan a los usuarios, el menú muestra avisos naranjas; tocar cada uno abre lo que hay que arreglar:
-- **N puntos verificados sin conexión** — abre la lista de puntos filtrada a esos.
-- **N puntos con nombre que los usuarios no pueden elegir** — puntos con nombre de un tipo intermedio; toca uno para cambiarle el tipo.
-- **N conexiones de más de 30 m** — toca una para borrarla, y vuelve a conectar ese camino con puntos intermedios.
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Correo electrónico** | El correo de tu cuenta. |
+| 2 | **Contraseña** | Tu contraseña. |
+| 3 | **Iniciar sesión** | Entra a la aplicación. |
+| 4 | **¿No tienes una cuenta? Regístrate** | Crea una cuenta nueva, que empieza como usuario. Otro administrador debe convertirla en administradora ([Usuarios](#users)). |
 
-Debajo están **Sesiones** y **Comentarios** ([§6b](#6b-probar-una-ruta-y-revisarla)), **Reindexar puntos verificados** ([§5.3](#53-revisar-y-verificar)) y **Test as user** (solo en el teléfono).
+### El menú y la barra superior
 
-Toca una sección para cambiar a ella; el menú se cierra automáticamente. El título en la parte superior de la pantalla siempre indica en qué sección te encuentras. La esquina superior derecha siempre tiene un ícono de actualizar (recarga todo desde el servidor), uno de ajustes (idioma, alto contraste, tamaño del texto, voz) y uno de cerrar sesión (te desconecta de inmediato, sin confirmación).
+En una ventana ancha, el menú queda abierto a la izquierda. En una ventana angosta se abre con el ícono ☰.
 
-En esta guía, "lugar" (place) y "universidad" son lo mismo: la aplicación llama *universidades* a los lugares.
+![Menú lateral y barra superior](../images/es/home-menu.webp)
 
-## 2. Orden recomendado de trabajo
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Guía de uso** | Abre esta guía en otra pestaña, para leerla junto a la aplicación. |
+| 2 | **Universidades** | Los campus. Ver [Universidades](#universities). |
+| 3 | **Edificios** | Los edificios de cada campus. Ver [Edificios](#buildings). |
+| 4 | **Puntos de referencia** | Los lugares que la aplicación aprende a reconocer. Ver [Puntos de referencia](#anchor-points). |
+| 5 | **Conexiones** | Por dónde se puede caminar entre puntos. Ver [Conexiones](#connections). |
+| 6 | **Usuarios** | Las cuentas. Ver [Usuarios](#users). |
+| 7 | **Sesiones** | Los viajes hechos con la aplicación. Ver [Sesiones](#sessions). |
+| 8 | **Comentarios** | Lo que escribieron los usuarios al terminar un viaje. Ver [Comentarios](#feedback). |
+| 9 | **Reindexar puntos verificados** | Repara la búsqueda por fotos. En rojo, cuántas fotos no se pueden buscar. Ver [Reindexar](#reindex). |
+| 10 | **N puntos verificados sin conexión** | Aviso: nadie puede llegar a esos puntos. Abre la lista filtrada. |
+| 11 | **N puntos con nombre que los usuarios no pueden elegir** | Aviso: un destino guardado con un tipo intermedio. |
+| 12 | **N conexiones de más de 30 m** | Aviso: las rutas no las usan. |
+| 13 | **N conexiones que cambian de piso sin escaleras** | Aviso: las rutas no las usan. |
+| 14 | **Ayuda de esta página** (?) | Abre esta guía en la sección de la página en la que estás. |
+| 15 | **Actualizar** | Vuelve a cargar los datos del servidor. |
+| 16 | **Configuración** | Idioma, tamaño del texto y más. Ver [Configuración](#settings). |
+| 17 | **Cerrar sesión** | Te desconecta de inmediato, sin preguntar. |
 
-Las cuatro secciones no son independientes — cada una se construye sobre la anterior:
+Los avisos naranjas (10 a 13) solo aparecen si hay algo que arreglar. Ver [Avisos del menú](#notices).
 
-1. **Place (lugar)** — el campus o sede. Todo lo demás pertenece a uno.
-2. **Building (edificio)** — un edificio físico dentro de un lugar. No se puede crear un edificio hasta que exista su lugar.
-3. **Anchor point (punto de anclaje)** — un punto físico específico dentro de (o justo afuera de) un edificio. No se puede crear uno hasta que exista su edificio.
-4. **Fotos** — todo punto de anclaje necesita al menos una foto, idealmente entre 4 y 8 tomadas en direcciones distintas, antes de que sea útil.
-5. **Verificación** — después de revisar las fotos de un punto de anclaje, se cambia su estado (Status) a Verified. Este es el paso que realmente lo hace utilizable por la aplicación — ver la explicación en [5.3](#53-revisar-y-verificar).
-6. **Connections (conexiones)** (necesarias para las rutas) — una vez que tienes dos o más puntos de anclaje verificados, marca entre qué pares se puede caminar directamente. Las rutas solo se calculan a lo largo de conexiones, así que un destino sin conexiones no se puede alcanzar.
+<a id="workflow"></a>
 
-**Marca primero los lugares importantes y luego rellena entre ellos.** Empieza por los lugares a los que la gente realmente quiere ir: entradas, salones, oficinas, baños, la cafetería, el auditorio. Dale a cada uno una descripción clara, porque es el nombre que los usuarios eligen y escuchan. Después agrega puntos *intermedios* (pasillos, intersecciones, escaleras, rampas) donde hagan falta para unir esos lugares con conexiones caminables. Los puntos intermedios no necesitan descripción y nunca se ofrecen a los usuarios como destino.
+## 2. El trabajo completo, de principio a fin
 
-Si intentas saltarte un paso (por ejemplo, agregar un edificio antes de que exista su lugar), el menú desplegable correspondiente simplemente estará vacío, con un mensaje indicando qué agregar primero.
+Cada paso se construye sobre el anterior. Si te saltas uno, el menú desplegable del siguiente queda vacío y te dice qué agregar primero.
 
-## 3. Places (lugares)
+1. **Crea la [universidad](#universities)**, una por campus.
+2. **Crea sus [edificios](#buildings)**, con cuántos pisos tiene cada uno.
+3. **Crea los [puntos de referencia](#point-form).** Primero los lugares a los que la gente quiere ir (entradas, salones, baños, la cafetería), con un nombre claro. Luego los puntos intermedios (pasillos, intersecciones, escaleras), cada 6 a 8 m a lo largo de los caminos.
+4. **Agrega [fotos](#photos)** a cada punto, de 4 a 8, una por dirección. Con ellas la aplicación reconoce dónde está el usuario.
+5. **[Verifica](#verify) cada punto** después de revisar sus fotos. Un punto sin verificar no existe para los usuarios.
+6. **[Conecta](#connect-on-map) los puntos** en cadena a lo largo de los caminos. Las rutas solo pasan por conexiones: un punto sin conexiones no aparece para los usuarios.
+7. **Prueba una ruta** con [Probar como usuario](#phone-only) en el teléfono, caminándola.
+8. **Revisa la [sesión](#sessions)** para ver qué tan bien funcionó, y corrige lo que haga falta.
 
-Un **place** es la parte más alta de la jerarquía — típicamente un campus o sede completa. Cada edificio pertenece exactamente a un lugar.
+**Ejemplo.** Para que alguien pueda ir de la puerta de la Biblioteca al baño: crea "Universidad Demo" y el edificio "Biblioteca". Crea "Entrada principal" (tipo Entrada), "Baño mujeres" (tipo Baño) y un punto de tipo Pasillo cada 7 m entre los dos. Sube las fotos de cada uno, verifícalos y conéctalos en orden en **Conectar en el mapa**. Listo: "Baño mujeres" ya se puede elegir como destino.
 
-### Agregar un lugar
+<a id="universities"></a>
 
-1. Desde el menú, ve a **Places**.
-2. Toca el botón **+** (abajo a la derecha).
-3. Completa los campos (ver la tabla abajo).
-4. Toca **Save place**.
+## 3. Universidades
 
-### Editar un lugar
+Una universidad es un campus o sede. Todo lo demás pertenece a una.
 
-Toca el ícono de lápiz (✏️) en la fila del lugar. Nota: el campo **Code** no se puede cambiar aquí — queda fijo una vez creado el lugar (ver por qué en la tabla de campos).
+![Lista de universidades](../images/es/universities.webp)
 
-### Eliminar un lugar
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Buscar universidades** | Filtra la lista mientras escribes. |
+| 2 | Fila de la universidad | Muestra su nombre y cuántos edificios tiene. |
+| 3 | **Editar** (lápiz) | Cambia sus datos. El código no se puede cambiar. |
+| 4 | **Eliminar** (basura) | La elimina con todo lo que contiene. Ver [Eliminar datos](#deleting). |
+| 5 | **Agregar universidad** (+) | Abre el formulario de abajo. |
 
-Toca el ícono de basura en la fila del lugar. Verás exactamente cuántos edificios, puntos de anclaje, fotos y conexiones se eliminarán junto con él, porque eliminar un lugar elimina en cascada todo lo que depende de él — ver [§7](#7-eliminar-datos).
+### Agregar una universidad
 
-### Campos de Place
+![Formulario de universidad](../images/es/university-form.webp)
 
-| Etiqueta en pantalla | ¿Obligatorio? | Qué significa | Ejemplo |
+| # | Campo | Qué significa | Ejemplo |
 |---|---|---|---|
-| **Code** | Obligatorio (solo aparece al crear — no se puede cambiar después) | Un identificador corto y único para el lugar, distinto de su nombre completo — piénsalo como una abreviatura o código de referencia interno. Como otros datos pueden terminar referenciando un lugar, no es posible cambiarlo después. | `CAMPUS` (para un lugar llamado "Main Campus") |
-| **Name** | Obligatorio | El nombre completo y legible del lugar. Es lo que verás en el resto de la aplicación (listas, menús desplegables). | `Main Campus` |
-| **Address (optional)** | Opcional | Una dirección de referencia — no se usa funcionalmente en ninguna otra parte. | `Cra 80 #65-223, Medellín` |
-| **Latitude** / **Longitude** | Obligatorios | Las coordenadas GPS del punto central aproximado del lugar, en grados decimales. Se pueden escribir directamente, o usar **Pick on map** (un botón debajo de los campos) para tocar la ubicación en un mapa en su lugar — útil cuando no se conocen las coordenadas exactas de memoria. | `6.2442`, `-75.5812` |
-| **Active** (solo al editar) | — | Un interruptor para marcar un lugar como inactivo sin eliminarlo (ni todo lo que contiene). Se desactiva para un lugar que ya no está en uso pero cuyo historial se quiere conservar. | — |
+| 1 | **Código** | Identificador corto y único. Obligatorio, y no se puede cambiar después. | `ICESI` |
+| 2 | **Nombre** | El nombre completo que se ve en toda la aplicación. Obligatorio. | `Universidad Icesi` |
+| 3 | **Dirección (opcional)** | Solo de referencia. | `Calle 18 #122-135` |
+| 4 | **Latitud** | Centro aproximado del campus, en grados decimales. Obligatorio. | `3.3417` |
+| 5 | **Longitud** | Lo mismo. Obligatorio. | `-76.5302` |
+| 6 | **Elegir en el mapa** | Llena los dos anteriores tocando un mapa. | |
+| 7 | **Guardar universidad** | Crea la universidad. | |
 
-## 4. Buildings (edificios)
+> **En la web, escribe primero unas coordenadas aproximadas.** La web no usa el GPS, así que sin coordenadas el mapa se abre en el océano, en 0,0. Copia la ubicación desde cualquier mapa en línea y ajústala luego con **Elegir en el mapa**.
 
-Un **building** es un edificio físico dentro de un lugar.
+Al editar aparece también un interruptor para **desactivarla** sin eliminarla: sus edificios y puntos dejan de ofrecerse a los usuarios, y se conserva el historial.
+
+<a id="buildings"></a>
+
+## 4. Edificios
+
+![Lista de edificios](../images/es/buildings.webp)
+
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Buscar edificios** | Filtra la lista mientras escribes. |
+| 2 | Fila del edificio | Muestra su universidad y cuántos puntos tiene. |
+| 3 | **Editar** (lápiz) | Cambia sus datos, incluida la universidad a la que pertenece. El código no se puede cambiar. |
+| 4 | **Eliminar** (basura) | Lo elimina con todo lo que contiene. Ver [Eliminar datos](#deleting). |
+| 5 | **Agregar edificio** (+) | Abre el formulario de abajo. |
 
 ### Agregar un edificio
 
-1. Desde el menú, ve a **Buildings**.
-2. Toca **+**.
-3. Elige el **Place** al que pertenece este edificio (si aún no existen lugares, se te indicará agregar uno primero).
-4. Completa el resto de los campos.
-5. Toca **Save building**.
+![Formulario de edificio](../images/es/building-form.webp)
 
-### Editar un edificio
-
-Toca el ícono de lápiz en la fila del edificio. Igual que con los lugares, **Code** no se puede cambiar después de creado. El menú **Universidad** sí: úsalo para mover un edificio que quedó asignado a la universidad equivocada.
-
-### Eliminar un edificio
-
-Mismo patrón de advertencia en cascada que los lugares — verás cuántos puntos de anclaje, fotos y conexiones se eliminan junto con él.
-
-### Campos de Building
-
-| Etiqueta en pantalla | ¿Obligatorio? | Qué significa | Ejemplo |
+| # | Campo | Qué significa | Ejemplo |
 |---|---|---|---|
-| **Universidad** | Obligatorio | A qué universidad pertenece este edificio. Filtra la lista de edificios que se verá en el resto de la aplicación. Se puede cambiar al editar. | Main Campus |
-| **Code** (solo al crear) | Obligatorio | Misma idea que el código de un lugar — un identificador corto, único e inmutable para este edificio específico. | `B1` |
-| **Name** | Obligatorio | El nombre completo del edificio, mostrado en toda la aplicación. | `Main Building` |
-| **Address (optional)** | Opcional | Dirección de referencia. | — |
-| **Latitude** / **Longitude** | Obligatorios | La posición GPS propia de este edificio — un punto distinto al del lugar, ya que un edificio se ubica en un punto específico dentro del lugar. Se escribe directamente o se usa **Pick on map**. | `6.2445`, `-75.5810` |
-| **Floors** | Por defecto `1` | Cuántos pisos tiene el edificio. Los puntos de anclaje dentro de este edificio luego indicarán en qué piso están. | `3` |
-| **Has elevator** (casilla) | Desmarcada por defecto | Si el edificio tiene ascensor. Esta es información real de accesibilidad — el propósito completo de la aplicación es ayudar a usuarios con discapacidad visual a navegar, así que saber cómo se mueve alguien realmente entre pisos importa. | — |
-| **Has stairs** (casilla) | Marcada por defecto | Misma idea, para las escaleras. | — |
-| **Active** (solo al editar) | — | Mismo significado que el interruptor Active de un lugar. | — |
+| 1 | **Universidad** | A cuál pertenece. Obligatorio. | |
+| 2 | **Código** | Identificador corto y único. Obligatorio, y no se puede cambiar después. | `BIB` |
+| 3 | **Nombre** | El nombre completo. Los usuarios también lo pueden decir por voz, así que usa el nombre con el que la gente lo conoce. Obligatorio. | `Edificio C` |
+| 4 | **Dirección (opcional)** | Solo de referencia. | |
+| 5 | **Latitud** | La posición del edificio. Obligatorio. Un punto a más de 300 m de ella se rechaza. | |
+| 6 | **Longitud** | Lo mismo. Obligatorio. | |
+| 7 | **Elegir en el mapa** | Llena los dos anteriores tocando un mapa, que se abre en la universidad elegida. | |
+| 8 | **Pisos** | Cuántos pisos tiene. Da las opciones de piso de sus puntos. | `3` |
+| 9 | **Tiene ascensor** | Información de accesibilidad. | |
+| 10 | **Tiene escaleras** | Información de accesibilidad. | |
+| 11 | **Guardar edificio** | Crea el edificio. | |
 
-## 5. Anchor points (puntos de anclaje)
+Al editar aparece también un interruptor para **desactivarlo** sin eliminarlo.
 
-Un **anchor point** es un punto físico específico — una puerta, una intersección de pasillos, el vestíbulo de un ascensor — que el sistema de reconocimiento visual de la aplicación aprende a identificar a partir de fotos reales. Cuando la cámara del teléfono de un usuario más adelante detecta algo que coincide con una de estas fotos, la aplicación lo usa para corregir la posición GPS de ese usuario. Es decir: un punto de anclaje no es solo un pin en un mapa, es un lugar que la aplicación realmente ha aprendido a "ver".
+<a id="anchor-points"></a>
 
-### 5.1 Crear un punto de anclaje
+## 5. Puntos de referencia
 
-1. Desde el menú, ve a **Anchor points**.
-2. Toca el botón **+** con ícono de cámara (abajo a la derecha) — etiquetado "New anchor point".
-3. Elige el **Place**, luego el **Building** (filtrado según ese lugar).
-4. Elige el **Location type** — qué tipo de lugar es este (ver la lista completa en [§8](#8-referencia-rápida)). Por ejemplo, si estás parado en la puerta principal de un edificio, elige **entrance**.
-5. Completa la **Description**. Es **obligatoria para los tipos de destino** (entrance, classroom, office, restroom, cafeteria, parking, lobby, auditorium, bus_stop), porque es el nombre que los usuarios eligen y escuchan, así que describe el lugar real: "Puerta principal, lado norte" es mucho más útil que "Punto 1". Para los **tipos intermedios** (hallway, intersection, stairwell, elevator, ramp, outdoor_path, courtyard, crosswalk, other) es opcional. Si la dejas vacía, el punto sigue sirviendo para rutas y para corregir la posición, pero no aparece en la lista de destinos del usuario. En las listas de administración los puntos sin nombre se muestran por su tipo, por ejemplo "Pasillo · 3f2a". Los puntos nuevos empiezan como **hallway**. Si escribes un nombre y el tipo es intermedio, la app pregunta si es un destino: los usuarios solo pueden elegir destinos, así que un "Baño mujeres" guardado como hallway nunca aparece en su lista. Toca **Cambiar tipo** salvo que sea de verdad un punto de paso con nombre (por ejemplo "Pasillo hacia salas 202").
-6. Elige **Interior** o **Exterior** (no hay valor por defecto, se pregunta cada vez) — si el punto está dentro de un edificio o afuera. Esto importa porque la precisión del GPS es mucho peor en interiores, que es exactamente por qué los puntos de anclaje interiores son los más importantes para el sistema de corrección de posición.
-7. Opcionalmente configura **Lighting** (Bright / Moderate / Dim) y **Surface** (texto libre, ej. "tile", "carpet", "concrete", "grass") — ver la tabla de campos abajo para entender por qué vale la pena completarlos.
-8. Define la posición. **Es obligatorio**: la app ya no toma el GPS por su cuenta, y **Create and add photos** está desactivado hasta que hagas una de dos cosas:
-   - **Pick on map**: toca el lugar exacto en el mapa. Es lo más preciso, sobre todo en interiores.
-   - **Usar mi ubicación (±N m)**: parado justo en el punto, guarda la lectura del GPS en ese momento. Solo se puede usar con una precisión de ±8 m o mejor; si el GPS está peor, espera o usa el mapa.
+Un punto de referencia es un lugar físico concreto (una puerta, una intersección, la entrada de un ascensor) que la aplicación aprende a reconocer por sus fotos. Cuando la cámara del usuario ve algo que coincide, la aplicación corrige su posición. Los puntos, además, son las paradas de las rutas.
 
-   Si ya hay otro punto a menos de 3 m en el mismo edificio y piso, la app avisa antes de guardar. Casi siempre es el mismo lugar guardado dos veces: agrégale fotos al que ya existe en vez de crear otro. Un punto a más de 300 m de su edificio se rechaza (posición equivocada).
-9. Toca **Create and add photos** — esto guarda el punto de anclaje y te lleva directamente a la pantalla de captura de fotos ([§5.2](#52-tomar-fotos)).
+Hay dos clases de punto, según su **tipo de lugar**:
+- **Destinos** (salón, baño, cafetería…): los usuarios los eligen. Necesitan un nombre.
+- **Intermedios** (pasillo, intersección, escaleras…): solo sirven para unir caminos. No necesitan nombre, y los usuarios nunca los eligen.
 
-#### Campos de Anchor point (creación y edición)
+### La lista
 
-| Etiqueta en pantalla | ¿Obligatorio? | Qué significa | Ejemplo |
-|---|---|---|---|
-| **Place** / **Building** | Ambos obligatorios | A qué edificio pertenece este punto (el menú de Place solo filtra la lista de edificios). | — |
-| **Location type** | Obligatorio, los puntos nuevos empiezan como "hallway" | Qué tipo de lugar es este, elegido en un selector con búsqueda agrupado por categorías. Lista completa en [§8](#8-referencia-rápida). | `entrance` |
-| **Floor** | Obligatorio | En qué piso del edificio está el punto. "Piso 1" es la planta baja; la lista ofrece los pisos del edificio. | `Piso 1` |
-| **Description** | Obligatoria para los tipos de destino (★ en [§8](#8-referencia-rápida)), opcional para los demás | El nombre legible del punto — el que los usuarios eligen y escuchan. Describe el lugar real, no una etiqueta genérica. | `Puerta principal, lado norte` |
-| **¿Interior o exterior?** | Obligatorio, sin valor por defecto | Interior vs. exterior — ver arriba por qué importa. | — |
-| **Lighting** (menú desplegable) | Opcional, por defecto "Not set" | La iluminación típica de este lugar exacto: Bright / Moderate / Dim. Es un contexto útil para quien revise las fotos después (una foto oscura puede simplemente significar un pasillo con poca luz, no una mala foto), y con el tiempo esta información está pensada para ayudar a que el sistema de reconocimiento visual sea más confiable en distintas condiciones de luz. | Un lugar junto a una ventana grande al mediodía → `Bright`; una escalera interior con solo luces de techo → `Dim` |
-| **Surface (optional)** | Opcional, texto libre | La superficie física del suelo. Puede servir como una pista útil de orientación (por ejemplo, un cambio de baldosa a alfombra puede marcar el límite de una sala). | `tile`, `carpet`, `concrete`, `grass` |
-| **Location** | Obligatoria: **Pick on map** o **Usar mi ubicación** (GPS de ±8 m o mejor) | Las coordenadas reales del punto. Se usa la última que elegiste de las dos. | — |
+![Lista de puntos de referencia](../images/es/points-list.webp)
 
-**El formulario recuerda tu último punto.** Un punto de anclaje nuevo empieza con la universidad, el edificio, el tipo de lugar, el piso, la iluminación y la superficie del último que creaste en este teléfono. La descripción, la posición e interior/exterior empiezan vacías. Si abriste el formulario filtrado a un edificio, se usa ese edificio.
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Todos / Pendiente / Verificado / Rechazado** | Muestra solo los puntos con ese estado, y cuántos hay. |
+| 2 | **Filtros** | Abre más filtros (abajo). |
+| 3 | **Buscar puntos de referencia** | Busca por nombre. |
+| 4 | **Lista** | Muestra los puntos en esta lista. |
+| 5 | **Mapa** | Muestra los mismos puntos en un mapa. Ver [El mapa](#points-map). |
+| 6 | Fila del punto | Muestra su edificio, estado y número de fotos. **Tocarla abre Conectar en el mapa** con este punto ya seleccionado. |
+| 7 | **Verificar** | Verifica el punto. En uno ya verificado, este botón lo devuelve a pendiente. Ver [Verificar](#verify). |
+| 8 | **Editar** (lápiz) | Abre [la edición del punto](#point-edit). |
+| 9 | **Más acciones** (⋮) | Abre el menú de abajo. |
+| 10 | **Nuevo punto de referencia** (cámara) | Abre [el formulario](#point-form). |
 
-**Filtrar la lista.** El botón **Filtros** encima de la lista (y del mapa) acota los puntos de anclaje por categoría y tipo, piso, interior o exterior, iluminación, y si tienen fotos o conexiones. Se combina con los chips de estado y la búsqueda. **Quitar filtros** (o el botón atrás) los elimina.
+Los puntos sin nombre se muestran por su tipo y el inicio de su código, por ejemplo "Pasillo · 284a".
 
-### 5.2 Tomar fotos
+![Menú de más acciones de un punto](../images/es/points-row-menu.webp)
 
-Por qué varias fotos: una persona podría acercarse al mismo lugar físico desde cualquier dirección, así que la aplicación necesita reconocer cómo se ve desde cada lado — no solo desde un ángulo.
+| # | Opción | Qué hace |
+|---|---|---|
+| 1 | **Agregar foto** | Abre [las fotos del punto](#photos). |
+| 2 | **Eliminar** | Elimina el punto, sus fotos y sus conexiones. Ver [Eliminar datos](#deleting). |
 
-1. En la pantalla de fotos verás una vista previa de la cámara en vivo. Una pequeña insignia en la esquina superior derecha muestra **"Facing: N°"** — el rumbo de la brújula en vivo del dispositivo (no la dirección del GPS), actualizándose en tiempo real. Esto se guarda automáticamente con cada foto, para que la aplicación sepa hacia dónde apunta esa foto.
-2. Toca **Take photo** para capturar una. Se sube automáticamente y aparece en una cuadrícula de miniaturas debajo, con el rumbo con el que fue tomada mostrado en la esquina de cada miniatura.
-3. Repite apuntando en direcciones distintas — como guía, apunta a 4-8 fotos, más o menos hacia norte/sur/este/oeste desde el mismo lugar (ajusta según el espacio real — un punto en una esquina quizás solo tenga dos o tres direcciones sensatas para fotografiar). La aplicación no exige un mínimo, así que esto depende de ti.
-4. ¿Te equivocaste? Toca el ícono de basura en una miniatura para eliminar esa foto (con una confirmación).
-5. Cuando termines, toca la marca de verificación (✓) en la esquina superior derecha de la pantalla — etiquetada "Done".
+### Filtros
 
-Siempre puedes volver más adelante a agregar o quitar fotos desde el botón **Manage photos** de un punto de anclaje (ver abajo).
+![Filtros de puntos](../images/es/points-filters.webp)
 
-### 5.3 Revisar y verificar
+Acota por **categoría** y tipo, **piso**, **interior o exterior**, **iluminación** y si **tiene fotos** o **conexiones**. Se combinan con el estado y la búsqueda. Sirven para encontrar trabajo pendiente: por ejemplo, Verificado + sin conexiones son puntos que nadie puede usar todavía.
 
-**Verificación rápida desde la lista o el mapa:** cada fila de punto de anclaje tiene un botón ✔ que lo verifica (o, en un punto verificado, lo devuelve a pendiente). Un punto necesita al menos una foto antes de poder verificarse. Si todavía no tiene conexiones, la app avisa: un punto verificado sin conexiones no sirve para llegar ni para empezar una ruta, y los usuarios no lo ven. El selector **Lista / Mapa** encima de la lista muestra los mismos puntos en un mapa, coloreados por estado: verde verificado, gris pendiente, rojo rechazado. Toca un punto en el mapa para ver sus datos y para **Editar**, **Mover**, verificar, **Conectar** o agregar fotos. **Mover** te pide tocar la nueva posición; la punta del pin marca exactamente dónde quedará, y **Guardar nueva posición** la guarda. Mover un punto verificado también actualiza la búsqueda por fotos y las distancias de sus conexiones.
+<a id="point-form"></a>
 
+### Crear un punto
 
-La pantalla de edición de un punto de anclaje es también donde lo revisas y decides si está listo para uso real. Esto es más que solo cambiar una etiqueta:
+![Formulario de nuevo punto](../images/es/point-form.webp)
 
-- **Status: Verified** — al guardar con este estado, las fotos del punto se indexan automáticamente en el sistema de búsqueda de la aplicación, convirtiéndose en datos reales y activos que la aplicación puede usar para comparar con la cámara de un usuario. Este es el paso que hace que un punto de anclaje realmente *sirva* para algo.
-- **Status: Pending** o **Rejected** — al guardar con cualquiera de estos, el punto se elimina de ese índice de búsqueda (si estaba en él), por lo que un punto degradado o rechazado deja de ser utilizable por la aplicación en vivo, sin eliminar el punto en sí.
+| # | Campo | Qué significa |
+|---|---|---|
+| 1 | **Universidad** | Filtra la lista de edificios. |
+| 2 | **Edificio** | A cuál pertenece el punto. Obligatorio. |
+| 3 | **Piso** | En qué piso está. "Piso 1" es la planta baja. Las opciones salen de los pisos del edificio. |
+| 4 | **Tipo de lugar** | Qué clase de lugar es. Abre un selector por categorías, con buscador. Lista completa en [Referencia rápida](#reference). |
+| 5 | **Descripción** | El nombre que los usuarios eligen y escuchan. Obligatoria para los destinos. Describe el lugar real: "Entrada sur" es mucho mejor que "Punto 1". **No repitas el edificio**: se quita solo al guardar, y la aplicación lo muestra al lado. |
+| 6 | **Interior** | El punto está bajo techo. Hay que elegir uno de los dos cada vez. |
+| 7 | **Exterior** | El punto está al aire libre. |
+| 8 | **Iluminación** | Opcional: brillante, moderada o tenue. Ayuda a quien revisa las fotos: una foto oscura puede ser simplemente un pasillo oscuro. |
+| 9 | **Superficie (opcional)** | Opcional: baldosa, alfombra, concreto… |
+| 10 | **Elegir en el mapa** | Fija la posición tocando un mapa. Es lo más preciso. |
+| 11 | **Usar mi ubicación** | Fija la posición con el GPS, parado justo en el punto. Solo en el teléfono y con una precisión de ±8 m o mejor. En la web queda desactivado. |
+| 12 | **Crear y agregar fotos** | Guarda el punto y abre sus fotos. Está desactivado hasta que fijes la posición. |
 
-Así que antes de poner un punto en Verified, revisa primero sus fotos de verdad (esta pantalla muestra una tira de miniaturas de solo lectura) — ¿son claras, están correctamente orientadas, realmente muestran el lugar correcto? Usa **Manage photos** para corregir lo que haga falta antes de verificar.
+La posición es obligatoria a propósito: la aplicación no toma el GPS por su cuenta, porque así se guardaban puntos en lugares equivocados.
 
-Para editar un punto de anclaje: toca el ícono de lápiz en su fila. Verás los mismos campos que al crearlo (todos editables), más:
+La aplicación te detiene en dos casos:
+- **Otro punto a menos de 3 m**, en el mismo edificio y piso. Casi siempre es el mismo lugar guardado dos veces: agrégale fotos al que ya existe.
+- **Un nombre con un tipo intermedio.** Los usuarios solo pueden elegir destinos, así que un "Baño mujeres" guardado como Pasillo nunca les aparece. Toca **Cambiar tipo**, salvo que de verdad sea un punto de paso con nombre.
 
-| Etiqueta en pantalla | Qué significa |
+El formulario recuerda la universidad, el edificio, el tipo, el piso, la iluminación y la superficie del último punto que creaste.
+
+### Elegir la posición en el mapa
+
+![Elegir una ubicación](../images/es/location-picker.webp)
+
+Toca el lugar exacto: **la punta del pin** marca dónde queda. Los puntos que ya existen se ven de color según su estado. El mapa se abre en el piso del formulario; cambiar de piso aquí solo cambia lo que ves, no el piso del punto.
+
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Confirmar ubicación** (✓) | Vuelve al formulario con esa posición. |
+| 2 | **Subir un piso** | Muestra el piso de arriba. |
+| 3 | **Bajar un piso** | Muestra el piso de abajo. |
+| 4 | **Solo este piso** | Oculta los puntos de los pisos vecinos. Ver [Pisos](#floors). |
+
+<a id="point-edit"></a>
+
+### Editar un punto
+
+![Editar un punto](../images/es/point-edit.webp)
+
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Descripción** | El nombre, como al crearlo. |
+| 2 | **Piso** | En qué piso está. |
+| 3 | **Tipo de lugar** | Destino o intermedio. |
+| 4 | **Ubicación en interior** | Interior o exterior. |
+| 5 | **Iluminación** | Como al crearlo. |
+| 6 | **Superficie (opcional)** | Como al crearlo. |
+| 7 | **Administrar fotos (N)** | Abre [las fotos](#photos). Encima, las miniaturas sirven para revisarlas de un vistazo. |
+| 8 | **Estado** | Pendiente, Verificado o Rechazado. Ver [Verificar](#verify). |
+| 9 | **Mover en el mapa** | Elige otra posición. |
+| 10 | **Guardar cambios** | Guarda. |
+
+<a id="photos"></a>
+
+### Fotos
+
+Una persona puede llegar a un lugar desde cualquier lado, así que la aplicación necesita verlo desde cada dirección. Toma de **4 a 8 fotos parado en el punto**, una hacia cada lado (N, S, E, O, adaptándote al lugar; en una esquina quizá solo haya dos o tres direcciones que valgan la pena).
+
+![Fotos de un punto en la web](../images/es/point-photos.webp)
+
+Las imágenes de arriba son de relleno; aquí verás tus fotos, con su dirección en la esquina.
+
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Las fotos miran hacia** (N, NE, E…, No sé) | Hacia dónde miran las fotos que vas a subir. Elige **No sé** si no estás seguro: esa foto nunca se descarta por mirar hacia otro lado. |
+| 2 | **Subir fotos (N)** | Elige una o más imágenes de tu computador. N es cuántas tiene el punto. |
+| 3 | **Listo** (✓) | Termina y vuelve. |
+
+El ícono de basura de cada foto la elimina, después de confirmar. Para tomar fotos con la cámara, ver [Solo en el teléfono](#phone-only).
+
+<a id="verify"></a>
+
+### Verificar un punto
+
+El estado decide si un punto existe para los usuarios:
+
+| Estado | Significado |
 |---|---|
-| **Status** (menú desplegable: pending / verified / rejected) | Ver arriba — este es el interruptor real que convierte un punto capturado en datos de navegación utilizables, o lo revierte. |
-| Tira de miniaturas de fotos (solo lectura) | Una revisión visual rápida antes de decidir el estado. |
-| Botón **Manage photos** | Abre la misma pantalla de fotos de [§5.2](#52-tomar-fotos) para agregar o eliminar fotos. |
-| Botón **Move on map** | Permite volver a elegir la posición del punto en un mapa, por ejemplo si resulta estar en el lugar equivocado. |
+| **Pendiente** | Capturado, sin revisar. Los usuarios no lo ven, y la aplicación no lo reconoce. |
+| **Verificado** | Revisado. Sus fotos entran a la búsqueda, y puede ser parte de una ruta. |
+| **Rechazado** | Revisado y descartado (malas fotos, duplicado…). Sale de la búsqueda, sin eliminarse. |
 
-**Si al verificar aparece un error de indexación:** el punto queda guardado como Verified, pero la búsqueda por fotos no lo recibió, así que la app todavía no puede reconocerlo. Cuando se arregle el problema del servidor, abre el menú y toca **Reindexar puntos verificados**. Primero quita de la búsqueda por fotos lo que ya no debería estar (fotos eliminadas, puntos que ya no están verificados). Luego envía solo los puntos verificados cuyas fotos todavía no se pueden buscar, reintenta cada fallo dos veces y termina con la lista de los puntos que aun así fallaron. Cuando hay fotos verificadas que no se pueden buscar, la opción del menú muestra un aviso rojo "N fotos no se pueden buscar": esa es la señal para usarla.
+Antes de verificar, mira sus fotos: ¿están claras y muestran el lugar correcto? Verifica con el botón ✔ de la fila, o con **Estado** en la edición.
 
-## 6. Connections (conexiones)
+Sin fotos, no se puede verificar:
 
-Una **connection** registra que una persona puede caminar directamente entre dos puntos de anclaje. Juntas forman el grafo de transitabilidad: las rutas se calculan solo a lo largo de las conexiones, y las instrucciones paso a paso las siguen.
+![Aviso de que falta una foto](../images/es/verify-needs-photo.webp)
 
-**Reglas** (la app y el servidor las aplican):
-- **Máximo 30 m** en línea recta. La guía hace caminar en línea recta entre dos puntos conectados, así que una conexión de 50 m entre edificios atraviesa lo que haya en medio. Captura puntos intermedios cada 6–8 m y conéctalos en cadena. Por encima de 15 m la app vibra y avisa.
-- **Cambiar de piso** solo a través de un punto de escaleras (stairwell), ascensor (elevator) o rampa (ramp).
-- Si escribes una distancia a mano, no puede ser menor que la línea recta.
-- Mover un punto no puede dejar una de sus conexiones por encima de 30 m.
-- **Las conexiones de más de 30 m hechas antes de esta regla no se usan en las rutas**: un viaje que necesitaba una da "no hay ruta" hasta rehacerla. El menú las lista (**N conexiones de más de 30 m**).
+Sin conexiones, la aplicación pregunta primero. Puedes verificar igual y conectar después, pero hasta entonces los usuarios no pueden llegar a ese punto ni salir de él:
 
-**Obstáculos.** La app avisa a los usuarios antes de escaleras, ascensores y rampas cuando el punto tiene ese **Location type**, así que dales el tipo correcto. Para cualquier otra cosa en el camino (un escalón, una caneca, máquinas expendedoras, una puerta angosta), escribe un **Aviso para usuarios** en esa conexión: se dice cuando el usuario empieza a recorrerla ("Atención: tres escalones hacia abajo"). La app no puede ver obstáculos que nadie haya anotado.
+![Aviso de punto sin conexiones](../images/es/verify-unconnected.webp)
 
-**Pisos.** Los mapas muestran un piso a la vez. Con los botones ▲ y ▼, como en un ascensor, cambias de piso. Los puntos del piso de arriba se ven como ▲ morados y los del piso de abajo como ▼ naranjas; **Solo este piso** los oculta. Para conectar pisos: captura un punto de escaleras, ascensor o rampa **en cada piso**, toca el del piso actual y luego el ▲ o ▼ del otro piso (la línea se ve punteada y el mapa pasa a ese piso, para seguir encadenando). Las rutas prefieren el ascensor, así que conéctalo si existe. Una conexión que cambia de piso sin esos puntos no se usa en las rutas; el menú las lista.
+**Si aparece un error de indexación**, el punto queda verificado pero la búsqueda por fotos no lo recibió. Ver [Reindexar](#reindex).
 
-**Entradas y nombres.** Cuando un usuario dice un edificio ("Edificio C"), la ruta termina en la entrada más cercana caminando, así que marca cada puerta con el tipo **entrance** y conéctala. Sin entradas marcadas, termina en el punto conectado más cercano del piso más bajo. Los nombres no repiten el edificio: "Entrada sur bloque 20" se guarda como "Entrada sur", y la app muestra el edificio al lado.
+<a id="points-map"></a>
 
-**Lo que ve el usuario.** Los usuarios solo ven, como destino o como punto de partida, puntos verificados **con al menos una conexión**. Un punto sin conexiones no aparece.
+### El mapa de puntos
 
-Hay dos formas de crear una — elige la que se ajuste a la situación:
+**Mapa** muestra los mismos puntos filtrados: verde verificado, gris pendiente, rojo rechazado. Las líneas son sus conexiones.
 
-### Conectar tocando en el mapa
+![Mapa de puntos](../images/es/points-map.webp)
 
-Más rápido, y funciona especialmente bien para conectar toda una secuencia de puntos a lo largo de un pasillo:
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Subir un piso** | Muestra el piso de arriba. |
+| 2 | **Bajar un piso** | Muestra el piso de abajo. |
+| 3 | **Solo este piso** | Oculta los pisos vecinos. Ver [Pisos](#floors). |
+| 4 | **Nuevo punto de referencia** | Abre [el formulario](#point-form). |
 
-1. Desde el menú, ve a **Connections**, luego toca el botón **+** — etiquetado "Connect on map".
-2. Elige un **Place**, y opcionalmente un **Building** para acotar más el mapa.
-3. Toca un punto de anclaje en el mapa para seleccionarlo. No hace falta acertar exactamente en el punto: un toque cerca también cuenta, y el teléfono vibra al seleccionarlo.
-4. Toca un segundo punto de anclaje — esto crea la conexión entre ambos, y el segundo punto **queda seleccionado**, así puedes tocar de inmediato un tercer punto para seguir encadenando conexiones a lo largo del mismo pasillo sin empezar de nuevo cada vez.
-5. Las conexiones existentes entre puntos visibles se dibujan como líneas verdes en el mapa, para que puedas ver de un vistazo qué ya está conectado. Una conexión nueva se ve un momento como línea gris punteada mientras se guarda. Puedes seguir tocando mientras tanto.
+Toca un punto para ver sus datos y sus acciones:
 
-**Atajo desde la lista de puntos de anclaje:** en la pantalla **Anchor points**, toca la fila de un punto (no sus íconos de foto, editar o eliminar). Se abre el mapa de conexiones ya ubicado en la universidad y el edificio de ese punto, con zoom sobre él y con el punto ya seleccionado. Tu siguiente toque en otro punto los conecta.
+![Datos y acciones de un punto en el mapa](../images/es/point-sheet.webp)
 
-### Formulario con menús desplegables
+| # | Botón | Qué hace |
+|---|---|---|
+| 1 | **Conectar** | Abre [Conectar en el mapa](#connect-on-map) con este punto seleccionado. |
+| 2 | **Mover** | Cambia su posición (abajo). |
+| 3 | **Verificar** / **Quitar verificación** | Cambia su estado. |
+| 4 | **Agregar foto** | Abre [sus fotos](#photos). |
+| 5 | **Editar** | Abre [su edición](#point-edit). |
 
-Más preciso — úsalo cuando no estés mirando un mapa, o cuando necesites corregir la distancia estimada automáticamente:
+**Mover un punto.** Toca **Mover** y luego la nueva posición: la punta del pin marca dónde queda. **Guardar nueva posición** la guarda, y **Cancelar** la descarta. La aplicación actualiza también la búsqueda por fotos y las distancias de sus conexiones. No deja mover un punto si eso estira una de sus conexiones a más de 30 m.
 
-1. Desde la pantalla de Connections, toca el ícono de lista en la esquina superior derecha — etiquetado "Add connection (form)".
-2. Elige **Place**, opcionalmente un filtro de **Building**, luego **Anchor point A** y **Anchor point B** en los menús desplegables.
-3. Opcionalmente completa **Distance** y **Aviso para usuarios** (ver tabla).
-4. Toca **Save connection**.
+![Moviendo un punto](../images/es/point-moving.webp)
 
-### Campos de Connection (formulario)
+<a id="floors"></a>
 
-| Etiqueta en pantalla | ¿Obligatorio? | Qué significa | Ejemplo |
-|---|---|---|---|
-| **Place** / **Building (optional filter)** | Place obligatorio, Building opcional | Acota qué puntos de anclaje aparecen en los menús desplegables de abajo. | — |
-| **Anchor point A** / **Anchor point B** | Ambos obligatorios, deben ser puntos distintos | Los dos puntos de anclaje que se están conectando. | — |
-| **Distance in meters (optional)** | Opcional | Cuánto caminaría realmente una persona entre los dos puntos. Si se deja en blanco, la aplicación la estima como una línea recta entre sus coordenadas — lo cual es incorrecto si el camino real tiene curvas (por ejemplo, al doblar una esquina) o no es un trayecto directo (por ejemplo, vía ascensor o escaleras en vez de un camino directo). Complétalo siempre que la estimación en línea recta no sea precisa. | `12.5` |
-| **Aviso para usuarios (escaleras, obstáculos…)** | Opcional | Se le dice al usuario cuando empieza a recorrer esta conexión, después de "Atención:". Escríbelo para él, corto. | `tres escalones hacia abajo`, `máquinas expendedoras a la derecha` |
+### Pisos en los mapas
 
-Para agregar o cambiar el aviso de una conexión, tócala en la lista **Connections**. Lo demás no se puede editar: elimínala y vuelve a crearla. Eliminar una conexión no tiene efecto en cascada: no afecta a los dos puntos de anclaje en sí. Hay dos formas de eliminarla:
+Los mapas muestran un piso a la vez. Se cambia como en un ascensor, y el recuadro indica en qué piso estás. Este control aparece en todos los mapas que muestran puntos, y solo si hay más de un piso.
 
-- En la lista **Connections**, toca su ícono de basura.
-- En la pantalla **Connect on map**, toca la línea verde (lejos de los puntos, porque tocar cerca de un punto lo selecciona) y confirma.
+- Los puntos del **piso actual** se ven normales.
+- Los del **piso de arriba** son ▲ morados, y los del **piso de abajo**, ▼ naranjas. Los pisos más lejanos no se ven.
+- Las líneas solo se dibujan si tocan el piso actual, y son punteadas si cambian de piso.
 
-Cualquier ruta guardada que pasaba por una conexión eliminada se recalcula automáticamente la próxima vez que alguien la pida.
+![Piso 2, con el de abajo en naranja](../images/es/points-map-floor2.webp)
 
-## 6b. Probar una ruta y revisarla
+**Solo este piso** oculta los ▲ y ▼. La aplicación recuerda esta opción en este navegador.
 
-Usa **Test as user** (menú) para recorrer una ruta tú mismo. Durante el viaje aparece un botón rojo **✗ Instrucción incorrecta** encima de **Terminar navegación**. Tócalo cada vez que la app diga algo incorrecto (un giro cuando deberías seguir derecho, una distancia equivocada, una llegada antes de tiempo). Guarda lo que se acababa de decir, dónde estabas y lo que la app estaba viendo.
+![Solo este piso activado](../images/es/points-map-only-floor.webp)
 
-Para medir qué tan precisa es la posición, recorre la ruta planeada **exactamente** y usa el botón azul **Estoy en …**:
-- Tócalo parado en cada punto que nombra: el inicio, cada esquina, el destino.
-- Una pulsación larga deshace el último toque.
-- En este modo la llegada se anuncia, pero el recorrido sigue hasta que marques el destino.
-- La app también guarda cada foto de la cámara de un recorrido de prueba, para comparar luego modelos de reconocimiento de fotos.
+<a id="connections"></a>
 
-Después, abre **Sesiones** en el menú, elige el usuario y toca **Ver** en la sesión. Una tarjeta arriba muestra qué tan lejos de la ruta estuvieron el GPS sin corregir y la posición corregida, y el error en tus puntos de control (banderas azules). El mapa muestra:
-- **Línea gris azulada:** la ruta planeada.
-- **Línea naranja punteada:** el recorrido del GPS sin corregir.
+## 6. Conexiones
+
+Una conexión dice que **una persona puede caminar directamente entre dos puntos**. Las rutas solo pasan por conexiones, y la guía hace caminar en línea recta entre dos puntos conectados.
+
+![Lista de conexiones](../images/es/connections.webp)
+
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Buscar conexiones** | Busca por el nombre de sus puntos. |
+| 2 | **Agregar conexión (formulario)** | Abre [el formulario](#connection-form). |
+| 3 | Fila de la conexión | Muestra sus dos puntos, sus edificios y su distancia. **Tocarla** abre su aviso para usuarios (abajo). ⚠ indica que tiene uno. |
+| 4 | **Eliminar** (basura) | Elimina la conexión, después de confirmar. Los puntos no se tocan. |
+| 5 | **Conectar en el mapa** | Abre [el mapa](#connect-on-map). |
+
+### Reglas
+
+La aplicación y el servidor aplican estas reglas:
+- **Máximo 30 m en línea recta.** Una conexión de 50 m entre edificios atraviesa lo que haya en medio. Captura puntos cada 6 a 8 m y conéctalos en cadena. Por encima de 15 m, la aplicación avisa.
+- **Solo se cambia de piso** por un punto de escaleras, ascensor o rampa.
+- Una distancia escrita a mano no puede ser menor que la línea recta.
+
+Las conexiones viejas que rompen estas reglas no se usan en las rutas: un viaje que las necesitaba dice que no hay ruta hasta rehacerlas. El menú las lista ([Avisos del menú](#notices)).
+
+<a id="connection-warning"></a>
+
+### Avisos para usuarios
+
+La aplicación **no ve obstáculos**: solo sabe lo que alguien anotó. Para un escalón, una caneca o una puerta angosta, toca la conexión y escribe un aviso corto. Se le dice al usuario cuando empieza ese tramo: "Atención: tres escalones hacia abajo".
+
+![Aviso para usuarios de una conexión](../images/es/connection-warning.webp)
+
+Las escaleras, ascensores y rampas se anuncian solos unos 8 m antes, si el punto tiene ese tipo.
+
+<a id="connect-on-map"></a>
+
+### Conectar en el mapa
+
+Es la forma más rápida de conectar un pasillo entero.
+
+![Conectar en el mapa](../images/es/connect-map.webp)
+
+1. Elige la **universidad** y, si quieres acotar, el **edificio**.
+2. Toca un punto para seleccionarlo. Basta un toque cerca, y se ve en azul.
+3. Toca el siguiente: se crea la conexión, y **ese punto queda seleccionado**, así que puedes seguir tocando a lo largo del pasillo.
+4. Toca el punto seleccionado para deseleccionarlo.
+
+Las conexiones son líneas verdes. Una nueva se ve gris punteada mientras se guarda, y puedes seguir tocando. Para **eliminar** una, toca la línea lejos de los puntos y confirma.
+
+![Conectar con un punto seleccionado](../images/es/connect-selected.webp)
+
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Universidad** | Qué campus muestra el mapa. |
+| 2 | **Edificio** | Acota los puntos a un edificio. |
+| 3 | **Subir un piso** | Muestra el piso de arriba. |
+| 4 | **Bajar un piso** | Muestra el piso de abajo. |
+| 5 | **Solo este piso** | Oculta los pisos vecinos. Para conectar entre pisos debe estar apagado. |
+| 6 | **Ayuda de esta página** | Abre esta sección. |
+
+**Conectar dos pisos.** Crea un punto de escaleras, ascensor o rampa **en cada piso**, uno sobre el otro. Toca el del piso actual, y luego el ▲ o ▼ del otro piso. La línea se ve punteada, y el mapa pasa a ese piso para seguir encadenando. **Conecta el ascensor si existe**: las rutas lo prefieren.
+
+<a id="connection-form"></a>
+
+### Conectar con el formulario
+
+Úsalo cuando necesites escribir la distancia real o un aviso desde el principio.
+
+![Formulario de conexión](../images/es/connection-form.webp)
+
+| # | Campo | Qué significa |
+|---|---|---|
+| 1 | **Universidad** | Filtra las listas de puntos. |
+| 2 | **Edificio (filtro opcional)** | Acota más las listas. |
+| 3 | **Punto de referencia A** | Un extremo. |
+| 4 | **Punto de referencia B** | El otro extremo. |
+| 5 | **Distancia en metros (opcional)** | Cuánto se camina de verdad. En blanco, se usa la línea recta. Complétala si el camino da una vuelta. |
+| 6 | **Aviso para usuarios** | Lo que se le dice al usuario al empezar este tramo. Ver [Avisos para usuarios](#connection-warning). |
+| 7 | **Guardar conexión** | Crea la conexión. |
+
+Lo único que se puede cambiar de una conexión después es su aviso. Para cambiar otra cosa, elimínala y créala de nuevo. Las rutas guardadas que pasaban por una conexión eliminada se recalculan solas.
+
+<a id="users-see"></a>
+
+## 7. Lo que ven los usuarios
+
+Esto explica la mayoría de los "no me aparece" y "no hay ruta":
+
+- **Solo ven puntos verificados con al menos una conexión.** Los demás no existen para ellos.
+- **Solo pueden elegir destinos**, es decir, puntos de un tipo marcado con ★ en la [Referencia rápida](#reference), y con nombre.
+- **El punto de partida** es el punto conectado más cercano a su GPS. Si hay puntos de varios pisos a menos de 15 m, la aplicación les pregunta en qué piso están.
+- **Pueden decir un edificio** ("Edificio C"). La ruta termina en su entrada más cercana caminando, así que **marca cada puerta con el tipo Entrada** y conéctala. Sin entradas marcadas, termina en el punto conectado más cercano de su piso más bajo.
+- **Los nombres no repiten el edificio.** "Entrada sur bloque 20" se guarda como "Entrada sur". El usuario puede decir "entrada sur bloque 20" igual, y si hay varias "Entrada sur" se le ofrecen las más cercanas.
+- **Al cambiar de piso** la aplicación le dice a dónde ir ("Toma el ascensor hasta el piso 3") y espera a que el barómetro del teléfono detecte el cambio.
+
+<a id="notices"></a>
+
+## 8. Avisos del menú
+
+Los avisos naranjas muestran errores de mapa que afectan a los usuarios. Se calculan con los datos cargados, y desaparecen cuando todo está bien.
+
+| Aviso | Qué significa | Qué hacer |
+|---|---|---|
+| **N puntos verificados sin conexión** | Nadie puede llegar a ellos ni salir de ellos. | Abre la lista filtrada; conéctalos. |
+| **N puntos con nombre que los usuarios no pueden elegir** | Tienen nombre, pero su tipo es intermedio. | Toca uno y cambia su tipo si los usuarios van allí. Algunos pueden ser a propósito ("Pasillo hacia salas 202"). |
+| **N conexiones de más de 30 m** | Las rutas no las usan. | Toca una para borrarla, y vuelve a conectar ese camino con puntos intermedios. |
+| **N conexiones que cambian de piso sin escaleras** | Las rutas no las usan. | Toca una para borrarla, y conecta los pisos por un punto de escaleras, ascensor o rampa en cada piso. |
+
+![Lista de conexiones de más de 30 m](../images/es/health-long-connections.webp)
+
+![Lista de conexiones que cambian de piso sin escaleras](../images/es/health-floor-change.webp)
+
+![Lista de puntos con nombre que los usuarios no pueden elegir](../images/es/health-hidden-names.webp)
+
+<a id="reindex"></a>
+
+### Reindexar puntos verificados
+
+Si las fotos de un punto verificado no llegaron a la búsqueda (por un problema del servidor), la aplicación todavía no puede reconocerlo, y el menú lo indica en rojo: "N fotos no se pueden buscar". Cuando el servidor esté bien, toca **Reindexar puntos verificados**. Quita de la búsqueda lo que ya no debería estar, envía los puntos que faltan, reintenta los fallos y termina con este resumen, que lista los que aun así fallaron:
+
+![Resultado de reindexar](../images/es/reindex.webp)
+
+<a id="users"></a>
+
+## 9. Usuarios
+
+![Lista de usuarios](../images/es/users.webp)
+
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | Fila del usuario | Su nombre y su rol. "Desactivada" en rojo si está bloqueada. |
+| 2 | **Promover a administrador** (escudo) | Le da permisos de administrador, después de confirmar. En un administrador, este botón se los quita. |
+| 3 | **Desactivar cuenta** | Bloquea la cuenta sin eliminarla: no puede usar la aplicación ni la web. |
+| 4 | **Activar cuenta** | Desbloquea una cuenta desactivada. |
+
+En tu propia fila estos botones están desactivados.
+
+- **Cuentas sin perfil:** si un registro no terminó, la cuenta aparece en una tarjeta resaltada arriba, y su botón crea el perfil que falta.
+- **El primer administrador** de una instalación se asigna a mano en la base de datos, como dice la nota de arriba de la lista.
+
+**Versiones de la aplicación.** Funcionan la versión más nueva y la anterior. Quien tenga la anterior ve "Nueva versión disponible" al abrirla. Las más viejas solo muestran "Actualización necesaria" hasta que se instale el APK nuevo, que está en la página de versiones del proyecto en GitHub.
+
+<a id="sessions"></a>
+
+## 10. Sesiones
+
+Una sesión es un viaje hecho con la aplicación. **Sesiones** lista a las personas, con cuántas sesiones tienen y cuántas están activas.
+
+![Sesiones por usuario](../images/es/sessions.webp)
+
+| # | Control | Qué hace |
+|---|---|---|
+| 1, 2 | Fila del usuario | Abre sus sesiones (abajo). |
+
+La flecha de arriba a la derecha (**Actualizar**) las vuelve a cargar.
+
+![Sesiones de un usuario](../images/es/user-sessions.webp)
+
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Ver** | Abre el mapa de la sesión (abajo). Se actualiza solo si sigue activa, para seguir un viaje en vivo. |
+| 2 | **Ver comentario** | Muestra lo que escribió el usuario al terminar, si escribió algo. |
+| 3 | **Eliminar** (basura) | Elimina la sesión y sus registros. |
+
+### El mapa de una sesión
+
+![Mapa de una sesión](../images/es/session-tracking.webp)
+
+La tarjeta de arriba resume qué tan lejos de la ruta estuvieron el GPS sin corregir y la posición corregida. La leyenda de abajo indica qué es cada cosa:
+- **Línea gris azulada:** la ruta planeada. Si cambia de piso, los tramos de otros pisos se ven tenues, y aparecen los botones de piso.
+- **Línea naranja punteada:** el GPS sin corregir.
 - **Línea verde:** la posición corregida.
-- **Puntos morados:** coincidencias de foto, cada uno con una línea delgada al punto de anclaje reconocido. Las líneas largas muestran desde dónde se jaló la posición.
-- **✗ rojas:** tus marcas de instrucción incorrecta.
+- **Puntos morados:** coincidencias de foto, con una línea delgada al punto reconocido. Una línea larga muestra de dónde se jaló la posición.
+- **✗ roja:** una instrucción marcada como incorrecta durante una prueba.
 
-Toca cualquiera para ver los detalles registrados ahí.
+Toca cualquiera para ver lo que se registró ahí: la posición, lo que dijo la aplicación, el rumbo y más.
 
-**Lo que ve el usuario y lo que ves tú.** Un usuario normal no ve coordenadas ni mapa durante el viaje: solo un botón grande **Repetir instrucción** y **Terminar navegación**. Su punto de partida sale del GPS, sin fotos. En **Test as user** sigues viendo el mapa, las coordenadas (GPS y corregida) y la revisión del punto de partida con la cámara (toca la fila **Inicio**).
+<a id="feedback"></a>
 
-**Cómo sostener el teléfono.** Para que las fotos se reconozcan, el teléfono va vertical frente al pecho, con la cámara trasera mirando hacia adelante. Explícaselo así al usuario; el tutorial de la app (botón **?**) también lo dice.
+## 11. Comentarios
 
-## 6c. La aplicación web
+Lo que escriben los usuarios al terminar un viaje, con su nombre, la fecha y cómo terminó el viaje. Solo se puede leer.
 
-Todo lo de esta guía, salvo tomar fotos con la cámara y **Test as user**, también funciona en un navegador, en una pantalla más grande: **https://184-195-103-237.sslip.io/admin/**. Entra con tu cuenta de administrador; a una cuenta que no es de administrador se le indica usar la aplicación del teléfono.
+![Comentarios de los usuarios](../images/es/feedback.webp)
 
-- **Menú lateral:** en una ventana ancha, el menú queda abierto a la izquierda en vez de deslizarse.
-- **Fotos:** la pantalla de fotos de un punto tiene **Subir fotos** en lugar de la cámara. Elige uno o más archivos de imagen tomados parado en el punto. Antes de subirlas, elige hacia dónde miran (N, NE, E…). Elige **No sé** si no estás seguro: esa foto nunca se descarta por mirar hacia otro lado.
-- **Usuarios:** cada fila tiene además **Desactivar cuenta**. Una cuenta desactivada no puede usar la aplicación ni la web hasta que un administrador la vuelva a activar. No puedes desactivarte a ti mismo.
+<a id="settings"></a>
 
-## 6d. Usuarios
+## 12. Configuración
 
-La sección **Usuarios** lista todas las cuentas.
+Son tus preferencias; las de cada usuario son independientes.
 
-- **Ascender / quitar administrador:** el ícono de escudo de una fila convierte a esa persona en administradora, o le quita los permisos (con confirmación). Está desactivado en tu propia fila.
-- **Desactivar / activar:** el ícono de persona bloquea una cuenta sin eliminarla. Una cuenta desactivada no puede usar la aplicación ni la web hasta que se vuelva a activar. Está desactivado en tu propia fila.
-- **Cuentas sin perfil:** si un registro no terminó, la cuenta aparece en una tarjeta resaltada arriba. Su botón crea el perfil que falta, y la persona aparece luego en la lista normal.
-- **El primer administrador** se asigna a mano en la base de datos (`UPDATE profiles SET role_id = 2 WHERE id = ...`), como dice la nota arriba de la lista.
+![Configuración](../images/es/settings.webp)
 
-**Versiones de la aplicación.** La aplicación funciona en su versión más nueva y en la anterior. Quien tenga la versión anterior ve "Nueva versión disponible" una vez cada vez que abre la aplicación, con un botón para descargarla. Las versiones más viejas solo muestran "Actualización necesaria" con el enlace de descarga, hasta que se instale el APK nuevo. Las versiones están en la página de releases del proyecto en GitHub. Para quienes prueban, la [guía del usuario](../../user-guide/README.md) explica cómo instalar y actualizar.
+| # | Control | Qué hace |
+|---|---|---|
+| 1 | **Nivel de detalle** | Cuánto detalle se muestra: bajo, medio o alto. |
+| 2 | **Alto contraste** | Colores de mayor contraste, para baja visión. |
+| 3 | **Idioma** | Automático (el del dispositivo), English o Español. |
+| 4 | **Guardar** | Guarda los cambios. |
 
-## 7. Eliminar datos
+También están **Tamaño de texto** (pequeño a muy grande) y **Guía de voz**, los anuncios hablados durante un viaje.
 
-Las universidades y los edificios tienen un ícono de basura en su fila. En la fila de un punto de anclaje, **Agregar foto** y **Eliminar** están en el menú ⋮, junto a los botones de verificar y editar.
+<a id="phone-only"></a>
 
-Se puede eliminar cualquier cosa que se haya usado en viajes. Las rutas guardadas que pasan por los puntos eliminados se eliminan con ellos, y el historial de viajes se conserva. Si algo aún no se puede eliminar, el mensaje dice por qué.
+## 13. Solo en el teléfono
 
-Eliminar un place, building o anchor point siempre muestra un cuadro de confirmación que indica exactamente qué más se eliminará junto con él, porque los datos son jerárquicos (place → building → anchor point → fotos/conexiones):
+En una ventana angosta o en la aplicación del teléfono, el menú se abre con ☰. Todo lo demás de esta guía funciona igual.
 
-- **Eliminar un place** también elimina sus buildings, los anchor points de esos buildings, las fotos de esos puntos, y cualquier connection que los involucre.
-- **Eliminar un building** también elimina sus anchor points, sus fotos, y cualquier connection que los involucre.
-- **Eliminar un anchor point** también elimina sus fotos y cualquier connection que lo involucre.
-- **Eliminar una connection** no afecta nada más.
+![La aplicación en una ventana angosta](../images/es/phone-home.webp)
 
-La confirmación siempre muestra los números reales (por ejemplo, "will also delete 3 buildings, 12 anchor points, 45 photos, and 8 connections") antes de confirmar — léelo con atención. Nada de esto se puede deshacer.
+![El menú en una ventana angosta](../images/es/phone-menu.webp)
 
-## 8. Referencia rápida
+Dos cosas necesitan el teléfono, porque usan la cámara y los sensores. Esta guía no tiene imágenes de ellas.
 
-### Location types (tipos de lugar)
+### Tomar fotos con la cámara
 
-Toca el campo **Location type** para abrir el selector de tipos. Los tipos están agrupados por categorías, y el buscador de arriba encuentra uno por su nombre (por ejemplo "biblioteca"). Los tipos marcados con ★ son **destinos**: necesitan descripción y aparecen en la lista de destinos de los usuarios. Los demás son puntos intermedios para conectar rutas.
+1. Abre **Agregar foto** de un punto, o **Crear y agregar fotos** al crearlo.
+2. Párate en el punto. La insignia **Orientación: N°** muestra hacia dónde apunta el teléfono, y se guarda con cada foto.
+3. Toca **Tomar foto** en cada dirección. Cada foto se sube sola, y aparece debajo con su rumbo.
+4. Toca el ícono de basura de una foto para eliminarla, y **Listo** (✓) al terminar.
+
+### Probar como usuario
+
+**Probar como usuario** (en el menú del teléfono) te deja hacer un viaje real con tu cuenta. Ves el mapa y las coordenadas, que un usuario normal no ve: él solo tiene **Repetir instrucción** y **Terminar navegación**.
+
+- **✗ Instrucción incorrecta:** tócalo cada vez que la aplicación diga algo mal. Guarda lo que acababa de decir y dónde estabas.
+- **Estoy en…:** para medir la precisión, recorre la ruta planeada exactamente y tócalo parado en cada punto que nombra (el inicio, cada esquina, el destino). Una pulsación larga deshace el último.
+- Luego revisa el viaje en [Sesiones](#sessions).
+
+**Cómo sostener el teléfono.** Vertical frente al pecho, con la cámara trasera hacia adelante. Explícaselo así a quien pruebe; el tutorial de la aplicación también lo dice.
+
+<a id="deleting"></a>
+
+## 14. Eliminar datos
+
+Antes de eliminar, la aplicación dice cuánto más se elimina. Léelo con atención: **no se puede deshacer**.
+
+| Eliminar | También elimina |
+|---|---|
+| **Una universidad** | Sus edificios, sus puntos, las fotos y las conexiones de esos puntos. |
+| **Un edificio** | Sus puntos, sus fotos y sus conexiones. |
+| **Un punto** | Sus fotos y sus conexiones. |
+| **Una conexión** | Nada más. |
+
+Las rutas guardadas que pasan por un punto eliminado se eliminan con él, y el historial de viajes se conserva. Para dejar de usar algo sin perder sus datos, **desactiva** la universidad o el edificio, o pon el punto en **Rechazado**.
+
+<a id="problems"></a>
+
+## 15. Problemas frecuentes
+
+| Problema | Causa probable | Qué hacer |
+|---|---|---|
+| Un lugar no aparece como destino | No está verificado, no tiene conexiones, o su tipo es intermedio. | Revisa los tres, y los [avisos del menú](#notices). |
+| "No hay ruta" | Falta una conexión en el camino, o usa una de más de 30 m. | Conecta el tramo que falta con **Conectar en el mapa**. |
+| "Tu punto de partida no está conectado" | Cerca del usuario solo hay puntos sueltos. | Conecta los puntos de esa zona. |
+| "Edificio C" no da ruta | El edificio no tiene puntos verificados y conectados. | Verifica y conecta sus puntos, y marca sus puertas como **Entrada**. |
+| No puedo conectar dos puntos | Están a más de 30 m, o en pisos distintos sin escaleras, ascensor o rampa. | Agrega puntos intermedios, o conecta por un punto de ese tipo. |
+| No veo un punto en el mapa | Está en otro piso, o hay un filtro activo. | Usa ▲ ▼, apaga **Solo este piso** y quita los filtros. |
+| **Crear y agregar fotos** está desactivado | Falta la posición, o elegir interior o exterior. | Usa **Elegir en el mapa** y elige uno de los dos. |
+| El mapa se abre en el océano | La web no tiene GPS y es una universidad nueva. | Escribe unas coordenadas aproximadas primero. |
+| La aplicación no reconoce un lugar | Sus fotos no están en la búsqueda. | Usa [Reindexar](#reindex). |
+| "Actualización necesaria" | La aplicación es demasiado vieja. | Instala el APK más nuevo. |
+
+<a id="reference"></a>
+
+## 16. Referencia rápida
+
+### Tipos de lugar
+
+Los tipos con ★ son **destinos**: necesitan nombre, y los usuarios los pueden elegir. Los demás son puntos intermedios.
 
 | Categoría | Tipos |
 |---|---|
-| Caminos y conexiones | Pasillo, Camino exterior, Intersección, Escaleras, Ascensor, Rampa, Paso peatonal, Patio |
-| Entradas y desplazamiento | Entrada ★, Salida / portería ★, Vestíbulo ★, Parqueadero ★, Parqueadero de bicicletas ★, Paradero de bus ★, Zona de espera / bancas ★ |
-| Académico | Salón ★, Laboratorio ★, Biblioteca ★, Sala de cómputo ★, Zona de estudio ★, Auditorio ★, Oficina ★ |
+| Caminos y conexiones | Pasillo, Camino exterior, Intersección, Escalera, Elevador, Rampa, Cruce peatonal, Patio |
+| Entradas y desplazamiento | Entrada ★, Salida / portería ★, Vestíbulo ★, Estacionamiento ★, Parqueadero de bicicletas ★, Parada de autobús ★, Zona de espera / bancas ★ |
+| Académico | Aula ★, Laboratorio ★, Biblioteca ★, Sala de cómputo ★, Zona de estudio ★, Auditorio ★, Oficina ★ |
 | Comida, tiendas y servicios | Cafetería ★, Papelería ★, Centro de copias ★, Tienda ★, Cajero / banco ★, Baño ★, Bebedero ★ |
 | Bienestar y deporte | Enfermería / servicio médico ★, Gimnasio / zona deportiva ★, Capilla ★ |
 | Otro | Otro |
 
-### Status del anchor point
-
-| Status | Significado |
-|---|---|
-| **pending** | Capturado, aún no revisado — todavía no utilizable por la aplicación en vivo |
-| **verified** | Revisado y confirmado como correcto — indexado en el sistema de búsqueda, utilizable por la aplicación en vivo |
-| **rejected** | Revisado y rechazado (malas fotos, ubicación incorrecta, duplicado, etc.) — excluido del sistema de búsqueda |
-
-### Lighting (iluminación)
+### Iluminación
 
 | Opción | Significado |
 |---|---|
-| Not set | Sin información de iluminación registrada |
-| Bright | Bien iluminado, por ejemplo luz natural por ventanas |
-| Moderate | Iluminación interior normal |
-| Dim | Poco iluminado, por ejemplo una escalera interior |
+| Sin definir | Sin información. |
+| Brillante | Bien iluminado, por ejemplo con luz natural. |
+| Moderada | Iluminación interior normal. |
+| Tenue | Poco iluminado, por ejemplo una escalera interior. |
+
+Mapas © colaboradores de [OpenStreetMap](https://www.openstreetmap.org/copyright).

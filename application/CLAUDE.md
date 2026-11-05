@@ -214,6 +214,17 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 
 - `lib/services/location_service.dart` — singleton wrapping `Geolocator`; exposes a broadcast `Stream<Position>` (`positionStream`) and a cached `lastPosition`. Widgets subscribe to the stream independently rather than receiving position via a shared parent widget — follow this pattern (thread through `LocationService`, not widget constructors) for any new widget that needs live position.
 
+## Admin guide (web only)
+
+`web/guide/` is the tutorial served at `/admin/guide/`, generated from `docs/admin-guide/` (see `docs/admin-guide/tools/README.md`; CI fails if it's out of date). The drawer's **User guide** and the app bar's **?** open it behind `kIsWeb` (`lib/widgets/admin_guide.dart`); `_kGuideSections` names its anchors, which the guide's Markdown keeps stable in both languages. When a screen changes, retake its pictures and update the table under them: the numbers come from `take_screenshots.mjs`.
+
+## After the Icesi tests of 2026-11-05 (`docs/TUNING.md` §10)
+
+- **What trusts the heading:** `HeadingTracker.gpsCourse` ignores a course without accuracy ≤ 12 m and 3 m really moved in 5 s (`RecentFixes` in `geo_utils.dart`). A gyro heading stays trusted 120 s after its last anchor.
+- **Stall:** `_checkStall` (`isStalled`: no 3 m of progress in 20 s, no trusted heading) speaks one direction by compass (`_speakCompassDirection`, to the stretch's own bearing, never corners), else `navKeepWalking`. A trip starting at a non-hallway point does the same right away. Logged as `stall`.
+- **Keep running:** `wakelock_plus` while `NavigationScreen` is open; `app_paused` / `app_resumed` events, repeating the instruction on resuming.
+- **Skips:** `maySkipTo`. **Stale fixes:** older than 15 s advance nothing, and at 25 s it says so once and calls `LocationService.restart()`. The stream now delivers fixes with `distanceFilter: 0`, so a fix's age means something while standing still.
+
 ## Voice destinations
 
 `_handleSpoken` tries, in order: a place whose whole name (alone or with its building's) is the phrase (`exactPlaces`); a building the phrase names and only names (`matchBuildings`, by `name`, then `code`), sent as `end_building_id` so the server picks the door; then `matchDestinations`, where "edificio"/"bloque" alone no longer count as naming a place. A word after one of those, last in the phrase, is read as a letter (`_spokenTokens`: "se" is C, "de" is D; B and V are one). Buildings and places are limited to the start's campus, and same-named places are offered nearest first (`nearestFirst`). `NavigationScreen.destinationName` is what's said aloud; a resumed trip falls back to the end point's own name.

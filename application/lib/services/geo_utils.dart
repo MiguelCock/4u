@@ -185,3 +185,22 @@ List<int> floorsNear(
   }
   return floors.toList()..sort();
 }
+
+/// The last few seconds of GPS fixes, to tell real movement from a fix that
+/// jumps around while reporting a walking speed.
+class RecentFixes {
+  RecentFixes({this.window = const Duration(seconds: 5)});
+
+  final Duration window;
+  final List<({LatLng at, DateTime time})> _fixes = [];
+
+  void add(LatLng at, DateTime time) {
+    _fixes
+      ..add((at: at, time: time))
+      ..removeWhere((f) => time.difference(f.time) > window);
+  }
+
+  /// Meters from the oldest fix in the window to the newest.
+  double get movedMeters =>
+      _fixes.length < 2 ? 0 : haversineMeters(_fixes.first.at, _fixes.last.at);
+}

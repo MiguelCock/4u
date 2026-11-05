@@ -26,7 +26,9 @@ class LocationPlatform {
   Stream<Position> positions() => Geolocator.getPositionStream(
     locationSettings: AndroidSettings(
       accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 1,
+      // Every second, standing still too: how old a fix is has to mean GPS
+      // stopped answering, not that the user stopped walking.
+      distanceFilter: 0,
       intervalDuration: const Duration(seconds: 1),
     ),
   );
@@ -118,6 +120,14 @@ class LocationService {
     } catch (_) {
       // The stream delivers one later.
     }
+  }
+
+  /// Starts the position stream over, when fixes have stopped arriving.
+  Future<void> restart() async {
+    await _positions?.cancel();
+    _positions = null;
+    unawaited(_firstFix());
+    _startStream();
   }
 
   void _startStream() {
