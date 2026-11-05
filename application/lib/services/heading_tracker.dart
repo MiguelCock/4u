@@ -20,6 +20,9 @@ class HeadingTracker {
     this.gpsAnchorFor = const Duration(seconds: 60),
     this.minWalkingSpeed = 0.7,
     this.maxCourseSpread = 20,
+    this.minCourseAccuracy = 12,
+    this.minCourseMoved = 3,
+    this.reliableFor = const Duration(seconds: 120),
   });
 
   /// How fast a steady walking course pulls the heading.
@@ -36,6 +39,18 @@ class HeadingTracker {
 
   /// ...and only when the last 3 such courses stay within this (degrees).
   final double maxCourseSpread;
+
+  /// ...and only with GPS accuracy this good (meters), having really moved
+  /// this far in the last few seconds. Near a building at Icesi, GPS at ±27 m
+  /// reported walking at 2.9 m/s with a jumping course while the position
+  /// stayed within 15 m. Taking that as walking swung the "trusted" heading
+  /// 160° in 10 s with the compass steady, and guidance spun the user round
+  /// (2026-11-05). No such tick passes both; on trips that worked most do.
+  final double minCourseAccuracy;
+  final double minCourseMoved;
+
+  /// With a gyroscope, how long a walking anchor keeps the heading trusted.
+  final Duration reliableFor;
 
   double? _heading;
   bool _hasGyro = false;
@@ -70,7 +85,8 @@ class HeadingTracker {
   bool reliable(DateTime now) {
     final anchored = _gpsAnchoredAt;
     if (anchored == null) return false;
-    return _hasGyro || now.difference(anchored) <= _walkingCourseValidFor;
+    return now.difference(anchored) <=
+        (_hasGyro ? reliableFor : _walkingCourseValidFor);
   }
 
   /// `gyro+gps` (anchored to walking recently), `gyro+compass`, `gps`
@@ -155,10 +171,19 @@ class HeadingTracker {
   }
 
   /// GPS direction of travel (true north) and speed.
-  void gpsCourse(double course, double speed, DateTime at) {
+  void gpsCourse(
+    double course,
+    double speed,
+    DateTime at, {
+    double? accuracy,
+    double? movedMeters,
+  }) {
     final last = _lastGps;
     _lastGps = at;
-    if (speed < minWalkingSpeed || course.isNaN) {
+    if (speed < minWalkingSpeed ||
+        course.isNaN ||
+        (accuracy != null && accuracy > minCourseAccuracy) ||
+        (movedMeters != null && movedMeters < minCourseMoved)) {
       _courses.clear();
       return;
     }

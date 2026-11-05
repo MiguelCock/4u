@@ -208,3 +208,30 @@ Eight sessions, read from `navigation_sessions`/`navigation_logs.debug`, next to
 None of these has been tested on a real phone or in a real building yet.
 
 **To tune:** walk a route by stairs and one by elevator. In the session's `navigation_logs.debug`, ticks carry `pressure_hpa`, `floor` and `waiting_floor`. The events are `floor_wait` (from, to, starting pressure), `floor_detected` (seconds, `delta_hpa`), `floor_timeout` and `barometer_missing`. Compare `delta_hpa` with the threshold, and look at the noise in `pressure_hpa` while standing still. Elevator shafts and air conditioning may shift pressure by themselves. If detection isn't reliable enough, the fallback is a "Ya estoy en el piso N" button.
+
+## 10. Spinning and getting stuck at Icesi (2026-11-05)
+
+Eight sessions, one phone (gyroscope, no barometer).
+
+**Spinning (Edificio C, b73b686d, feef3b96).** GPS at ±11-27 m reported up to 2.9 m/s with a jumping course, while the position stayed within about 15 m. `HeadingTracker.gpsCourse` took it as walking: from 53:22 to 53:32 the compass stayed near 200° while the "trusted" heading went 247° → 47°. Each false turn cue moved the user, and the GPS stayed bad.
+
+A course now counts only with accuracy ≤ 12 m (`minCourseAccuracy`) and at least 3 m moved in 5 s (`minCourseMoved`). Ticks where GPS reports walking that pass both:
+
+| Trip | Pass | Reported vs real speed | Heading vs compass |
+|---|---|---|---|
+| b73b686d (spinning) | 0 of 72 | 1.4 vs 0.6 m/s | 85° |
+| feef3b96 (spinning) | 0 of 29 | 1.5 vs 0.5 m/s | 154° |
+| 51a422d2 (Ventolini) | 0 of 10 | 1.9 vs 0.8 m/s | 25° |
+| 72294926 (worked) | 29 of 39 | 1.0 vs 1.1 m/s | 7° |
+| 8b4d9325 (worked) | 18 of 31 | 1.0 vs 1.0 m/s | 4° |
+| dc99da4d (worked) | 20 of 38 | 0.9 vs 1.1 m/s | 14° |
+
+With a gyroscope, trust also expires 120 s after the last anchor (`reliableFor`); it used to last forever.
+
+**Stuck at Samán.** Raw GPS moved 3-22 m in up to 2 minutes, with no trusted heading, so no direction was ever given, and the 0.5.4 progress rule made the app silent. Now `isStalled` (no 3 m of progress in 20 s) gives one direction from the compass to the stretch's own bearing, which is never used for corners. It logs `stall` events with `compass`, `bearing` and `turn`: **compare `turn` with what really happened**. The compass was 3-26° off on these walks, but about 85° off on another phone (§7). If it's often wrong, this is the rule to change.
+
+**Pauses.** On 5 of 7 stuck trips, ticks and GPS stopped for 34-88 s, 35-45 s in, likely the screen timing out but not proven. The screen now stays on, and `app_paused` / `app_resumed` events (`gap_s`) will show it if it still happens.
+
+**Skips.** `maySkipTo`: raw GPS has to be nearer the later stop than the next. Within 20 m alone meant nothing on 11-16 m legs (51a422d2).
+
+**Not changed:** matches on "árbol Saman" kept the corrected position within 1 m of it, but raw GPS stayed near the tree too, so this may have been right. Worth checking if a big landmark holds someone back once they really walk away.

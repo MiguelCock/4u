@@ -10,6 +10,11 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - **Illustrated user guide for admins in the web app.** A **User guide** entry in the web menu opens every page explained in its own tab, in Spanish or English: the whole workflow, what each button does, and numbered screenshots. A **?** button in the top bar opens the section for the page you're on. It's only in the web app, not on the phone.
 
 ### Fixed
+- **The app made people spin** ("turn right, turn left…"), as seen in Edificio C. Weak GPS near buildings claimed a walk in a jumping direction, and the app believed it. Only real movement with good GPS now sets the user's direction.
+- **Stuck at the start in plazas**, like Plaza Samán. "Walk forward" means nothing in an open space, and nothing else was said. Starting outside a hallway, or with no progress for 20 s, the app now gives a direction by the compass, and it's never silent for long.
+- **Guidance stopped when the screen turned off.** The screen now stays on during a trip.
+- **A photo match could skip a stop** the user was standing next to. Guidance only jumps ahead when GPS is really nearer the later stop.
+- **A GPS that stopped answering** no longer moves the trip along; the app says it's looking for the location and restarts it.
 - **The Anchor points map had no background** in the web app: the map's tiles were cancelled as soon as it framed the points.
 - **Pick on map no longer opens in the ocean** in the web app, which has no GPS, when creating a point or a building. It opens at the chosen building or university.
 - While moving a point on the map, the floor buttons were hidden behind the banner.

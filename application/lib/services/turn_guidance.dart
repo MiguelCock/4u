@@ -392,3 +392,21 @@ Progress progressSince({
   if (meters >= lastMeters + awayMeters) return Progress.away;
   return Progress.same;
 }
+
+/// No real progress toward the next stop for [after]: time to say something.
+/// A user test stood at a plaza in silence for 90 s (Icesi, 2026-11-05).
+bool isStalled({
+  required DateTime? lastProgressAt,
+  required DateTime now,
+  Duration after = const Duration(seconds: 20),
+}) => lastProgressAt != null && now.difference(lastProgressAt) >= after;
+
+/// Whether guidance may jump to a later stop, past the next one: raw GPS has
+/// to be nearer the later one, and within [maxMeters] of it. Within 20 m alone
+/// means nothing on 11-16 m legs: one photo match skipped a stop the user was
+/// standing next to (Icesi, 2026-11-05).
+bool maySkipTo({
+  required double metersToNext,
+  required double metersToLater,
+  double maxMeters = 20,
+}) => metersToLater <= maxMeters && metersToLater < metersToNext;

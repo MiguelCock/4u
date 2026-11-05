@@ -297,4 +297,31 @@ void main() {
       expect(progressSince(lastMeters: 56, meters: 63), Progress.away);
     });
   });
+
+  group('isStalled', () {
+    test('after 20 s with no progress', () {
+      expect(isStalled(lastProgressAt: at(0), now: at(19000)), isFalse);
+      expect(isStalled(lastProgressAt: at(0), now: at(20000)), isTrue);
+    });
+
+    test('not before progress has started being counted', () {
+      expect(isStalled(lastProgressAt: null, now: at(90000)), isFalse);
+    });
+  });
+
+  group('maySkipTo', () {
+    test('a photo match next to the skipped stop does not skip it', () {
+      // Trip 51a422d2: raw GPS 6 m from the next stop, 15 m from the one the
+      // match pulled the position to.
+      expect(maySkipTo(metersToNext: 6, metersToLater: 15), isFalse);
+    });
+
+    test('really past the next stop does', () {
+      expect(maySkipTo(metersToNext: 15, metersToLater: 6), isTrue);
+    });
+
+    test('never from far away', () {
+      expect(maySkipTo(metersToNext: 60, metersToLater: 25), isFalse);
+    });
+  });
 }

@@ -568,5 +568,7 @@
   "adminHealthFloorChangeHint": "Las rutas no las usan. Borra cada una y conecta los pisos a través de un punto de escaleras, ascensor o rampa en cada piso.",
 
   "adminGuide": "Guía de uso",
-  "adminGuideSectionTooltip": "Ayuda de esta página"
+  "adminGuideSectionTooltip": "Ayuda de esta página",
+
+  "navKeepWalking": "Sigue caminando hacia adelante, unos {steps} pasos. Si no puedes avanzar, pide ayuda o termina la ruta."
 }
