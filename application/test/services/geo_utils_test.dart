@@ -193,4 +193,23 @@ void main() {
     );
     expect(floorsNear([point(3.341, 1)], from), isEmpty);
   });
+
+  test('RecentFixes measures movement over its window only', () {
+    final fixes = RecentFixes();
+    final t0 = DateTime(2026);
+    expect(fixes.movedMeters, 0);
+    fixes.add(const LatLng(3.34, -76.53), t0);
+    expect(fixes.movedMeters, 0);
+    // 0.00009 deg is about 10 m.
+    fixes.add(
+      const LatLng(3.34009, -76.53),
+      t0.add(const Duration(seconds: 3)),
+    );
+    expect(fixes.movedMeters, closeTo(10, 0.5));
+    fixes.add(
+      const LatLng(3.34009, -76.53),
+      t0.add(const Duration(seconds: 9)),
+    );
+    expect(fixes.movedMeters, 0);
+  });
 }

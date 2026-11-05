@@ -45,6 +45,8 @@ If you hear that there's no route to that destination yet, the path still has to
 
 ## 5. During the trip
 
+The phone keeps its screen on during the trip. If you aren't getting anywhere, or you're in an open space, the app tells you which way to go using the compass; if that doesn't match the path, tell whoever is with you or end the route.
+
 **How to hold the phone:** upright, in front of your chest, with the back camera facing forward. That's how the app recognises places. Don't cover the camera: if it's covered, the app tells you.
 
 **What you'll hear:**

@@ -728,5 +728,8 @@
   "adminHealthFloorChangeHint": "Routes don't use them. Delete each one and connect the floors through a stairwell, elevator or ramp point on each floor.",
 
   "adminGuide": "User guide",
-  "adminGuideSectionTooltip": "Help for this page"
+  "adminGuideSectionTooltip": "Help for this page",
+
+  "navKeepWalking": "Keep walking forward, about {steps} steps. If you can't go on, ask for help or end the route.",
+  "@navKeepWalking": {"placeholders": {"steps": {"type": "int"}}}
 }
