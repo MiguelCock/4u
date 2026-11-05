@@ -6,6 +6,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-11-05
+
+**For testers:** install `app-release.apk` from this release. Version 0.5.5 keeps working for now (it shows a "new version available" notice), and **0.5.4 no longer works**: anyone still on it sees "Update required". This release fixes the app making people spin near buildings, and getting stuck at the start in plazas. When it gives a direction in the open it uses the phone's compass, so please tell us if that direction is wrong.
+
 ### Added
 - **Illustrated user guide for admins in the web app.** A **User guide** entry in the web menu opens every page explained in its own tab, in Spanish or English: the whole workflow, what each button does, and numbered screenshots. A **?** button in the top bar opens the section for the page you're on. It's only in the web app, not on the phone.
 
@@ -256,7 +260,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.5...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.6...develop
+[0.5.6]: https://github.com/MiguelCock/4u/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/MiguelCock/4u/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/MiguelCock/4u/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/MiguelCock/4u/compare/v0.5.2...v0.5.3
