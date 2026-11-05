@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_map/flutter_map.dart';
@@ -12,6 +13,7 @@ import '../services/capture_checks.dart';
 import '../services/floor_view.dart';
 import '../services/location_types.dart' show anchorLabel;
 import '../services/map_tap.dart';
+import '../widgets/admin_guide.dart';
 import '../widgets/floor_selector.dart';
 
 /// Map-tap flow for building the anchor-point walkability graph: tap one
@@ -579,7 +581,18 @@ class _ConnectAnchorPointsScreenState extends State<ConnectAnchorPointsScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.adminFabConnectOnMap)),
+      appBar: AppBar(
+        title: Text(l10n.adminFabConnectOnMap),
+        actions: [
+          if (kIsWeb)
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              tooltip: l10n.adminGuideSectionTooltip,
+              onPressed: () =>
+                  openAdminGuide(context, section: 'connect-on-map'),
+            ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Column(

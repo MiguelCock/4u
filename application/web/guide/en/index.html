@@ -1,0 +1,1478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin user guide</title>
+<style>
+:root {
+  --bg: #f8f9ff; --panel: #eef1f9; --text: #1a1c22; --muted: #565b68;
+  --line: #d6dae5; --link: #2b5f9e; --mark: #d32f2f;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161b; --panel: #1e2129; --text: #e4e6ec; --muted: #a2a7b4;
+    --line: #333844; --link: #9cc3f5;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+a { color: var(--link); }
+.layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); }
+nav {
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  background: var(--panel); border-right: 1px solid var(--line); padding: 20px;
+}
+nav .links { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 16px; font-size: 14px; }
+nav summary { font-weight: 600; margin-bottom: 8px; cursor: pointer; }
+nav ul { list-style: none; margin: 0; padding: 0; }
+nav ul ul { padding-left: 14px; font-size: 14px; }
+nav li { margin: 5px 0; }
+nav a { text-decoration: none; }
+nav a:hover { text-decoration: underline; }
+main { max-width: 1000px; padding: 32px 40px 80px; min-width: 0; }
+h1 { font-size: 32px; line-height: 1.2; margin-top: 0; }
+h2 { font-size: 26px; line-height: 1.25; margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line); }
+h3 { font-size: 20px; margin-top: 36px; }
+img { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; }
+main > p > a:has(img), figure { display: block; margin: 16px 0; }
+.scroll { overflow-x: auto; margin: 16px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+th { background: var(--panel); }
+td:first-child:not(:only-child) { white-space: nowrap; }
+blockquote { margin: 16px 0; padding: 10px 16px; background: var(--panel); border-left: 4px solid var(--link); }
+blockquote p { margin: 0; }
+code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size: 14px; }
+@media (max-width: 800px) {
+  .layout { display: block; }
+  nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 14px 16px; }
+  main { padding: 20px 16px 60px; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 22px; }
+}
+@media print {
+  nav { display: none; }
+  .layout { display: block; }
+  main { max-width: none; padding: 0; }
+  img { break-inside: avoid; }
+  h2 { break-after: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav aria-label="Contents">
+<div class="links">
+<a href="../../">Back to the app</a>
+<a href="../es/" hreflang="es">Español</a>
+</div>
+<details open>
+<summary>Contents</summary>
+<ul>
+<li><a href="#getting-started">1. Getting started</a>
+<ul>
+<li><a href="#signing-in">Signing in</a></li>
+<li><a href="#the-menu-and-the-top-bar">The menu and the top bar</a></li>
+</ul>
+</li>
+<li><a href="#workflow">2. The whole job, start to finish</a>
+</li>
+<li><a href="#universities">3. Universities</a>
+<ul>
+<li><a href="#adding-a-university">Adding a university</a></li>
+</ul>
+</li>
+<li><a href="#buildings">4. Buildings</a>
+<ul>
+<li><a href="#adding-a-building">Adding a building</a></li>
+</ul>
+</li>
+<li><a href="#anchor-points">5. Anchor points</a>
+<ul>
+<li><a href="#the-list">The list</a></li>
+<li><a href="#filters">Filters</a></li>
+<li><a href="#point-form">Creating a point</a></li>
+<li><a href="#picking-the-position-on-the-map">Picking the position on the map</a></li>
+<li><a href="#point-edit">Editing a point</a></li>
+<li><a href="#photos">Photos</a></li>
+<li><a href="#verify">Verifying a point</a></li>
+<li><a href="#points-map">The points map</a></li>
+<li><a href="#floors">Floors on the maps</a></li>
+</ul>
+</li>
+<li><a href="#connections">6. Connections</a>
+<ul>
+<li><a href="#rules">Rules</a></li>
+<li><a href="#connection-warning">Warnings for users</a></li>
+<li><a href="#connect-on-map">Connect on map</a></li>
+<li><a href="#connection-form">Connecting with the form</a></li>
+</ul>
+</li>
+<li><a href="#users-see">7. What users see</a>
+</li>
+<li><a href="#notices">8. Menu notices</a>
+<ul>
+<li><a href="#reindex">Re-index verified points</a></li>
+</ul>
+</li>
+<li><a href="#users">9. Users</a>
+</li>
+<li><a href="#sessions">10. Sessions</a>
+<ul>
+<li><a href="#a-sessions-map">A session&#x27;s map</a></li>
+</ul>
+</li>
+<li><a href="#feedback">11. Feedback</a>
+</li>
+<li><a href="#settings">12. Settings</a>
+</li>
+<li><a href="#phone-only">13. Phone only</a>
+<ul>
+<li><a href="#taking-photos-with-the-camera">Taking photos with the camera</a></li>
+<li><a href="#test-as-user">Test as user</a></li>
+</ul>
+</li>
+<li><a href="#deleting">14. Deleting data</a>
+</li>
+<li><a href="#problems">15. Common problems</a>
+</li>
+<li><a href="#reference">16. Quick reference</a>
+<ul>
+<li><a href="#location-types">Location types</a></li>
+<li><a href="#lighting">Lighting</a></li>
+</ul>
+</li>
+</ul>
+</details>
+</nav>
+<main>
+<h1 id="admin-user-guide">Admin user guide</h1>
+<p>This guide explains how to build and maintain the map Eyes4U uses to guide people with visual impairments: every page of the web app, what each button does, and the whole job from start to finish.</p>
+<p>The pictures show an <strong>example university with made-up data</strong>. The red numbers in each picture match the table below it.</p>
+<p><a id="getting-started"></a></p>
+<h2 id="1-getting-started">1. Getting started</h2>
+<h3 id="signing-in">Signing in</h3>
+<p>There's no separate admin sign-in: the app takes you to this view based on your account's role. An account that isn't an admin can't use the web app, and is told to use the phone app.</p>
+<p><a href="../images/en/login.webp" target="_blank" rel="noopener"><img alt="Sign-in screen" src="../images/en/login.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Email</strong></td>
+<td>Your account's email.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Password</strong></td>
+<td>Your password.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Log in</strong></td>
+<td>Enters the app.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Don't have an account? Sign up</strong></td>
+<td>Creates a new account, which starts as a regular user. Another admin has to make it an admin (<a href="#users">Users</a>).</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="the-menu-and-the-top-bar">The menu and the top bar</h3>
+<p>In a wide window, the menu stays open on the left. In a narrow one, it opens with the ☰ icon.</p>
+<p><a href="../images/en/home-menu.webp" target="_blank" rel="noopener"><img alt="Side menu and top bar" src="../images/en/home-menu.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>User guide</strong></td>
+<td>Opens this guide in another tab, to read next to the app.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Universities</strong></td>
+<td>The campuses. See <a href="#universities">Universities</a>.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Buildings</strong></td>
+<td>Each campus's buildings. See <a href="#buildings">Buildings</a>.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Anchor points</strong></td>
+<td>The places the app learns to recognize. See <a href="#anchor-points">Anchor points</a>.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Connections</strong></td>
+<td>Where people can walk between points. See <a href="#connections">Connections</a>.</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Users</strong></td>
+<td>The accounts. See <a href="#users">Users</a>.</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Sessions</strong></td>
+<td>The trips made with the app. See <a href="#sessions">Sessions</a>.</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>Feedback</strong></td>
+<td>What users wrote after a trip. See <a href="#feedback">Feedback</a>.</td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>Re-index verified points</strong></td>
+<td>Repairs the photo search. In red, how many photos can't be searched. See <a href="#reindex">Re-index</a>.</td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>N verified points not connected</strong></td>
+<td>Notice: nobody can reach those points. Opens the filtered list.</td>
+</tr>
+<tr>
+<td>11</td>
+<td><strong>N named points users can't choose</strong></td>
+<td>Notice: a destination saved with an in-between type.</td>
+</tr>
+<tr>
+<td>12</td>
+<td><strong>N connections over 30 m</strong></td>
+<td>Notice: routes don't use them.</td>
+</tr>
+<tr>
+<td>13</td>
+<td><strong>N connections that change floor without stairs</strong></td>
+<td>Notice: routes don't use them.</td>
+</tr>
+<tr>
+<td>14</td>
+<td><strong>Help for this page</strong> (?)</td>
+<td>Opens this guide at the section for the page you're on.</td>
+</tr>
+<tr>
+<td>15</td>
+<td><strong>Refresh</strong></td>
+<td>Loads the data from the server again.</td>
+</tr>
+<tr>
+<td>16</td>
+<td><strong>Settings</strong></td>
+<td>Language, font size and more. See <a href="#settings">Settings</a>.</td>
+</tr>
+<tr>
+<td>17</td>
+<td><strong>Log out</strong></td>
+<td>Signs you out right away, without asking.</td>
+</tr>
+</tbody>
+</table></div>
+<p>The orange notices (10 to 13) only appear when there's something to fix. See <a href="#notices">Menu notices</a>.</p>
+<p><a id="workflow"></a></p>
+<h2 id="2-the-whole-job-start-to-finish">2. The whole job, start to finish</h2>
+<p>Each step builds on the one before. If you skip one, the next one's dropdown is empty and tells you what to add first.</p>
+<ol>
+<li><strong>Create the <a href="#universities">university</a></strong>, one per campus.</li>
+<li><strong>Create its <a href="#buildings">buildings</a></strong>, with how many floors each has.</li>
+<li><strong>Create the <a href="#point-form">anchor points</a>.</strong> First the places people want to go (entrances, classrooms, restrooms, the cafeteria), with a clear name. Then the in-between points (hallways, intersections, stairs), every 6 to 8 m along the paths.</li>
+<li><strong>Add <a href="#photos">photos</a></strong> to each point, 4 to 8, one per direction. They're how the app recognizes where the user is.</li>
+<li><strong><a href="#verify">Verify</a> each point</strong> after reviewing its photos. An unverified point doesn't exist for users.</li>
+<li><strong><a href="#connect-on-map">Connect</a> the points</strong> in a chain along the paths. Routes only follow connections: a point with no connections doesn't appear for users.</li>
+<li><strong>Test a route</strong> with <a href="#phone-only">Test as user</a> on the phone, walking it.</li>
+<li><strong>Review the <a href="#sessions">session</a></strong> to see how well it worked, and fix what's needed.</li>
+</ol>
+<p><strong>Example.</strong> So that someone can go from the Library door to the restroom: create "Universidad Demo" and the "Biblioteca" building. Create "Entrada principal" (type Entrance), "Baño mujeres" (type Restroom) and a Hallway point every 7 m between them. Upload each one's photos, verify them, and connect them in order in <strong>Connect on map</strong>. Done: "Baño mujeres" can now be chosen as a destination.</p>
+<p><a id="universities"></a></p>
+<h2 id="3-universities">3. Universities</h2>
+<p>A university is a campus or site. Everything else belongs to one.</p>
+<p><a href="../images/en/universities.webp" target="_blank" rel="noopener"><img alt="University list" src="../images/en/universities.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Search universities</strong></td>
+<td>Filters the list as you type.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>University row</td>
+<td>Shows its name and how many buildings it has.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Edit</strong> (pencil)</td>
+<td>Changes its details. The code can't be changed.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Delete</strong> (trash)</td>
+<td>Deletes it with everything in it. See <a href="#deleting">Deleting data</a>.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Add university</strong> (+)</td>
+<td>Opens the form below.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="adding-a-university">Adding a university</h3>
+<p><a href="../images/en/university-form.webp" target="_blank" rel="noopener"><img alt="University form" src="../images/en/university-form.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Field</th>
+<th>What it means</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Code</strong></td>
+<td>A short, unique identifier. Required, and can't be changed later.</td>
+<td><code>ICESI</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Name</strong></td>
+<td>The full name shown across the app. Required.</td>
+<td><code>Universidad Icesi</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Address (optional)</strong></td>
+<td>For reference only.</td>
+<td><code>Calle 18 #122-135</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Latitude</strong></td>
+<td>The campus's rough center, in decimal degrees. Required.</td>
+<td><code>3.3417</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Longitude</strong></td>
+<td>The same. Required.</td>
+<td><code>-76.5302</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Pick on map</strong></td>
+<td>Fills in the two above by tapping a map.</td>
+<td></td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Save university</strong></td>
+<td>Creates the university.</td>
+<td></td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<p><strong>On the web, type rough coordinates first.</strong> The web app doesn't use GPS, so with no coordinates the map opens in the ocean, at 0,0. Copy the location from any online map, then adjust it with <strong>Pick on map</strong>.</p>
+</blockquote>
+<p>Editing also shows a switch to <strong>deactivate</strong> it without deleting: its buildings and points stop being offered to users, and the history is kept.</p>
+<p><a id="buildings"></a></p>
+<h2 id="4-buildings">4. Buildings</h2>
+<p><a href="../images/en/buildings.webp" target="_blank" rel="noopener"><img alt="Building list" src="../images/en/buildings.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Search buildings</strong></td>
+<td>Filters the list as you type.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Building row</td>
+<td>Shows its university and how many points it has.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Edit</strong> (pencil)</td>
+<td>Changes its details, including which university it belongs to. The code can't be changed.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Delete</strong> (trash)</td>
+<td>Deletes it with everything in it. See <a href="#deleting">Deleting data</a>.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Add building</strong> (+)</td>
+<td>Opens the form below.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="adding-a-building">Adding a building</h3>
+<p><a href="../images/en/building-form.webp" target="_blank" rel="noopener"><img alt="Building form" src="../images/en/building-form.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Field</th>
+<th>What it means</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>University</strong></td>
+<td>Which one it belongs to. Required.</td>
+<td></td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Code</strong></td>
+<td>A short, unique identifier. Required, and can't be changed later.</td>
+<td><code>BIB</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Name</strong></td>
+<td>The full name. Users can also say it by voice, so use the name people know it by. Required.</td>
+<td><code>Edificio C</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Address (optional)</strong></td>
+<td>For reference only.</td>
+<td></td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Latitude</strong></td>
+<td>The building's position. Required. A point over 300 m from it is refused.</td>
+<td></td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Longitude</strong></td>
+<td>The same. Required.</td>
+<td></td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Pick on map</strong></td>
+<td>Fills in the two above by tapping a map, which opens at the chosen university.</td>
+<td></td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>Floors</strong></td>
+<td>How many floors it has. Gives its points their floor options.</td>
+<td><code>3</code></td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>Has elevator</strong></td>
+<td>Accessibility information.</td>
+<td></td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>Has stairs</strong></td>
+<td>Accessibility information.</td>
+<td></td>
+</tr>
+<tr>
+<td>11</td>
+<td><strong>Save building</strong></td>
+<td>Creates the building.</td>
+<td></td>
+</tr>
+</tbody>
+</table></div>
+<p>Editing also shows a switch to <strong>deactivate</strong> it without deleting.</p>
+<p><a id="anchor-points"></a></p>
+<h2 id="5-anchor-points">5. Anchor points</h2>
+<p>An anchor point is a specific physical place (a door, an intersection, an elevator lobby) that the app learns to recognize from its photos. When the user's camera sees something matching, the app corrects their position. Points are also the stops of a route.</p>
+<p>There are two kinds of point, by their <strong>location type</strong>:
+- <strong>Destinations</strong> (classroom, restroom, cafeteria…): users choose them. They need a name.
+- <strong>In-between points</strong> (hallway, intersection, stairs…): they only join paths. They don't need a name, and users never choose them.</p>
+<h3 id="the-list">The list</h3>
+<p><a href="../images/en/points-list.webp" target="_blank" rel="noopener"><img alt="Anchor point list" src="../images/en/points-list.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>All / Pending / Verified / Rejected</strong></td>
+<td>Shows only points with that status, and how many there are.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Filters</strong></td>
+<td>Opens more filters (below).</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Search anchor points</strong></td>
+<td>Searches by name.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>List</strong></td>
+<td>Shows the points in this list.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Map</strong></td>
+<td>Shows the same points on a map. See <a href="#points-map">The map</a>.</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Point row</td>
+<td>Shows its building, status and photo count. <strong>Tapping it opens Connect on map</strong> with this point already selected.</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Verify</strong></td>
+<td>Verifies the point. On a verified one, this button puts it back to pending. See <a href="#verify">Verifying</a>.</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>Edit</strong> (pencil)</td>
+<td>Opens <a href="#point-edit">the point's edit page</a>.</td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>More actions</strong> (⋮)</td>
+<td>Opens the menu below.</td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>New anchor point</strong> (camera)</td>
+<td>Opens <a href="#point-form">the form</a>.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Unnamed points show their type and the start of their id, for example "Hallway · 284a".</p>
+<p><a href="../images/en/points-row-menu.webp" target="_blank" rel="noopener"><img alt="More actions menu of a point" src="../images/en/points-row-menu.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Option</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Add photo</strong></td>
+<td>Opens <a href="#photos">the point's photos</a>.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Delete</strong></td>
+<td>Deletes the point, its photos and its connections. See <a href="#deleting">Deleting data</a>.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="filters">Filters</h3>
+<p><a href="../images/en/points-filters.webp" target="_blank" rel="noopener"><img alt="Point filters" src="../images/en/points-filters.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p>Narrows by <strong>category</strong> and type, <strong>floor</strong>, <strong>indoors or outdoors</strong>, <strong>lighting</strong>, and whether it <strong>has photos</strong> or <strong>connections</strong>. They combine with the status and the search. They help find pending work: for example, Verified + no connections are points nobody can use yet.</p>
+<p><a id="point-form"></a></p>
+<h3 id="creating-a-point">Creating a point</h3>
+<p><a href="../images/en/point-form.webp" target="_blank" rel="noopener"><img alt="New point form" src="../images/en/point-form.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Field</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>University</strong></td>
+<td>Filters the building list.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Building</strong></td>
+<td>Which one the point belongs to. Required.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Floor</strong></td>
+<td>Which floor it's on. "Floor 1" is the ground floor. The options come from the building's floors.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Location type</strong></td>
+<td>What kind of place it is. Opens a picker by category, with a search box. Full list in <a href="#reference">Quick reference</a>.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Description</strong></td>
+<td>The name users choose and hear. Required for destinations. Describe the real place: "South entrance" is much better than "Point 1". <strong>Don't repeat the building</strong>: it's removed on saving, and the app shows it alongside.</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Indoors</strong></td>
+<td>The point is under a roof. You have to choose one of the two each time.</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Outdoors</strong></td>
+<td>The point is in the open.</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>Lighting</strong></td>
+<td>Optional: bright, moderate or dim. It helps whoever reviews the photos: a dark photo may simply be a dark hallway.</td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>Surface (optional)</strong></td>
+<td>Optional: tile, carpet, concrete…</td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>Pick on map</strong></td>
+<td>Sets the position by tapping a map. It's the most precise.</td>
+</tr>
+<tr>
+<td>11</td>
+<td><strong>Use my location</strong></td>
+<td>Sets the position from GPS, standing right on the point. Phone only, and with an accuracy of ±8 m or better. It stays disabled on the web.</td>
+</tr>
+<tr>
+<td>12</td>
+<td><strong>Create and add photos</strong></td>
+<td>Saves the point and opens its photos. Disabled until you set the position.</td>
+</tr>
+</tbody>
+</table></div>
+<p>The position is required on purpose: the app doesn't take the GPS by itself, since that saved points in the wrong places.</p>
+<p>The app stops you in two cases:
+- <strong>Another point under 3 m away</strong>, in the same building and floor. It's almost always the same place saved twice: add photos to the existing one.
+- <strong>A name on an in-between type.</strong> Users can only choose destinations, so a "Restroom" saved as a Hallway never appears for them. Tap <strong>Change type</strong>, unless it really is a named waypoint.</p>
+<p>The form remembers the university, building, type, floor, lighting and surface of the last point you created.</p>
+<h3 id="picking-the-position-on-the-map">Picking the position on the map</h3>
+<p><a href="../images/en/location-picker.webp" target="_blank" rel="noopener"><img alt="Pick a location" src="../images/en/location-picker.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p>Tap the exact spot: <strong>the tip of the pin</strong> marks where it goes. Existing points are colored by status. The map opens on the form's floor; changing floor here only changes what you see, not the point's floor.</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Confirm location</strong> (✓)</td>
+<td>Returns to the form with that position.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Go up a floor</strong></td>
+<td>Shows the floor above.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Go down a floor</strong></td>
+<td>Shows the floor below.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Only this floor</strong></td>
+<td>Hides the points on the neighboring floors. See <a href="#floors">Floors</a>.</td>
+</tr>
+</tbody>
+</table></div>
+<p><a id="point-edit"></a></p>
+<h3 id="editing-a-point">Editing a point</h3>
+<p><a href="../images/en/point-edit.webp" target="_blank" rel="noopener"><img alt="Edit a point" src="../images/en/point-edit.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Description</strong></td>
+<td>The name, as when creating it.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Floor</strong></td>
+<td>Which floor it's on.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Location type</strong></td>
+<td>Destination or in-between.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Indoor location</strong></td>
+<td>Indoors or outdoors.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Lighting</strong></td>
+<td>As when creating it.</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Surface (optional)</strong></td>
+<td>As when creating it.</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Manage photos (N)</strong></td>
+<td>Opens <a href="#photos">the photos</a>. The thumbnails above it let you review them at a glance.</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>Status</strong></td>
+<td>Pending, Verified or Rejected. See <a href="#verify">Verifying</a>.</td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>Move on map</strong></td>
+<td>Picks another position.</td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>Save changes</strong></td>
+<td>Saves.</td>
+</tr>
+</tbody>
+</table></div>
+<p><a id="photos"></a></p>
+<h3 id="photos">Photos</h3>
+<p>A person can reach a place from any side, so the app needs to see it from each direction. Take <strong>4 to 8 photos standing on the point</strong>, one toward each side (N, S, E, W, adapting to the place; a corner may only have two or three directions worth taking).</p>
+<p><a href="../images/en/point-photos.webp" target="_blank" rel="noopener"><img alt="A point's photos on the web" src="../images/en/point-photos.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p>The images above are placeholders; here you'll see your photos, with their direction in the corner.</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>The photos face</strong> (N, NE, E…, Unknown)</td>
+<td>Which way the photos you're about to upload face. Choose <strong>Unknown</strong> if you're not sure: that photo is never discarded for facing another way.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Upload photos (N)</strong></td>
+<td>Picks one or more images from your computer. N is how many the point has.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Done</strong> (✓)</td>
+<td>Finishes and goes back.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Each photo's trash icon deletes it, after asking. To take photos with the camera, see <a href="#phone-only">Phone only</a>.</p>
+<p><a id="verify"></a></p>
+<h3 id="verifying-a-point">Verifying a point</h3>
+<p>The status decides whether a point exists for users:</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Pending</strong></td>
+<td>Captured, not reviewed. Users don't see it, and the app doesn't recognize it.</td>
+</tr>
+<tr>
+<td><strong>Verified</strong></td>
+<td>Reviewed. Its photos go into the search, and it can be part of a route.</td>
+</tr>
+<tr>
+<td><strong>Rejected</strong></td>
+<td>Reviewed and discarded (bad photos, a duplicate…). It leaves the search, without being deleted.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Before verifying, look at its photos: are they clear, and do they show the right place? Verify with the row's ✔ button, or with <strong>Status</strong> on the edit page.</p>
+<p>With no photos, it can't be verified:</p>
+<p><a href="../images/en/verify-needs-photo.webp" target="_blank" rel="noopener"><img alt="Notice that a photo is missing" src="../images/en/verify-needs-photo.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p>With no connections, the app asks first. You can verify anyway and connect later, but until then users can't reach that point or leave from it:</p>
+<p><a href="../images/en/verify-unconnected.webp" target="_blank" rel="noopener"><img alt="Notice of a point with no connections" src="../images/en/verify-unconnected.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p><strong>If an indexing error appears</strong>, the point is verified but the photo search didn't receive it. See <a href="#reindex">Re-index</a>.</p>
+<p><a id="points-map"></a></p>
+<h3 id="the-points-map">The points map</h3>
+<p><strong>Map</strong> shows the same filtered points: green verified, grey pending, red rejected. The lines are their connections.</p>
+<p><a href="../images/en/points-map.webp" target="_blank" rel="noopener"><img alt="Points map" src="../images/en/points-map.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Go up a floor</strong></td>
+<td>Shows the floor above.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Go down a floor</strong></td>
+<td>Shows the floor below.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Only this floor</strong></td>
+<td>Hides the neighboring floors. See <a href="#floors">Floors</a>.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>New anchor point</strong></td>
+<td>Opens <a href="#point-form">the form</a>.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Tap a point to see its details and actions:</p>
+<p><a href="../images/en/point-sheet.webp" target="_blank" rel="noopener"><img alt="A point's details and actions on the map" src="../images/en/point-sheet.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Button</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Connect</strong></td>
+<td>Opens <a href="#connect-on-map">Connect on map</a> with this point selected.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Move</strong></td>
+<td>Changes its position (below).</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Verify</strong> / <strong>Unverify</strong></td>
+<td>Changes its status.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Add photo</strong></td>
+<td>Opens <a href="#photos">its photos</a>.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Edit</strong></td>
+<td>Opens <a href="#point-edit">its edit page</a>.</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Moving a point.</strong> Tap <strong>Move</strong>, then the new position: the tip of the pin marks where it goes. <strong>Save new position</strong> saves it, and <strong>Cancel</strong> discards it. The app also updates the photo search and its connections' distances. It won't move a point if that stretches one of its connections past 30 m.</p>
+<p><a href="../images/en/point-moving.webp" target="_blank" rel="noopener"><img alt="Moving a point" src="../images/en/point-moving.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p><a id="floors"></a></p>
+<h3 id="floors-on-the-maps">Floors on the maps</h3>
+<p>Maps show one floor at a time. You change floor like in an elevator, and the box says which floor you're on. This control appears on every map that shows points, and only when there's more than one floor.</p>
+<ul>
+<li>Points on the <strong>current floor</strong> look normal.</li>
+<li>Those on the <strong>floor above</strong> are purple ▲, and on the <strong>floor below</strong>, orange ▼. Floors further away aren't shown.</li>
+<li>Lines are only drawn if they touch the current floor, and are dashed if they change floor.</li>
+</ul>
+<p><a href="../images/en/points-map-floor2.webp" target="_blank" rel="noopener"><img alt="Floor 2, with the one below in orange" src="../images/en/points-map-floor2.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p><strong>Only this floor</strong> hides the ▲ and ▼. The app remembers this option in this browser.</p>
+<p><a href="../images/en/points-map-only-floor.webp" target="_blank" rel="noopener"><img alt="Only this floor turned on" src="../images/en/points-map-only-floor.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p><a id="connections"></a></p>
+<h2 id="6-connections">6. Connections</h2>
+<p>A connection says that <strong>a person can walk directly between two points</strong>. Routes only follow connections, and guidance walks a straight line between two connected points.</p>
+<p><a href="../images/en/connections.webp" target="_blank" rel="noopener"><img alt="Connection list" src="../images/en/connections.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Search connections</strong></td>
+<td>Searches by its points' names.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Add connection (form)</strong></td>
+<td>Opens <a href="#connection-form">the form</a>.</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Connection row</td>
+<td>Shows its two points, their buildings and its distance. <strong>Tapping it</strong> opens its warning for users (below). ⚠ means it has one.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Delete</strong> (trash)</td>
+<td>Deletes the connection, after asking. The points aren't touched.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Connect on map</strong></td>
+<td>Opens <a href="#connect-on-map">the map</a>.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="rules">Rules</h3>
+<p>The app and the server apply these rules:
+- <strong>At most 30 m in a straight line.</strong> A 50 m connection between buildings goes through whatever is in between. Capture points every 6 to 8 m and chain-connect them. Above 15 m, the app warns.
+- <strong>Floors only change</strong> through a stairwell, elevator or ramp point.
+- A distance typed by hand can't be shorter than the straight line.</p>
+<p>Old connections that break these rules aren't used for routes: a trip that needed one says there's no route until it's redone. The menu lists them (<a href="#notices">Menu notices</a>).</p>
+<p><a id="connection-warning"></a></p>
+<h3 id="warnings-for-users">Warnings for users</h3>
+<p>The app <strong>can't see obstacles</strong>: it only knows what someone wrote down. For a step, a bin or a narrow door, tap the connection and write a short warning. It's said to the user as they start that stretch: "Attention: three steps down".</p>
+<p><a href="../images/en/connection-warning.webp" target="_blank" rel="noopener"><img alt="A connection's warning for users" src="../images/en/connection-warning.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p>Stairs, elevators and ramps are announced on their own about 8 m before, if the point has that type.</p>
+<p><a id="connect-on-map"></a></p>
+<h3 id="connect-on-map">Connect on map</h3>
+<p>The fastest way to connect a whole hallway.</p>
+<p><a href="../images/en/connect-map.webp" target="_blank" rel="noopener"><img alt="Connect on map" src="../images/en/connect-map.webp" width="1280" height="1000" loading="lazy"></a></p>
+<ol>
+<li>Choose the <strong>university</strong> and, to narrow it down, the <strong>building</strong>.</li>
+<li>Tap a point to select it. A tap near it is enough, and it shows in blue.</li>
+<li>Tap the next one: the connection is created, and <strong>that point stays selected</strong>, so you can keep tapping along the hallway.</li>
+<li>Tap the selected point to deselect it.</li>
+</ol>
+<p>Connections are green lines. A new one is dotted grey while it saves, and you can keep tapping. To <strong>delete</strong> one, tap the line away from the points and confirm.</p>
+<p><a href="../images/en/connect-selected.webp" target="_blank" rel="noopener"><img alt="Connect with a point selected" src="../images/en/connect-selected.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>University</strong></td>
+<td>Which campus the map shows.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Building</strong></td>
+<td>Narrows the points to one building.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Go up a floor</strong></td>
+<td>Shows the floor above.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Go down a floor</strong></td>
+<td>Shows the floor below.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Only this floor</strong></td>
+<td>Hides the neighboring floors. It must be off to connect across floors.</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Help for this page</strong></td>
+<td>Opens this section.</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Connecting two floors.</strong> Create a stairwell, elevator or ramp point <strong>on each floor</strong>, one above the other. Tap the one on the current floor, then the ▲ or ▼ on the other floor. The line is dashed, and the map moves to that floor so you can keep chaining. <strong>Connect the elevator if there is one</strong>: routes prefer it.</p>
+<p><a id="connection-form"></a></p>
+<h3 id="connecting-with-the-form">Connecting with the form</h3>
+<p>Use it when you need to type the real distance or a warning from the start.</p>
+<p><a href="../images/en/connection-form.webp" target="_blank" rel="noopener"><img alt="Connection form" src="../images/en/connection-form.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Field</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>University</strong></td>
+<td>Filters the point lists.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Building (optional filter)</strong></td>
+<td>Narrows the lists further.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Anchor point A</strong></td>
+<td>One end.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Anchor point B</strong></td>
+<td>The other end.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Distance in meters (optional)</strong></td>
+<td>How far it really is to walk. Blank uses the straight line. Fill it in if the path bends.</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Warning for users</strong></td>
+<td>What the user is told as they start this stretch. See <a href="#connection-warning">Warnings for users</a>.</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Save connection</strong></td>
+<td>Creates the connection.</td>
+</tr>
+</tbody>
+</table></div>
+<p>The only thing you can change on a connection later is its warning. To change anything else, delete it and create it again. Saved routes that went through a deleted connection are recalculated on their own.</p>
+<p><a id="users-see"></a></p>
+<h2 id="7-what-users-see">7. What users see</h2>
+<p>This explains most cases of "it doesn't show up" and "there's no route":</p>
+<ul>
+<li><strong>They only see verified points with at least one connection.</strong> The rest don't exist for them.</li>
+<li><strong>They can only choose destinations</strong>, meaning points of a type marked ★ in the <a href="#reference">Quick reference</a>, with a name.</li>
+<li><strong>The starting point</strong> is the connected point nearest their GPS. If points on several floors are within 15 m, the app asks which floor they're on.</li>
+<li><strong>They can say a building</strong> ("Edificio C"). The route ends at its entrance closest by walking, so <strong>give each door the Entrance type</strong> and connect it. With no entrance marked, it ends at the closest connected point on its lowest floor.</li>
+<li><strong>Names don't repeat the building.</strong> "Entrada sur bloque 20" is saved as "Entrada sur". The user can still say "entrada sur bloque 20", and if there are several "Entrada sur" they're offered the nearest.</li>
+<li><strong>When changing floor</strong>, the app tells them where to go ("Take the elevator to floor 3") and waits for the phone's barometer to detect the change.</li>
+</ul>
+<p><a id="notices"></a></p>
+<h2 id="8-menu-notices">8. Menu notices</h2>
+<p>The orange notices show map mistakes that affect users. They're worked out from the loaded data, and disappear when everything is fine.</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Notice</th>
+<th>What it means</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>N verified points not connected</strong></td>
+<td>Nobody can reach them or leave from them.</td>
+<td>Open the filtered list; connect them.</td>
+</tr>
+<tr>
+<td><strong>N named points users can't choose</strong></td>
+<td>They have a name, but an in-between type.</td>
+<td>Tap one and change its type if users go there. Some may be deliberate ("Hallway to rooms 202").</td>
+</tr>
+<tr>
+<td><strong>N connections over 30 m</strong></td>
+<td>Routes don't use them.</td>
+<td>Tap one to delete it, and connect that path again through in-between points.</td>
+</tr>
+<tr>
+<td><strong>N connections that change floor without stairs</strong></td>
+<td>Routes don't use them.</td>
+<td>Tap one to delete it, and connect the floors through a stairwell, elevator or ramp point on each floor.</td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="../images/en/health-long-connections.webp" target="_blank" rel="noopener"><img alt="List of connections over 30 m" src="../images/en/health-long-connections.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p><a href="../images/en/health-floor-change.webp" target="_blank" rel="noopener"><img alt="List of connections that change floor without stairs" src="../images/en/health-floor-change.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p><a href="../images/en/health-hidden-names.webp" target="_blank" rel="noopener"><img alt="List of named points users can't choose" src="../images/en/health-hidden-names.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p><a id="reindex"></a></p>
+<h3 id="re-index-verified-points">Re-index verified points</h3>
+<p>If a verified point's photos didn't reach the search (because of a server problem), the app can't recognize it yet, and the menu says so in red: "N photos not searchable". Once the server is fine, tap <strong>Re-index verified points</strong>. It removes from the search what shouldn't be there, sends the missing points, retries failures, and ends with this summary, which lists any that still failed:</p>
+<p><a href="../images/en/reindex.webp" target="_blank" rel="noopener"><img alt="Re-index result" src="../images/en/reindex.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p><a id="users"></a></p>
+<h2 id="9-users">9. Users</h2>
+<p><a href="../images/en/users.webp" target="_blank" rel="noopener"><img alt="User list" src="../images/en/users.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>User row</td>
+<td>Their name and role. "Deactivated" in red if blocked.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Promote to admin</strong> (shield)</td>
+<td>Gives them admin rights, after asking. On an admin, this button removes them.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Deactivate account</strong></td>
+<td>Blocks the account without deleting it: it can't use the app or the web.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Activate account</strong></td>
+<td>Unblocks a deactivated account.</td>
+</tr>
+</tbody>
+</table></div>
+<p>On your own row these buttons are disabled.</p>
+<ul>
+<li><strong>Accounts with no profile:</strong> if a sign-up didn't finish, the account appears in a highlighted card at the top, and its button creates the missing profile.</li>
+<li><strong>The first admin</strong> of an installation is set by hand in the database, as the note above the list says.</li>
+</ul>
+<p><strong>App versions.</strong> The newest version and the one before it work. Anyone on the older one sees "New version available" on opening it. Older ones only show "Update required" until the new APK is installed, which is on the project's GitHub releases page.</p>
+<p><a id="sessions"></a></p>
+<h2 id="10-sessions">10. Sessions</h2>
+<p>A session is a trip made with the app. <strong>Sessions</strong> lists people, with how many sessions they have and how many are active.</p>
+<p><a href="../images/en/sessions.webp" target="_blank" rel="noopener"><img alt="Sessions by user" src="../images/en/sessions.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1, 2</td>
+<td>User row</td>
+<td>Opens their sessions (below).</td>
+</tr>
+</tbody>
+</table></div>
+<p>The arrow at the top right (<strong>Refresh</strong>) reloads them.</p>
+<p><a href="../images/en/user-sessions.webp" target="_blank" rel="noopener"><img alt="A user's sessions" src="../images/en/user-sessions.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Watch</strong></td>
+<td>Opens the session's map (below). It updates by itself if the session is still active, to follow a trip live.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>View comment</strong></td>
+<td>Shows what the user wrote at the end, if anything.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Delete</strong> (trash)</td>
+<td>Deletes the session and its logs.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="a-sessions-map">A session's map</h3>
+<p><a href="../images/en/session-tracking.webp" target="_blank" rel="noopener"><img alt="A session's map" src="../images/en/session-tracking.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p>The card at the top sums up how far from the route the uncorrected GPS and the corrected position were. The legend at the bottom says what each thing is:
+- <strong>Blue-grey line:</strong> the planned route. If it changes floor, stretches on other floors are faint, and the floor buttons appear.
+- <strong>Dashed orange line:</strong> the uncorrected GPS.
+- <strong>Green line:</strong> the corrected position.
+- <strong>Purple dots:</strong> photo matches, with a thin line to the recognized point. A long line shows where the position was pulled from.
+- <strong>Red ✗:</strong> an instruction marked as wrong during a test.</p>
+<p>Tap any of them to see what was logged there: the position, what the app said, the heading and more.</p>
+<p><a id="feedback"></a></p>
+<h2 id="11-feedback">11. Feedback</h2>
+<p>What users write after a trip, with their name, the date and how the trip ended. It's read-only.</p>
+<p><a href="../images/en/feedback.webp" target="_blank" rel="noopener"><img alt="User feedback" src="../images/en/feedback.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p><a id="settings"></a></p>
+<h2 id="12-settings">12. Settings</h2>
+<p>These are your own preferences; each user's are separate.</p>
+<p><a href="../images/en/settings.webp" target="_blank" rel="noopener"><img alt="Settings" src="../images/en/settings.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Verbosity</strong></td>
+<td>How much detail is shown: low, medium or high.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>High contrast</strong></td>
+<td>Higher-contrast colors, for low vision.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Language</strong></td>
+<td>Automatic (the device's), English or Español.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Save</strong></td>
+<td>Saves the changes.</td>
+</tr>
+</tbody>
+</table></div>
+<p>There's also <strong>Font size</strong> (small to extra large) and <strong>Voice guidance</strong>, the spoken announcements during a trip.</p>
+<p><a id="phone-only"></a></p>
+<h2 id="13-phone-only">13. Phone only</h2>
+<p>In a narrow window or the phone app, the menu opens with ☰. Everything else in this guide works the same.</p>
+<p><a href="../images/en/phone-home.webp" target="_blank" rel="noopener"><img alt="The app in a narrow window" src="../images/en/phone-home.webp" width="412" height="800" loading="lazy"></a></p>
+<p><a href="../images/en/phone-menu.webp" target="_blank" rel="noopener"><img alt="The menu in a narrow window" src="../images/en/phone-menu.webp" width="412" height="800" loading="lazy"></a></p>
+<p>Two things need the phone, because they use the camera and sensors. This guide has no pictures of them.</p>
+<h3 id="taking-photos-with-the-camera">Taking photos with the camera</h3>
+<ol>
+<li>Open a point's <strong>Add photo</strong>, or <strong>Create and add photos</strong> when creating it.</li>
+<li>Stand on the point. The <strong>Facing: N°</strong> badge shows which way the phone points, and is saved with each photo.</li>
+<li>Tap <strong>Take photo</strong> in each direction. Each photo uploads by itself, and appears below with its heading.</li>
+<li>Tap a photo's trash icon to delete it, and <strong>Done</strong> (✓) when finished.</li>
+</ol>
+<h3 id="test-as-user">Test as user</h3>
+<p><strong>Test as user</strong> (in the phone's menu) lets you make a real trip with your account. You see the map and coordinates, which a regular user doesn't: they only have <strong>Repeat instruction</strong> and <strong>End navigation</strong>.</p>
+<ul>
+<li><strong>✗ Wrong instruction:</strong> tap it each time the app says something wrong. It saves what was just said and where you were.</li>
+<li><strong>I'm at…:</strong> to measure accuracy, walk the planned route exactly and tap it standing on each point it names (the start, each corner, the destination). A long press undoes the last one.</li>
+<li>Then review the trip in <a href="#sessions">Sessions</a>.</li>
+</ul>
+<p><strong>How to hold the phone.</strong> Upright in front of the chest, with the back camera facing forward. Explain it this way to testers; the app's tutorial says so too.</p>
+<p><a id="deleting"></a></p>
+<h2 id="14-deleting-data">14. Deleting data</h2>
+<p>Before deleting, the app says what else goes with it. Read it carefully: <strong>it can't be undone</strong>.</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Deleting</th>
+<th>Also deletes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A university</strong></td>
+<td>Its buildings, their points, and those points' photos and connections.</td>
+</tr>
+<tr>
+<td><strong>A building</strong></td>
+<td>Its points, their photos and their connections.</td>
+</tr>
+<tr>
+<td><strong>A point</strong></td>
+<td>Its photos and its connections.</td>
+</tr>
+<tr>
+<td><strong>A connection</strong></td>
+<td>Nothing else.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Saved routes through a deleted point are deleted with it, and trip history is kept. To stop using something without losing its data, <strong>deactivate</strong> the university or building, or set the point to <strong>Rejected</strong>.</p>
+<p><a id="problems"></a></p>
+<h2 id="15-common-problems">15. Common problems</h2>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Problem</th>
+<th>Likely cause</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A place doesn't appear as a destination</td>
+<td>It's not verified, has no connections, or its type is in-between.</td>
+<td>Check all three, and the <a href="#notices">menu notices</a>.</td>
+</tr>
+<tr>
+<td>"No route"</td>
+<td>A connection is missing on the way, or it uses one over 30 m.</td>
+<td>Connect the missing stretch with <strong>Connect on map</strong>.</td>
+</tr>
+<tr>
+<td>"Your starting point isn't connected"</td>
+<td>Only loose points are near the user.</td>
+<td>Connect the points in that area.</td>
+</tr>
+<tr>
+<td>"Edificio C" gives no route</td>
+<td>The building has no verified, connected points.</td>
+<td>Verify and connect its points, and mark its doors as <strong>Entrance</strong>.</td>
+</tr>
+<tr>
+<td>I can't connect two points</td>
+<td>They're over 30 m apart, or on different floors with no stairs, elevator or ramp.</td>
+<td>Add in-between points, or connect through a point of that type.</td>
+</tr>
+<tr>
+<td>I can't see a point on the map</td>
+<td>It's on another floor, or a filter is on.</td>
+<td>Use ▲ ▼, turn off <strong>Only this floor</strong>, and clear the filters.</td>
+</tr>
+<tr>
+<td><strong>Create and add photos</strong> is disabled</td>
+<td>The position is missing, or indoors or outdoors isn't chosen.</td>
+<td>Use <strong>Pick on map</strong> and choose one of the two.</td>
+</tr>
+<tr>
+<td>The map opens in the ocean</td>
+<td>The web has no GPS, and it's a new university.</td>
+<td>Type rough coordinates first.</td>
+</tr>
+<tr>
+<td>The app doesn't recognize a place</td>
+<td>Its photos aren't in the search.</td>
+<td>Use <a href="#reindex">Re-index</a>.</td>
+</tr>
+<tr>
+<td>"Update required"</td>
+<td>The app is too old.</td>
+<td>Install the newest APK.</td>
+</tr>
+</tbody>
+</table></div>
+<p><a id="reference"></a></p>
+<h2 id="16-quick-reference">16. Quick reference</h2>
+<h3 id="location-types">Location types</h3>
+<p>Types with ★ are <strong>destinations</strong>: they need a name, and users can choose them. The rest are in-between points.</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Types</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Paths and connections</td>
+<td>Hallway, Outdoor path, Intersection, Stairwell, Elevator, Ramp, Crosswalk, Courtyard</td>
+</tr>
+<tr>
+<td>Entrances and getting around</td>
+<td>Entrance ★, Exit / gate ★, Lobby ★, Parking ★, Bike parking ★, Bus stop ★, Waiting area / benches ★</td>
+</tr>
+<tr>
+<td>Academic</td>
+<td>Classroom ★, Laboratory ★, Library ★, Computer room ★, Study area ★, Auditorium ★, Office ★</td>
+</tr>
+<tr>
+<td>Food, shops and services</td>
+<td>Cafeteria ★, Stationery shop ★, Copy / print center ★, Store ★, ATM / bank ★, Restroom ★, Drinking fountain ★</td>
+</tr>
+<tr>
+<td>Wellbeing and sports</td>
+<td>Infirmary / medical service ★, Gym / sports area ★, Chapel ★</td>
+</tr>
+<tr>
+<td>Other</td>
+<td>Other</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="lighting">Lighting</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Not set</td>
+<td>No information.</td>
+</tr>
+<tr>
+<td>Bright</td>
+<td>Well lit, for example by daylight.</td>
+</tr>
+<tr>
+<td>Moderate</td>
+<td>Normal indoor lighting.</td>
+</tr>
+<tr>
+<td>Dim</td>
+<td>Poorly lit, for example an indoor stairwell.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Maps © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.</p>
+</main>
+</div>
+<script>if (innerWidth < 800) document.querySelector('nav details').open = false;</script>
+</body>
+</html>

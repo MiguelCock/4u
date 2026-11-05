@@ -80,19 +80,16 @@ class _AnchorPointsMapState extends State<AnchorPointsMap> {
   List<LatLng> get _positions =>
       widget.points.map(anchorPosition).whereType<LatLng>().toList();
 
-  void _fitToPoints() {
+  /// Frames the points from the start. Moving the camera once the map was
+  /// ready cancelled the tiles it had just asked for and left the background
+  /// empty.
+  CameraFit? get _initialFit {
     final positions = _positions;
-    if (positions.isEmpty) return;
-    if (positions.length == 1) {
-      _controller.move(positions.first, 19);
-      return;
-    }
-    _controller.fitCamera(
-      CameraFit.coordinates(
-        coordinates: positions,
-        padding: const EdgeInsets.all(48),
-        maxZoom: 19,
-      ),
+    if (positions.length < 2) return null;
+    return CameraFit.coordinates(
+      coordinates: positions,
+      padding: const EdgeInsets.all(48),
+      maxZoom: 19,
     );
   }
 
@@ -160,7 +157,8 @@ class _AnchorPointsMapState extends State<AnchorPointsMap> {
         _map(lines, positions, moveTarget),
         Positioned(
           right: 8,
-          top: 8,
+          // Below the "tap the new position" banner while moving a point.
+          top: widget.movingPointId == null ? 8 : 72,
           child: FloorSelector(
             floors: floorsOf(widget.points),
             selected: floor,
@@ -187,12 +185,12 @@ class _AnchorPointsMapState extends State<AnchorPointsMap> {
         initialCenter: positions.isNotEmpty
             ? positions.first
             : const LatLng(6.2, -75.58),
-        initialZoom: 18,
+        initialZoom: positions.length == 1 ? 19 : 18,
+        initialCameraFit: _initialFit,
         // No double-tap zoom: it made every single tap wait for a second.
         interactionOptions: const InteractionOptions(
           flags: InteractiveFlag.all & ~InteractiveFlag.doubleTapZoom,
         ),
-        onMapReady: _fitToPoints,
         onTap: (_, latLng) => _onTap(latLng),
       ),
       children: [

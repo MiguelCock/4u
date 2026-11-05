@@ -78,12 +78,23 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
     }
   }
 
+  /// Where the picker opens before coordinates are typed: 0,0 is the ocean.
+  LatLng? get _selectedPlacePosition {
+    for (final place in _places) {
+      if (place['id'] != _selectedPlaceId) continue;
+      final lat = (place['latitude'] as num?)?.toDouble();
+      final lng = (place['longitude'] as num?)?.toDouble();
+      return lat == null || lng == null ? null : LatLng(lat, lng);
+    }
+    return null;
+  }
+
   Future<void> _pickOnMap() async {
     final lat = double.tryParse(_latController.text.trim());
     final lng = double.tryParse(_lngController.text.trim());
     final initial = (lat != null && lng != null)
         ? LatLng(lat, lng)
-        : const LatLng(0, 0);
+        : _selectedPlacePosition ?? const LatLng(0, 0);
     final result = await Navigator.of(context).push<LatLng>(
       MaterialPageRoute(
         builder: (_) => LocationPickerScreen(
