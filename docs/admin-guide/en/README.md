@@ -1,325 +1,619 @@
-# Admin Guide
+# Admin user guide
 
-This guide is for administrators using the app to add and manage the data that powers the navigation system: places, buildings, anchor points, and the connections between them. It walks through what to do, in what order, and explains what every field on every screen actually means — not just whether it's required.
+This guide explains how to build and maintain the map Eyes4U uses to guide people with visual impairments: every page of the web app, what each button does, and the whole job from start to finish.
 
-> This guide describes the app as it exists today. The app is in English and Spanish (it follows the phone's language, or the one chosen in Settings). Field names below are the English labels; in Spanish the same screens show their translation. Everything here works in the phone app, and most of it in the [web app](#6c-the-web-app) too.
+The pictures show an **example university with made-up data**. The red numbers in each picture match the table below it.
+
+<a id="getting-started"></a>
 
 ## 1. Getting started
 
-You reach the admin area automatically after logging in with an administrator account — there's no separate admin login, the app routes you to the admin view based on your account's role.
+### Signing in
 
-Navigation lives in a side menu (drawer), opened with the hamburger icon (☰) in the top-left corner of the screen. On a wide screen, such as the web app on a computer, it stays open at the left instead. The menu header shows "Admin" and your signed-in email, and below that, five sections:
+There's no separate admin sign-in: the app takes you to this view based on your account's role. An account that isn't an admin can't use the web app, and is told to use the phone app.
 
-- **Universities** (flag icon)
-- **Buildings** (building icon)
-- **Anchor points** (pin icon)
-- **Connections** (line icon)
-- **Users** (people icon), see [§6d](#6d-users)
+![Sign-in screen](../images/en/login.webp)
 
-When there are mapping problems that affect users, the drawer shows orange notices; tapping each one opens what needs fixing:
-- **N verified points not connected** — opens the anchor point list filtered to them.
-- **N named points users can't choose** — named points of an in-between type; tap one to change its type.
-- **N connections over 30 m** — tap one to delete it, then reconnect that path through in-between points.
+| # | Control | What it does |
+|---|---|---|
+| 1 | **Email** | Your account's email. |
+| 2 | **Password** | Your password. |
+| 3 | **Log in** | Enters the app. |
+| 4 | **Don't have an account? Sign up** | Creates a new account, which starts as a regular user. Another admin has to make it an admin ([Users](#users)). |
 
-Below them are **Sessions** and **Feedback** ([§6b](#6b-testing-a-route-and-reviewing-it)), **Re-index verified points** ([§5.3](#53-reviewing-and-verifying)) and **Test as user** (phone only).
+### The menu and the top bar
 
-Tap a section to switch to it; the menu closes automatically. The title at the top of the screen always tells you which section you're currently looking at. The top-right corner always has a refresh icon (reloads everything from the server), a settings icon (language, high contrast, text size, voice) and a logout icon (signs you out immediately, no confirmation).
+In a wide window, the menu stays open on the left. In a narrow one, it opens with the ☰ icon.
 
-In this guide, "place" and "university" mean the same thing: the app calls places *universities*.
+![Side menu and top bar](../images/en/home-menu.webp)
 
-## 2. Recommended order of work
+| # | Control | What it does |
+|---|---|---|
+| 1 | **User guide** | Opens this guide in another tab, to read next to the app. |
+| 2 | **Universities** | The campuses. See [Universities](#universities). |
+| 3 | **Buildings** | Each campus's buildings. See [Buildings](#buildings). |
+| 4 | **Anchor points** | The places the app learns to recognize. See [Anchor points](#anchor-points). |
+| 5 | **Connections** | Where people can walk between points. See [Connections](#connections). |
+| 6 | **Users** | The accounts. See [Users](#users). |
+| 7 | **Sessions** | The trips made with the app. See [Sessions](#sessions). |
+| 8 | **Feedback** | What users wrote after a trip. See [Feedback](#feedback). |
+| 9 | **Re-index verified points** | Repairs the photo search. In red, how many photos can't be searched. See [Re-index](#reindex). |
+| 10 | **N verified points not connected** | Notice: nobody can reach those points. Opens the filtered list. |
+| 11 | **N named points users can't choose** | Notice: a destination saved with an in-between type. |
+| 12 | **N connections over 30 m** | Notice: routes don't use them. |
+| 13 | **N connections that change floor without stairs** | Notice: routes don't use them. |
+| 14 | **Help for this page** (?) | Opens this guide at the section for the page you're on. |
+| 15 | **Refresh** | Loads the data from the server again. |
+| 16 | **Settings** | Language, font size and more. See [Settings](#settings). |
+| 17 | **Log out** | Signs you out right away, without asking. |
 
-The four sections aren't independent — each one builds on the last:
+The orange notices (10 to 13) only appear when there's something to fix. See [Menu notices](#notices).
 
-1. **Place** — the campus or site. Everything else belongs to one.
-2. **Building** — one physical building within a place. You can't create a building until its place exists.
-3. **Anchor point** — one specific physical spot inside (or right outside) a building. You can't create one until its building exists.
-4. **Photos** — every anchor point needs at least one photo, ideally 4-8 taken facing different directions, before it's useful.
-5. **Verification** — after reviewing an anchor point's photos, you set its status to Verified. This is the step that actually makes it usable by the app — see [5.3](#53-reviewing-and-verifying) for why.
-6. **Connections** (required for routes) — once you have two or more verified anchor points, mark which pairs people can walk directly between. Routes are computed only along connections, so a destination with no connections can't be reached.
+<a id="workflow"></a>
 
-**Mark the important places first, then fill in between them.** Start with the places people actually want to go to: entrances, classrooms, offices, restrooms, the cafeteria, the auditorium. Give each one a clear description, because that's the name users pick and hear. Then add *in-between* points (hallways, intersections, stairs, ramps) wherever they're needed to connect those places with walkable connections. In-between points don't need a description, and they're never offered to users as destinations.
+## 2. The whole job, start to finish
 
-If you try to skip ahead (e.g. add a building before its place exists), the corresponding dropdown will simply be empty, with a message telling you what to add first.
+Each step builds on the one before. If you skip one, the next one's dropdown is empty and tells you what to add first.
 
-## 3. Places
+1. **Create the [university](#universities)**, one per campus.
+2. **Create its [buildings](#buildings)**, with how many floors each has.
+3. **Create the [anchor points](#point-form).** First the places people want to go (entrances, classrooms, restrooms, the cafeteria), with a clear name. Then the in-between points (hallways, intersections, stairs), every 6 to 8 m along the paths.
+4. **Add [photos](#photos)** to each point, 4 to 8, one per direction. They're how the app recognizes where the user is.
+5. **[Verify](#verify) each point** after reviewing its photos. An unverified point doesn't exist for users.
+6. **[Connect](#connect-on-map) the points** in a chain along the paths. Routes only follow connections: a point with no connections doesn't appear for users.
+7. **Test a route** with [Test as user](#phone-only) on the phone, walking it.
+8. **Review the [session](#sessions)** to see how well it worked, and fix what's needed.
 
-A **place** is the top of the hierarchy — typically a whole campus or site. Every building belongs to exactly one place.
+**Example.** So that someone can go from the Library door to the restroom: create "Universidad Demo" and the "Biblioteca" building. Create "Entrada principal" (type Entrance), "Baño mujeres" (type Restroom) and a Hallway point every 7 m between them. Upload each one's photos, verify them, and connect them in order in **Connect on map**. Done: "Baño mujeres" can now be chosen as a destination.
 
-### Adding a place
+<a id="universities"></a>
 
-1. From the drawer, go to **Places**.
-2. Tap the **+** button (bottom-right).
-3. Fill in the fields (see table below).
-4. Tap **Save place**.
+## 3. Universities
 
-### Editing a place
+A university is a campus or site. Everything else belongs to one.
 
-Tap a place row's pencil (✏️) icon. Note: the **Code** field cannot be changed here — it's fixed once a place is created (see why in the field table).
+![University list](../images/en/universities.webp)
 
-### Deleting a place
+| # | Control | What it does |
+|---|---|---|
+| 1 | **Search universities** | Filters the list as you type. |
+| 2 | University row | Shows its name and how many buildings it has. |
+| 3 | **Edit** (pencil) | Changes its details. The code can't be changed. |
+| 4 | **Delete** (trash) | Deletes it with everything in it. See [Deleting data](#deleting). |
+| 5 | **Add university** (+) | Opens the form below. |
 
-Tap a place row's trash icon. You'll see exactly how many buildings, anchor points, photos, and connections will be deleted along with it, because deleting a place cascades all the way down — see [§7](#7-deleting-things).
+### Adding a university
 
-### Place fields
+![University form](../images/en/university-form.webp)
 
-| On-screen label | Required? | What it means | Example |
+| # | Field | What it means | Example |
 |---|---|---|---|
-| **Code** | Required (only shown when adding — can't be changed afterward) | A short, unique identifier for the place, separate from its full name — think of it like an abbreviation or internal reference code. Because other data can end up referencing a place, changing it later isn't supported. | `CAMPUS` (for a place named "Main Campus") |
-| **Name** | Required | The full, human-readable name of the place. This is what you'll see everywhere else in the app (dropdowns, lists). | `Main Campus` |
-| **Address (optional)** | Optional | A street address, mostly for your own reference — not used anywhere else functionally. | `Cra 80 #65-223, Medellín` |
-| **Latitude** / **Longitude** | Required | The GPS coordinates of the place's general center point, in decimal degrees. You can type these directly, or use **Pick on map** (a button below the fields) to tap the location on a map instead — useful when you don't know the exact coordinates off the top of your head. | `6.2442`, `-75.5812` |
-| **Active** (edit only) | — | A toggle to mark a place as inactive without deleting it (and everything under it). Turn it off for a place that's no longer in use but whose history you want to keep. | — |
+| 1 | **Code** | A short, unique identifier. Required, and can't be changed later. | `ICESI` |
+| 2 | **Name** | The full name shown across the app. Required. | `Universidad Icesi` |
+| 3 | **Address (optional)** | For reference only. | `Calle 18 #122-135` |
+| 4 | **Latitude** | The campus's rough center, in decimal degrees. Required. | `3.3417` |
+| 5 | **Longitude** | The same. Required. | `-76.5302` |
+| 6 | **Pick on map** | Fills in the two above by tapping a map. | |
+| 7 | **Save university** | Creates the university. | |
+
+> **On the web, type rough coordinates first.** The web app doesn't use GPS, so with no coordinates the map opens in the ocean, at 0,0. Copy the location from any online map, then adjust it with **Pick on map**.
+
+Editing also shows a switch to **deactivate** it without deleting: its buildings and points stop being offered to users, and the history is kept.
+
+<a id="buildings"></a>
 
 ## 4. Buildings
 
-A **building** is one physical building within a place.
+![Building list](../images/en/buildings.webp)
+
+| # | Control | What it does |
+|---|---|---|
+| 1 | **Search buildings** | Filters the list as you type. |
+| 2 | Building row | Shows its university and how many points it has. |
+| 3 | **Edit** (pencil) | Changes its details, including which university it belongs to. The code can't be changed. |
+| 4 | **Delete** (trash) | Deletes it with everything in it. See [Deleting data](#deleting). |
+| 5 | **Add building** (+) | Opens the form below. |
 
 ### Adding a building
 
-1. From the drawer, go to **Buildings**.
-2. Tap **+**.
-3. Choose the **Place** this building belongs to (if no places exist yet, you'll be told to add one first).
-4. Fill in the rest of the fields.
-5. Tap **Save building**.
+![Building form](../images/en/building-form.webp)
 
-### Editing a building
-
-Tap the pencil icon on a building row. Like places, **Code** can't be changed after creation. The **University** dropdown can: use it to move a building that was assigned to the wrong university.
-
-### Deleting a building
-
-Same cascade-warning pattern as places — you'll see how many anchor points, photos, and connections go with it.
-
-### Building fields
-
-| On-screen label | Required? | What it means | Example |
+| # | Field | What it means | Example |
 |---|---|---|---|
-| **University** | Required | Which university this building belongs to. Filters the buildings list you'll see elsewhere in the app. Can be changed when editing. | Main Campus |
-| **Code** (add only) | Required | Same idea as a place's code — a short, unique, unchangeable identifier for this specific building. | `B1` |
-| **Name** | Required | The building's full name, shown throughout the app. | `Main Building` |
-| **Address (optional)** | Optional | Reference-only street address. | — |
-| **Latitude** / **Longitude** | Required | This building's own GPS position — a separate point from its place's coordinates, since a building sits at a specific spot within the place. Type directly or use **Pick on map**. | `6.2445`, `-75.5810` |
-| **Floors** | Defaults to `1` | How many floors the building has. Anchor points inside this building will later reference which floor they're on. | `3` |
-| **Has elevator** (checkbox) | Defaults unchecked | Whether the building has an elevator. This is real accessibility information — the app's whole purpose is helping visually impaired users navigate, so knowing how someone actually gets between floors matters. | — |
-| **Has stairs** (checkbox) | Defaults checked | Same idea, for stairs. | — |
-| **Active** (edit only) | — | Same meaning as a place's Active toggle. | — |
+| 1 | **University** | Which one it belongs to. Required. | |
+| 2 | **Code** | A short, unique identifier. Required, and can't be changed later. | `BIB` |
+| 3 | **Name** | The full name. Users can also say it by voice, so use the name people know it by. Required. | `Edificio C` |
+| 4 | **Address (optional)** | For reference only. | |
+| 5 | **Latitude** | The building's position. Required. A point over 300 m from it is refused. | |
+| 6 | **Longitude** | The same. Required. | |
+| 7 | **Pick on map** | Fills in the two above by tapping a map, which opens at the chosen university. | |
+| 8 | **Floors** | How many floors it has. Gives its points their floor options. | `3` |
+| 9 | **Has elevator** | Accessibility information. | |
+| 10 | **Has stairs** | Accessibility information. | |
+| 11 | **Save building** | Creates the building. | |
+
+Editing also shows a switch to **deactivate** it without deleting.
+
+<a id="anchor-points"></a>
 
 ## 5. Anchor points
 
-An **anchor point** is a specific physical spot — a doorway, an intersection of hallways, an elevator lobby — that the app's visual-matching system learns to recognize from real photos. When a user's phone camera later sees something that matches one of these photos, the app uses it to correct that user's GPS position. In other words: an anchor point isn't just a pin on a map, it's a place the app has actually been taught to *see*.
+An anchor point is a specific physical place (a door, an intersection, an elevator lobby) that the app learns to recognize from its photos. When the user's camera sees something matching, the app corrects their position. Points are also the stops of a route.
 
-### 5.1 Creating an anchor point
+There are two kinds of point, by their **location type**:
+- **Destinations** (classroom, restroom, cafeteria…): users choose them. They need a name.
+- **In-between points** (hallway, intersection, stairs…): they only join paths. They don't need a name, and users never choose them.
 
-1. From the drawer, go to **Anchor points**.
-2. Tap the camera **+** button (bottom-right) — labeled "New anchor point."
-3. Choose the **Place**, then the **Building** (filtered to that place).
-4. Choose the **Location type** — what kind of spot this is (see the full list in [§8](#8-quick-reference)). For example, if you're standing at a building's main door, choose **entrance**.
-5. Fill in the **Description**. It is **required for destination types** (entrance, classroom, office, restroom, cafeteria, parking, lobby, auditorium, bus stop), because it's the name users pick and hear, so describe the actual spot: "Front door, north side" is far more useful than "Point 1." For **in-between types** (hallway, intersection, stairwell, elevator, ramp, outdoor path, courtyard, crosswalk, other), it's optional. Leave it empty and the point still works for routes and position correction, but it won't appear in the user's destination list. Admin lists show unnamed points by type, for example "Hallway · 3f2a". New points start as **hallway**. If you type a name and the type is an in-between one, the app asks whether it's a destination: users can only choose destinations, so a "Women's restroom" saved as a hallway never shows up in their list. Tap **Change type** unless it really is a named in-between spot (e.g. "Corridor to rooms 202").
-6. Choose **Indoors** or **Outdoors** (there's no default, it's asked every time) — whether this spot is inside a building or outside. This matters because GPS accuracy is much worse indoors, which is exactly why indoor anchor points matter most for the position-correction system.
-7. Optionally set **Lighting** (Bright / Moderate / Dim) and **Surface** (free text, e.g. "tile", "carpet", "concrete", "grass") — see the field table below for why these are worth filling in.
-8. Set the position. **It's required**: the app no longer takes the GPS on its own, and **Create and add photos** stays disabled until you do one of two things:
-   - **Pick on map**: tap the exact spot on the map. This is the most precise, especially indoors.
-   - **Use my location (±N m)**: standing right on the spot, saves the GPS reading at that moment. Only available with an accuracy of ±8 m or better; if the GPS is worse, wait or use the map.
+### The list
 
-   If another point is less than 3 m away in the same building and floor, the app warns before saving. It's almost always the same spot saved twice: add photos to the existing one instead of creating another. A point more than 300 m from its building is refused (wrong position).
-9. Tap **Create and add photos** — this saves the anchor point and takes you straight into the photo-capture screen ([§5.2](#52-taking-photos)).
+![Anchor point list](../images/en/points-list.webp)
 
-#### Anchor point fields (creation and editing)
+| # | Control | What it does |
+|---|---|---|
+| 1 | **All / Pending / Verified / Rejected** | Shows only points with that status, and how many there are. |
+| 2 | **Filters** | Opens more filters (below). |
+| 3 | **Search anchor points** | Searches by name. |
+| 4 | **List** | Shows the points in this list. |
+| 5 | **Map** | Shows the same points on a map. See [The map](#points-map). |
+| 6 | Point row | Shows its building, status and photo count. **Tapping it opens Connect on map** with this point already selected. |
+| 7 | **Verify** | Verifies the point. On a verified one, this button puts it back to pending. See [Verifying](#verify). |
+| 8 | **Edit** (pencil) | Opens [the point's edit page](#point-edit). |
+| 9 | **More actions** (⋮) | Opens the menu below. |
+| 10 | **New anchor point** (camera) | Opens [the form](#point-form). |
 
-| On-screen label | Required? | What it means | Example |
-|---|---|---|---|
-| **Place** / **Building** | Both required | Which building this point belongs to (the place dropdown just filters the building list). | — |
-| **Location type** | Required, new points start as "hallway" | What kind of spot this is, chosen in a searchable picker grouped by category. Full list in [§8](#8-quick-reference). | `entrance` |
-| **Floor** | Required | Which floor of the building the point is on. "Floor 1" is the ground floor; the list offers the building's floors. | `Floor 1` |
-| **Description** | Required for destination types (★ in [§8](#8-quick-reference)), optional otherwise | The point's human-readable name — the one users pick and hear. Describe the spot, not a generic label. | `Front door, north side` |
-| **Indoors or outdoors?** | Required, no default | Inside vs. outside — see above for why it matters. | — |
-| **Lighting** (dropdown) | Optional, defaults "Not set" | Typical lighting at this exact spot: Bright / Moderate / Dim. Useful context for whoever reviews the photos later (a dark photo might just mean a dim hallway, not a bad photo), and this data is meant to help the visual-matching system handle different lighting conditions more reliably over time. | A spot by a large window at midday → `Bright`; an interior stairwell with only ceiling lights → `Dim` |
-| **Surface (optional)** | Optional, free text | The physical floor/ground surface. Can serve as a useful orientation cue (e.g. a change from tile to carpet marking a room boundary). | `tile`, `carpet`, `concrete`, `grass` |
-| **Location** | Required: **Pick on map** or **Use my location** (GPS of ±8 m or better) | The point's actual coordinates. Whichever of the two you chose last is used. | — |
+Unnamed points show their type and the start of their id, for example "Hallway · 284a".
 
-**The form remembers your last point.** A new anchor point starts with the university, building, location type, floor, lighting and surface of the last one you created on this phone. The description, position and indoors/outdoors start empty. If you opened the form while filtered to a building, that building is used instead.
+![More actions menu of a point](../images/en/points-row-menu.webp)
 
-**Filtering the list.** The **Filters** button above the list (and map) narrows anchor points by category and type, floor, indoor or outdoor, lighting, and whether they have photos or connections. It combines with the status chips and search. **Clear filters** (or the back button) removes them.
+| # | Option | What it does |
+|---|---|---|
+| 1 | **Add photo** | Opens [the point's photos](#photos). |
+| 2 | **Delete** | Deletes the point, its photos and its connections. See [Deleting data](#deleting). |
 
-### 5.2 Taking photos
+### Filters
 
-Why multiple photos: a user could approach the same physical spot from any direction, so the app needs to recognize what it looks like from each side — not just one angle.
+![Point filters](../images/en/points-filters.webp)
 
-1. On the photo screen, you'll see a live camera preview. A small badge in the top-right corner shows **"Facing: N°"** — your device's live compass heading (not GPS direction), updating in real time. This is recorded automatically with each photo, so the app knows which direction that photo faces.
-2. Tap **Take photo** to capture one. It uploads automatically and appears in a thumbnail grid below, with the heading it was taken at shown in the corner of each thumbnail.
-3. Repeat facing different directions — as a guideline, aim for 4-8 photos, roughly facing north/south/east/west from the same spot (adjust based on the actual space — a corner spot might only have two or three sensible directions to photograph). The app does not enforce a minimum, so this is on you to get right.
-4. Made a mistake? Tap the trash icon on a thumbnail to delete that photo (with a confirmation prompt).
-5. When you're done, tap the checkmark (✓) in the top-right of the screen — labeled "Done."
+Narrows by **category** and type, **floor**, **indoors or outdoors**, **lighting**, and whether it **has photos** or **connections**. They combine with the status and the search. They help find pending work: for example, Verified + no connections are points nobody can use yet.
 
-You can always come back to add or remove photos later from an anchor point's **Manage photos** button (see below).
+<a id="point-form"></a>
 
-### 5.3 Reviewing and verifying
+### Creating a point
 
-**Quick verify from the list or the map:** each anchor point row has a ✔ button that verifies it (or, on a verified point, puts it back to pending). A point needs at least one photo before it can be verified. If it has no connections yet, the app warns you: a verified point with no connections can't be reached or used as a route's start, and users don't see it. The **List / Map** switch above the list shows the same points on a map, coloured by status: green verified, grey pending, red rejected. Tap a point on the map to see its details and to **Edit**, **Move**, verify, **Connect** or add photos. **Move** asks you to tap the new position; the pin's tip marks exactly where it will go, and **Save new position** stores it. Moving a verified point also updates photo search and the distances of its connections.
+![New point form](../images/en/point-form.webp)
 
+| # | Field | What it means |
+|---|---|---|
+| 1 | **University** | Filters the building list. |
+| 2 | **Building** | Which one the point belongs to. Required. |
+| 3 | **Floor** | Which floor it's on. "Floor 1" is the ground floor. The options come from the building's floors. |
+| 4 | **Location type** | What kind of place it is. Opens a picker by category, with a search box. Full list in [Quick reference](#reference). |
+| 5 | **Description** | The name users choose and hear. Required for destinations. Describe the real place: "South entrance" is much better than "Point 1". **Don't repeat the building**: it's removed on saving, and the app shows it alongside. |
+| 6 | **Indoors** | The point is under a roof. You have to choose one of the two each time. |
+| 7 | **Outdoors** | The point is in the open. |
+| 8 | **Lighting** | Optional: bright, moderate or dim. It helps whoever reviews the photos: a dark photo may simply be a dark hallway. |
+| 9 | **Surface (optional)** | Optional: tile, carpet, concrete… |
+| 10 | **Pick on map** | Sets the position by tapping a map. It's the most precise. |
+| 11 | **Use my location** | Sets the position from GPS, standing right on the point. Phone only, and with an accuracy of ±8 m or better. It stays disabled on the web. |
+| 12 | **Create and add photos** | Saves the point and opens its photos. Disabled until you set the position. |
 
-The edit screen for an anchor point is also where you review it and decide whether it's ready for real use. This is more than just changing a label:
+The position is required on purpose: the app doesn't take the GPS by itself, since that saved points in the wrong places.
 
-- **Status: Verified** — saving with this status automatically indexes the point's photos into the app's search system, making it real, live data that the app can actually match a user's camera against. This is the step that makes an anchor point *do* anything.
-- **Status: Pending** or **Rejected** — saving with either of these removes the point from that search index (if it was there), so a downgraded or rejected point stops being usable by the live app, without deleting the point itself.
+The app stops you in two cases:
+- **Another point under 3 m away**, in the same building and floor. It's almost always the same place saved twice: add photos to the existing one.
+- **A name on an in-between type.** Users can only choose destinations, so a "Restroom" saved as a Hallway never appears for them. Tap **Change type**, unless it really is a named waypoint.
 
-So before setting a point to Verified, actually look at its photos first (a read-only thumbnail strip is shown on this screen) — are they clear, correctly oriented, actually showing the right spot? Use **Manage photos** to fix anything before verifying.
+The form remembers the university, building, type, floor, lighting and surface of the last point you created.
 
-To edit an anchor point: tap the pencil icon on its row. You'll see the same fields as creation (all editable), plus:
+### Picking the position on the map
 
-| On-screen label | What it means |
+![Pick a location](../images/en/location-picker.webp)
+
+Tap the exact spot: **the tip of the pin** marks where it goes. Existing points are colored by status. The map opens on the form's floor; changing floor here only changes what you see, not the point's floor.
+
+| # | Control | What it does |
+|---|---|---|
+| 1 | **Confirm location** (✓) | Returns to the form with that position. |
+| 2 | **Go up a floor** | Shows the floor above. |
+| 3 | **Go down a floor** | Shows the floor below. |
+| 4 | **Only this floor** | Hides the points on the neighboring floors. See [Floors](#floors). |
+
+<a id="point-edit"></a>
+
+### Editing a point
+
+![Edit a point](../images/en/point-edit.webp)
+
+| # | Control | What it does |
+|---|---|---|
+| 1 | **Description** | The name, as when creating it. |
+| 2 | **Floor** | Which floor it's on. |
+| 3 | **Location type** | Destination or in-between. |
+| 4 | **Indoor location** | Indoors or outdoors. |
+| 5 | **Lighting** | As when creating it. |
+| 6 | **Surface (optional)** | As when creating it. |
+| 7 | **Manage photos (N)** | Opens [the photos](#photos). The thumbnails above it let you review them at a glance. |
+| 8 | **Status** | Pending, Verified or Rejected. See [Verifying](#verify). |
+| 9 | **Move on map** | Picks another position. |
+| 10 | **Save changes** | Saves. |
+
+<a id="photos"></a>
+
+### Photos
+
+A person can reach a place from any side, so the app needs to see it from each direction. Take **4 to 8 photos standing on the point**, one toward each side (N, S, E, W, adapting to the place; a corner may only have two or three directions worth taking).
+
+![A point's photos on the web](../images/en/point-photos.webp)
+
+The images above are placeholders; here you'll see your photos, with their direction in the corner.
+
+| # | Control | What it does |
+|---|---|---|
+| 1 | **The photos face** (N, NE, E…, Unknown) | Which way the photos you're about to upload face. Choose **Unknown** if you're not sure: that photo is never discarded for facing another way. |
+| 2 | **Upload photos (N)** | Picks one or more images from your computer. N is how many the point has. |
+| 3 | **Done** (✓) | Finishes and goes back. |
+
+Each photo's trash icon deletes it, after asking. To take photos with the camera, see [Phone only](#phone-only).
+
+<a id="verify"></a>
+
+### Verifying a point
+
+The status decides whether a point exists for users:
+
+| Status | Meaning |
 |---|---|
-| **Status** (dropdown: pending / verified / rejected) | See above — this is the real switch that turns a captured point into usable navigation data, or takes it back out. |
-| Photo thumbnail strip (read-only) | A quick visual check before you decide on status. |
-| **Manage photos** button | Opens the same photo screen from [§5.2](#52-taking-photos) to add or delete photos. |
-| **Move on map** button | Lets you re-pick the point's position on a map, e.g. if it turns out to be in the wrong spot. |
+| **Pending** | Captured, not reviewed. Users don't see it, and the app doesn't recognize it. |
+| **Verified** | Reviewed. Its photos go into the search, and it can be part of a route. |
+| **Rejected** | Reviewed and discarded (bad photos, a duplicate…). It leaves the search, without being deleted. |
 
-**If verifying shows an indexing error:** the point is saved as Verified, but the photo search didn't receive it, so the app can't recognize it yet. Once the server problem is fixed, open the menu and tap **Re-index verified points**. It first removes from the photo search anything that shouldn't be there any more (deleted photos, points that are no longer verified). Then it sends only the verified points whose photos aren't searchable yet, retries each failure twice, and ends with a list of any point that still failed. Whenever some verified photos aren't searchable, the menu entry shows a red "N photos not searchable" warning: that's the sign to run it.
+Before verifying, look at its photos: are they clear, and do they show the right place? Verify with the row's ✔ button, or with **Status** on the edit page.
+
+With no photos, it can't be verified:
+
+![Notice that a photo is missing](../images/en/verify-needs-photo.webp)
+
+With no connections, the app asks first. You can verify anyway and connect later, but until then users can't reach that point or leave from it:
+
+![Notice of a point with no connections](../images/en/verify-unconnected.webp)
+
+**If an indexing error appears**, the point is verified but the photo search didn't receive it. See [Re-index](#reindex).
+
+<a id="points-map"></a>
+
+### The points map
+
+**Map** shows the same filtered points: green verified, grey pending, red rejected. The lines are their connections.
+
+![Points map](../images/en/points-map.webp)
+
+| # | Control | What it does |
+|---|---|---|
+| 1 | **Go up a floor** | Shows the floor above. |
+| 2 | **Go down a floor** | Shows the floor below. |
+| 3 | **Only this floor** | Hides the neighboring floors. See [Floors](#floors). |
+| 4 | **New anchor point** | Opens [the form](#point-form). |
+
+Tap a point to see its details and actions:
+
+![A point's details and actions on the map](../images/en/point-sheet.webp)
+
+| # | Button | What it does |
+|---|---|---|
+| 1 | **Connect** | Opens [Connect on map](#connect-on-map) with this point selected. |
+| 2 | **Move** | Changes its position (below). |
+| 3 | **Verify** / **Unverify** | Changes its status. |
+| 4 | **Add photo** | Opens [its photos](#photos). |
+| 5 | **Edit** | Opens [its edit page](#point-edit). |
+
+**Moving a point.** Tap **Move**, then the new position: the tip of the pin marks where it goes. **Save new position** saves it, and **Cancel** discards it. The app also updates the photo search and its connections' distances. It won't move a point if that stretches one of its connections past 30 m.
+
+![Moving a point](../images/en/point-moving.webp)
+
+<a id="floors"></a>
+
+### Floors on the maps
+
+Maps show one floor at a time. You change floor like in an elevator, and the box says which floor you're on. This control appears on every map that shows points, and only when there's more than one floor.
+
+- Points on the **current floor** look normal.
+- Those on the **floor above** are purple ▲, and on the **floor below**, orange ▼. Floors further away aren't shown.
+- Lines are only drawn if they touch the current floor, and are dashed if they change floor.
+
+![Floor 2, with the one below in orange](../images/en/points-map-floor2.webp)
+
+**Only this floor** hides the ▲ and ▼. The app remembers this option in this browser.
+
+![Only this floor turned on](../images/en/points-map-only-floor.webp)
+
+<a id="connections"></a>
 
 ## 6. Connections
 
-A **connection** records that a person can walk directly between two anchor points. Together they form the walkability graph: routes are computed only along connections, and the turn-by-turn instructions follow them.
+A connection says that **a person can walk directly between two points**. Routes only follow connections, and guidance walks a straight line between two connected points.
 
-**Rules** (the app and the server both apply them):
-- **At most 30 m** in a straight line. Guidance walks a straight line between two connected points, so a 50 m connection between buildings goes through whatever is in between. Capture in-between points every 6–8 m and chain-connect them. Above 15 m the app vibrates and warns.
-- **Change floors** only through a stairwell, elevator or ramp point.
+![Connection list](../images/en/connections.webp)
+
+| # | Control | What it does |
+|---|---|---|
+| 1 | **Search connections** | Searches by its points' names. |
+| 2 | **Add connection (form)** | Opens [the form](#connection-form). |
+| 3 | Connection row | Shows its two points, their buildings and its distance. **Tapping it** opens its warning for users (below). ⚠ means it has one. |
+| 4 | **Delete** (trash) | Deletes the connection, after asking. The points aren't touched. |
+| 5 | **Connect on map** | Opens [the map](#connect-on-map). |
+
+### Rules
+
+The app and the server apply these rules:
+- **At most 30 m in a straight line.** A 50 m connection between buildings goes through whatever is in between. Capture points every 6 to 8 m and chain-connect them. Above 15 m, the app warns.
+- **Floors only change** through a stairwell, elevator or ramp point.
 - A distance typed by hand can't be shorter than the straight line.
-- Moving a point can't stretch one of its connections past 30 m.
-- **Connections over 30 m made before this rule aren't used for routes**: a trip that needed one gets "no route" until it's redone. The menu lists them (**N connections over 30 m**).
 
-**Obstacles.** Users are warned before stairs, elevators and ramps when the point has that **Location type**, so give those points the right type. For anything else on the way (a step, a bin, vending machines, a narrow door), write a **Warning for users** on that connection: it's spoken as users start walking it ("Attention: three steps down"). The app can't see obstacles nobody has written down.
+Old connections that break these rules aren't used for routes: a trip that needed one says there's no route until it's redone. The menu lists them ([Menu notices](#notices)).
 
-**Floors.** Maps show one floor at a time. The ▲ and ▼ buttons change floor, like an elevator. Points on the floor above show as purple ▲ and on the floor below as orange ▼; **Only this floor** hides them. To connect floors: capture a stairwell, elevator or ramp point **on each floor**, tap the one on this floor, then the ▲ or ▼ of the other floor (the line is dashed, and the map moves to that floor so you can keep chaining). Routes prefer elevators, so connect one if it exists. A connection that changes floor without those points isn't used for routes; the menu lists them.
+<a id="connection-warning"></a>
 
-**Entrances and names.** When a user says a building ("Edificio C"), the route ends at the entrance closest by walking, so give each door the **entrance** type and connect it. With no entrance marked, it ends at the closest connected point on the lowest floor. Names don't repeat the building: "Entrada sur bloque 20" is saved as "Entrada sur", and the app shows the building next to it.
+### Warnings for users
 
-**What users see.** Users only see, as a destination or as a starting point, verified points **with at least one connection**. A point with no connections doesn't show up.
+The app **can't see obstacles**: it only knows what someone wrote down. For a step, a bin or a narrow door, tap the connection and write a short warning. It's said to the user as they start that stretch: "Attention: three steps down".
 
-There are two ways to create one — pick whichever fits the situation:
+![A connection's warning for users](../images/en/connection-warning.webp)
 
-### Tap-to-connect on a map
+Stairs, elevators and ramps are announced on their own about 8 m before, if the point has that type.
 
-Faster, and works especially well for connecting a whole sequence of points along a corridor:
+<a id="connect-on-map"></a>
 
-1. From the drawer, go to **Connections**, then tap the **+** button — labeled "Connect on map."
-2. Choose a **Place**, and optionally a **Building** to narrow the map down further.
-3. Tap an anchor point on the map to select it. You don't need to hit the dot exactly: a tap near it counts, and the phone vibrates when it's selected.
-4. Tap a second anchor point — this creates the connection between them, and the second point **stays selected**, so you can immediately tap a third point to keep chaining connections along the same corridor without starting over each time.
-5. Existing connections between visible points are drawn as green lines on the map, so you can see at a glance what's already linked. A new connection shows as a dotted grey line for a moment while it's being saved. You can keep tapping in the meantime.
+### Connect on map
 
-**Shortcut from the anchor point list:** on the **Anchor points** screen, tap an anchor point's row (not its photo, edit or delete icons). This opens the connection map already set to that point's university and building, zoomed in on it, with that point already selected. Your next tap on another point connects the two.
+The fastest way to connect a whole hallway.
 
-### Dropdown form
+![Connect on map](../images/en/connect-map.webp)
 
-More precise — use this when you're not looking at a map, or you need to correct the automatically estimated distance:
+1. Choose the **university** and, to narrow it down, the **building**.
+2. Tap a point to select it. A tap near it is enough, and it shows in blue.
+3. Tap the next one: the connection is created, and **that point stays selected**, so you can keep tapping along the hallway.
+4. Tap the selected point to deselect it.
 
-1. From the Connections screen, tap the list icon in the top-right — labeled "Add connection (form)."
-2. Choose **Place**, optionally a **Building** filter, then **Anchor point A** and **Anchor point B** from dropdowns.
-3. Optionally fill in **Distance** and **Warning for users** (see table).
-4. Tap **Save connection**.
+Connections are green lines. A new one is dotted grey while it saves, and you can keep tapping. To **delete** one, tap the line away from the points and confirm.
 
-### Connection fields (form)
+![Connect with a point selected](../images/en/connect-selected.webp)
 
-| On-screen label | Required? | What it means | Example |
-|---|---|---|---|
-| **Place** / **Building (optional filter)** | Place required, Building optional | Narrows down which anchor points appear in the dropdowns below. | — |
-| **Anchor point A** / **Anchor point B** | Both required, must be different points | The two anchor points being connected. | — |
-| **Distance in meters (optional)** | Optional | How far someone would actually walk between the two points. If you leave this blank, the app estimates it as a straight line between their coordinates — which is wrong if the real path bends (around a corner, say) or isn't a straight walk (via an elevator or stairs instead of a direct route). Fill this in whenever the straight-line guess wouldn't be accurate. | `12.5` |
-| **Warning for users (stairs, obstacles…)** | Optional | Spoken to users as they start walking this connection, after "Attention:". Write it for them, short. | `three steps down`, `vending machines on the right` |
+| # | Control | What it does |
+|---|---|---|
+| 1 | **University** | Which campus the map shows. |
+| 2 | **Building** | Narrows the points to one building. |
+| 3 | **Go up a floor** | Shows the floor above. |
+| 4 | **Go down a floor** | Shows the floor below. |
+| 5 | **Only this floor** | Hides the neighboring floors. It must be off to connect across floors. |
+| 6 | **Help for this page** | Opens this section. |
 
-To add or change a connection's warning, tap it in the **Connections** list. Anything else can't be edited: delete it and create it again. Deleting a connection has no cascade: it doesn't affect the two anchor points themselves. There are two ways to delete one:
+**Connecting two floors.** Create a stairwell, elevator or ramp point **on each floor**, one above the other. Tap the one on the current floor, then the ▲ or ▼ on the other floor. The line is dashed, and the map moves to that floor so you can keep chaining. **Connect the elevator if there is one**: routes prefer it.
 
-- In the **Connections** list, tap its trash icon.
-- On the **Connect on map** screen, tap the green line itself (away from the dots, since tapping near a dot selects the point) and confirm.
+<a id="connection-form"></a>
 
-Any saved route that went through a deleted connection is recalculated automatically the next time someone asks for it.
+### Connecting with the form
 
-## 6b. Testing a route and reviewing it
+Use it when you need to type the real distance or a warning from the start.
 
-Use **Test as user** (drawer) to walk a route yourself. During the trip, a red **✗ Wrong instruction** button appears above **End navigation**. Tap it whenever the app says something wrong (a turn when you should go straight, a wrong distance, an early arrival). It saves what was just said, where you were and what the app was seeing.
+![Connection form](../images/en/connection-form.webp)
 
-To measure how accurate the position is, walk the planned route **exactly** and use the blue **I'm at …** button:
-- Tap it while standing on each point it names: the start, every corner, the destination.
-- A long press undoes the last tap.
-- In this mode, arriving is announced but the trip goes on until you tap the destination.
-- The app also keeps each camera photo of a test walk, to compare photo-matching models later.
+| # | Field | What it means |
+|---|---|---|
+| 1 | **University** | Filters the point lists. |
+| 2 | **Building (optional filter)** | Narrows the lists further. |
+| 3 | **Anchor point A** | One end. |
+| 4 | **Anchor point B** | The other end. |
+| 5 | **Distance in meters (optional)** | How far it really is to walk. Blank uses the straight line. Fill it in if the path bends. |
+| 6 | **Warning for users** | What the user is told as they start this stretch. See [Warnings for users](#connection-warning). |
+| 7 | **Save connection** | Creates the connection. |
 
-Afterwards, open **Sessions** in the drawer, choose the user, and **Watch** the session. A card at the top shows how far the raw GPS and the corrected position were from the route, and the error at your checkpoints (blue flags). The map shows:
-- **Grey-blue line:** the planned route.
-- **Orange dashed line:** the raw GPS path.
+The only thing you can change on a connection later is its warning. To change anything else, delete it and create it again. Saved routes that went through a deleted connection are recalculated on their own.
+
+<a id="users-see"></a>
+
+## 7. What users see
+
+This explains most cases of "it doesn't show up" and "there's no route":
+
+- **They only see verified points with at least one connection.** The rest don't exist for them.
+- **They can only choose destinations**, meaning points of a type marked ★ in the [Quick reference](#reference), with a name.
+- **The starting point** is the connected point nearest their GPS. If points on several floors are within 15 m, the app asks which floor they're on.
+- **They can say a building** ("Edificio C"). The route ends at its entrance closest by walking, so **give each door the Entrance type** and connect it. With no entrance marked, it ends at the closest connected point on its lowest floor.
+- **Names don't repeat the building.** "Entrada sur bloque 20" is saved as "Entrada sur". The user can still say "entrada sur bloque 20", and if there are several "Entrada sur" they're offered the nearest.
+- **When changing floor**, the app tells them where to go ("Take the elevator to floor 3") and waits for the phone's barometer to detect the change.
+
+<a id="notices"></a>
+
+## 8. Menu notices
+
+The orange notices show map mistakes that affect users. They're worked out from the loaded data, and disappear when everything is fine.
+
+| Notice | What it means | What to do |
+|---|---|---|
+| **N verified points not connected** | Nobody can reach them or leave from them. | Open the filtered list; connect them. |
+| **N named points users can't choose** | They have a name, but an in-between type. | Tap one and change its type if users go there. Some may be deliberate ("Hallway to rooms 202"). |
+| **N connections over 30 m** | Routes don't use them. | Tap one to delete it, and connect that path again through in-between points. |
+| **N connections that change floor without stairs** | Routes don't use them. | Tap one to delete it, and connect the floors through a stairwell, elevator or ramp point on each floor. |
+
+![List of connections over 30 m](../images/en/health-long-connections.webp)
+
+![List of connections that change floor without stairs](../images/en/health-floor-change.webp)
+
+![List of named points users can't choose](../images/en/health-hidden-names.webp)
+
+<a id="reindex"></a>
+
+### Re-index verified points
+
+If a verified point's photos didn't reach the search (because of a server problem), the app can't recognize it yet, and the menu says so in red: "N photos not searchable". Once the server is fine, tap **Re-index verified points**. It removes from the search what shouldn't be there, sends the missing points, retries failures, and ends with this summary, which lists any that still failed:
+
+![Re-index result](../images/en/reindex.webp)
+
+<a id="users"></a>
+
+## 9. Users
+
+![User list](../images/en/users.webp)
+
+| # | Control | What it does |
+|---|---|---|
+| 1 | User row | Their name and role. "Deactivated" in red if blocked. |
+| 2 | **Promote to admin** (shield) | Gives them admin rights, after asking. On an admin, this button removes them. |
+| 3 | **Deactivate account** | Blocks the account without deleting it: it can't use the app or the web. |
+| 4 | **Activate account** | Unblocks a deactivated account. |
+
+On your own row these buttons are disabled.
+
+- **Accounts with no profile:** if a sign-up didn't finish, the account appears in a highlighted card at the top, and its button creates the missing profile.
+- **The first admin** of an installation is set by hand in the database, as the note above the list says.
+
+**App versions.** The newest version and the one before it work. Anyone on the older one sees "New version available" on opening it. Older ones only show "Update required" until the new APK is installed, which is on the project's GitHub releases page.
+
+<a id="sessions"></a>
+
+## 10. Sessions
+
+A session is a trip made with the app. **Sessions** lists people, with how many sessions they have and how many are active.
+
+![Sessions by user](../images/en/sessions.webp)
+
+| # | Control | What it does |
+|---|---|---|
+| 1, 2 | User row | Opens their sessions (below). |
+
+The arrow at the top right (**Refresh**) reloads them.
+
+![A user's sessions](../images/en/user-sessions.webp)
+
+| # | Control | What it does |
+|---|---|---|
+| 1 | **Watch** | Opens the session's map (below). It updates by itself if the session is still active, to follow a trip live. |
+| 2 | **View comment** | Shows what the user wrote at the end, if anything. |
+| 3 | **Delete** (trash) | Deletes the session and its logs. |
+
+### A session's map
+
+![A session's map](../images/en/session-tracking.webp)
+
+The card at the top sums up how far from the route the uncorrected GPS and the corrected position were. The legend at the bottom says what each thing is:
+- **Blue-grey line:** the planned route. If it changes floor, stretches on other floors are faint, and the floor buttons appear.
+- **Dashed orange line:** the uncorrected GPS.
 - **Green line:** the corrected position.
-- **Purple dots:** photo matches, each with a thin line to the anchor point it matched. Long lines show where the position was pulled from.
-- **Red ✗:** your wrong-instruction marks.
+- **Purple dots:** photo matches, with a thin line to the recognized point. A long line shows where the position was pulled from.
+- **Red ✗:** an instruction marked as wrong during a test.
 
-Tap any of them to see the details logged there.
+Tap any of them to see what was logged there: the position, what the app said, the heading and more.
 
-**What the user sees, and what you see.** A regular user sees no coordinates and no map during the trip: just a large **Repeat instruction** button and **End navigation**. Their start point comes from GPS, with no photos. In **Test as user** you still see the map, both coordinates (GPS and corrected) and the camera start-point check (tap the **Start** row).
+<a id="feedback"></a>
 
-**How to hold the phone.** For photos to be recognised, hold the phone upright in front of the chest with the back camera facing forward. Explain it to the user this way; the app's tutorial (the **?** button) says it too.
+## 11. Feedback
 
-## 6c. The web app
+What users write after a trip, with their name, the date and how the trip ended. It's read-only.
 
-Everything in this guide except taking photos with the camera and **Test as user** also works in a browser, on a bigger screen: **https://184-195-103-237.sslip.io/admin/**. Sign in with your admin account; a non-admin account is told to use the phone app.
+![User feedback](../images/en/feedback.webp)
 
-- **Side menu:** on a wide window, the menu stays open at the left instead of sliding in.
-- **Photos:** a point's photo screen has **Upload photos** instead of the camera. Pick one or more image files taken standing on the point. Before uploading, choose which way they face (N, NE, E…). Choose **Unknown** if you're not sure: such a photo is never refused for facing the wrong way.
-- **Users:** each row also has **Deactivate account**. A deactivated account can't use the app or the web app until an admin activates it again. You can't deactivate yourself.
+<a id="settings"></a>
 
-## 6d. Users
+## 12. Settings
 
-The **Users** section lists every account.
+These are your own preferences; each user's are separate.
 
-- **Promote / demote:** the shield icon on a row makes that person an admin, or takes admin rights away (with a confirmation). It's disabled on your own row.
-- **Deactivate / activate:** the person icon blocks an account without deleting it. A deactivated account can't use the app or the web app until it's activated again. It's disabled on your own row.
-- **Accounts without a profile:** if a sign-up didn't finish, the account appears in a highlighted card at the top. Its button creates the missing profile, and the person then appears in the normal list.
-- **The very first admin** has to be set by hand in the database (`UPDATE profiles SET role_id = 2 WHERE id = ...`), as the note at the top of the list says.
+![Settings](../images/en/settings.webp)
 
-**App versions.** The app works in its newest version and the one before it. Someone on the previous version sees "New version available" once each time they open the app, with a download button. Older versions show only "Update required" with the download link, until the new APK is installed. Releases are on the project's GitHub releases page. For testers, the [user guide](../../user-guide/README.md) explains installing and updating.
+| # | Control | What it does |
+|---|---|---|
+| 1 | **Verbosity** | How much detail is shown: low, medium or high. |
+| 2 | **High contrast** | Higher-contrast colors, for low vision. |
+| 3 | **Language** | Automatic (the device's), English or Español. |
+| 4 | **Save** | Saves the changes. |
 
-## 7. Deleting things
+There's also **Font size** (small to extra large) and **Voice guidance**, the spoken announcements during a trip.
 
-Universities and buildings have a trash icon on their row. On an anchor point row, **Add photo** and **Delete** are in the ⋮ menu, next to the verify and edit buttons.
+<a id="phone-only"></a>
 
-Anything that was used in trips can be deleted. Saved routes through deleted points are removed with them, and trip history is kept. If something still can't be deleted, the message says why.
+## 13. Phone only
 
-Deleting a place, building, or anchor point always shows a confirmation dialog stating exactly what else will be deleted with it, because the data is hierarchical (place → building → anchor point → photos/connections):
+In a narrow window or the phone app, the menu opens with ☰. Everything else in this guide works the same.
 
-- **Deleting a place** also deletes its buildings, their anchor points, those points' photos, and any connections involving them.
-- **Deleting a building** also deletes its anchor points, their photos, and any connections involving them.
-- **Deleting an anchor point** also deletes its photos and any connections involving it.
-- **Deleting a connection** affects nothing else.
+![The app in a narrow window](../images/en/phone-home.webp)
 
-The confirmation always shows the real counts (e.g. "will also delete 3 buildings, 12 anchor points, 45 photos, and 8 connections") before you confirm — read it. None of this can be undone.
+![The menu in a narrow window](../images/en/phone-menu.webp)
 
-## 8. Quick reference
+Two things need the phone, because they use the camera and sensors. This guide has no pictures of them.
+
+### Taking photos with the camera
+
+1. Open a point's **Add photo**, or **Create and add photos** when creating it.
+2. Stand on the point. The **Facing: N°** badge shows which way the phone points, and is saved with each photo.
+3. Tap **Take photo** in each direction. Each photo uploads by itself, and appears below with its heading.
+4. Tap a photo's trash icon to delete it, and **Done** (✓) when finished.
+
+### Test as user
+
+**Test as user** (in the phone's menu) lets you make a real trip with your account. You see the map and coordinates, which a regular user doesn't: they only have **Repeat instruction** and **End navigation**.
+
+- **✗ Wrong instruction:** tap it each time the app says something wrong. It saves what was just said and where you were.
+- **I'm at…:** to measure accuracy, walk the planned route exactly and tap it standing on each point it names (the start, each corner, the destination). A long press undoes the last one.
+- Then review the trip in [Sessions](#sessions).
+
+**How to hold the phone.** Upright in front of the chest, with the back camera facing forward. Explain it this way to testers; the app's tutorial says so too.
+
+<a id="deleting"></a>
+
+## 14. Deleting data
+
+Before deleting, the app says what else goes with it. Read it carefully: **it can't be undone**.
+
+| Deleting | Also deletes |
+|---|---|
+| **A university** | Its buildings, their points, and those points' photos and connections. |
+| **A building** | Its points, their photos and their connections. |
+| **A point** | Its photos and its connections. |
+| **A connection** | Nothing else. |
+
+Saved routes through a deleted point are deleted with it, and trip history is kept. To stop using something without losing its data, **deactivate** the university or building, or set the point to **Rejected**.
+
+<a id="problems"></a>
+
+## 15. Common problems
+
+| Problem | Likely cause | What to do |
+|---|---|---|
+| A place doesn't appear as a destination | It's not verified, has no connections, or its type is in-between. | Check all three, and the [menu notices](#notices). |
+| "No route" | A connection is missing on the way, or it uses one over 30 m. | Connect the missing stretch with **Connect on map**. |
+| "Your starting point isn't connected" | Only loose points are near the user. | Connect the points in that area. |
+| "Edificio C" gives no route | The building has no verified, connected points. | Verify and connect its points, and mark its doors as **Entrance**. |
+| I can't connect two points | They're over 30 m apart, or on different floors with no stairs, elevator or ramp. | Add in-between points, or connect through a point of that type. |
+| I can't see a point on the map | It's on another floor, or a filter is on. | Use ▲ ▼, turn off **Only this floor**, and clear the filters. |
+| **Create and add photos** is disabled | The position is missing, or indoors or outdoors isn't chosen. | Use **Pick on map** and choose one of the two. |
+| The map opens in the ocean | The web has no GPS, and it's a new university. | Type rough coordinates first. |
+| The app doesn't recognize a place | Its photos aren't in the search. | Use [Re-index](#reindex). |
+| "Update required" | The app is too old. | Install the newest APK. |
+
+<a id="reference"></a>
+
+## 16. Quick reference
 
 ### Location types
 
-Tap the **Location type** field to open the type picker. Types are grouped into categories, and the search box at the top finds one by name (for example "library"). Types marked ★ are **destinations**: they need a description and appear in users' destination list. The others are in-between points for connecting routes.
+Types with ★ are **destinations**: they need a name, and users can choose them. The rest are in-between points.
 
 | Category | Types |
 |---|---|
-| Paths and connections | Hallway, Outdoor path, Intersection, Stairs, Elevator, Ramp, Crosswalk, Courtyard |
+| Paths and connections | Hallway, Outdoor path, Intersection, Stairwell, Elevator, Ramp, Crosswalk, Courtyard |
 | Entrances and getting around | Entrance ★, Exit / gate ★, Lobby ★, Parking ★, Bike parking ★, Bus stop ★, Waiting area / benches ★ |
 | Academic | Classroom ★, Laboratory ★, Library ★, Computer room ★, Study area ★, Auditorium ★, Office ★ |
 | Food, shops and services | Cafeteria ★, Stationery shop ★, Copy / print center ★, Store ★, ATM / bank ★, Restroom ★, Drinking fountain ★ |
 | Wellbeing and sports | Infirmary / medical service ★, Gym / sports area ★, Chapel ★ |
 | Other | Other |
 
-### Anchor point status
-
-| Status | Meaning |
-|---|---|
-| **pending** | Captured, not yet reviewed — not usable by the live app yet |
-| **verified** | Reviewed and confirmed good — indexed into the search system, usable by the live app |
-| **rejected** | Reviewed and rejected (bad photos, wrong location, duplicate, etc.) — excluded from the search system |
-
 ### Lighting
 
 | Option | Meaning |
 |---|---|
-| Not set | No lighting info recorded |
-| Bright | Well-lit, e.g. daylight through windows |
-| Moderate | Normal indoor lighting |
-| Dim | Poorly lit, e.g. an interior stairwell |
+| Not set | No information. |
+| Bright | Well lit, for example by daylight. |
+| Moderate | Normal indoor lighting. |
+| Dim | Poorly lit, for example an indoor stairwell. |
+
+Maps © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.

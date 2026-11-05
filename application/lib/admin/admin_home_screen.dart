@@ -23,6 +23,7 @@ import '../user/user_home_screen.dart';
 import '../services/anchor_filters.dart';
 import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
+import '../widgets/admin_guide.dart';
 import '../services/capture_checks.dart';
 import '../services/exit_guard.dart';
 import '../services/location_types.dart';
@@ -1983,6 +1984,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     ];
   }
 
+  /// The tutorial's section for each tab (anchors in `docs/admin-guide/`).
+  static const _kGuideSections = [
+    'universities',
+    'buildings',
+    'anchor-points',
+    'connections',
+    'users',
+  ];
+
   /// On a wide screen (the web app on a monitor) the drawer stays open as a
   /// side menu instead of sliding over the page.
   static const double _kPermanentDrawerWidth = 900;
@@ -2197,6 +2207,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               ],
             ),
           ),
+          // The tutorial is a page next to the web app, for reading beside it.
+          if (kIsWeb)
+            ListTile(
+              leading: const Icon(Icons.menu_book, color: Colors.blue),
+              title: Text(l10n.adminGuide),
+              onTap: () {
+                _closeDrawer();
+                openAdminGuide(context);
+              },
+            ),
           item(0, Icons.flag, Colors.purple, l10n.adminSectionUniversities),
           item(1, Icons.apartment, Colors.orange, l10n.adminSectionBuildings),
           item(
@@ -2301,6 +2321,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       appBar: AppBar(
         title: Text(_sectionTitles[_tabController.index]),
         actions: [
+          if (kIsWeb)
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              tooltip: l10n.adminGuideSectionTooltip,
+              onPressed: () => openAdminGuide(
+                context,
+                section: _kGuideSections[_tabController.index],
+              ),
+            ),
           if (_tabController.index == 3)
             IconButton(
               icon: const Icon(Icons.list_alt),
@@ -2331,6 +2360,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           ),
           IconButton(
             icon: const Icon(Icons.logout),
+            tooltip: l10n.commonLogOut,
             onPressed: () => Supabase.instance.client.auth.signOut(),
           ),
         ],

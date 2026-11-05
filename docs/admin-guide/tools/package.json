@@ -1,0 +1,7 @@
+{
+  "name": "admin-guide-screenshots",
+  "private": true,
+  "type": "module",
+  "description": "Takes the admin guide's screenshots. See README.md.",
+  "dependencies": { "playwright": "^1.56.0" }
+}

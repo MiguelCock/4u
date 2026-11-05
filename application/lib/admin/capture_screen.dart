@@ -184,13 +184,24 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
+  /// Where the picker opens with no GPS, as in the web app: 0,0 is the ocean.
+  LatLng? get _selectedBuildingPosition {
+    for (final building in _buildings) {
+      if (building['id'] != _selectedBuildingId) continue;
+      final lat = (building['latitude'] as num?)?.toDouble();
+      final lng = (building['longitude'] as num?)?.toDouble();
+      return lat == null || lng == null ? null : LatLng(lat, lng);
+    }
+    return null;
+  }
+
   Future<void> _pickOnMap() async {
     final fallback = _livePosition;
     final initial =
         _position ??
         (fallback != null
             ? LatLng(fallback.latitude, fallback.longitude)
-            : const LatLng(0, 0));
+            : _selectedBuildingPosition ?? const LatLng(0, 0));
     final result = await Navigator.of(context).push<LatLng>(
       MaterialPageRoute(
         builder: (_) => LocationPickerScreen(

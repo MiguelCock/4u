@@ -186,6 +186,15 @@ jobs:
   #    import time (raises on anything not matching http(s)://...), so the
   #    literal `.env.example` placeholder text isn't enough on its own.
   # ----------------------------------------------------------------------
+  # The admin guide's web page is committed, built from docs/admin-guide/.
+  admin-guide:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - name: The page matches its Markdown and images
+        run: uv run --no-project --python 3.14 --with markdown==3.11.2 python docs/admin-guide/tools/build_site.py --check
+
   gateway-integration:
     runs-on: ubuntu-latest
     steps:
@@ -251,6 +260,16 @@ jobs:
               exit 1
             fi
           done
+
+      - name: The admin guide is served, not the app in its place
+        run: |
+          # /admin/ falls back to the app's index.html for unknown paths, which
+          # would hide a guide that didn't reach the server behind a 200.
+          mkdir -p gateway/admin-web/guide/es
+          echo 'the app' > gateway/admin-web/index.html
+          echo 'the guide' > gateway/admin-web/guide/es/index.html
+          curl -s http://localhost:8000/admin/guide/es/ | grep -q 'the guide' \
+            || { echo "FAILED: /admin/guide/es/ doesn't serve the guide"; exit 1; }
 
       - name: Internal-only and size rules hold at the gateway
         run: |

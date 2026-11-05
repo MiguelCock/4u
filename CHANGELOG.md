@@ -6,6 +6,14 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+### Added
+- **Illustrated user guide for admins in the web app.** A **User guide** entry in the web menu opens every page explained in its own tab, in Spanish or English: the whole workflow, what each button does, and numbered screenshots. A **?** button in the top bar opens the section for the page you're on. It's only in the web app, not on the phone.
+
+### Fixed
+- **The Anchor points map had no background** in the web app: the map's tiles were cancelled as soon as it framed the points.
+- **Pick on map no longer opens in the ocean** in the web app, which has no GPS, when creating a point or a building. It opens at the chosen building or university.
+- While moving a point on the map, the floor buttons were hidden behind the banner.
+
 ## [0.5.5] - 2026-11-04
 
 **For testers:** install `app-release.apk` from this release. Version 0.5.4 keeps working for now (it shows a "new version available" notice), and **0.5.3 no longer works**: anyone still on it sees "Update required". Going between floors is new and being tested: the app listens for the floor change with the phone's barometer, and its settings are first guesses. **Admins:** mark each building door with the type **entrance**, and connect stairs and elevators with a point on each floor.
