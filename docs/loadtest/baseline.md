@@ -43,13 +43,34 @@ The remote sampling loop also survived the end of each run: five were running by
 
 All test data was removed and checked afterwards: no sandbox, no test accounts, real counts unchanged, all 868 searchable photos still in the search index.
 
+## 5 admins
+
+Run later the same day (14:52–15:06 UTC), with each point carrying 3 photos like real ones, and production's health checked every 30 s by a separate watcher. No run stopped, and production answered throughout.
+
+| Who (5 min each) | Containers' memory, peak | ai-training CPU, average | Photo server time, p50 / p95 | Photo answers, p95 | Photos matched |
+|---|---:|---:|---:|---:|---:|
+| 5 admins | 1273 MB | 5% | | | |
+| 5 admins + 1 user | 1353 MB | 15% | 0.84 / 1.09 s | 2.3 s | 90% |
+| 1 user, for comparison | | 15% | 0.86 / 1.12 s | 2.6 s | 91% |
+
+**Admins can work normally, as long as they keep to the pace tested below.** Their work didn't slow the user's photo search.
+
+**Admins' screens are slow, though.** Each of the five lists on the home screen took about 2 s p50 and up to 6 s p95 with 5 admins, and verifying a point took about 5 s. One read of the photos list got no answer within the 60 s timeout, the only error in either run. map-management's CPU averaged only 2–3%, so whatever it's waiting for isn't CPU. Reloads are a good target for A5.
+
+**What this doesn't cover:**
+
+- **Verifying was light:** about 7 points, or 21 photos, in each 5-minute run. A bigger burst, like several admins verifying long lists at once, wasn't tested.
+- **"Re-index verified points" wasn't tested.** It runs the model on every verified photo (868 today), so keep it out of working hours and out of user tests.
+- **Admins during user tests with more than 1 user weren't tested.** 5 users alone already use about half of the model's capacity.
+- **10 admins weren't tested.**
+
 ## Not measured
 
-**15 and 20 users, admins alone, 10 users + 5 admins, and the 30-minute run didn't run.** Users above 10 and the mixed and long runs can't pass until the freeze is fixed, so they're worth running only after that. The admin question stays open, including whether verifying points slows users' photo search. Admin runs against today's server could freeze it too, because verifying a point runs the same model.
+**15 and 20 users, 10 users + 5 admins, and the 30-minute run didn't run.** Users above 10 and the mixed and long runs can't pass until the freeze is fixed, so they're worth running only after that.
 
 ## Other findings
 
-- **Map reads are slow even with few users.** `GET /map/anchor-points/[id]` took 3.8 s p50 with 1 user, 6.6 s with 5, 11 s with 10; `/connections` was similar. Opening a route makes about 40 of these calls in parallel, so this is what a user waits for when a trip starts. map-management's endpoints are `async def` calling the blocking Supabase client, which would make them queue one at a time. That's a hypothesis, not yet tested.
+- **Map reads are slow even with few users.** `GET /map/anchor-points/[id]` took 3.8 s p50 with 1 user, 6.6 s with 5, 11 s with 10; `/connections` was similar. Opening a route makes about 40 of these calls in parallel, so this is what a user waits for when a trip starts. map-management's endpoints are `async def` calling the blocking Supabase client, which would make them queue one at a time. That's a hypothesis, not yet tested. Its low CPU in the admin runs fits, but doesn't prove it.
 - **12 old search entries point at deleted points** (one Icesi building, 4 points). A photo search could return a point that no longer exists. They aren't from this test. The admin "Re-index verified points" removes them.
 
 ## Decisions
