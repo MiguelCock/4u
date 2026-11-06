@@ -17,7 +17,7 @@ from loadtool.sampling import parse_stats_line
 
 REMOTE = (
     "end=$((SECONDS + 3000)); while [ $SECONDS -lt $end ]; do "
-    "sudo docker stats --no-stream --format '{{json .}}' || exit; sleep 10; done"
+    "sudo docker stats --no-stream --format '{{json .}}' || exit; sleep 5; done"
 )
 
 

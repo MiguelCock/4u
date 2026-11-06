@@ -3,6 +3,7 @@
 import csv
 import json
 import math
+import os
 from pathlib import Path
 
 # Stop a run rather than hammer a server that's already failing.
@@ -11,7 +12,7 @@ STOP_PHOTO_P95_MS = 15_000
 STOP_MIN_REQUESTS = 30
 # No answers at all: the server has stopped responding (it froze this way once,
 # at 10 users, and needed a reboot).
-STOP_SILENT_SECONDS = 45
+STOP_SILENT_SECONDS = float(os.environ.get("LOADTEST_SILENT_SECONDS", "45"))
 # Containers' total, of the server's 3839 MB with no swap. At about 3200 MB it
 # froze. One 14 s sample has jumped 1000 MB, so stop well before that.
 STOP_MEMORY_MB = 2800
