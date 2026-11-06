@@ -9,15 +9,40 @@ from pathlib import Path
 STOP_ERROR_RATE = 0.05
 STOP_PHOTO_P95_MS = 15_000
 STOP_MIN_REQUESTS = 30
+# No answers at all: the server has stopped responding (it froze this way once,
+# at 10 users, and needed a reboot).
+STOP_SILENT_SECONDS = 45
+# Containers' total, of the server's 3839 MB with no swap. At about 3200 MB it
+# froze. One 14 s sample has jumped 1000 MB, so stop well before that.
+STOP_MEMORY_MB = 2800
 
 
-def stop_reason(requests: int, failures: int, photo_p95_ms: float | None) -> str | None:
+def stop_reason(
+    requests: int,
+    failures: int,
+    photo_p95_ms: float | None,
+    silent_seconds: float = 0,
+    memory_mb: float | None = None,
+) -> str | None:
     """Why a run should stop now, or None."""
+    if silent_seconds >= STOP_SILENT_SECONDS:
+        return f"no answers from the server for {silent_seconds:.0f} s"
+    if memory_mb is not None and memory_mb >= STOP_MEMORY_MB:
+        return f"containers using {memory_mb:.0f} MB of memory"
     if requests >= STOP_MIN_REQUESTS and failures / requests > STOP_ERROR_RATE:
         return f"errors at {failures / requests:.0%} ({failures} of {requests})"
     if photo_p95_ms is not None and photo_p95_ms > STOP_PHOTO_P95_MS:
         return f"photo p95 at {photo_p95_ms / 1000:.1f} s"
     return None
+
+
+def latest_memory_mb(path: Path) -> float | None:
+    """All containers' memory at the latest sample of a server.csv."""
+    if not path.exists():
+        return None
+    with path.open(newline="") as file:
+        latest = {row["name"]: float(row["mem_mb"]) for row in csv.DictReader(file)}
+    return sum(latest.values()) if latest else None
 
 
 def percentile(values: list[float], fraction: float) -> float | None:

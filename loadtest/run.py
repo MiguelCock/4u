@@ -92,7 +92,11 @@ def run_step(label: str, nav: int, admins: int, minutes: int, state: Path, root:
                 "LOADTEST_ADMINS": str(admins),
             },
             check=False,
+            # Past the run time and its stop timeout, it's stuck.
+            timeout=minutes * 60 + 120,
         )
+    except subprocess.TimeoutExpired:
+        (out / "stop_reason.txt").write_text("the run got stuck and was killed\n")
     finally:
         sampler.send_signal(signal.SIGTERM)
         sampler.wait()
@@ -152,10 +156,20 @@ def main() -> None:
             out = run_step(*step, state, root)
             report.append(render_run(step[0], out))
             (root / "report.md").write_text("\n".join(report))
+            # The next steps are heavier: don't push a server that's struggling.
+            if (out / "stop_reason.txt").exists():
+                print(f"Stopped at {step[0]}: skipping the remaining steps.")
+                break
     finally:
         # Always, even after Ctrl-C or a failure above.
-        subprocess.run([sys.executable, "cleanup.py"], cwd=config.ROOT, check=False)
+        cleaned = subprocess.run(
+            [sys.executable, "cleanup.py"], cwd=config.ROOT, check=False
+        )
         (root / "state.json").unlink(missing_ok=True)
+        if cleaned.returncode:
+            sys.exit(
+                "CLEANUP FAILED: test data is still on the server. Run cleanup.py."
+            )
     print(f"Report: {root / 'report.md'}")
 
 

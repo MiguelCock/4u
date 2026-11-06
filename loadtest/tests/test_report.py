@@ -1,6 +1,9 @@
 import json
 
 from loadtool.report import (
+    STOP_MEMORY_MB,
+    STOP_SILENT_SECONDS,
+    latest_memory_mb,
     percentile,
     read_stats,
     render_run,
@@ -110,3 +113,22 @@ def test_reads_docker_stats():
     assert row == {"name": "4u-ai-training-1", "cpu_percent": 153.2, "mem_mb": 1536}
     assert parse_stats_line("not json") is None
     assert memory_mb("312.5MiB / 3.8GiB") == 312.5
+
+
+def test_stops_when_the_server_goes_silent():
+    assert "no answers" in stop_reason(100, 0, None, silent_seconds=STOP_SILENT_SECONDS)
+    assert stop_reason(100, 0, None, silent_seconds=STOP_SILENT_SECONDS - 1) is None
+
+
+def test_stops_before_memory_runs_out():
+    assert "memory" in stop_reason(100, 0, None, memory_mb=STOP_MEMORY_MB)
+    assert stop_reason(100, 0, None, memory_mb=STOP_MEMORY_MB - 1) is None
+
+
+def test_latest_memory_adds_each_containers_last_sample(tmp_path):
+    path = tmp_path / "server.csv"
+    assert latest_memory_mb(path) is None
+    path.write_text(
+        "time,name,cpu_percent,mem_mb\n1,a,0,100\n1,b,0,50\n2,a,0,200\n2,b,0,70\n"
+    )
+    assert latest_memory_mb(path) == 270
