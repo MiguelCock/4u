@@ -89,6 +89,22 @@ def test_correct_position_fuses_gps_and_visual_match():
     assert body["debug"]["candidates"][0]["verdict"] == "applied"
 
 
+def test_correct_position_says_when_the_model_was_busy():
+    async def busy(*_args, timing=None):
+        timing["busy"] = True
+        return []
+
+    with patch("app.main._search_similar", busy):
+        response = _post_correction(session_id="test-busy")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["server_busy"] is True
+    assert body["anchor_match_id"] is None
+    assert body["debug"]["server_busy"] is True
+    assert "busy" not in body["debug"].get("search_timing", {})
+
+
 def test_correct_position_degrades_to_gps_only_when_visual_match_unavailable():
     with patch("app.main._search_similar", AsyncMock(return_value=[])):
         response = _post_correction(session_id="test-degrade")
@@ -112,39 +128,83 @@ def test_correct_position_requires_session_id():
     assert response.status_code == 422
 
 
-@pytest.mark.asyncio
-async def test_search_similar_retries_then_gives_up_on_persistent_failure():
+def _search_client(side_effect):
     mock_client = AsyncMock()
-    mock_client.post.side_effect = httpx.TimeoutException("timed out")
+    mock_client.post.side_effect = side_effect
     mock_client.__aenter__.return_value = mock_client
     mock_client.__aexit__.return_value = None
+    return mock_client
 
+
+@pytest.mark.asyncio
+async def test_search_similar_doesnt_retry_a_timeout():
+    mock_client = _search_client(httpx.ReadTimeout("timed out"))
+    timing = {}
     with patch("app.main.httpx.AsyncClient", return_value=mock_client):
-        result = await _search_similar(b"fake-bytes", "frame.jpg", 6.24, -75.58)
+        result = await _search_similar(
+            b"fake", "frame.jpg", 6.24, -75.58, timing=timing
+        )
 
     assert result == []
-    # Initial attempt + the configured retries, not a single bare try.
-    from app.main import _SEARCH_RETRIES
-
-    assert mock_client.post.call_count == _SEARCH_RETRIES + 1
+    assert mock_client.post.call_count == 1
+    assert timing["busy"] is True
 
 
 @pytest.mark.asyncio
-async def test_search_similar_recovers_after_one_transient_failure():
-    ok_response = AsyncMock()
-    ok_response.raise_for_status = lambda: None
-    ok_response.json = lambda: {"matches": [{"anchor_point_id": "a1", "score": 0.9}]}
-
-    mock_client = AsyncMock()
-    mock_client.post.side_effect = [httpx.TimeoutException("timed out"), ok_response]
-    mock_client.__aenter__.return_value = mock_client
-    mock_client.__aexit__.return_value = None
-
+async def test_search_similar_doesnt_retry_a_busy_answer():
+    mock_client = _search_client([httpx.Response(503, json={"detail": "Busy"})])
+    timing = {}
     with patch("app.main.httpx.AsyncClient", return_value=mock_client):
-        result = await _search_similar(b"fake-bytes", "frame.jpg", 6.24, -75.58)
+        result = await _search_similar(
+            b"fake", "frame.jpg", 6.24, -75.58, timing=timing
+        )
 
-    assert result == [{"anchor_point_id": "a1", "score": 0.9}]
+    assert result == []
+    assert mock_client.post.call_count == 1
+    assert timing["busy"] is True
+
+
+@pytest.mark.asyncio
+async def test_search_similar_retries_a_failed_connection_once():
+    mock_client = _search_client(httpx.ConnectError("refused"))
+    timing = {}
+    with patch("app.main.httpx.AsyncClient", return_value=mock_client):
+        result = await _search_similar(
+            b"fake", "frame.jpg", 6.24, -75.58, timing=timing
+        )
+
+    assert result == []
     assert mock_client.post.call_count == 2
+    assert timing["busy"] is True
+
+
+@pytest.mark.asyncio
+async def test_search_similar_recovers_when_the_retry_connects():
+    request = httpx.Request("POST", "http://ai-training/search_similar")
+    answer = httpx.Response(200, json={"matches": [{"id": 1}]}, request=request)
+    mock_client = _search_client([httpx.ConnectError("refused"), answer])
+    timing = {}
+    with patch("app.main.httpx.AsyncClient", return_value=mock_client):
+        result = await _search_similar(
+            b"fake", "frame.jpg", 6.24, -75.58, timing=timing
+        )
+
+    assert result == [{"id": 1}]
+    assert "busy" not in timing
+
+
+@pytest.mark.asyncio
+async def test_search_similar_isnt_busy_on_a_server_error():
+    request = httpx.Request("POST", "http://ai-training/search_similar")
+    mock_client = _search_client([httpx.Response(500, request=request)])
+    timing = {}
+    with patch("app.main.httpx.AsyncClient", return_value=mock_client):
+        result = await _search_similar(
+            b"fake", "frame.jpg", 6.24, -75.58, timing=timing
+        )
+
+    assert result == []
+    assert "busy" not in timing
 
 
 @pytest.mark.asyncio

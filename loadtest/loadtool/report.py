@@ -112,6 +112,11 @@ def summarize_ticks(path: Path) -> dict:
             if answered
             else None
         ),
+        "busy_share": (
+            sum(1 for t in answered if t.get("busy")) / len(answered)
+            if answered
+            else None
+        ),
         "gap_p50_ms": p(gaps, 0.5),
         "gap_p95_ms": p(gaps, 0.95),
         "server_p50_ms": p(field("total_ms"), 0.5),
@@ -150,6 +155,8 @@ def render_run(name: str, run_dir: Path) -> str:
                 f"{_ms(ticks['qdrant_p50_ms'])} p50, {_ms(ticks['qdrant_p95_ms'])} p95"
             ),
             "- Photos with a match: " + ("—" if matched is None else f"{matched:.0%}"),
+            "- Photos refused as busy: "
+            + ("—" if ticks["busy_share"] is None else f"{ticks['busy_share']:.0%}"),
             "",
         ]
     stats_file = run_dir / "run_stats.csv"

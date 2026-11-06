@@ -101,3 +101,4 @@ Added after the Icesi test (2026-11-03), whose data had 36-76 m connections betw
 - **`is_active`:** it's part of `PlaceResponse`/`BuildingResponse`. Before, the API dropped it, so the app never saw a deactivation and saving an edit reactivated it.
 - **`DELETE /anchor-points/upload-image?url=`:** removes an uploaded file whose photo record was never saved. It returns 409 if a photo row still uses the file, and is declared before `DELETE /anchor-points/{id}`.
 
+**Endpoints are plain `def`, except `GET /`** (as in `backend-navigation-management` and `backend-ai-training`). As `async def`, each blocking Supabase call stopped the event loop, so requests ran one at a time: 3.8 s for a simple read during a trip (`docs/loadtest/baseline.md`). A test in `tests/test_main.py` fails if one goes back.

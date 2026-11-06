@@ -46,6 +46,10 @@ _EIGENPLACES_SHA256 = "98e8e21e9364a7e0990a9d7e1de5853b6d830f7f73d6bd9ee4f397575
 # The short side photos are scaled to, keeping their aspect ratio.
 _EIGENPLACES_SHORT_SIDE = 384
 
+# Threads per photo. Several photos run at once (see app/model_gate.py), and each
+# using every CPU only makes them fight.
+torch.set_num_threads(int(os.environ.get("MODEL_THREADS", "1")))
+
 _model: torch.nn.Module | None = None
 _model_lock = threading.Lock()
 

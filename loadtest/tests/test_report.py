@@ -63,6 +63,7 @@ def test_summarizes_what_users_feel_and_where_time_went(tmp_path):
     assert summary["ticks"] == 3
     assert summary["answered"] == 2
     assert summary["matched_share"] == 0.5
+    assert summary["busy_share"] == 0
     assert summary["gap_p95_ms"] == 5000
     assert summary["server_p50_ms"] == 900
     assert summary["embed_p95_ms"] == 600
