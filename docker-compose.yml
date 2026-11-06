@@ -45,6 +45,11 @@ services:
       dockerfile: backend-ai-training/Dockerfile
     env_file:
       - backend-ai-training/.env
+    # Overloaded, this one used up the machine's memory and froze everything
+    # until a reboot (docs/loadtest/baseline.md). With a limit it's the only
+    # thing that restarts. No swap, because the disk is what got overwhelmed.
+    mem_limit: 1800m
+    memswap_limit: 1800m
     restart: unless-stopped
 
   # Fuses GPS + a visual anchor-point match (from ai-training) into a
