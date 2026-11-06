@@ -1,0 +1,22 @@
+[project]
+name = "loadtest"
+version = "0.1.0"
+description = "Load test of the deployed server: navigating users and admins (story A1)."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "httpx>=0.28.1",
+    "locust>=2.47.0",
+    "python-dotenv>=1.2.4",
+    "supabase>=2.34.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.6",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

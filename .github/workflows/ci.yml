@@ -33,6 +33,8 @@ jobs:
               - 'application/**'
             packages:
               - 'packages/**'
+            loadtest:
+              - 'loadtest/**'
             backend-data-collection:
               - 'backend-data-collection/**'
               - 'packages/**'
@@ -66,6 +68,7 @@ jobs:
           components=(
             '{"name":"app","path":"application","language":"flutter","test_cmd":"flutter test"}'
             '{"name":"packages","path":"packages","language":"python","test_cmd":"pytest"}'
+            '{"name":"loadtest","path":"loadtest","language":"python","test_cmd":"pytest"}'
             '{"name":"backend-data-collection","path":"backend-data-collection","language":"python","test_cmd":"pytest"}'
             '{"name":"backend-map-management","path":"backend-map-management","language":"python","test_cmd":"pytest"}'
             '{"name":"backend-route-management","path":"backend-route-management","language":"python","test_cmd":"pytest"}'
