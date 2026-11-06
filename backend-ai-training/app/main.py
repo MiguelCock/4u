@@ -1,5 +1,8 @@
+import asyncio
 import os
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
@@ -22,12 +25,22 @@ from .embedding import (
     InvalidImageError,
     download_image,
     extract_embedding,
+    load_model,
 )
 from .models import IndexAnchorRequest, IndexAnchorResponse, SearchSimilarResponse
 
 load_dotenv()
 
-app = FastAPI()
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # Before accepting requests: positioning falls back to GPS while the port
+    # is closed, so a restart doesn't leave photos waiting on the model.
+    await asyncio.to_thread(load_model)
+    yield
+
+
+app = FastAPI(lifespan=_lifespan)
 install_db_error_handlers(app)
 install_app_version_guard(app)
 

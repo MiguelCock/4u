@@ -1,3 +1,6 @@
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import cv2
 import numpy as np
 import torch
@@ -60,3 +63,29 @@ def test_undecodable_bytes_raise_invalid_image():
             loader(b"definitely not an image")
         with pytest.raises(InvalidImageError):
             loader(b"")
+
+
+def test_many_photos_at_once_load_the_model_only_once(monkeypatch):
+    loads = []
+
+    class SlowModel:
+        def __init__(self):
+            loads.append(1)
+            time.sleep(0.05)
+
+        def load_state_dict(self, _weights):
+            pass
+
+        def eval(self):
+            pass
+
+    monkeypatch.setattr(embedding, "_model", None)
+    monkeypatch.setattr(embedding, "MODEL_NAME", "eigenplaces")
+    monkeypatch.setattr(embedding, "EigenPlacesNet", SlowModel)
+    monkeypatch.setattr(embedding, "_eigenplaces_weights", dict)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        models = list(pool.map(lambda _: embedding._get_model(), range(8)))
+
+    assert len(loads) == 1
+    assert all(model is models[0] for model in models)

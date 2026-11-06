@@ -45,3 +45,13 @@ To calibrate against real trips, `LOADTEST_CAPTURE_SECONDS` sets how long a simu
 ## Limits
 
 It can't test phones, campus Wi-Fi or real walking. It also adds real load to Qdrant and Supabase, and uses their quotas.
+
+## Overloading ai-training locally
+
+`local_ai_training.py` overloads the photo service on your own computer, pinned to 2 CPUs like the server, so changes can be tried without touching production. It reproduces the server's collapse at 10 users (about 6.6 s per photo, 2.7 GB).
+
+```bash
+uv run python local_ai_training.py --build --rate 3.3 --seconds 120
+```
+
+Compare runs with each other, not with production: Qdrant is local and empty here. Pick CPUs your desktop isn't busy on with `--cpuset`: a browser on them made 5 users look worse than 10.
