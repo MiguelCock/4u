@@ -5,13 +5,16 @@ and that the stop rule ends a failing run."""
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
+import run
 from loadtool.config import ROOT
 
 ROUTE = {
@@ -37,8 +40,10 @@ class Stub(BaseHTTPRequestHandler):
 
     def _handle(self):
         length = int(self.headers.get("Content-Length") or 0)
-        self.rfile.read(length)
+        body = self.rfile.read(length)
         path = self.path.split("?")[0]
+        if path == "/ai-training/index_anchor":
+            self.server.indexed.append(json.loads(body))
         self.server.seen.append((self.command, path))
         if self.server.fail and path != "/auth/v1/token":
             self._answer(500, {"detail": "down"})
@@ -90,13 +95,14 @@ def stub():
     server.seen = []
     server.points = 0
     server.fail = False
+    server.indexed = []
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield server
     server.shutdown()
 
 
-def run_locust(tmp_path, url, nav, admins, seconds):
+def write_state(tmp_path, url):
     frame = tmp_path / "frame.jpg"
     frame.write_bytes(b"not a real photo")
     state = tmp_path / "state.json"
@@ -131,6 +137,11 @@ def run_locust(tmp_path, url, nav, admins, seconds):
             }
         )
     )
+    return state
+
+
+def run_locust(tmp_path, url, nav, admins, seconds):
+    state = write_state(tmp_path, url)
     return subprocess.run(
         [
             sys.executable,
@@ -161,6 +172,7 @@ def run_locust(tmp_path, url, nav, admins, seconds):
             "LOADTEST_ADMINS": str(admins),
             "LOADTEST_CAPTURE_SECONDS": "0",
             "LOADTEST_WATCH_SECONDS": "1",
+            "LOADTEST_ADMIN_WAIT_SCALE": "0.02",
         },
         capture_output=True,
         text=True,
@@ -218,3 +230,46 @@ def test_a_failing_server_stops_the_run(tmp_path, stub):
     run_locust(tmp_path, url, nav=1, admins=0, seconds=40)
     reason = (tmp_path / "stop_reason.txt").read_text()
     assert "errors" in reason
+
+
+def test_a_verified_point_indexes_all_its_photos(tmp_path, stub):
+    url = f"http://127.0.0.1:{stub.server_address[1]}"
+    run_locust(tmp_path, url, nav=0, admins=1, seconds=10)
+    assert stub.indexed
+    assert {len(request["photos"]) for request in stub.indexed} == {3}
+
+
+def test_a_frozen_server_stops_the_run_and_skips_the_next_step(tmp_path, monkeypatch):
+    """The real run.py and locust against a server that accepts connections and
+    never answers, which is what the frozen server did."""
+    held = []
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(50)
+
+    def accept_and_hold():
+        while True:
+            held.append(server.accept())
+
+    threading.Thread(target=accept_and_hold, daemon=True).start()
+    url = f"http://127.0.0.1:{server.getsockname()[1]}"
+
+    monkeypatch.setattr(
+        run, "SAMPLER", [sys.executable, "-c", "import time; time.sleep(600)"]
+    )
+    monkeypatch.setattr(run, "PAUSE_SECONDS", 0)
+    monkeypatch.setenv("LOADTEST_REQUEST_TIMEOUT", "300")
+    monkeypatch.setenv("LOADTEST_SILENT_SECONDS", "3")
+    monkeypatch.setenv("LOADTEST_WATCH_SECONDS", "1")
+
+    root = tmp_path / "results"
+    root.mkdir()
+    state = write_state(tmp_path, url)
+    started = time.monotonic()
+    run.run_steps([("first", 1, 1, 5), ("second", 1, 1, 5)], state, root, ["report"])
+
+    # Well before the 5 minutes the step would otherwise run.
+    assert time.monotonic() - started < 60
+    assert "no answers" in (root / "first" / "stop_reason.txt").read_text()
+    assert not (root / "second").exists()
+    assert "first" in (root / "report.md").read_text()

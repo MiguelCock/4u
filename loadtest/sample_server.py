@@ -3,6 +3,8 @@
     uv run python sample_server.py out.csv     # until stopped
 
 One long SSH connection: opening one per sample over SSM would itself be slow.
+The remote loop must end by itself: stopping ssh here doesn't stop it there, and
+loops left by earlier runs kept sampling the server until its next reboot.
 """
 
 import csv
@@ -14,7 +16,8 @@ from loadtool import config
 from loadtool.sampling import parse_stats_line
 
 REMOTE = (
-    "while true; do sudo docker stats --no-stream --format '{{json .}}'; sleep 10; done"
+    "end=$((SECONDS + 3000)); while [ $SECONDS -lt $end ]; do "
+    "sudo docker stats --no-stream --format '{{json .}}' || exit; sleep 5; done"
 )
 
 

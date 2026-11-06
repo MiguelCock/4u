@@ -53,7 +53,11 @@ def remove_sandbox(client, env: dict, state: dict) -> None:
     )
     if token is None:
         sys.exit("No test admin can sign in, so the sandbox can't be removed safely.")
-    headers = {"Authorization": f"Bearer {token}"}
+    version = json.loads(
+        (config.REPO / "packages/src/packages/app_versions.json").read_text()
+    )["latest"]
+    # Requests with a token and no version are refused as an old app (426).
+    headers = {"Authorization": f"Bearer {token}", "X-App-Version": version}
     api = env["API_GATEWAY_URL"]
     for place in places:
         buildings = (

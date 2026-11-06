@@ -16,7 +16,7 @@ Simulates people using the deployed server, to learn what it can handle and what
 - **Users** only ask for a saved route that's still walkable, which the server returns without writing (`trips.choose_route`).
 - **Accounts** are `loadtest-*`, created with the admin API, which sends no email. Sessions and logs go when they're deleted.
 - **`cleanup.py`** always runs after a run, even on Ctrl-C. It removes all of it, then compares real row counts with those from before. Run it by hand if a machine dies mid-run.
-- **Automatic stop:** a run ends at over 5% errors or photo p95 over 15 s.
+- **Automatic stop:** a run ends at over 5% errors, photo p95 over 15 s, 45 s with no answers, or containers at 2800 MB of memory, and the heavier steps after it are skipped. This reduces the risk of freezing the server but doesn't remove it (it happened at 10 users, see `docs/loadtest/baseline.md`), so check the server's health on a timer during a run, and be ready to reboot.
 
 ## Running it
 

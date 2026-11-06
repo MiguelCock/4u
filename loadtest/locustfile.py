@@ -15,10 +15,12 @@ import gevent
 from locust import HttpUser, between, constant, events, task
 
 from loadtool.guards import WriteGuard
-from loadtool.report import stop_reason
+from loadtool.report import latest_memory_mb, stop_reason
 from loadtool.trips import ping_pong_index, start_offset
 
 PHOTO_ENDPOINT = "/positioning/correct_position"
+# Without one, a frozen server holds every simulated user, and the run, forever.
+REQUEST_TIMEOUT_SECONDS = float(os.environ.get("LOADTEST_REQUEST_TIMEOUT", "60"))
 TICK_TYPE = "TICK"
 
 # What the phone does between photos, on top of the server's answer. The app
@@ -33,6 +35,9 @@ POINT_STEP_DEGREES = 0.00009
 ROW_STEP_DEGREES = 0.00015
 POINTS_PER_ROW = 20
 MAX_POINTS_PER_ADMIN = 40
+# Real points average 3.2 (891 photos on 282), and verifying runs the model on each.
+PHOTOS_PER_POINT = 3
+ADMIN_WAIT_SCALE = float(os.environ.get("LOADTEST_ADMIN_WAIT_SCALE", "1"))
 
 STATE = json.loads(Path(os.environ["LOADTEST_STATE"]).read_text())
 RESULTS = Path(os.environ["LOADTEST_RESULTS"])
@@ -56,6 +61,16 @@ TICKS = _read_frames()
 class Person(HttpUser):
     abstract = True
     host = STATE["api_url"]
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        request = self.client.request
+
+        def with_timeout(method, url, **options):
+            options.setdefault("timeout", REQUEST_TIMEOUT_SECONDS)
+            return request(method, url, **options)
+
+        self.client.request = with_timeout
 
     def sign_in(self, account: dict) -> None:
         response = self.client.post(
@@ -205,7 +220,8 @@ class NavigatingUser(Person):
                 "anchor_match_id": result.get("anchor_match_id"),
                 "confidence_score": result.get("confidence_score"),
             }
-        self.write("POST", "/navigation/logs", log)
+        # The app doesn't wait for this one (unawaited in navigation_screen.dart).
+        gevent.spawn(self.write, "POST", "/navigation/logs", log)
         gevent.sleep(AFTER_TICK_SECONDS)
 
     def record(self, result: dict, ok: bool, seconds: float) -> None:
@@ -253,7 +269,7 @@ class EditingAdmin(Person):
     """An admin improving the map, in the sandbox only. Real data is only read."""
 
     fixed_count = int(os.environ.get("LOADTEST_ADMINS", "0"))
-    wait_time = between(5, 15)
+    wait_time = between(5 * ADMIN_WAIT_SCALE, 15 * ADMIN_WAIT_SCALE)
 
     def on_start(self) -> None:
         self.number = next(_admin_numbers)
@@ -306,7 +322,9 @@ class EditingAdmin(Person):
         point = rows[0]
         self.guard.points.add(point["id"])
         self.points.append(point)
-        self.upload_photo(point)
+        point["photos"] = []
+        for _ in range(PHOTOS_PER_POINT):
+            self.upload_photo(point)
         self.open_home()
 
     def upload_photo(self, point: dict) -> None:
@@ -336,7 +354,8 @@ class EditingAdmin(Person):
             name="/map/anchor-points/[id]/photos",
         )
         if saved.ok:
-            point["photos"] = saved.json()
+            # The answer holds only the photo just added.
+            point["photos"].extend(saved.json())
 
     @task(4)
     def connect_next(self) -> None:
@@ -409,6 +428,8 @@ class EditingAdmin(Person):
 
 def _watch_for_trouble(environment, every_seconds: float) -> None:
     """Ends a run that's failing, rather than keep loading a struggling server."""
+    answered = 0
+    last_answer = time.monotonic()
     while True:
         gevent.sleep(every_seconds)
         entries = [
@@ -420,7 +441,16 @@ def _watch_for_trouble(environment, every_seconds: float) -> None:
         failures = sum(entry.num_failures for entry in entries)
         photo = environment.stats.entries.get((PHOTO_ENDPOINT, "POST"))
         photo_p95 = photo.get_current_response_time_percentile(0.95) if photo else None
-        reason = stop_reason(requests, failures, photo_p95)
+        if requests > answered:
+            answered = requests
+            last_answer = time.monotonic()
+        reason = stop_reason(
+            requests,
+            failures,
+            photo_p95,
+            silent_seconds=time.monotonic() - last_answer,
+            memory_mb=latest_memory_mb(RESULTS / "server.csv"),
+        )
         if reason:
             (RESULTS / "stop_reason.txt").write_text(reason + "\n")
             environment.runner.quit()

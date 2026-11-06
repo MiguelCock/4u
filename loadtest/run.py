@@ -1,7 +1,7 @@
 """Runs the plan's load tests against the deployed server.
 
     uv run python run.py smoke --window      # or: baseline, users, admins,
-    uv run python run.py all --window        # mixed, long, all
+    uv run python run.py all --window        # admins-5, admins-5-user-1, mixed, long, all
 
 --window says nobody is testing or editing right now. It provisions, runs,
 always cleans up, and writes the results to .data/results/<time>/.
@@ -20,12 +20,17 @@ from pathlib import Path
 from loadtool import config
 from loadtool.report import render_run
 
+# Replaced by the tests, which must not reach the server.
+SAMPLER = [sys.executable, "sample_server.py"]
+
 # name: list of (label, navigating users, admins, minutes)
 RUNS = {
     "smoke": [("smoke", 1, 1, 3)],
     "baseline": [("baseline", 1, 0, 5)],
     "users": [(f"users-{n}", n, 0, 5) for n in (5, 10, 15, 20)],
     "admins": [(f"admins-{n}", 0, n, 5) for n in (5, 10)],
+    "admins-5": [("admins-5", 0, 5, 5)],
+    "admins-5-user-1": [("admins-5-user-1", 1, 5, 5)],
     "mixed": [("mixed-10-users-5-admins", 10, 5, 10)],
     "long": [("long-10-users", 10, 0, 30)],
 }
@@ -59,7 +64,7 @@ def run_step(label: str, nav: int, admins: int, minutes: int, state: Path, root:
     out.mkdir()
     print(f"== {label}: {nav} users, {admins} admins, {minutes} min", flush=True)
     sampler = subprocess.Popen(
-        [sys.executable, "sample_server.py", str(out / "server.csv")],
+        [*SAMPLER, str(out / "server.csv")],
         cwd=config.ROOT,
     )
     try:
@@ -92,11 +97,28 @@ def run_step(label: str, nav: int, admins: int, minutes: int, state: Path, root:
                 "LOADTEST_ADMINS": str(admins),
             },
             check=False,
+            # Past the run time and its stop timeout, it's stuck.
+            timeout=minutes * 60 + 120,
         )
+    except subprocess.TimeoutExpired:
+        (out / "stop_reason.txt").write_text("the run got stuck and was killed\n")
     finally:
         sampler.send_signal(signal.SIGTERM)
         sampler.wait()
     return out
+
+
+def run_steps(steps: list, state: Path, root: Path, report: list[str]) -> None:
+    for index, step in enumerate(steps):
+        if index:
+            time.sleep(PAUSE_SECONDS)
+        out = run_step(*step, state, root)
+        report.append(render_run(step[0], out))
+        (root / "report.md").write_text("\n".join(report))
+        # The next steps are heavier: don't push a server that's struggling.
+        if (out / "stop_reason.txt").exists():
+            print(f"Stopped at {step[0]}: skipping the remaining steps.")
+            break
 
 
 def cpu_credit_mode() -> str:
@@ -146,16 +168,17 @@ def main() -> None:
     try:
         subprocess.run([sys.executable, "provision.py"], cwd=config.ROOT, check=True)
         state = build_state(root)
-        for index, step in enumerate(RUNS[args.run]):
-            if index:
-                time.sleep(PAUSE_SECONDS)
-            out = run_step(*step, state, root)
-            report.append(render_run(step[0], out))
-            (root / "report.md").write_text("\n".join(report))
+        run_steps(RUNS[args.run], state, root, report)
     finally:
         # Always, even after Ctrl-C or a failure above.
-        subprocess.run([sys.executable, "cleanup.py"], cwd=config.ROOT, check=False)
+        cleaned = subprocess.run(
+            [sys.executable, "cleanup.py"], cwd=config.ROOT, check=False
+        )
         (root / "state.json").unlink(missing_ok=True)
+        if cleaned.returncode:
+            sys.exit(
+                "CLEANUP FAILED: test data is still on the server. Run cleanup.py."
+            )
     print(f"Report: {root / 'report.md'}")
 
 
