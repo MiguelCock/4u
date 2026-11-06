@@ -1,3 +1,4 @@
+import inspect
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1641,3 +1642,18 @@ def test_renamed_point_is_saved_without_its_building_name():
         )
     assert response.status_code == 200
     assert points.update.call_args.args[0]["location_description"] == "Entrada norte"
+
+
+def test_endpoints_that_block_dont_hold_up_the_others():
+    """A blocking Supabase call in an async endpoint stops the event loop, so
+    requests queued one at a time: 3.8 s for a simple read during a trip."""
+    from fastapi.routing import APIRoute
+
+    slow = [
+        route.path
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        and inspect.iscoroutinefunction(route.endpoint)
+        and route.path != "/"
+    ]
+    assert slow == []

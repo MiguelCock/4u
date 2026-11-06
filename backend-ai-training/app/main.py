@@ -27,6 +27,7 @@ from .embedding import (
     extract_embedding,
     load_model,
 )
+from .model_gate import ModelBusy, ModelGate
 from .models import IndexAnchorRequest, IndexAnchorResponse, SearchSimilarResponse
 
 load_dotenv()
@@ -69,6 +70,13 @@ _GEO_INDEXED_FIELDS = ["location"]
 # whole point is to narrow the candidate pool to "plausibly where the
 # caller actually is standing", not to be a precise cutoff.
 _DEFAULT_SEARCH_RADIUS_METERS = 150.0
+
+# How many photos the model handles at once, and how long each may wait for its
+# turn (see app/model_gate.py). A user's photo has to leave time for the model and
+# Qdrant inside positioning's 2 s; verifying a point can wait much longer.
+_gate = ModelGate(int(os.environ.get("MODEL_SLOTS", "2")))
+_SEARCH_WAIT_SECONDS = float(os.environ.get("MODEL_SEARCH_WAIT_SECONDS", "0.8"))
+_INDEX_WAIT_SECONDS = float(os.environ.get("MODEL_INDEX_WAIT_SECONDS", "30"))
 
 # Shared with every other service via packages.supabase.SupaBase (#24) -
 # bound as a plain module-level name so Depends(get_caller_id) and tests'
@@ -118,11 +126,18 @@ def index_anchor(
         raise HTTPException(status_code=403, detail="Admin only")
     _ensure_collection()
 
+    # Across all the point's photos: the app and the gateway give up at 60 s.
+    give_up_at = time.monotonic() + _INDEX_WAIT_SECONDS
     points = []
     for photo in anchor.photos:
         image_bytes = download_image(photo.image_url)
         try:
-            embedding = extract_embedding(image_bytes)
+            with _gate.index(max(0, give_up_at - time.monotonic())):
+                embedding = extract_embedding(image_bytes)
+        except ModelBusy as e:
+            raise HTTPException(
+                status_code=503, detail="The server is busy, try again in a moment"
+            ) from e
         except InvalidImageError as e:
             raise HTTPException(
                 status_code=400, detail=f"Photo {photo.photo_id} is not an image"
@@ -233,12 +248,15 @@ def search_similar(
 ) -> SearchSimilarResponse:
     _ensure_collection()
 
-    started = time.perf_counter()
     try:
-        embedding = extract_embedding(file.file.read())
+        with _gate.search(_SEARCH_WAIT_SECONDS):
+            started = time.perf_counter()
+            embedding = extract_embedding(file.file.read())
+            embed_ms = round(1000 * (time.perf_counter() - started))
+    except ModelBusy as e:
+        raise HTTPException(status_code=503, detail="Busy") from e
     except InvalidImageError as e:
         raise HTTPException(status_code=400, detail="Not an image") from e
-    embed_ms = round(1000 * (time.perf_counter() - started))
     query_filter = None
     if latitude is not None and longitude is not None:
         query_filter = Filter(

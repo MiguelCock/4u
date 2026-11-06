@@ -238,6 +238,7 @@ class NavigatingUser(Person):
             "total_ms": debug.get("total_ms"),
             "embed_ms": timing.get("embed"),
             "qdrant_ms": timing.get("qdrant"),
+            "busy": bool(result.get("server_busy")),
             "matched": result.get("anchor_match_id") is not None,
         }
         with (RESULTS / "ticks.jsonl").open("a") as file:

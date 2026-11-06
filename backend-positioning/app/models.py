@@ -15,6 +15,9 @@ class CorrectPositionResponse(BaseModel):
     # frame (no Storage access, by design - see CLAUDE.md). Documented gap,
     # not silently dropped.
     raw_image_url: str | None = None
+    # The photo went unsearched for lack of capacity, so this is GPS alone. The
+    # app sends photos less often until it's false again.
+    server_busy: bool = False
     # Why the position came out this way (candidates and their verdicts,
     # gating, noise, innovation) - stored by the app in navigation_logs.debug.
     debug: dict = {}

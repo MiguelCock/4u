@@ -184,7 +184,7 @@ async def root():
 
 
 @app.post("/anchor-points/upload-image")
-async def upload_anchor_point_image(
+def upload_anchor_point_image(
     file: UploadFile = File(...), caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
@@ -196,7 +196,7 @@ async def upload_anchor_point_image(
 # Declared before DELETE /anchor-points/{id}, which would otherwise capture
 # "upload-image" as an id.
 @app.delete("/anchor-points/upload-image")
-async def delete_uploaded_anchor_point_image(
+def delete_uploaded_anchor_point_image(
     url: str, caller_id: str = Depends(get_caller_id)
 ):
     """Removes a file uploaded by the step above whose photo record was
@@ -369,7 +369,7 @@ def _short_description(description: str | None, building_id: str | None) -> str 
 
 
 @app.post("/anchor-points")
-async def create_anchor_point(
+def create_anchor_point(
     anchor_point: AnchorPointCreate, caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
@@ -391,14 +391,14 @@ async def create_anchor_point(
 
 
 @app.get("/anchor-points")
-async def list_anchor_points(
+def list_anchor_points(
     caller_id: str = Depends(get_caller_id),
 ) -> list[AnchorPointResponse]:
     return _list_all("anchor_points")
 
 
 @app.get("/anchor-points/{id}")
-async def get_anchor_point(
+def get_anchor_point(
     id: str, caller_id: str = Depends(get_caller_id)
 ) -> AnchorPointResponse:
     result = db.client.table("anchor_points").select("*").eq("id", id).execute()
@@ -408,7 +408,7 @@ async def get_anchor_point(
 
 
 @app.patch("/anchor-points/{id}")
-async def update_anchor_point(
+def update_anchor_point(
     id: str, anchor_point: AnchorPointUpdate, caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
@@ -473,7 +473,7 @@ async def update_anchor_point(
 
 
 @app.delete("/anchor-points/{id}")
-async def delete_anchor_point(id: str, caller_id: str = Depends(get_caller_id)):
+def delete_anchor_point(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     urls = _photo_urls_for_anchor_points([id])
@@ -486,7 +486,7 @@ async def delete_anchor_point(id: str, caller_id: str = Depends(get_caller_id)):
 
 
 @app.post("/anchor-points/{id}/photos")
-async def create_anchor_point_photo(
+def create_anchor_point_photo(
     id: str, photo: AnchorPointPhotoCreate, caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
@@ -505,7 +505,7 @@ async def create_anchor_point_photo(
 
 
 @app.get("/anchor-points/{id}/photos")
-async def list_anchor_point_photos(
+def list_anchor_point_photos(
     id: str, caller_id: str = Depends(get_caller_id)
 ) -> list[AnchorPointPhotoResponse]:
     result = (
@@ -518,14 +518,14 @@ async def list_anchor_point_photos(
 
 
 @app.get("/anchor-point-photos")
-async def list_all_anchor_point_photos(
+def list_all_anchor_point_photos(
     caller_id: str = Depends(get_caller_id),
 ) -> list[AnchorPointPhotoResponse]:
     return _list_all("anchor_point_photos")
 
 
 @app.delete("/anchor-point-photos/{id}")
-async def delete_anchor_point_photo(id: str, caller_id: str = Depends(get_caller_id)):
+def delete_anchor_point_photo(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = (
@@ -541,7 +541,7 @@ async def delete_anchor_point_photo(id: str, caller_id: str = Depends(get_caller
 
 
 @app.post("/anchor-point-connections")
-async def create_anchor_point_connection(
+def create_anchor_point_connection(
     connection: AnchorPointConnectionCreate, caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
@@ -591,14 +591,14 @@ async def create_anchor_point_connection(
 
 
 @app.get("/anchor-point-connections")
-async def list_anchor_point_connections(
+def list_anchor_point_connections(
     caller_id: str = Depends(get_caller_id),
 ) -> list[AnchorPointConnectionResponse]:
     return _list_all("anchor_point_connections")
 
 
 @app.get("/anchor-points/{id}/connections")
-async def list_anchor_point_connections_for_point(
+def list_anchor_point_connections_for_point(
     id: str, caller_id: str = Depends(get_caller_id)
 ) -> list[AnchorPointConnectionResponse]:
     result = (
@@ -611,7 +611,7 @@ async def list_anchor_point_connections_for_point(
 
 
 @app.patch("/anchor-point-connections/{id}")
-async def update_anchor_point_connection(
+def update_anchor_point_connection(
     id: str,
     connection: AnchorPointConnectionUpdate,
     caller_id: str = Depends(get_caller_id),
@@ -629,9 +629,7 @@ async def update_anchor_point_connection(
 
 
 @app.delete("/anchor-point-connections/{id}")
-async def delete_anchor_point_connection(
-    id: str, caller_id: str = Depends(get_caller_id)
-):
+def delete_anchor_point_connection(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     _require_found(
@@ -642,16 +640,14 @@ async def delete_anchor_point_connection(
 
 
 @app.get("/buildings")
-async def list_buildings(
+def list_buildings(
     caller_id: str = Depends(get_caller_id),
 ) -> list[BuildingResponse]:
     return _list_all("buildings")
 
 
 @app.get("/buildings/{id}")
-async def get_building(
-    id: str, caller_id: str = Depends(get_caller_id)
-) -> BuildingResponse:
+def get_building(id: str, caller_id: str = Depends(get_caller_id)) -> BuildingResponse:
     result = db.client.table("buildings").select("*").eq("id", id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Building not found")
@@ -659,9 +655,7 @@ async def get_building(
 
 
 @app.post("/buildings")
-async def create_building(
-    building: BuildingCreate, caller_id: str = Depends(get_caller_id)
-):
+def create_building(building: BuildingCreate, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = db.client.table("buildings").insert(building.model_dump()).execute()
@@ -669,7 +663,7 @@ async def create_building(
 
 
 @app.patch("/buildings/{id}")
-async def update_building(
+def update_building(
     id: str, building: BuildingUpdate, caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
@@ -684,7 +678,7 @@ async def update_building(
 
 
 @app.delete("/buildings/{id}")
-async def delete_building(id: str, caller_id: str = Depends(get_caller_id)):
+def delete_building(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     urls = _photo_urls_for_anchor_points(_anchor_point_ids_for_buildings([id]))
@@ -696,7 +690,7 @@ async def delete_building(id: str, caller_id: str = Depends(get_caller_id)):
 
 
 @app.post("/places")
-async def create_place(place: PlaceCreate, caller_id: str = Depends(get_caller_id)):
+def create_place(place: PlaceCreate, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = db.client.table("places").insert(place.model_dump()).execute()
@@ -704,14 +698,14 @@ async def create_place(place: PlaceCreate, caller_id: str = Depends(get_caller_i
 
 
 @app.get("/places")
-async def list_places(
+def list_places(
     caller_id: str = Depends(get_caller_id),
 ) -> list[PlaceResponse]:
     return _list_all("places")
 
 
 @app.get("/places/{id}")
-async def get_place(id: str, caller_id: str = Depends(get_caller_id)) -> PlaceResponse:
+def get_place(id: str, caller_id: str = Depends(get_caller_id)) -> PlaceResponse:
     result = db.client.table("places").select("*").eq("id", id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Place not found")
@@ -719,9 +713,7 @@ async def get_place(id: str, caller_id: str = Depends(get_caller_id)) -> PlaceRe
 
 
 @app.patch("/places/{id}")
-async def update_place(
-    id: str, place: PlaceUpdate, caller_id: str = Depends(get_caller_id)
-):
+def update_place(id: str, place: PlaceUpdate, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = (
@@ -734,7 +726,7 @@ async def update_place(
 
 
 @app.delete("/places/{id}")
-async def delete_place(id: str, caller_id: str = Depends(get_caller_id)):
+def delete_place(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     building_ids = _building_ids_for_place(id)

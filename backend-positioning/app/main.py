@@ -68,15 +68,12 @@ _store = SessionStore()
 # override them (see app/matching.py), read once at startup.
 _config = MatchConfig.from_env()
 
-# Short per-attempt timeout + a couple of quick retries - a blip in the
-# visual-matching service must not break navigation. backend-ai-training's
-# model load does a real network download on its first call after any
-# restart (fixed in this same change via its Dockerfile - see that diff),
-# so a single bare timeout isn't enough of a safety net on its own.
+# A visual-matching problem must not break navigation: the answer falls back to
+# GPS. A timeout or a "busy" isn't retried, because sending the same photo again
+# only adds to the overload (docs/loadtest/baseline.md). A failed connection gets
+# one quick retry, for a blip or a restart.
 _SEARCH_TIMEOUT_SECONDS = 2.0
-_SEARCH_RETRIES = 2
-
-_RETRYABLE_ERRORS = (httpx.HTTPError, httpx.TimeoutException)
+_CONNECTION_RETRIES = 1
 
 # Admin test walks keep their camera frames (store_frame below), linked to
 # each tick through navigation_logs.raw_image_url, so photo-matching models
@@ -125,10 +122,13 @@ async def _search_similar(
     `_config.search_limit` candidates (empty if the service is unreachable,
     slow, or finds nothing) - callers degrade to a GPS-only correction
     rather than failing the whole request over a visual-matching blip.
+    Sets `timing["busy"]` when the photo went unsearched for lack of capacity.
     Several candidates, not just the top one, so a far or wrong-direction
     top match doesn't hide a good second one."""
+    if timing is None:
+        timing = {}
     async with httpx.AsyncClient(timeout=_SEARCH_TIMEOUT_SECONDS) as client:
-        for attempt in range(_SEARCH_RETRIES + 1):
+        for attempt in range(_CONNECTION_RETRIES + 1):
             try:
                 response = await client.post(
                     f"{AI_TRAINING_URL}/search_similar",
@@ -140,15 +140,24 @@ async def _search_similar(
                         "radius_meters": str(_config.search_radius_m),
                     },
                 )
+                if response.status_code == 503:
+                    timing["busy"] = True
+                    return []
                 response.raise_for_status()
                 body = response.json()
-                if timing is not None and body.get("timing_ms"):
+                if body.get("timing_ms"):
                     timing.update(body["timing_ms"])
                 return body.get("matches", [])
-            except _RETRYABLE_ERRORS:
-                if attempt == _SEARCH_RETRIES:
+            except httpx.TimeoutException:
+                timing["busy"] = True
+                return []
+            except httpx.TransportError:
+                if attempt == _CONNECTION_RETRIES:
+                    timing["busy"] = True
                     return []
-                await asyncio.sleep(0.2 * (attempt + 1))
+                await asyncio.sleep(0.2)
+            except httpx.HTTPError:
+                return []
     return []
 
 
@@ -221,6 +230,8 @@ async def correct_position(
             gps_time=gps_time,
             config=_config,
         )
+    server_busy = search_timing.pop("busy", False)
+    result.debug["server_busy"] = server_busy
     result.debug["search_ms"] = search_ms
     if search_timing:
         result.debug["search_timing"] = search_timing
@@ -231,10 +242,12 @@ async def correct_position(
     if arrived is not None:
         result.debug["upload_ms"] = round(1000 * (body_read - arrived))
     result.debug["auth_ms"] = round(1000 * (started - body_read))
-    return _response(result, raw_image_url=frame_url)
+    return _response(result, raw_image_url=frame_url, server_busy=server_busy)
 
 
-def _response(result, raw_image_url: str | None = None) -> CorrectPositionResponse:
+def _response(
+    result, raw_image_url: str | None = None, server_busy: bool = False
+) -> CorrectPositionResponse:
     return CorrectPositionResponse(
         corrected_lat=result.corrected_lat,
         corrected_long=result.corrected_long,
@@ -242,6 +255,7 @@ def _response(result, raw_image_url: str | None = None) -> CorrectPositionRespon
         anchor_match_id=result.anchor_match_id,
         confidence_score=result.confidence_score,
         raw_image_url=raw_image_url,
+        server_busy=server_busy,
         debug=result.debug,
     )
 
@@ -260,8 +274,13 @@ async def correct_position_once(
     gates as /correct_position, through a throwaway filter that's dropped
     right after; a weak or missing match just returns the GPS fix."""
     photo_bytes = await photo.read()
+    search_timing: dict = {}
     candidates = await _search_similar(
-        photo_bytes, photo.filename or "frame.jpg", latitude, longitude
+        photo_bytes,
+        photo.filename or "frame.jpg",
+        latitude,
+        longitude,
+        timing=search_timing,
     )
     result = await SessionStore().correct(
         session_id="once",
@@ -272,4 +291,4 @@ async def correct_position_once(
         compass_heading=heading,
         config=_config,
     )
-    return _response(result)
+    return _response(result, server_busy=search_timing.get("busy", False))

@@ -9,6 +9,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 ### Fixed
 
 - An overloaded photo model no longer freezes the whole server: it restarts by itself, and guidance carries on from GPS meanwhile.
+- With too many people navigating, photos no longer time out one after another. The server answers the photos it can, and the rest get a quick GPS-based position.
+- Map and navigation requests no longer queue behind each other, so routes and admin screens should load faster with several people.
 
 ## [0.5.6] - 2026-11-05
 

@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from supabase import AuthApiError
 
 from app.main import _COLLECTION, _VECTOR_SIZE, app, get_caller_id
+from app.model_gate import ModelGate
 
 client = TestClient(app)
 
@@ -409,3 +410,43 @@ def test_reconcile_is_admin_only():
     _as_caller("user-1")
     with patch("app.main.db.is_admin", return_value=False):
         assert client.post("/reconcile").status_code == 403
+
+
+def test_search_answers_busy_when_the_model_is_full():
+    with (
+        patch("app.main._gate", ModelGate(slots=0)),
+        patch("app.main._SEARCH_WAIT_SECONDS", 0),
+        patch("app.main.qdrant"),
+    ):
+        response = client.post(
+            "/search_similar", files={"file": ("f.jpg", b"x", "image/jpeg")}
+        )
+    assert response.status_code == 503
+
+
+def test_indexing_answers_busy_when_the_model_is_full():
+    app.dependency_overrides[get_caller_id] = lambda: "admin-1"
+    try:
+        with (
+            patch("app.main._gate", ModelGate(slots=0)),
+            patch("app.main._INDEX_WAIT_SECONDS", 0),
+            patch("app.main.db") as db,
+            patch("app.main.qdrant") as qdrant,
+            patch("app.main.download_image", return_value=b"photo"),
+        ):
+            db.is_admin.return_value = True
+            response = client.post(
+                "/index_anchor",
+                json={
+                    "anchor_point_id": "a1",
+                    "latitude": 6.2,
+                    "longitude": -75.5,
+                    "building_id": "b1",
+                    "photos": [{"photo_id": "p1", "image_url": "http://x/1.jpg"}],
+                },
+            )
+        assert response.status_code == 503
+        assert "busy" in response.json()["detail"]
+        qdrant.client.upsert.assert_not_called()
+    finally:
+        app.dependency_overrides.clear()
