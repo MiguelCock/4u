@@ -7,8 +7,9 @@ import mimetypes
 import time
 from typing import BinaryIO
 
+import httpx
 from fastapi import Header, HTTPException
-from supabase import AuthApiError, Client, create_client
+from supabase import AuthApiError, Client, ClientOptions, create_client
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,22 @@ class SupaBase:
     ADMIN_ROLE_ID = 2
 
     def __init__(self, url: str, key: str):
-        self.client = create_client(url, key)
+        # HTTP/1.1 with a pool, not the library's default: its one shared HTTP/2
+        # connection fails with ReadError when threads use it at once, and
+        # endpoints run in FastAPI's threads (up to 40).
+        self.client = create_client(
+            url,
+            key,
+            options=ClientOptions(
+                httpx_client=httpx.Client(
+                    timeout=30,
+                    follow_redirects=True,
+                    limits=httpx.Limits(
+                        max_connections=40, max_keepalive_connections=20
+                    ),
+                )
+            ),
+        )
 
     def health_check(self) -> bool:
         # `roles` is a small, always-seeded reference table (db_schema/roles.sql) -
