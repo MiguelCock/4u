@@ -156,7 +156,7 @@ The same route, with the live corrected position and the gyroscope heading:
 
 ## 7. First user tests (2026-10-28)
 
-Two blind users walked the route with the non-admin account, on a phone with no working gyroscope (sessions 2729b270, b9b81ae6, 4217ef62). Their notes are in `test_users_comments/first_oficial_test.md`.
+Two blind users walked the route with the non-admin account, on a phone with no working gyroscope (sessions 2729b270, b9b81ae6, 4217ef62). Their notes are kept locally in `test_users_comments/`, not in the repo, because they include participants' health details.
 
 **Heading:**
 - Every tick logged `heading_source: compass`, and that compass was ~85° off: it read ~10° while the user walked east.
