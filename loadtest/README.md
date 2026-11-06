@@ -1,0 +1,47 @@
+# Load test
+
+Simulates people using the deployed server, to learn what it can handle and what breaks first. Story A1 (#173). Results go in `docs/loadtest/`.
+
+**It runs against production, so it only runs in an agreed window**, with no testers or admins working.
+
+## What it simulates
+
+- **Navigating users** copy the app: sign in, read the lists, `find_or_create`, then a real photo and a log per tick, waiting after each answer as the app does. A slow server therefore shows up as a longer gap between photos, which is what users feel. They replay real EAFIT walks (photos and GPS), each starting at a different point.
+- **Admins** open the home screen (five whole lists), create points with a photo, connect them, rename them, and verify them, which runs the photo model in the service users' searches need. They reload after each change, except connecting, as the app does.
+
+## Why it can't damage real data
+
+- **`loadtool/guards.py`:** every write goes through a guard that refuses anything but the user's own trip and the sandbox. Real points and connections are only read. `tests/test_locustfile.py` runs the real scenario against a stub and checks every write.
+- **The sandbox** is an inactive university ("Prueba de carga") far from any campus, so users are never offered it, and its photos can't match a search, which only looks within 60 m.
+- **Users** only ask for a saved route that's still walkable, which the server returns without writing (`trips.choose_route`).
+- **Accounts** are `loadtest-*`, created with the admin API, which sends no email. Sessions and logs go when they're deleted.
+- **`cleanup.py`** always runs after a run, even on Ctrl-C. It removes all of it, then compares real row counts with those from before. Run it by hand if a machine dies mid-run.
+- **Automatic stop:** a run ends at over 5% errors or photo p95 over 15 s.
+
+## Running it
+
+From this folder, needing `packages/.env` and `application/.env`, and fresh AWS credentials for SSH:
+
+```bash
+uv sync
+uv run python prepare.py                 # read-only: downloads the walks, picks a route
+uv run python run.py smoke --window      # 3 minutes: try this first
+uv run python run.py all --window        # about 1.5 hours
+```
+
+| Run | Who | Length | Answers |
+|---|---|---|---|
+| `smoke` | 1 user, 1 admin | 3 min | Does the tool work; does cleanup restore everything |
+| `baseline` | 1 user | 5 min | Does it match real trips (about 3 s between photos, 0.9 s of server time)? If not, fix the tool before trusting the rest |
+| `users` | 5, 10, 15, 20 users | 5 min each | Where it stops keeping up |
+| `admins` | 5, 10 admins | 5 min each | What many admins cost alone |
+| `mixed` | 10 users + 5 admins | 10 min | The real case |
+| `long` | 10 users | 30 min | Whether CPU credits run out |
+
+Results and the report are in `.data/results/<time>/`. `.data/` is never committed: it holds passwords and photos that can show people. Copy the conclusions to `docs/loadtest/`.
+
+To calibrate against real trips, `LOADTEST_CAPTURE_SECONDS` sets how long a simulated phone takes to capture a photo.
+
+## Limits
+
+It can't test phones, campus Wi-Fi or real walking. It also adds real load to Qdrant and Supabase, and uses their quotas.
