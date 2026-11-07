@@ -83,7 +83,7 @@ Run later the same day (14:52–15:06 UTC), with each point carrying 3 photos li
 4. Test the map read hypothesis and fix it if it holds.
 5. Run 10 users again, then 15, then the admin, mixed and long runs. Have someone watching the server.
 
-**A3: plan on a bigger machine.** Fixes can stop the freeze, but they can't create CPU. 10 users need about 1.6 of the 2 CPUs for the model alone, and A2's 15 users need about 2.5. A 4 vCPU machine with more memory is the likely minimum. Whether the AWS Academy account allows one still needs checking. The re-run after the fixes should confirm the size.
+**A3: plan on a bigger machine.** (Later found impossible: the lab refuses anything above `.large`, see `a2-rerun.md`. A3 means a second machine.) Fixes can stop the freeze, but they can't create CPU. 10 users need about 1.6 of the 2 CPUs for the model alone, and A2's 15 users need about 2.5. A 4 vCPU machine with more memory is the likely minimum. Whether the AWS Academy account allows one still needs checking. The re-run after the fixes should confirm the size.
 
 ## Reproducing
 
