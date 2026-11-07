@@ -570,5 +570,22 @@
   "adminGuide": "Guía de uso",
   "adminGuideSectionTooltip": "Ayuda de esta página",
 
-  "navKeepWalking": "Sigue caminando hacia adelante, unos {steps} pasos. Si no puedes avanzar, pide ayuda o termina la ruta."
+  "navKeepWalking": "Sigue caminando hacia adelante, unos {steps} pasos. Si no puedes avanzar, pide ayuda o termina la ruta.",
+
+  "mapConflictTitle": "Otro administrador cambió este punto",
+  "mapConflictBody": "Desde que abriste \"{name}\", alguien más cambió:",
+  "mapConflictTheirsYours": "Ahora: {theirs}\nTuyo: {yours}",
+  "mapConflictKeepTheirs": "Dejar el suyo",
+  "mapConflictSaveMine": "Guardar el mío igual",
+  "mapConflictKeptTheirs": "Se dejó el cambio del otro administrador en \"{name}\".",
+  "mapConflictFieldDescription": "Nombre",
+  "mapConflictFieldPosition": "Posición",
+  "mapConflictFieldPositionMoved": "movido",
+  "mapConflictFieldFloor": "Piso",
+  "mapConflictFieldType": "Tipo",
+  "mapConflictFieldStatus": "Estado",
+  "mapConflictFieldDetails": "Detalles (interior, luz, superficie)",
+  "mapConflictEmpty": "(vacío)",
+  "mapUpdatedByOthers": "Mapa actualizado: {count} cambios de otros administradores.",
+  "editAnchorChangedMeanwhile": "Otro administrador cambió este punto mientras lo tenías abierto. Al guardar verás primero qué cambió."
 }
