@@ -93,6 +93,25 @@ MergeResult applyChanges(MapLists lists, Map<String, dynamic> changes) {
   );
 }
 
+/// What the admin screen's 30 s refresh does.
+enum SyncTick {
+  /// Another screen or a dialog covers it: wait. Whatever this admin changes
+  /// there would otherwise be announced as another admin's change.
+  skip,
+
+  /// Just uncovered: merge without a notice, since it holds this admin's own
+  /// changes. Other admins' changes from that time are merged too, silently.
+  silent,
+
+  /// Merge, and say how many changes came from other admins.
+  announce,
+}
+
+SyncTick syncTickAction({required bool covered, required bool wasCovered}) {
+  if (covered) return SyncTick.skip;
+  return wasCovered ? SyncTick.silent : SyncTick.announce;
+}
+
 /// The fields of [edited] that differ from [original]: a save sends only
 /// these, so another admin's edit to a different field isn't touched.
 Map<String, dynamic> changedFields(

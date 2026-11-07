@@ -171,4 +171,39 @@ void main() {
       );
     });
   });
+
+  group('the 30 s refresh', () {
+    test('waits while another screen covers the admin screen', () {
+      expect(syncTickAction(covered: true, wasCovered: false), SyncTick.skip);
+      expect(syncTickAction(covered: true, wasCovered: true), SyncTick.skip);
+    });
+
+    test('is silent right after coming back, then announces again', () {
+      expect(syncTickAction(covered: false, wasCovered: true), SyncTick.silent);
+      expect(
+        syncTickAction(covered: false, wasCovered: false),
+        SyncTick.announce,
+      );
+    });
+
+    test('a row already loaded with the same updated_at is not news', () {
+      final lists = _lists(
+        photos: [
+          {'id': 'p1', 'updated_at': '2026-11-07T20:00:00+00:00'},
+        ],
+      );
+      final same = applyChanges(lists, {
+        'anchor_point_photos': [
+          {'id': 'p1', 'updated_at': '2026-11-07T20:00:00+00:00'},
+        ],
+      });
+      expect(same.newChanges, 0);
+      final changedByOthers = applyChanges(lists, {
+        'anchor_point_photos': [
+          {'id': 'p1', 'updated_at': '2026-11-07T20:05:00+00:00'},
+        ],
+      });
+      expect(changedByOthers.newChanges, 1);
+    });
+  });
 }

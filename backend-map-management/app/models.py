@@ -68,6 +68,9 @@ class AnchorPointResponse(BaseModel):
     # existed default to `{}`, and a strict submodel would 500 on any shape
     # that doesn't conform, same reasoning as location_description above.
     metadata: dict = {}
+    # Compared by admins' screens to tell a change from what they already have
+    # (A5, GET /changes). Optional: rows from before the migration may lack it.
+    updated_at: str | None = None
 
 
 class AnchorPointUpdate(BaseModel):
@@ -100,6 +103,9 @@ class AnchorPointPhotoResponse(AnchorPointPhotoCreate):
     id: str
     anchor_point_id: str
     captured_at: str
+    # Compared by admins' screens to tell a change from what they already have
+    # (A5, GET /changes). Optional: rows from before the migration may lack it.
+    updated_at: str | None = None
 
 
 class BuildingResponse(BaseModel):
@@ -116,6 +122,9 @@ class BuildingResponse(BaseModel):
     # Without it the app never saw a deactivation: the "(inactive)" label
     # never showed and saving an edit silently reactivated the building.
     is_active: bool = True
+    # Compared by admins' screens to tell a change from what they already have
+    # (A5, GET /changes). Optional: rows from before the migration may lack it.
+    updated_at: str | None = None
 
 
 class BuildingCreate(BaseModel):
@@ -155,6 +164,9 @@ class PlaceResponse(PlaceCreate):
     id: str
     # See BuildingResponse.is_active.
     is_active: bool = True
+    # Compared by admins' screens to tell a change from what they already have
+    # (A5, GET /changes). Optional: rows from before the migration may lack it.
+    updated_at: str | None = None
 
 
 class PlaceUpdate(BaseModel):
@@ -190,3 +202,6 @@ class AnchorPointConnectionResponse(AnchorPointConnectionCreate):
     # Loose on output, so an older row can never fail response validation.
     distance_meters: float | None = None
     distance_manual: bool = False
+    # Compared by admins' screens to tell a change from what they already have
+    # (A5, GET /changes). Optional: rows from before the migration may lack it.
+    updated_at: str | None = None

@@ -238,3 +238,30 @@ def test_changes_are_for_admins_only():
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 403
+
+
+def test_lists_and_single_points_carry_updated_at():
+    """Admins' screens compare it, so every read that feeds them must have it."""
+    from app import models
+
+    for model in (
+        models.AnchorPointResponse,
+        models.AnchorPointPhotoResponse,
+        models.AnchorPointConnectionResponse,
+        models.BuildingResponse,
+        models.PlaceResponse,
+    ):
+        assert "updated_at" in model.model_fields, model.__name__
+
+    row = {**POINT, "building_id": "b1", "updated_at": "2026-11-07T20:00:00+00:00"}
+    db_client = MagicMock()
+    db_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        row
+    ]
+    app.dependency_overrides[get_caller_id] = lambda: "admin1"
+    try:
+        with patch("app.main.db.client", db_client):
+            response = client.get("/anchor-points/p1")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.json()["updated_at"] == "2026-11-07T20:00:00+00:00"
