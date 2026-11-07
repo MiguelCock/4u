@@ -55,3 +55,14 @@ uv run python local_ai_training.py --build --rate 3.3 --seconds 120
 ```
 
 Compare runs with each other, not with production: Qdrant is local and empty here. Pick CPUs your desktop isn't busy on with `--cpuset`: a browser on them made 5 users look worse than 10.
+
+## Event tools
+
+For running an event alone: see `docs/event/checklist.md` and `docs/event/runbook.md`. Only `event_accounts.py` writes anything.
+
+| Tool | Does |
+|---|---|
+| `watch.py` | The live view, every 15 s: services, errors and rate limits, photos (matched, busy, server time against network time), each machine's CPU and memory, and how long the AWS credentials have left. Red names the runbook section to use. |
+| `check_map.py` | Whether a route is ready, checking the path the server would give today: blockers (not verified, not searchable, not connected) and warnings (few photos, wide gaps). `--place 050022` lists EAFIT's routes and pending points. |
+| `event_accounts.py` | Attendee accounts through the admin API, with no sign-up emails. The list, with passwords, goes to `.data/event-accounts.csv`, readable only by you. `--delete --yes` also deletes their trips. |
+| `event_report.py` | After an event: phone by phone, photos matched, failed ticks, and how much of each photo's time was the network. Phones are numbered, never named. The app version isn't logged per trip yet (story B2). |
