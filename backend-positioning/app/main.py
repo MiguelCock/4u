@@ -23,6 +23,7 @@ from packages.db_errors import install_db_error_handlers
 from packages.supabase import SupaBase
 
 from .matching import MatchConfig
+from .model_machines import ModelMachines, parse_urls
 from .models import CorrectPositionResponse
 from .session_store import SessionStore
 
@@ -61,6 +62,9 @@ def _body_read(request: Request) -> float:
 # service DNS name - the call to backend-ai-training stays on the internal
 # network, no gateway hop needed for this service-to-service call.
 AI_TRAINING_URL = os.environ.get("AI_TRAINING_URL", "http://ai-training:80")
+# Extra machines running only the photo model, tried before this machine's own
+# (A3, see CLAUDE.md). Unset, there's only AI_TRAINING_URL.
+_machines = ModelMachines(parse_urls(os.environ.get("AI_TRAINING_URLS")))
 
 _store = SessionStore()
 
@@ -74,6 +78,10 @@ _config = MatchConfig.from_env()
 # one quick retry, for a blip or a restart.
 _SEARCH_TIMEOUT_SECONDS = 2.0
 _CONNECTION_RETRIES = 1
+# Across every machine tried for one photo, to keep answers under 3 s.
+_SEARCH_TOTAL_SECONDS = 2.5
+# Same network, so a machine that's off shows quickly.
+_MACHINE_CONNECT_SECONDS = 0.3
 
 # Admin test walks keep their camera frames (store_frame below), linked to
 # each tick through navigation_logs.raw_image_url, so photo-matching models
@@ -127,37 +135,66 @@ async def _search_similar(
     top match doesn't hide a good second one."""
     if timing is None:
         timing = {}
+    give_up_at = time.monotonic() + _SEARCH_TOTAL_SECONDS
+
+    def attempt(client: httpx.AsyncClient, url: str, connect: float | None):
+        left = give_up_at - time.monotonic()
+        limit = min(_SEARCH_TIMEOUT_SECONDS, left)
+        return client.post(
+            f"{url}/search_similar",
+            files={"file": (filename, photo_bytes, "image/jpeg")},
+            data={
+                "limit": str(_config.search_limit),
+                "latitude": str(latitude),
+                "longitude": str(longitude),
+                "radius_meters": str(_config.search_radius_m),
+            },
+            timeout=httpx.Timeout(limit, connect=connect or limit),
+        )
+
+    def matches_of(response: httpx.Response) -> list[dict]:
+        body = response.json()
+        if body.get("timing_ms"):
+            timing.update(body["timing_ms"])
+        return body.get("matches", [])
+
     async with httpx.AsyncClient(timeout=_SEARCH_TIMEOUT_SECONDS) as client:
-        for attempt in range(_CONNECTION_RETRIES + 1):
+        for url in _machines.order():
+            if give_up_at - time.monotonic() <= 0:
+                break
             try:
-                response = await client.post(
-                    f"{AI_TRAINING_URL}/search_similar",
-                    files={"file": (filename, photo_bytes, "image/jpeg")},
-                    data={
-                        "limit": str(_config.search_limit),
-                        "latitude": str(latitude),
-                        "longitude": str(longitude),
-                        "radius_meters": str(_config.search_radius_m),
-                    },
-                )
+                response = await attempt(client, url, _MACHINE_CONNECT_SECONDS)
                 if response.status_code == 503:
-                    timing["busy"] = True
-                    return []
+                    continue
                 response.raise_for_status()
-                body = response.json()
-                if body.get("timing_ms"):
-                    timing.update(body["timing_ms"])
-                return body.get("matches", [])
+                return matches_of(response)
+            except httpx.ConnectTimeout as e:
+                _machines.skip(url, repr(e))
             except httpx.TimeoutException:
                 timing["busy"] = True
                 return []
+            except httpx.HTTPError as e:
+                _machines.skip(url, repr(e))
+
+        # This machine's own model: all there is when the others are off, and
+        # the overflow when they're busy.
+        for try_number in range(_CONNECTION_RETRIES + 1):
+            if give_up_at - time.monotonic() <= 0:
+                break
+            try:
+                response = await attempt(client, AI_TRAINING_URL, None)
+                if response.status_code == 503:
+                    break
+                response.raise_for_status()
+                return matches_of(response)
+            except httpx.TimeoutException:
+                break
             except httpx.TransportError:
-                if attempt == _CONNECTION_RETRIES:
-                    timing["busy"] = True
-                    return []
-                await asyncio.sleep(0.2)
+                if try_number < _CONNECTION_RETRIES:
+                    await asyncio.sleep(0.2)
             except httpx.HTTPError:
                 return []
+    timing["busy"] = True
     return []
 
 

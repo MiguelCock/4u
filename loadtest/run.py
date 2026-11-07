@@ -63,6 +63,34 @@ def build_state(run_root: Path) -> Path:
     return path
 
 
+def running_model_machines() -> list[str]:
+    """The photo model's extra machines (deployment/model-machines), if any."""
+    try:
+        result = subprocess.run(
+            [
+                "aws",
+                "ec2",
+                "describe-instances",
+                "--region",
+                "us-east-1",
+                "--filters",
+                "Name=tag:Name,Values=4u-model-*",
+                "Name=instance-state-name,Values=running",
+                "--query",
+                "Reservations[].Instances[].InstanceId",
+                "--output",
+                "text",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except OSError, subprocess.TimeoutExpired:
+        return []
+    return result.stdout.split() if result.returncode == 0 else []
+
+
 def run_step(label: str, nav: int, admins: int, minutes: int, state: Path, root: Path):
     out = root / label
     out.mkdir()
@@ -71,6 +99,15 @@ def run_step(label: str, nav: int, admins: int, minutes: int, state: Path, root:
         [*SAMPLER, str(out / "server.csv")],
         cwd=config.ROOT,
     )
+    # Only recorded: the memory stop watches the main machine (server.csv), where
+    # everything else runs.
+    model_samplers = [
+        subprocess.Popen(
+            [*SAMPLER, str(out / f"model-{id}.csv"), f"ec2-user@{id}"],
+            cwd=config.ROOT,
+        )
+        for id in running_model_machines()
+    ]
     try:
         subprocess.run(
             [
@@ -107,8 +144,9 @@ def run_step(label: str, nav: int, admins: int, minutes: int, state: Path, root:
     except subprocess.TimeoutExpired:
         (out / "stop_reason.txt").write_text("the run got stuck and was killed\n")
     finally:
-        sampler.send_signal(signal.SIGTERM)
-        sampler.wait()
+        for process in [sampler, *model_samplers]:
+            process.send_signal(signal.SIGTERM)
+            process.wait()
     return out
 
 

@@ -182,6 +182,8 @@ def render_run(name: str, run_dir: Path) -> str:
     samples = run_dir / "server.csv"
     if samples.exists():
         lines += [render_server(samples), ""]
+    for model_samples in sorted(run_dir.glob("model-*.csv")):
+        lines += [f"{model_samples.stem}:", "", render_server(model_samples), ""]
     return "\n".join(lines)
 
 

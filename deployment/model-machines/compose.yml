@@ -1,0 +1,23 @@
+# One extra machine's photo model (A3, #175). Paths are relative to this file, in
+# the same layout as the main machine (~/4u/...). See README.md.
+services:
+  ai-training:
+    build:
+      context: ../..
+      dockerfile: backend-ai-training/Dockerfile
+    ports:
+      - "80:80"
+    # Only Qdrant's key, written by deploy.sh. The Supabase values are placeholders:
+    # /search_similar doesn't use them, so a real key would only add risk, and the
+    # admin endpoints simply can't work here. Admins always go through the main
+    # machine.
+    env_file:
+      - .env
+    environment:
+      SUPABASE_URL: http://127.0.0.1:9
+      SUPABASE_SERVICE_ROLE_KEY: unused
+      # Short, so a busy machine leaves positioning time to try the next one.
+      MODEL_SEARCH_WAIT_SECONDS: ${MODEL_SEARCH_WAIT_SECONDS:-0.4}
+    mem_limit: 1800m
+    memswap_limit: 1800m
+    restart: unless-stopped

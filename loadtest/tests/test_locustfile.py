@@ -272,6 +272,7 @@ def test_a_frozen_server_stops_the_run_and_skips_the_next_step(tmp_path, monkeyp
         run, "SAMPLER", [sys.executable, "-c", "import time; time.sleep(600)"]
     )
     monkeypatch.setattr(run, "PAUSE_SECONDS", 0)
+    monkeypatch.setattr(run, "running_model_machines", lambda: ["i-model"])
     monkeypatch.setenv("LOADTEST_REQUEST_TIMEOUT", "300")
     monkeypatch.setenv("LOADTEST_SILENT_SECONDS", "3")
     monkeypatch.setenv("LOADTEST_WATCH_SECONDS", "1")

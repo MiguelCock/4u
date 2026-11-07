@@ -17,6 +17,9 @@ if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "None" ]]; then
   exit 1
 fi
 
+# They cost more than this machine, and are no use without it.
+"$(dirname "${BASH_SOURCE[0]}")/../model-machines/stop.sh"
+
 aws ec2 stop-instances --instance-ids "$INSTANCE_ID" --region "$AWS_REGION" >/dev/null
 echo "Stopping $INSTANCE_ID - compute billing pauses once it's fully stopped."
 echo "Run start.sh to resume it later."
