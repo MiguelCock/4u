@@ -12,6 +12,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - With too many people navigating, photos no longer time out one after another. The server answers the photos it can, and the rest get a quick GPS-based position.
 - Map and navigation requests no longer queue behind each other, so routes and admin screens should load faster with several people.
 - More people can navigate at once with extra machines for the photo model, for events. They stay off otherwise, and everything works without them.
+- Admins editing the same point at once: a save no longer silently overwrites another admin's change. You see both versions and choose.
+- The admin screen shows other admins' changes within about 30 s, and refreshes much faster after each edit.
 - When the server is busy, the phone sends fewer photos for a few seconds, and guidance carries on from GPS.
 
 ## [0.5.6] - 2026-11-05

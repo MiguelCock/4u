@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
@@ -5,6 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/map_sync.dart';
+import '../widgets/map_conflict.dart';
 import 'add_building_screen.dart';
 import 'add_connection_screen.dart';
 import 'add_place_screen.dart';
@@ -86,6 +90,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// Verified photos missing from the photo index (null: unknown).
   int? _unsearchablePhotos;
 
+  /// What changed since, for GET /changes (A5): set from the server's own
+  /// clock after a full load. Null when the server can't answer it yet, and
+  /// then every refresh is a full one.
+  String? _since;
+  Timer? _syncTimer;
+  Future<void>? _syncing;
+
   /// Anchor points tab: map instead of list, and the point being moved on it.
   bool _anchorMapView = false;
   Map<String, dynamic>? _movingPoint;
@@ -129,11 +140,17 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             .toLowerCase(),
       ),
     );
-    _loadData();
+    _loadAll();
+    // Other admins' changes appear within about 30 s.
+    _syncTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _sync(announce: true),
+    );
   }
 
   @override
   void dispose() {
+    _syncTimer?.cancel();
     _tabController.dispose();
     _placeSearchController.dispose();
     _buildingSearchController.dispose();
@@ -142,7 +159,105 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     super.dispose();
   }
 
-  Future<void> _loadData() async {
+  /// After an edit, or anything that changed the map: only what changed since
+  /// the last look, not all five lists (A5).
+  Future<void> _loadData() => _sync(announce: false);
+
+  /// Fetches and merges `/changes`, one at a time. With [announce] (the
+  /// 30 s timer), says how many changes came from other admins: this admin's
+  /// own edits were already merged right after saving, so they don't count.
+  Future<void> _sync({required bool announce}) async {
+    while (_syncing != null) {
+      await _syncing;
+    }
+    final since = _since;
+    if (since == null) {
+      // The server can't answer /changes (yet): reload as before, but not
+      // every 30 s.
+      if (!announce) await _loadAll();
+      return;
+    }
+    final done = Completer<void>();
+    _syncing = done.future;
+    try {
+      final changes = await _mapApi.get(
+        '/changes?since=${Uri.encodeQueryComponent(since)}',
+      );
+      if (!mounted || changes is! Map<String, dynamic>) return;
+      if (changes['full'] == true) {
+        await _loadAll();
+        return;
+      }
+      final merged = applyChanges(
+        MapLists(
+          places: _places,
+          buildings: _buildings,
+          anchorPoints: _anchorPoints,
+          photos: _photos,
+          connections: _connections,
+        ),
+        changes,
+      );
+      setState(() {
+        _places = merged.lists.places;
+        _buildings = merged.lists.buildings;
+        _anchorPoints = merged.lists.anchorPoints;
+        _photos = merged.lists.photos;
+        _connections = merged.lists.connections;
+        _since = changes['next_since'] as String?;
+        _dropStaleScopes();
+      });
+      if (announce && merged.newChanges > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(
+                context,
+              )!.mapUpdatedByOthers(merged.newChanges),
+            ),
+          ),
+        );
+      }
+      if (!announce) _refreshIndexStatus();
+    } on ApiException {
+      // Something is off: fall back to what always worked.
+      if (!announce && mounted) await _loadAll();
+    } finally {
+      _syncing = null;
+      done.complete();
+    }
+  }
+
+  /// The server's clock, to ask /changes from: a phone's clock can be off.
+  /// Null when /changes isn't there, as before the migration.
+  Future<String?> _serverSince() async {
+    try {
+      final since = DateTime.now().toUtc().subtract(const Duration(minutes: 5));
+      final changes = await _mapApi.get(
+        '/changes?since=${Uri.encodeQueryComponent(since.toIso8601String())}',
+      );
+      return changes is Map ? changes['next_since'] as String? : null;
+    } on ApiException {
+      return null;
+    }
+  }
+
+  /// A filter scoped to a university or building that's gone is dropped.
+  void _dropStaleScopes() {
+    if (_buildingsPlaceFilterId != null &&
+        !_places.any((p) => p['id'] == _buildingsPlaceFilterId)) {
+      _buildingsPlaceFilterId = null;
+    }
+    if (_anchorPointsBuildingFilterId != null &&
+        !_buildings.any((b) => b['id'] == _anchorPointsBuildingFilterId)) {
+      _anchorPointsBuildingFilterId = null;
+    }
+  }
+
+  /// All five lists: on opening, on pull-to-refresh, and as a fallback.
+  Future<void> _loadAll() async {
+    // Asked before the lists, so nothing changed between them is missed.
+    final since = _serverSince();
     try {
       final results = await Future.wait([
         _mapApi.get('/places'),
@@ -159,17 +274,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             .cast<Map<String, dynamic>>();
         _photos = (results[3] as List? ?? []).cast<Map<String, dynamic>>();
         _connections = (results[4] as List? ?? []).cast<Map<String, dynamic>>();
-        if (_buildingsPlaceFilterId != null &&
-            !_places.any((p) => p['id'] == _buildingsPlaceFilterId)) {
-          _buildingsPlaceFilterId = null;
-        }
-        if (_anchorPointsBuildingFilterId != null &&
-            !_buildings.any((b) => b['id'] == _anchorPointsBuildingFilterId)) {
-          _anchorPointsBuildingFilterId = null;
-        }
+        _dropStaleScopes();
         _loading = false;
         _error = null;
       });
+      _since = await since;
       _refreshIndexStatus();
     } catch (e) {
       // Not only ApiException: a malformed response must end the spinner too.
@@ -212,7 +321,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// Pull-to-refresh: reloads the map data, plus the users list once it
   /// has been opened.
   Future<void> _refresh() async {
-    await Future.wait([_loadData(), if (_usersLoaded) _loadUsers()]);
+    await Future.wait([_loadAll(), if (_usersLoaded) _loadUsers()]);
   }
 
   /// System back: leave the current tab (dropping the filter a drill-down
@@ -1143,8 +1252,22 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         !await confirmVerifyUnconnected(context, name: name)) {
       return;
     }
+    if (!mounted) return;
     try {
-      await _mapApi.patch('/anchor-points/$id', {'status': status});
+      // A second admin verifying the same point finds out here, instead of
+      // both seeming to succeed.
+      final saved = await saveAnchorPoint(
+        context,
+        _mapApi,
+        original: point,
+        changes: {'status': status},
+        name: name,
+      );
+      if (!saved) {
+        show(l10n.mapConflictKeptTheirs(name));
+        await _loadData();
+        return;
+      }
     } on ApiException catch (e) {
       if (mounted) {
         show(
@@ -1327,12 +1450,30 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final messenger = ScaffoldMessenger.of(context);
     final name = _pointLabel(l10n, point);
     try {
-      await _mapApi.patch('/anchor-points/${point['id']}', {
-        'latitude': target.latitude,
-        'longitude': target.longitude,
-        // The phone's GPS altitude was for where it was first captured.
-        'altitude': null,
-      });
+      final saved = await saveAnchorPoint(
+        context,
+        _mapApi,
+        original: point,
+        changes: {
+          'latitude': target.latitude,
+          'longitude': target.longitude,
+          // The phone's GPS altitude was for where it was first captured.
+          'altitude': null,
+        },
+        name: name,
+      );
+      if (!saved) {
+        messenger.showSnackBar(
+          SnackBar(content: Text(l10n.mapConflictKeptTheirs(name))),
+        );
+        if (!mounted) return;
+        setState(() {
+          _movingPoint = null;
+          _moveTarget = null;
+        });
+        await _loadData();
+        return;
+      }
       if (point['status'] == 'verified') {
         final photos = _photosOf(point['id'] as String);
         if (photos.isNotEmpty) {

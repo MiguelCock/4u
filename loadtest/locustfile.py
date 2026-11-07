@@ -41,6 +41,9 @@ MAX_POINTS_PER_ADMIN = 40
 # Real points average 3.2 (891 photos on 282), and verifying runs the model on each.
 PHOTOS_PER_POINT = 3
 ADMIN_WAIT_SCALE = float(os.environ.get("LOADTEST_ADMIN_WAIT_SCALE", "1"))
+# As the app before A5: all five lists after every edit. Otherwise, as it is now:
+# GET /map/changes, falling back to the lists when that fails.
+ADMIN_FULL_RELOADS = os.environ.get("LOADTEST_ADMIN_FULL_RELOADS") == "1"
 
 STATE = json.loads(Path(os.environ["LOADTEST_STATE"]).read_text())
 RESULTS = Path(os.environ["LOADTEST_RESULTS"])
@@ -306,10 +309,33 @@ class EditingAdmin(Person):
         self.created = 0
         self.points: list[dict] = []
         self.connected_upto = 0
-        self.open_home()
+        self.since = None
+        self.load_all()
 
     def open_home(self) -> None:
+        """What the app does after an edit, and every 30 s."""
+        if ADMIN_FULL_RELOADS or not self.since:
+            self.load_all()
+            return
+        response = self.get(f"/map/changes?since={self.since}", "/map/changes")
+        body = response.json() if response.ok else None
+        if not isinstance(body, dict) or body.get("full"):
+            self.load_all()
+            return
+        self.since = (body.get("next_since") or "").replace("+", "%2B") or self.since
+
+    def load_all(self) -> None:
         """All of the home screen's lists together, as the app loads them."""
+        if not ADMIN_FULL_RELOADS:
+            five_minutes_ago = datetime.now(UTC).timestamp() - 300
+            stamp = datetime.fromtimestamp(five_minutes_ago, UTC).isoformat()
+            response = self.get(
+                f"/map/changes?since={stamp.replace('+', '%2B')}", "/map/changes"
+            )
+            body = response.json() if response.ok else None
+            self.since = body.get("next_since") if isinstance(body, dict) else None
+            if self.since:
+                self.since = self.since.replace("+", "%2B")
         paths = (
             "/map/places",
             "/map/buildings",
@@ -408,12 +434,20 @@ class EditingAdmin(Person):
         if not self.points:
             return
         point = random.choice(self.points)
-        self.write(
+        name = f"Punto {time.monotonic_ns() % 1000}"
+        # With what it was, as the app sends since A5 (each admin's points are
+        # its own, so this never conflicts).
+        response = self.write(
             "PATCH",
             f"/map/anchor-points/{point['id']}",
-            {"location_description": f"Punto {time.monotonic_ns() % 1000}"},
+            {
+                "location_description": name,
+                "expected": {"location_description": point.get("location_description")},
+            },
             name="/map/anchor-points/[id]",
         )
+        if response.ok:
+            point["location_description"] = name
         self.open_home()
 
     @task(2)
@@ -428,7 +462,7 @@ class EditingAdmin(Person):
         response = self.write(
             "PATCH",
             f"/map/anchor-points/{point['id']}",
-            {"status": "verified"},
+            {"status": "verified", "expected": {"status": "pending"}},
             name="/map/anchor-points/[id]",
         )
         if not response.ok:

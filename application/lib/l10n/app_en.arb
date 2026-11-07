@@ -731,5 +731,26 @@
   "adminGuideSectionTooltip": "Help for this page",
 
   "navKeepWalking": "Keep walking forward, about {steps} steps. If you can't go on, ask for help or end the route.",
-  "@navKeepWalking": {"placeholders": {"steps": {"type": "int"}}}
+  "@navKeepWalking": {"placeholders": {"steps": {"type": "int"}}},
+
+  "mapConflictTitle": "Another admin changed this point",
+  "mapConflictBody": "Since you opened \"{name}\", someone else changed:",
+  "@mapConflictBody": {"placeholders": {"name": {"type": "String"}}},
+  "mapConflictTheirsYours": "Now: {theirs}\nYours: {yours}",
+  "@mapConflictTheirsYours": {"placeholders": {"theirs": {"type": "String"}, "yours": {"type": "String"}}},
+  "mapConflictKeepTheirs": "Keep theirs",
+  "mapConflictSaveMine": "Save mine anyway",
+  "mapConflictKeptTheirs": "Kept the other admin's change to \"{name}\".",
+  "@mapConflictKeptTheirs": {"placeholders": {"name": {"type": "String"}}},
+  "mapConflictFieldDescription": "Name",
+  "mapConflictFieldPosition": "Position",
+  "mapConflictFieldPositionMoved": "moved",
+  "mapConflictFieldFloor": "Floor",
+  "mapConflictFieldType": "Type",
+  "mapConflictFieldStatus": "Status",
+  "mapConflictFieldDetails": "Details (indoor, lighting, surface)",
+  "mapConflictEmpty": "(empty)",
+  "mapUpdatedByOthers": "Map updated: {count} changes by other admins.",
+  "@mapUpdatedByOthers": {"placeholders": {"count": {"type": "int"}}},
+  "editAnchorChangedMeanwhile": "Another admin changed this point while you had it open. Saving will show you what changed first."
 }

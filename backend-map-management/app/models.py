@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -81,6 +81,10 @@ class AnchorPointUpdate(BaseModel):
     floor: int | None = Field(default=None, ge=-5, le=200)
     status: AnchorStatus | None = None
     metadata: AnchorPointMetadata | None = None
+    # Each changed field's value as the admin saw it before editing (A5). The
+    # update applies only where it still holds, or answers 409, so another
+    # admin's edit isn't silently overwritten. Optional: older apps don't send it.
+    expected: dict[str, Any] | None = None
 
     _normalize_description = field_validator("location_description")(_blank_to_none)
 

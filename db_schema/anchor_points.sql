@@ -23,6 +23,7 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;
 CREATE INDEX idx_anchor_points_location ON anchor_points USING GiST (latitude, longitude);
 CREATE INDEX idx_anchor_points_building_floor ON anchor_points (building_id, floor);
 CREATE INDEX idx_anchor_points_location_type ON anchor_points (location_type_id);
+CREATE INDEX idx_anchor_points_updated_at ON anchor_points (updated_at);
 
 CREATE TRIGGER anchor_points_set_updated_at BEFORE UPDATE ON anchor_points
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();

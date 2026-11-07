@@ -12,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../widgets/map_conflict.dart';
 import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
 
@@ -371,12 +372,16 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
     // A verified point with no photos can never be recognised: put it back
     // to pending so it isn't offered as if it worked.
     final noPhotosLeft = !_photos.any((p) => p.id != null);
-    if (noPhotosLeft && _anchorPoint?['status'] == 'verified') {
+    if (noPhotosLeft && _anchorPoint?['status'] == 'verified' && mounted) {
       try {
-        await _mapApi.patch('/anchor-points/${widget.anchorPointId}', {
-          'status': 'pending',
-        });
-        if (!mounted) return;
+        final saved = await saveAnchorPoint(
+          context,
+          _mapApi,
+          original: _anchorPoint!,
+          changes: {'status': 'pending'},
+          name: widget.anchorPointDescription,
+        );
+        if (!mounted || !saved) return;
         setState(() => _anchorPoint = {..._anchorPoint!, 'status': 'pending'});
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n.capturePhotoSnackbarBackToPending)),

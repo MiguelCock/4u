@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from datetime import UTC, datetime, timedelta
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
@@ -413,17 +414,26 @@ def update_anchor_point(
 ):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    changes = anchor_point.model_dump(exclude_unset=True)
+    changes = anchor_point.model_dump(exclude_unset=True, exclude={"expected"})
+    expected = {
+        field: value
+        for field, value in (anchor_point.expected or {}).items()
+        if field in changes and field in _EXPECTABLE_FIELDS
+    }
     current = _require_found(
         db.client.table("anchor_points")
         .select(
             "id,building_id,floor,location_type_id,location_description,"
-            "latitude,longitude,status"
+            "latitude,longitude,status,metadata"
         )
         .eq("id", id)
         .execute(),
         "Anchor point",
     )[0]
+    # JSON can't be compared inside the update, so metadata is checked here.
+    if "metadata" in expected and current.get("metadata") != expected["metadata"]:
+        _conflict(id, expected)
+    current.pop("metadata", None)
     # Check the row as it will be after this PATCH, not just the payload -
     # changing only the type to "classroom" on an unnamed point must still
     # be rejected.
@@ -462,7 +472,15 @@ def update_anchor_point(
                 detail="Add at least one photo before verifying this point - "
                 "without photos the camera can never recognise it.",
             )
-    result = db.client.table("anchor_points").update(changes).eq("id", id).execute()
+    query = db.client.table("anchor_points").update(changes).eq("id", id)
+    # In the same statement, so nothing can change between the check and the write.
+    for field, value in expected.items():
+        if field == "metadata":
+            continue
+        query = query.is_(field, "null") if value is None else query.eq(field, value)
+    result = query.execute()
+    if expected and not result.data:
+        _conflict(id, expected)
     moved = any(
         key in changes and changes[key] != current.get(key)
         for key in ("latitude", "longitude")
@@ -470,6 +488,37 @@ def update_anchor_point(
     if moved:
         _recompute_connection_distances(id)
     return result.data
+
+
+# The fields an admin edits, which a save can check weren't changed meanwhile.
+_EXPECTABLE_FIELDS = frozenset(
+    (
+        "location_description",
+        "latitude",
+        "longitude",
+        "altitude",
+        "location_type_id",
+        "floor",
+        "status",
+        "metadata",
+    )
+)
+
+
+def _conflict(id: str, expected: dict) -> None:
+    """409 with the point as it is now, and which of the expected fields differ."""
+    rows = db.client.table("anchor_points").select("*").eq("id", id).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail="Anchor point not found")
+    now = rows[0]
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "message": "Another admin changed this point since you opened it.",
+            "fields": sorted(f for f, value in expected.items() if now.get(f) != value),
+            "current": now,
+        },
+    )
 
 
 @app.delete("/anchor-points/{id}")
@@ -736,3 +785,59 @@ def delete_place(id: str, caller_id: str = Depends(get_caller_id)):
     )
     _delete_photo_files(urls)
     return "ok"
+
+
+# --- what changed since (A5) ---------------------------------------------
+
+# Rows written in the same moment can commit a little after their updated_at,
+# so each answer reaches back this far. Merging the same row twice is harmless.
+_CHANGES_OVERLAP = timedelta(seconds=10)
+# Further back, the app reloads everything instead.
+_CHANGES_MAX_AGE = timedelta(hours=1)
+_DELETIONS_KEPT = timedelta(days=1)
+_CHANGED_TABLES = (
+    "places",
+    "buildings",
+    "anchor_points",
+    "anchor_point_photos",
+    "anchor_point_connections",
+)
+
+
+@app.get("/changes")
+def list_changes(since: datetime, caller_id: str = Depends(get_caller_id)) -> dict:
+    """What changed or was deleted in the map since `since`, so admins' screens
+    stay fresh without reading every list again (A5). Pass back `next_since`.
+    `full: true` means it's been too long: load everything instead."""
+    if not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
+    now = datetime.now(UTC)
+    if since.tzinfo is None:
+        since = since.replace(tzinfo=UTC)
+    next_since = (now - _CHANGES_OVERLAP).isoformat()
+    if now - since > _CHANGES_MAX_AGE:
+        return {"full": True, "next_since": next_since}
+    stamp = since.isoformat()
+    changes: dict = {"full": False, "next_since": next_since}
+    for table in _CHANGED_TABLES:
+        changes[table] = select_all(
+            lambda table=table: (
+                db.client.table(table).select("*").gte("updated_at", stamp).order("id")
+            )
+        )
+    deletions = select_all(
+        lambda: (
+            db.client.table("map_deletions")
+            .select("table_name,row_id")
+            .gte("deleted_at", stamp)
+            .order("id")
+        )
+    )
+    changes["deleted"] = {
+        table: sorted({d["row_id"] for d in deletions if d["table_name"] == table})
+        for table in _CHANGED_TABLES
+    }
+    db.client.table("map_deletions").delete().lt(
+        "deleted_at", (now - _DELETIONS_KEPT).isoformat()
+    ).execute()
+    return changes

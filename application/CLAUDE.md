@@ -235,6 +235,12 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 - **Guidance.** GPS can't tell floors apart, so `_checkProximity` stops at the first waypoint on another floor than `_currentFloor`. Reaching the last point before a change (`floorChangeAfter`, `lib/services/floor_steps.dart`; hops collapse into one) speaks the instruction and pauses guidance until `FloorChangeDetector` (`lib/services/floor_detector.dart`) hears it: 0.28 hPa per floor, the right way, held 3 s. If it doesn't within 3 min, or 60 s per floor with no barometer, the trip carries on and says so. The barometer is the only signal for now; a confirmation button is the fallback if tests need one. Logs: `pressure_hpa`, `floor`, `waiting_floor` per tick, events `floor_wait`, `floor_detected`, `floor_timeout`, `barometer_missing` (`docs/TUNING.md` §9).
 - **Start.** `_findRoute` asks "which floor are you on?" when `floorsNear` (15 m) finds several, and keeps the answer until the user moves 15 m.
 
+## Many admins at once (A5)
+
+- **Saving a point** goes through `saveAnchorPoint` (`lib/widgets/map_conflict.dart`): the edit screen, verify/unverify, moving on the map, and the photo screen's back-to-pending. It sends `expected`, each changed field's value as this admin saw it (`expectedFor`, `lib/services/map_sync.dart`). The edit screen sends only the fields that differ (`changedFields`), with metadata normalised to the same keys and order, and the point's real altitude as expected when it moves. A 409 from the backend (`MapConflict.of`) opens a dialog showing theirs against yours: **Keep theirs** saves nothing, **Save mine anyway** sends it again without `expected`.
+- **The edit screen** checks the point every 30 s and shows a notice if another admin saved it meanwhile (`updated_at` changed).
+- **Admin home stays fresh without reading all five lists** (about 490 KB). The first load and pull-to-refresh are full (`_loadAll`). `_loadData`, called after every edit, now fetches `GET /map/changes?since=` and merges it (`applyChanges`, pure and tested); a 30 s timer does the same and says how many changes came from other admins. Own edits aren't counted, since they were merged right after saving at the same `updated_at`. `since` comes from the server's clock (`_serverSince`). If `/changes` fails or isn't there (before the migration), it falls back to full loads, and the timer does nothing.
+
 ## Known gaps
 
 - **Photo search ignores floors**: `search_similar` has no floor filter, so a look-alike corridor on another floor can still pull the position.

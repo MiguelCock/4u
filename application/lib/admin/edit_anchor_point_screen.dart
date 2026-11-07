@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -13,6 +15,8 @@ import '../services/destinations.dart';
 import '../widgets/floor_field.dart';
 import '../widgets/guardrail_dialogs.dart';
 import '../widgets/location_type_field.dart';
+import '../widgets/map_conflict.dart';
+import '../services/map_sync.dart';
 
 const List<String> kAnchorPointStatuses = ['pending', 'verified', 'rejected'];
 
@@ -62,6 +66,14 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
   List<Map<String, dynamic>> _photos = [];
   bool _loadingPhotos = true;
 
+  /// The point as this admin saw it when opening the screen: a save sends only
+  /// what differs, with these values to check against (A5).
+  late final Map<String, dynamic> _original;
+
+  /// Another admin saved this point since it was opened.
+  bool _changedMeanwhile = false;
+  Timer? _watchTimer;
+
   @override
   void initState() {
     super.initState();
@@ -82,6 +94,26 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
     _lighting = metadata['lighting'] as String?;
     _surfaceController = TextEditingController(
       text: metadata['surface'] as String? ?? '',
+    );
+    _original = {
+      'location_description': widget.anchorPoint['location_description'],
+      'latitude': widget.anchorPoint['latitude'],
+      'longitude': widget.anchorPoint['longitude'],
+      'altitude': widget.anchorPoint['altitude'],
+      'floor': widget.anchorPoint['floor'],
+      'location_type_id': widget.anchorPoint['location_type_id'],
+      'status': widget.anchorPoint['status'],
+      // The same keys in the same order as a save sends, so an untouched
+      // metadata isn't mistaken for a change.
+      'metadata': {
+        'indoor': metadata['indoor'],
+        'lighting': metadata['lighting'],
+        'surface': metadata['surface'],
+      },
+    };
+    _watchTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _checkChangedMeanwhile(),
     );
     _loadPhotos();
     _loadBuildingFloors();
@@ -116,6 +148,23 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
       if (mounted) setState(() => _photosLoadFailed = true);
     } finally {
       if (mounted) setState(() => _loadingPhotos = false);
+    }
+  }
+
+  /// Warns before saving rather than only after: the backend would refuse to
+  /// overwrite the other admin's change anyway.
+  Future<void> _checkChangedMeanwhile() async {
+    if (_changedMeanwhile || widget.anchorPoint['updated_at'] == null) return;
+    try {
+      final now = await _mapApi.get(
+        '/anchor-points/${widget.anchorPoint['id']}',
+      );
+      if (!mounted || now is! Map) return;
+      if (now['updated_at'] != widget.anchorPoint['updated_at']) {
+        setState(() => _changedMeanwhile = true);
+      }
+    } on ApiException {
+      // Only a warning; saving still checks.
     }
   }
 
@@ -207,12 +256,10 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
 
     try {
       final surface = _surfaceController.text.trim();
-      await _mapApi.patch('/anchor-points/${widget.anchorPoint['id']}', {
+      final changes = changedFields(_original, {
         'location_description': description.isEmpty ? null : description,
         'latitude': _position.latitude,
         'longitude': _position.longitude,
-        // The phone's GPS altitude was for where the point was captured.
-        if (moved) 'altitude': null,
         'floor': _floor,
         'location_type_id': _locationTypeId,
         'status': _status,
@@ -222,6 +269,33 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
           'surface': surface.isEmpty ? null : surface,
         },
       });
+      // The phone's GPS altitude was for where the point was captured.
+      if (moved) changes['altitude'] = null;
+      // Only what this admin changed is sent, so another admin's edit to a
+      // different field stays.
+      if (changes.isNotEmpty) {
+        final saved = await saveAnchorPoint(
+          context,
+          _mapApi,
+          original: _original,
+          changes: changes,
+          name: anchorDisplayName(l10n, widget.anchorPoint),
+        );
+        if (!saved) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                l10n.mapConflictKeptTheirs(
+                  anchorDisplayName(l10n, widget.anchorPoint),
+                ),
+              ),
+            ),
+          );
+          Navigator.of(context).pop(true);
+          return;
+        }
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -288,6 +362,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
 
   @override
   void dispose() {
+    _watchTimer?.cancel();
     _descriptionController.dispose();
     _surfaceController.dispose();
     super.dispose();
@@ -304,6 +379,14 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_changedMeanwhile)
+                Card(
+                  color: Theme.of(context).colorScheme.tertiaryContainer,
+                  child: ListTile(
+                    leading: const Icon(Icons.people_outline),
+                    title: Text(l10n.editAnchorChangedMeanwhile),
+                  ),
+                ),
               TextField(
                 controller: _descriptionController,
                 decoration: InputDecoration(
