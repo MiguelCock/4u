@@ -4,7 +4,7 @@ Run on 2026-11-06, 19:19–23:55 UTC, against production with the changes from #
 
 ## Result
 
-**The server now handles the event's 10 users, with 5 admins working at the same time.** The freeze is gone, and nothing degraded over 30 minutes. About a third of the photos get no visual correction, because the model is at capacity, and those positions come from GPS. Getting them back needs a bigger machine (A3).
+**The server now handles the event's 10 users, with 5 admins working at the same time.** The freeze is gone, and nothing degraded over 30 minutes. About a third of the photos get no visual correction, because the model is at capacity, and those positions come from GPS. Getting them back needs a second machine for the model (A3).
 
 | Run | Between photos, p50 / p95 | Photo answers, p95 | Matched | Refused as busy | Errors | ai-training memory, peak |
 |---|---:|---:|---:|---:|---:|---:|
@@ -65,7 +65,7 @@ It's fixed in #206 with an HTTP/1.1 connection pool. In a direct trial against S
 
 **A2:** the server's part is done. The phone sending fewer photos when busy remains, and comes with the 0.6 app. It should lower the share refused, but needs its own 10-user run to show by how much.
 
-**A3:** still needed for 15 people, or for better correction at 10. The model is the limit, at about 170% of the 200% CPU, so a bigger machine should directly raise the matched share. At the same 0.9 s per photo, 4 slots would serve about 4.5 photos per second, about what 15 phones send, if the machine gives each slot a real CPU. `MODEL_SLOTS` has to be raised to match, and the run should be repeated.
+**A3:** still needed for 15 people, or for better correction at 10. The model is the limit, at about 170% of the 200% CPU. **The lab refuses every machine above `.large`,** by dry run on 2026-11-06: t3, m5, c5, c6i, c7i and m6i `.xlarge`, and t3, m5 and c5 `.2xlarge`. Every allowed size has 2 vCPUs, one physical core with 2 threads, today's machine included. `c5.large` has a faster clock (3.4 GHz against 2.5), which is unmeasured for the model, and `t3.large` only adds memory. So A3 means a second machine for the model. At about 2.3 photos/s per machine, two would serve about 4.6, about what 15 phones send, though that's arithmetic, not measured. Launching one is allowed, but a dry run doesn't show how many the lab permits.
 
 **The event:** on today's machine, 10 people will work. Expect about two in three photos to correct their position, and admins shouldn't verify during it. 15 people are safe, but mostly on GPS. **Phones and campus Wi-Fi remain untested,** which is what A4's rehearsal is for.
 
