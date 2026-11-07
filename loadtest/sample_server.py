@@ -1,6 +1,6 @@
 """Records CPU and memory per container during a run, into a CSV.
 
-    uv run python sample_server.py out.csv     # until stopped
+    uv run python sample_server.py out.csv [user@host]     # until stopped
 
 One long SSH connection: opening one per sample over SSM would itself be slow.
 The remote loop must end by itself: stopping ssh here doesn't stop it there, and
@@ -21,9 +21,9 @@ REMOTE = (
 )
 
 
-def main(out: str) -> None:
+def main(out: str, host: str = config.SERVER_HOST) -> None:
     process = subprocess.Popen(
-        ["ssh", config.SERVER_HOST, REMOTE],
+        ["ssh", host, REMOTE],
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
@@ -39,4 +39,4 @@ def main(out: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(*sys.argv[1:])
