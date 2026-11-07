@@ -29,10 +29,18 @@ MODEL_MACHINES=2 ./provision.sh   # safe to re-run, and reuses what exists
 ./deploy.sh                       # also after changing backend-ai-training or packages
 ```
 
-`deploy.sh` prints `AI_TRAINING_URLS=...`. Put that line in `backend-positioning/.env` on the main machine, then, on the main machine:
+`deploy.sh` prints `AI_TRAINING_URLS=...`. Put that line in `backend-positioning/.env` on the main machine, then recreate positioning there:
 
 ```bash
-cd ~/4u && sudo docker compose up -d --force-recreate positioning
+cd ~/4u
+sed -i '/^AI_TRAINING_URLS=/d' backend-positioning/.env
+# The file may not end in a newline: a bare `echo >>` glued the line onto the
+# Supabase key once, and broke positioning's sign-in check.
+[ -n "$(tail -c1 backend-positioning/.env)" ] && echo >> backend-positioning/.env
+echo 'AI_TRAINING_URLS=http://...' >> backend-positioning/.env
+sudo docker compose up -d --no-deps --force-recreate positioning
+sudo docker compose up -d --no-deps --force-recreate gateway
+sudo docker exec 4u-positioning-1 env | grep '^AI_TRAINING'   # check it arrived
 ```
 
 Private addresses survive stopping and starting. They change only if a machine is deleted and launched again.
@@ -47,4 +55,4 @@ To remove them, terminate the machines tagged `4u-model-*`, delete the security 
 
 ## Capacity
 
-Measured on 2026-11-07: a `c5.large` serves **3.0 photos/s**, against about 2.3 on the main `t3.medium`. It stays at 3.0 at twice that load, answering in under 1.4 s at p95. A phone sends about 0.3 photos/s.
+Measured on 2026-11-07: a `c5.large` serves **3.0 photos/s**, against about 2.3 on the main `t3.medium`. It stays at 3.0 at twice that load, answering in under 1.4 s at p95. A phone sends about 0.3 photos/s. With 2 of them, 15 people got about 92% of photos matched (`docs/loadtest/a3-results.md`).

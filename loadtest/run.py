@@ -35,6 +35,7 @@ RUNS = {
     "users-10": [("users-10", 10, 0, 5)],
     "users-15": [("users-15", 15, 0, 5)],
     "overload-20": [("overload-20", 20, 0, 3)],
+    "long-15": [("long-15-users", 15, 0, 30)],
     "mixed": [("mixed-10-users-5-admins", 10, 5, 10)],
     "long": [("long-10-users", 10, 0, 30)],
 }
