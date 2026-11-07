@@ -439,6 +439,7 @@ def test_delete_anchor_point_succeeds_even_if_storage_cleanup_fails():
 
 
 _ANCHOR_POINT_PHOTO_ROW = {
+    "updated_at": "2026-11-07T20:00:00+00:00",
     "id": "ph1",
     "anchor_point_id": "1",
     "image_url": "https://example.com/a.jpg",
@@ -546,6 +547,7 @@ def test_delete_anchor_point_photo_forbidden_for_non_admin():
 
 
 _CONNECTION_ROW = {
+    "updated_at": "2026-11-07T20:00:00+00:00",
     "id": "c1",
     "anchor_point_a_id": "a1",
     "anchor_point_b_id": "a2",
@@ -775,6 +777,7 @@ def test_update_unknown_connection_is_404():
 
 
 _BUILDING_ROW = {
+    "updated_at": "2026-11-07T20:00:00+00:00",
     "id": "1",
     "place_id": "p1",
     "code": "B1",
@@ -919,6 +922,7 @@ def test_delete_building_returns_ok():
 
 
 _PLACE_ROW = {
+    "updated_at": "2026-11-07T20:00:00+00:00",
     "id": "p1",
     "code": "CAMPUS",
     "name": "Main Campus",

@@ -96,6 +96,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   String? _since;
   Timer? _syncTimer;
   Future<void>? _syncing;
+  bool _wasCovered = false;
 
   /// Anchor points tab: map instead of list, and the point being moved on it.
   bool _anchorMapView = false;
@@ -144,7 +145,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     // Other admins' changes appear within about 30 s.
     _syncTimer = Timer.periodic(
       const Duration(seconds: 30),
-      (_) => _sync(announce: true),
+      (_) => _onSyncTick(),
     );
   }
 
@@ -157,6 +158,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     _anchorSearchController.dispose();
     _connectionSearchController.dispose();
     super.dispose();
+  }
+
+  void _onSyncTick() {
+    if (!mounted) return;
+    final covered = !(ModalRoute.of(context)?.isCurrent ?? true);
+    switch (syncTickAction(covered: covered, wasCovered: _wasCovered)) {
+      case SyncTick.skip:
+        _wasCovered = true;
+      case SyncTick.silent:
+        _wasCovered = false;
+        _sync(announce: false);
+      case SyncTick.announce:
+        _sync(announce: true);
+    }
   }
 
   /// After an edit, or anything that changed the map: only what changed since
