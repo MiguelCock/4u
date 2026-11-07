@@ -56,6 +56,22 @@ It's fixed in #206 with an HTTP/1.1 connection pool. In a direct trial against S
 
 **One read of the admin photos list timed out at 60 s in the mixed run,** as one did in the first admin test. That's about 1 in 140 reads in that run. The server logged no error and no failed request, so it may even come from the test client. It's worth watching for in real use.
 
+## The phone pausing photos when busy
+
+After an answer saying `server_busy`, the app sends no photo for 5 s (`photoPaused`). The simulated users did the same in a 5-minute run at 10 users, 2026-11-07.
+
+| 10 users, 5 min | Without the pause | With the pause |
+|---|---:|---:|
+| Photos sent | 890 | 737 |
+| Share matched | 64% | 80% |
+| Refused as busy | 31% | 12% |
+| **Corrections per second, all users** | **1.90** | **1.97** |
+| Correction per user, about every | 5.3 s | 5.1 s |
+| Photo answers, p95 | 2.3 s | 2.2 s |
+| Between photos, p95 | 3.76 s | 9.32 s |
+
+**This doesn't add corrections, because the model's capacity hasn't changed.** The higher share comes from sending fewer photos that would have been refused. What it saves is 17% of the photos, and with them the phone's data and battery. Compare the two runs by corrections per second, not by the share matched. It hasn't been tried on a real phone.
+
 ## How the test went
 
 - My computer slept from about 19:26 to 22:36 UTC, pausing a cleanup. It finished on waking, and the gateway's log shows no other address used the server in that time. Later runs blocked sleep.
@@ -63,7 +79,7 @@ It's fixed in #206 with an HTTP/1.1 connection pool. In a direct trial against S
 
 ## Decisions
 
-**A2:** the server's part is done. The phone sending fewer photos when busy remains, and comes with the 0.6 app. It should lower the share refused, but needs its own 10-user run to show by how much.
+**A2:** done. The phone's part reaches phones with the 0.6 app. Two targets move to A3: room up to 15 people, and other calls p95 ≤ 1 s.
 
 **A3:** still needed for 15 people, or for better correction at 10. The model is the limit, at about 170% of the 200% CPU. **The lab refuses every machine above `.large`,** by dry run on 2026-11-06: t3, m5, c5, c6i, c7i and m6i `.xlarge`, and t3, m5 and c5 `.2xlarge`. Every allowed size has 2 vCPUs, one physical core with 2 threads, today's machine included. `c5.large` has a faster clock (3.4 GHz against 2.5), which is unmeasured for the model, and `t3.large` only adds memory. So A3 means a second machine for the model. At about 2.3 photos/s per machine, two would serve about 4.6, about what 15 phones send, though that's arithmetic, not measured. Launching one is allowed, but a dry run doesn't show how many the lab permits.
 
