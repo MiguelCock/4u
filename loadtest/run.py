@@ -31,6 +31,10 @@ RUNS = {
     "admins": [(f"admins-{n}", 0, n, 5) for n in (5, 10)],
     "admins-5": [("admins-5", 0, 5, 5)],
     "admins-5-user-1": [("admins-5-user-1", 1, 5, 5)],
+    # A2's re-run, one step at a time, checking the server between them.
+    "users-10": [("users-10", 10, 0, 5)],
+    "users-15": [("users-15", 15, 0, 5)],
+    "overload-20": [("overload-20", 20, 0, 3)],
     "mixed": [("mixed-10-users-5-admins", 10, 5, 10)],
     "long": [("long-10-users", 10, 0, 30)],
 }
