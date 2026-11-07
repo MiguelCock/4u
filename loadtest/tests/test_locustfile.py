@@ -55,6 +55,7 @@ class Stub(BaseHTTPRequestHandler):
             self._answer(
                 200,
                 {
+                    "server_busy": self.server.busy,
                     "corrected_lat": 6.2,
                     "corrected_long": -75.5,
                     "correction_error": 3,
@@ -96,6 +97,7 @@ def stub():
     server.points = 0
     server.fail = False
     server.indexed = []
+    server.busy = False
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield server
@@ -173,6 +175,7 @@ def run_locust(tmp_path, url, nav, admins, seconds):
             "LOADTEST_CAPTURE_SECONDS": "0",
             "LOADTEST_WATCH_SECONDS": "1",
             "LOADTEST_ADMIN_WAIT_SCALE": "0.02",
+            "LOADTEST_PAUSED_TICK_SECONDS": "1",
         },
         capture_output=True,
         text=True,
@@ -230,6 +233,17 @@ def test_a_failing_server_stops_the_run(tmp_path, stub):
     run_locust(tmp_path, url, nav=1, admins=0, seconds=40)
     reason = (tmp_path / "stop_reason.txt").read_text()
     assert "errors" in reason
+
+
+def test_a_busy_answer_pauses_photos_but_not_logs(tmp_path, stub):
+    stub.busy = True
+    url = f"http://127.0.0.1:{stub.server_address[1]}"
+    run_locust(tmp_path, url, nav=1, admins=0, seconds=14)
+    photos = sum(p == "/positioning/correct_position" for _, p in stub.seen)
+    logs = sum(p == "/navigation/logs" for _, p in stub.seen)
+    # Without the pause, about one a second. With it, about one every 5-7 s.
+    assert 1 <= photos <= 4
+    assert logs > photos
 
 
 def test_a_verified_point_indexes_all_its_photos(tmp_path, stub):

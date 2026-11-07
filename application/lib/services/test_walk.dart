@@ -45,3 +45,16 @@ Duration nextTickDelay(
   Duration elapsed, {
   Duration period = const Duration(seconds: 1),
 }) => elapsed >= period ? Duration.zero : period - elapsed;
+
+/// How long no photos are sent after the server answers `server_busy`. Well
+/// inside the 20 s after which a correction counts as stale, and guidance has
+/// its own timer, so it isn't affected.
+const photoPauseWhenBusy = Duration(seconds: 5);
+
+/// How often ticks run during that pause: about the usual rhythm of a tick with
+/// a photo. At the normal 1 s floor, the logs alone would triple.
+const pausedTickPeriod = Duration(seconds: 3);
+
+/// Whether this tick should skip its photo.
+bool photoPaused(DateTime now, DateTime? pausedUntil) =>
+    pausedUntil != null && now.isBefore(pausedUntil);

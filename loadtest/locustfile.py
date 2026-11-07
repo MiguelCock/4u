@@ -28,6 +28,9 @@ TICK_TYPE = "TICK"
 # the baseline run against the gaps real trips logged (about 3 s).
 AFTER_TICK_SECONDS = 1.0
 CAPTURE_SECONDS = float(os.environ.get("LOADTEST_CAPTURE_SECONDS", "0.5"))
+# After server_busy, as the app does (photoPaused in test_walk.dart).
+PHOTO_PAUSE_WHEN_BUSY_SECONDS = 5.0
+PAUSED_TICK_SECONDS = float(os.environ.get("LOADTEST_PAUSED_TICK_SECONDS", "3"))
 
 # Admins' points in the sandbox: rows of 10 m steps, all within the 300 m the
 # backend allows from the building.
@@ -109,6 +112,7 @@ class NavigatingUser(Person):
 
     def on_start(self) -> None:
         self.number = next(_nav_numbers)
+        self.photos_paused_until = 0.0
         route = STATE["route"]
         self.guard = WriteGuard(
             route=(route["start_anchor_id"], route["end_anchor_id"])
@@ -180,6 +184,10 @@ class NavigatingUser(Person):
             return
         tick = TICKS[ping_pong_index(self.step, len(TICKS), self.offset)]
         self.step += 1
+        if time.monotonic() < self.photos_paused_until:
+            self.log_gps_only(tick)
+            gevent.sleep(PAUSED_TICK_SECONDS)
+            return
         gevent.sleep(CAPTURE_SECONDS)
         now = datetime.now(UTC).isoformat()
         fields = {
@@ -203,6 +211,8 @@ class NavigatingUser(Person):
         result = {}
         if response.ok:
             result = response.json()
+        if result.get("server_busy"):
+            self.photos_paused_until = time.monotonic() + PHOTO_PAUSE_WHEN_BUSY_SECONDS
         self.record(result, response.ok, time.monotonic() - started)
         log = {
             "session_id": self.session_id,
@@ -223,6 +233,21 @@ class NavigatingUser(Person):
         # The app doesn't wait for this one (unawaited in navigation_screen.dart).
         gevent.spawn(self.write, "POST", "/navigation/logs", log)
         gevent.sleep(AFTER_TICK_SECONDS)
+
+    def log_gps_only(self, tick: dict) -> None:
+        gevent.spawn(
+            self.write,
+            "POST",
+            "/navigation/logs",
+            {
+                "session_id": self.session_id,
+                "gps_lat": tick["latitude"],
+                "gps_long": tick["longitude"],
+                "gps_accuracy": tick["accuracy"],
+                "heading": tick.get("heading"),
+                "debug": {"loadtest": True, "failure": "server_busy"},
+            },
+        )
 
     def record(self, result: dict, ok: bool, seconds: float) -> None:
         now = time.monotonic()

@@ -66,7 +66,7 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
     - every cue spoken since the last tick, with its type (`turn`, `start_walking`, `leg`, `meters_ahead`, `arrival`, `info`)
     - waypoint and arrival events, including how many waypoints were skipped
     - backend-positioning's own `debug` as `correction`
-    - a `failure` reason when a tick fell back to raw GPS
+    - a `failure` reason when a tick fell back to raw GPS (`server_busy` when it skipped its photo: after an answer saying `server_busy`, the app sends no photo for 5 s and ticks every 3 s, see `photoPaused`; guidance has its own timer)
     - `timing_ms` (`capture`, `correct`) for the photo and the `/correct_position` round trip
   - **Tick loop:** ticks start every second (`nextTickDelay`, `lib/services/test_walk.dart`), not a second after the previous one finished, which made the "1 s" loop run every ~3.7 s. The `/logs` POST is no longer awaited before the next photo (`_postLog`). If it fails, its cues and events go back in the queue.
   - **Test walks** (`adminPreview`, "Test as user"), for measuring the correction on a route walked exactly:

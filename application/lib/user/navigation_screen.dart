@@ -273,6 +273,8 @@ class _NavigationScreenState extends State<NavigationScreen>
   final _pathLoaded = Completer<void>();
   bool _guiding = false;
   bool _arrived = false;
+  // Set when the server answers server_busy (see photoPaused).
+  DateTime? _photosPausedUntil;
   DateTime? _correctedAt;
   DateTime? _lastSpokenAt;
   bool _stopped = false;
@@ -1589,8 +1591,13 @@ class _NavigationScreenState extends State<NavigationScreen>
     final started = DateTime.now();
     final sessionId = _sessionId;
     final position = _locationService.lastPosition;
+    final paused = photoPaused(started, _photosPausedUntil);
     try {
       if (sessionId == null || position == null) return;
+      if (paused) {
+        await _logRawTick(sessionId, position, failure: 'server_busy');
+        return;
+      }
       final controller = _cameraController;
       if (controller == null || !controller.value.isInitialized) {
         await _logRawTick(sessionId, position);
@@ -1600,7 +1607,10 @@ class _NavigationScreenState extends State<NavigationScreen>
     } finally {
       if (!_stopped) {
         _pendingTickTimer = Timer(
-          nextTickDelay(DateTime.now().difference(started)),
+          nextTickDelay(
+            DateTime.now().difference(started),
+            period: paused ? pausedTickPeriod : const Duration(seconds: 1),
+          ),
           _runTick,
         );
       }
@@ -1768,6 +1778,10 @@ class _NavigationScreenState extends State<NavigationScreen>
       final correctMs = DateTime.now()
           .difference(correctStarted)
           .inMilliseconds;
+
+      if (result['server_busy'] == true) {
+        _photosPausedUntil = DateTime.now().add(photoPauseWhenBusy);
+      }
 
       if (mounted) {
         setState(() {
