@@ -261,6 +261,8 @@ class NavigatingUser(Person):
             "round_trip_ms": seconds * 1000,
             "gap_ms": gap_ms,
             "total_ms": debug.get("total_ms"),
+            "upload_ms": debug.get("upload_ms"),
+            "auth_ms": debug.get("auth_ms"),
             "embed_ms": timing.get("embed"),
             "qdrant_ms": timing.get("qdrant"),
             "busy": bool(result.get("server_busy")),
