@@ -3,7 +3,8 @@ import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:flutter/services.dart'
+    show HapticFeedback, SystemSound, SystemSoundType;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -95,9 +96,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     _positionSub = _locationService.positionStream.listen(_recomputeStart);
     _loadAnchors();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _checkUnfinishedTrip();
+      final resumed = await _checkUnfinishedTrip();
       // Admins' "Test as user" too: testers at Icesi used it.
       await _showTutorialOnFirstRun();
+      if (!resumed) await _askForDestination();
     });
   }
 
@@ -107,7 +109,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     final language = Localizations.localeOf(context).languageCode;
     if (language != _ttsLanguage) {
       _ttsLanguage = language;
-      _ttsReady = configureTts(_tts, language);
+      _ttsReady = configureTts(_tts, language).then((ready) async {
+        // Speaking returns once it's said, so listening never starts while
+        // the app is still talking: the recognizer would hear it.
+        try {
+          await _tts.awaitSpeakCompletion(true);
+        } catch (_) {}
+        return ready;
+      });
     }
   }
 
@@ -223,13 +232,76 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     return null;
   }
 
-  Future<void> _listenForDestination() async {
+  /// Voice first (D1): the app asks and listens by itself, unless the voice is
+  /// off or a screen reader is on (it would be heard as the answer). Not
+  /// over a dialog, and never again once a destination is chosen.
+  bool get _voiceFirst =>
+      voiceGuidanceNotifier.value &&
+      !MediaQuery.of(context).accessibleNavigation;
+
+  /// How many times in a row nothing usable was heard. After the first try
+  /// and [_kVoiceRetries] more, it stops and points to the buttons.
+  int _voiceMisses = 0;
+  static const _kVoiceRetries = 2;
+
+  /// Right after sign-in: "Where do you want to go?", then listening.
+  Future<void> _askForDestination() async {
+    if (!mounted || _end != null || !_voiceFirst) return;
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+    _voiceMisses = 0;
+    await _say(AppLocalizations.of(context)!.homeAskDestination);
+    if (!mounted || _end != null || ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    await _startListening(_handleSpoken);
+  }
+
+  /// Nothing usable was heard: say why, and try again up to [_kVoiceRetries]
+  /// times, then stop with the way to carry on by hand. Never a loop.
+  Future<void> _missed(String why) async {
     final l10n = AppLocalizations.of(context)!;
-    final language = Localizations.localeOf(context).languageCode;
+    _voiceMisses++;
+    if (_voiceMisses > _kVoiceRetries || !_voiceFirst) {
+      _voiceMisses = 0;
+      await _say('$why ${l10n.homeVoiceGiveUp}');
+      return;
+    }
+    await _say(why);
+    if (mounted && _end == null && ModalRoute.of(context)?.isCurrent == true) {
+      await _startListening(_handleSpoken);
+    }
+  }
+
+  /// The Speak button: listens again, or stops listening. It never restarts
+  /// anything else, which is how people got lost (D1).
+  Future<void> _listenForDestination() async {
     if (_listening) {
+      _voiceMisses = _kVoiceRetries + 1; // stopped on purpose: no retry
       await _speech.stop();
       return;
     }
+    _voiceMisses = 0;
+    await _startListening(_handleSpoken);
+  }
+
+  /// Opens the microphone once, with a felt and heard mark just before (the
+  /// recognizer isn't on yet, so it doesn't take them as speech), and calls
+  /// [onHeard] once with what was said, '' for nothing. False when there's
+  /// no recognizer or microphone.
+  Future<bool> _startListening(
+    Future<void> Function(String heard) onHeard, {
+    Duration listenFor = const Duration(seconds: 10),
+  }) async {
+    final l10n = AppLocalizations.of(context)!;
+    final language = Localizations.localeOf(context).languageCode;
+    var answered = false;
+    void finish(String heard) {
+      if (answered || !mounted) return;
+      answered = true;
+      setState(() => _listening = false);
+      onHeard(heard);
+    }
+
     if (_verifiedAnchors.isEmpty) await _loadAnchors();
     if (_buildingNames.isEmpty) {
       try {
@@ -243,58 +315,65 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         // Building names only help tell same-named places apart.
       }
     }
-    if (!mounted) return;
+    if (!mounted) return false;
     final available = await _speech.initialize(
       onStatus: (status) {
-        if ((status == 'done' || status == 'notListening') && mounted) {
-          setState(() => _listening = false);
-        }
-      },
-      onError: (_) {
         if (!mounted) return;
-        setState(() => _listening = false);
-        _say(l10n.homeVoiceNothingHeard);
+        if (status == 'notListening') setState(() => _listening = false);
+        // After the final result, if one came; otherwise what was heard.
+        if (status == 'done') finish(_heard);
       },
+      onError: (_) => finish(''),
     );
-    if (!mounted) return;
+    if (!mounted) return false;
     if (!available) {
+      // Said once; the buttons stay. Retrying can't bring a microphone back.
+      _voiceMisses = 0;
       await _say(l10n.homeVoiceUnavailable);
-      return;
+      return false;
     }
     await _tts.stop(); // so the recognizer doesn't hear the app itself
     final localeId = await _speechLocale(language);
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() {
       _listening = true;
       _heard = '';
       _voiceStatus = l10n.homeListeningShort;
     });
-    // Felt, not spoken: anything said now would be heard by the recognizer.
+    // Felt and heard before the microphone opens: once it's on, anything
+    // the app plays would be taken as speech.
     HapticFeedback.heavyImpact();
+    await SystemSound.play(SystemSoundType.click);
     await _speech.listen(
       onResult: (result) {
         if (!mounted) return;
         setState(() => _heard = result.recognizedWords);
-        if (result.finalResult) _handleSpoken(result.recognizedWords);
+        if (result.finalResult) finish(result.recognizedWords);
       },
       listenOptions: SpeechListenOptions(
         localeId: localeId,
-        listenFor: const Duration(seconds: 10),
+        listenFor: listenFor,
         pauseFor: const Duration(seconds: 3),
         partialResults: true,
         cancelOnError: true,
       ),
     );
+    return true;
   }
 
   Future<void> _handleSpoken(String heard) async {
     final l10n = AppLocalizations.of(context)!;
+    // Felt: listening has stopped.
     HapticFeedback.mediumImpact();
-    setState(() => _listening = false);
     if (heard.trim().isEmpty) {
-      await _say(l10n.homeVoiceNothingHeard);
+      if (_voiceMisses > _kVoiceRetries) {
+        _voiceMisses = 0; // the Speak button stopped it on purpose
+        return;
+      }
+      await _missed(l10n.homeVoiceNothingHeard);
       return;
     }
+    _voiceMisses = 0;
     final candidates = _destinationCandidates;
     // A place called exactly that first: there may be a "Cafetería central"
     // both as a place and as a building.
@@ -324,7 +403,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       _distanceFromUser,
     );
     if (matches.isEmpty) {
-      await _say(l10n.homeVoiceNoMatch(heard));
+      await _missed(l10n.homeVoiceNoMatch(heard));
       return;
     }
     final winner = clearWinner(matches);
@@ -383,13 +462,37 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     });
     final l10n = AppLocalizations.of(context)!;
     final title = l10n.homeGoToTitle(_destinationLabel(anchor));
+    BuildContext? openDialog;
     if (!MediaQuery.of(context).accessibleNavigation) {
-      _say(l10n.homeGoToTitle(_spokenLabel(anchor)));
+      final voiceFirst = _voiceFirst;
+      () async {
+        await _say(
+          voiceFirst
+              ? '${l10n.homeGoToTitle(_spokenLabel(anchor))} ${l10n.homeSayYesToStart}'
+              : l10n.homeGoToTitle(_spokenLabel(anchor)),
+        );
+        // Saying "yes" starts it (D1): the buttons stay for everyone else.
+        final dialog = openDialog;
+        if (!voiceFirst || dialog == null || !dialog.mounted) return;
+        await _startListening(listenFor: const Duration(seconds: 6), (
+          heard,
+        ) async {
+          final answer = spokenAnswer(heard);
+          final still = openDialog;
+          if (answer == null || still == null || !still.mounted) return;
+          Navigator.of(still).pop(answer == SpokenAnswer.start);
+        });
+      }();
     }
     final start = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(title),
+        title: Builder(
+          builder: (context) {
+            openDialog = dialogContext;
+            return Text(title);
+          },
+        ),
         actionsAlignment: MainAxisAlignment.center,
         actionsOverflowDirection: VerticalDirection.up,
         actions: [
@@ -410,6 +513,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ],
       ),
     );
+    openDialog = null;
+    await _speech.cancel();
     await _tts.stop();
     if (!mounted) return;
     if (start == true) {
@@ -745,15 +850,16 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     await _tts.stop();
   }
 
-  Future<void> _checkUnfinishedTrip() async {
+  /// True when the user went back into an unfinished trip.
+  Future<bool> _checkUnfinishedTrip() async {
     List<Map<String, dynamic>> sessions;
     try {
       sessions = (await _navigationApi.get('/sessions/active') as List)
           .cast<Map<String, dynamic>>();
     } on ApiException {
-      return; // Best effort - never blocks the home screen.
+      return false; // Best effort - never blocks the home screen.
     }
-    if (sessions.isEmpty || !mounted) return;
+    if (sessions.isEmpty || !mounted) return false;
     final latest = sessions.first;
     // Only the newest is offered; any older leftovers are just closed.
     for (final old in sessions.skip(1)) {
@@ -772,10 +878,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     if (route == null) {
       // Nothing to resume onto.
       await _finishSession(latest);
-      return;
+      return false;
     }
     if (_verifiedAnchors.isEmpty) await _loadAnchors();
-    if (!mounted) return;
+    if (!mounted) return false;
 
     final l10n = AppLocalizations.of(context)!;
     final end = _verifiedAnchors.where(
@@ -807,7 +913,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ],
       ),
     );
-    if (!mounted) return;
+    if (!mounted) return false;
     if (resume == true) {
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -818,9 +924,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           ),
         ),
       );
-    } else {
-      await _finishSession(latest);
+      return true;
     }
+    await _finishSession(latest);
+    return false;
   }
 
   /// Closes a session the user didn't finish as `abandoned` (not
@@ -1085,31 +1192,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   Widget _scaffold(AppLocalizations l10n) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.appTitle),
-        backgroundColor: Colors.blue,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            tooltip: l10n.homeTutorialButton,
-            onPressed: _showTutorial,
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: l10n.homeSettingsTooltip,
-            onPressed: () {
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: l10n.commonLogOut,
-            onPressed: () => Supabase.instance.client.auth.signOut(),
-          ),
-        ],
-      ),
+      // Only about going somewhere: the account options are at the bottom
+      // (D2), where they don't compete with the main task.
+      appBar: AppBar(title: Text(l10n.appTitle), backgroundColor: Colors.blue),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _loadAnchors,
@@ -1260,6 +1345,24 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   )
                 : Text(l10n.homeFindRouteButton),
           ),
+        ),
+        const Divider(height: 1),
+        ListTile(
+          leading: const Icon(Icons.help_outline),
+          title: Text(l10n.homeTutorialButton),
+          onTap: _showTutorial,
+        ),
+        ListTile(
+          leading: const Icon(Icons.settings_outlined),
+          title: Text(l10n.homeSettingsTooltip),
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+        ),
+        ListTile(
+          leading: const Icon(Icons.logout),
+          title: Text(l10n.commonLogOut),
+          onTap: () => Supabase.instance.client.auth.signOut(),
         ),
       ],
     );

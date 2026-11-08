@@ -252,3 +252,28 @@ List<DestinationMatch> nearestFirst(
         : distanceOf(a.anchor).compareTo(distanceOf(b.anchor));
   });
 }
+
+/// The answer to "Go to X?" said aloud (D1). Participants expected saying
+/// "yes" to start the route, and couldn't find the button.
+enum SpokenAnswer { start, change }
+
+const Set<String> _startWords = {
+  'si', 'claro', 'empezar', 'empieza', 'empecemos', 'comenzar', 'comienza',
+  'iniciar', 'inicia', 'vamos', 'dale', 'listo', 'ok', 'okay', 'vale',
+  'yes', 'yeah', 'start', 'go', 'sure',
+};
+const Set<String> _changeWords = {
+  'no', 'cambiar', 'cambia', 'cambio', 'otro', 'otra', 'change', 'other',
+  'nope',
+};
+
+/// [SpokenAnswer.start] or [SpokenAnswer.change] for what was heard, or null
+/// when it's neither, or both ("no, sí"): then nothing happens and the
+/// buttons are still there.
+SpokenAnswer? spokenAnswer(String heard) {
+  final words = normalizeForMatch(heard).split(' ').toSet();
+  final start = words.any(_startWords.contains);
+  final change = words.any(_changeWords.contains);
+  if (start == change) return null;
+  return start ? SpokenAnswer.start : SpokenAnswer.change;
+}

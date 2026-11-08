@@ -18,7 +18,12 @@ One walking round answers several stories at once:
 
 ## The routes
 - **The standard route:** the four stretches around the library, the one with history to compare against.
-- **B1, spacing:** also walk one route whose points are **far apart** (12 m or more), and one where they're **close** (4–5 m). Note which on the sheet. Don't change points to test this: the report compares the stretches by their spacing.
+- **B1, spacing:** two routes also differ in light, buildings, GPS and photos, so comparing a close route with a far-apart one can't tell what caused a difference. Instead, compare **stretches that are alike apart from their spacing**:
+  - choose them with an admin: same kind of place (both indoor corridors, or both open paths), similar light and buildings around;
+  - one with points close together (4–5 m), one far apart (12 m or more);
+  - **within the same route if it has both**, which is best.
+
+  Note the stretches on the sheet. The report compares them stretch by stretch. Don't move or unverify points to make a test: other people's routes use them. A same-route comparison done offline (thinning a copy of a logged walk and replaying it) is planned, and would back this up.
 
 ## Each walk
 1. **As an admin (a test walk):** use "Test as user", and tap **I'm at …** exactly on the start, each corner and the destination. This gives the true position. Long-press undoes a tap.
@@ -29,15 +34,16 @@ One walking round answers several stories at once:
 
 | Story | What to do in the round |
 |---|---|
-| B1 spacing | the standard route, plus one far-apart and one close route |
+| B1 spacing | a close and a far-apart stretch that are otherwise alike, best on the same route |
+| D5 carrying | the standard route with the phone held in front, then at the ear or in a chest mount, noted on the sheet |
 | B2 phones | each phone available walks the standard route once, cheap ones included |
 | B6 night | the standard route once at dusk, or after dark, with one phone already used by day |
 | B5 / SUS | each participant answers the 10 questions below right after their walk |
 
 ## The sheet (one row per walk)
 
-| Time started | Phone | Route | Spacing | Who walked | Day/dusk/night | Arrived? | Had to help where? | SUS score |
-|---|---|---|---|---|---|---|---|---|
+| Time started | Phone | Route | Stretches compared (B1) | How carried | Who walked | Day/dusk/night | Arrived? | Had to help where? | SUS score |
+|---|---|---|---|---|---|---|---|---|---|
 
 ## SUS: the System Usability Scale
 Answer each from 1 (strongly disagree) to 5 (strongly agree).
@@ -85,7 +91,12 @@ Una sola ronda de caminatas responde varias historias a la vez:
 
 ## Las rutas
 - **La ruta estándar:** los cuatro tramos alrededor de la biblioteca, la que tiene historia para comparar.
-- **B1, separación:** camina también una ruta con los puntos **lejanos** (12 m o más) y una con los puntos **cercanos** (4–5 m). Anota cuál en la hoja. No cambies puntos para probarlo: el informe compara los tramos según su separación.
+- **B1, separación:** dos rutas también difieren en luz, edificios, GPS y fotos, así que comparar una ruta cercana con una lejana no dice qué causó la diferencia. En su lugar, compara **tramos parecidos salvo por la separación**:
+  - escógelos con un admin: el mismo tipo de lugar (dos pasillos interiores, o dos caminos abiertos), luz y edificios parecidos;
+  - uno con los puntos cercanos (4–5 m) y otro con los puntos lejanos (12 m o más);
+  - **mejor si están en la misma ruta.**
+
+  Anota los tramos en la hoja; el informe los compara tramo a tramo. No muevas ni desverifiques puntos para una prueba: las rutas de otras personas los usan. Está planeada una comparación en la misma ruta hecha sin caminar (quitar puntos de una copia de una caminata registrada y repetirla), que respaldaría esto.
 
 ## Cada caminata
 1. **Como admin (caminata de prueba):** "Probar como usuario", y toca **Estoy en…** justo en el inicio, en cada esquina y en el destino. Esto da la posición real. Una pulsación larga deshace un toque.
@@ -96,15 +107,16 @@ Una sola ronda de caminatas responde varias historias a la vez:
 
 | Historia | Qué hacer en la ronda |
 |---|---|
-| B1 separación | la ruta estándar, más una con puntos lejanos y otra con puntos cercanos |
+| B1 separación | un tramo cercano y uno lejano parecidos en lo demás, mejor en la misma ruta |
+| D5 cómo se lleva | la ruta estándar con el teléfono al frente, y luego en la oreja o en un soporte de pecho, anotado en la hoja |
 | B2 teléfonos | cada teléfono disponible camina la ruta estándar una vez, también los económicos |
 | B6 noche | la ruta estándar una vez al atardecer, o de noche, con un teléfono ya usado de día |
 | B5 / SUS | cada participante responde las 10 preguntas de abajo justo después de caminar |
 
 ## La hoja (una fila por caminata)
 
-| Hora de inicio | Teléfono | Ruta | Separación | Quién caminó | Día/atardecer/noche | ¿Llegó? | ¿Dónde hubo que ayudar? | Puntaje SUS |
-|---|---|---|---|---|---|---|---|---|
+| Hora de inicio | Teléfono | Ruta | Tramos comparados (B1) | Cómo se llevó | Quién caminó | Día/atardecer/noche | ¿Llegó? | ¿Dónde hubo que ayudar? | Puntaje SUS |
+|---|---|---|---|---|---|---|---|---|---|
 
 ## SUS: escala de usabilidad del sistema
 Responde cada una de 1 (totalmente en desacuerdo) a 5 (totalmente de acuerdo).

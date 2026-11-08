@@ -30,6 +30,10 @@ final ValueNotifier<double> textScaleNotifier = ValueNotifier<double>(1.0);
 /// sensible fixed default for this app's audience is on until turned off.
 final ValueNotifier<bool> voiceGuidanceNotifier = ValueNotifier<bool>(true);
 
+/// Whether users see the map during a trip (D2), for low vision. Off by
+/// default: most users are blind, and didn't know what "the map" was.
+final ValueNotifier<bool> showMapNotifier = ValueNotifier<bool>(false);
+
 /// Reads `high_contrast`/`language`/`font_scale`/`voice_guidance` out of a
 /// `profiles.preferences` map (as returned by `GET /profiles/{id}`) and
 /// applies them to the notifiers above. `defaultHighContrast` and
@@ -53,4 +57,5 @@ void applyPreferences(
   textScaleNotifier.value =
       (prefs['font_scale'] as num?)?.toDouble() ?? defaultTextScale;
   voiceGuidanceNotifier.value = prefs['voice_guidance'] as bool? ?? true;
+  showMapNotifier.value = prefs['show_map'] as bool? ?? false;
 }

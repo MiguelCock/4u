@@ -2049,6 +2049,10 @@ class _NavigationScreenState extends State<NavigationScreen>
                               style: const TextStyle(color: Colors.green),
                             ),
                           ),
+                      ],
+                      // Users with low vision can turn the map on (D2); the
+                      // coordinates above stay for admins.
+                      if (widget.adminPreview || showMapNotifier.value) ...[
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                           child: ExcludeSemantics(

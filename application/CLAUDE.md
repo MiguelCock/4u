@@ -261,3 +261,12 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 - `SessionTrackingScreen`'s poll interval (4s) is fixed, not configurable, and keeps polling even if the session ends mid-watch (no server-side push/websocket in this repo - everything is REST poll, consistent with the rest of the app).
 - `test/widget_test.dart` is currently just a sanity smoke test so CI has something to run — add real widget/unit tests alongside new widgets/services. A full auth-flow test isn't practical without a mocked Supabase client, so none exists yet.
 - **`verbosity` is stored but not yet consumed anywhere** - `SettingsScreen` saves it to `profiles.preferences`, but no screen actually reads it back to change how much on-screen detail it shows. The setting exists ahead of the behavior it's meant to drive.
+
+## Voice first (D1, D2)
+
+- **Asking first:** after `_checkUnfinishedTrip` (now `Future<bool>`, true when the user resumed) and the first-run tutorial, `UserHomeScreen._askForDestination` says `homeAskDestination` and listens. It does this only when `_voiceFirst` holds: the voice is on and TalkBack is off, since the recognizer would hear TalkBack.
+- **Retries:** nothing heard, or no match, goes through `_missed`. That retries twice (`_kVoiceRetries`), then says `homeVoiceGiveUp` and stops. Stopping with the Speak button never retries.
+- **One recognizer helper:** `_startListening(onHeard, {listenFor})` is used for both the destination and the confirmation. It calls `onHeard` once, '' for nothing. A heavy haptic and `SystemSound.click` play before the microphone opens.
+- **Speech waits:** `_ttsReady` sets `awaitSpeakCompletion(true)`, so speaking returns once it's said.
+- **"Go to X?":** with `_voiceFirst`, it says `homeSayYesToStart`, then listens for 6 s. `spokenAnswer` (`destination_matcher.dart`, accent-insensitive, Spanish and English, unit-tested) pops the dialog with start or change. The buttons stay, and the recognizer is cancelled when the dialog closes.
+- **D2:** help, settings and log out are `ListTile`s at the bottom of the body, not app-bar actions. `profiles.preferences.show_map` (`showMapNotifier`, a Settings switch, default off) shows `NavigationScreen`'s map to users. Coordinates stay admin-only.

@@ -9,6 +9,9 @@ Each release's section becomes its GitHub release description (`.github/workflow
 ### Added
 
 - Each trip records which phone and app version it ran on, so problems that only happen on some phones can be found.
+- **Voice first:** after signing in, the app asks "Where do you want to go?" and listens straight away. Saying "yes" starts the route, and "no" changes the destination. A vibration and a click mark when it starts listening. The buttons all stay. With TalkBack on, it waits for you to press "Speak" instead, so it doesn't hear TalkBack.
+- Help, settings and log out are now at the bottom of the home screen, out of the way of choosing where to go.
+- A new setting shows the map during trips, for people who can see some of the screen.
 
 ### Fixed
 
