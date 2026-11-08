@@ -65,4 +65,35 @@ For running an event alone: see `docs/event/checklist.md` and `docs/event/runboo
 | `watch.py` | The live view, every 15 s: services, errors and rate limits, photos (matched, busy, server time against network time), each machine's CPU and memory, and how long the AWS credentials have left. Red names the runbook section to use. |
 | `check_map.py` | Whether a route is ready, checking the path the server would give today: blockers (not verified, not searchable, not connected) and warnings (few photos, wide gaps). `--place 050022` lists EAFIT's routes and pending points. |
 | `event_accounts.py` | Attendee accounts through the admin API, with no sign-up emails. The list, with passwords, goes to `.data/event-accounts.csv`, readable only by you. `--delete --yes` also deletes their trips. |
-| `event_report.py` | After an event: phone by phone, photos matched, failed ticks, and how much of each photo's time was the network. Phones are numbered, never named. The app version isn't logged per trip yet (story B2). |
+| `event_report.py` | After an event: phone by phone, photos matched, failed ticks, and how much of each photo's time was the network. Phones are numbered, never named. |
+
+## Trip report (B3)
+
+What happened on a test walk, in one command, read-only:
+
+```bash
+uv run python trip_report.py b73b686d          # one trip, by id or its first characters
+uv run python trip_report.py --since 2026-11-20T14:00 --until 2026-11-20T17:00
+uv run python trip_report.py b73b686d --save session.json   # for backend-positioning's replay.py
+```
+
+**Per trip:**
+- the phone and app version (from 0.6 on; older trips say "not logged");
+- stops reached, with when;
+- photos matched and failures, the correction size;
+- the heading: trusted share, compass disagreement, source;
+- what was said, with a timeline of instructions;
+- **likely problems**, each with its time.
+
+**The problems it looks for** (rules in `loadtool/trip.py`, tested on made-up trips in `tests/test_trip.py`):
+- **spinning:** 3 or more turn cues in 60 s, with GPS moving under 10 m;
+- **stuck:** the app's stall events, or 3 m less of progress in 60 s;
+- **long silence:** 30 s with nothing said;
+- **pause:** a tick gap over 20 s, or the app going to the background;
+- **no photo matches on a stretch;**
+- **compass disagreement:** over 45° on more than 20% of ticks;
+- **floor timeout;**
+- **a reported wrong instruction;**
+- **not arrived.**
+
+Several trips start with a comparison table. On the 2026-11-05 Icesi trips it finds what `docs/TUNING.md` §10 found by hand: spinning in b73b686d, with the compass far off on 81% of ticks, and pauses on the stuck trips. `--save` writes what `export_session.py` does, so `replay.py` checks a positioning change against the trip. Replaying the app's guidance offline isn't covered.

@@ -6,6 +6,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+### Added
+
+- Each trip records which phone and app version it ran on, so problems that only happen on some phones can be found.
+
 ### Fixed
 
 - An overloaded photo model no longer freezes the whole server: it restarts by itself, and guidance carries on from GPS meanwhile.
