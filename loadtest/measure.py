@@ -130,9 +130,13 @@ def measure(env: dict, user: App, admin: App, route: dict, tick: dict, times: in
         )
 
     session: dict = {}
+    # As the app (route_points.dart): one request where the server has by-ids.
+    batch = f"/map/anchor-points/by-ids?ids={','.join(stops)}"
+    has_batch = False
 
     def trip_start():
-        """As NavigationScreen: the session, then the route's points, then each
+        """As NavigationScreen: the session, then the route's points with their
+        connections: one request, or on an older server each point and each
         point's connections, each group in parallel."""
         session.update(
             user.post(
@@ -145,6 +149,9 @@ def measure(env: dict, user: App, admin: App, route: dict, tick: dict, times: in
                 },
             )[0]
         )
+        if has_batch:
+            user.get(batch)
+            return
         user.parallel([f"/map/anchor-points/{stop}" for stop in stops])
         user.parallel([f"/map/anchor-points/{stop}/connections" for stop in stops])
 
@@ -188,6 +195,12 @@ def measure(env: dict, user: App, admin: App, route: dict, tick: dict, times: in
 
     admin.sign_in()
     user.sign_in()
+    try:
+        user.get(batch)
+        has_batch = True
+    except httpx.HTTPStatusError:
+        pass
+    print(f"  Trip start: {'by-ids' if has_batch else 'per point'}", flush=True)
     trip_start()  # a session for the photos
     actions = {
         "App start": app_start,
@@ -204,7 +217,9 @@ def measure(env: dict, user: App, admin: App, route: dict, tick: dict, times: in
         samples = []
         for _ in range(times):
             samples.append(timed(action))
-            time.sleep(0.3)
+            # The per-point trip start is ~44 requests: the gateway's per-user
+            # allowance (30/s, bursts of 60) needs a moment to refill.
+            time.sleep(2 if action is trip_start else 0.3)
         results[name] = samples
         print(f"  {name}: {statistics.median(samples):.0f} ms p50", flush=True)
     return results, server_ms
