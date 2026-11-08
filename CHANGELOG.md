@@ -12,6 +12,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - **Voice first:** after signing in, the app asks "Where do you want to go?" and listens straight away. Saying "yes" starts the route, and "no" changes the destination. A vibration and a click mark when it starts listening. The buttons all stay. With TalkBack on, it waits for you to press "Speak" instead, so it doesn't hear TalkBack.
 - Help, settings and log out are now at the bottom of the home screen, out of the way of choosing where to go.
 - A new setting shows the map during trips, for people who can see some of the screen.
+- The home screen is now one big button to say where you want to go. Settings can bring back the start and destination rows, which also appear by themselves when voice can't be used.
+- Vibrations are now felt even when the phone's touch vibration is off.
 
 ### Fixed
 

@@ -3,19 +3,20 @@ import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'
-    show HapticFeedback, SystemSound, SystemSoundType;
+import 'package:flutter/services.dart' show SystemSound, SystemSoundType;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
+import '../services/buzz.dart';
 import '../services/camera_helper.dart';
 import '../services/destination_matcher.dart';
 import '../services/destinations.dart';
@@ -124,6 +125,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   void dispose() {
     _stillFindingTimer?.cancel();
     _positionSub?.cancel();
+    _onHeard = null;
+    _listenTimeout?.cancel();
+    // The recognizer outlives this screen: leave it no callbacks into it.
+    if (_speech.statusListener == _onSpeechStatus) {
+      _speech.statusListener = null;
+      _speech.errorListener = null;
+    }
     _speech.cancel();
     _tts.stop();
     super.dispose();
@@ -139,8 +147,22 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     }
     await _ttsReady;
     await _tts.stop();
-    await _tts.speak(text);
+    // Waits for the voice to finish, but never longer than the sentence
+    // could take: a voice that doesn't report finishing mustn't stop the
+    // listening that comes next.
+    final most = Duration(milliseconds: (80 * text.length).clamp(1500, 12000));
+    await _tts.speak(text).timeout(most, onTimeout: () => null);
   }
+
+  /// Start and destination rows, shown only when the user asked for them
+  /// in Settings, or when voice can't be used this time (D1, D2).
+  bool _revealChoices = false;
+
+  bool get _showsChoices => homeShowsChoices(
+    setting: showChoicesNotifier.value,
+    revealed: _revealChoices,
+    screenReader: MediaQuery.of(context).accessibleNavigation,
+  );
 
   /// Buildings a user can be sent to: active, on the campus they're on. A
   /// route can't cross campuses, and every campus has an "Edificio A".
@@ -263,6 +285,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     _voiceMisses++;
     if (_voiceMisses > _kVoiceRetries || !_voiceFirst) {
       _voiceMisses = 0;
+      // Never a dead end: the choices appear below.
+      setState(() => _revealChoices = true);
       await _say('$why ${l10n.homeVoiceGiveUp}');
       return;
     }
@@ -273,16 +297,46 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }
 
   /// The Speak button: listens again, or stops listening. It never restarts
-  /// anything else, which is how people got lost (D1).
+  /// anything else, which is how people got lost (D1). Stopping takes effect
+  /// at once, whatever the recognizer does next.
   Future<void> _listenForDestination() async {
     if (_listening) {
-      _voiceMisses = _kVoiceRetries + 1; // stopped on purpose: no retry
-      await _speech.stop();
+      _onHeard = null; // stopped on purpose: no answer, no retry
+      _listenTimeout?.cancel();
+      setState(() => _listening = false);
+      _voiceMisses = 0;
+      await _speech.cancel();
       return;
     }
     _voiceMisses = 0;
     await _startListening(_handleSpoken);
   }
+
+  /// Who gets the current listen's answer; null when nobody is listening.
+  /// The recognizer is one object for the whole app, and keeps the callbacks
+  /// of its first `initialize` (speech_to_text 7.5). #225 passed a new
+  /// callback each time, so every answer after the first, and every one after
+  /// logging in again, went to a callback that was already done, and the
+  /// button stayed on "Listening". Now this screen sets its own listeners
+  /// before every listen, and they hand the answer to this field.
+  Future<void> Function(String heard)? _onHeard;
+  Timer? _listenTimeout;
+
+  void _finishListening(String heard) {
+    final onHeard = _onHeard;
+    _onHeard = null;
+    _listenTimeout?.cancel();
+    if (!mounted) return;
+    setState(() => _listening = false);
+    if (onHeard != null) onHeard(heard);
+  }
+
+  /// "done" comes after the final result, if there was one.
+  void _onSpeechStatus(String status) {
+    if (status == 'done') _finishListening(_heard);
+  }
+
+  void _onSpeechError(SpeechRecognitionError error) => _finishListening('');
 
   /// Opens the microphone once, with a felt and heard mark just before (the
   /// recognizer isn't on yet, so it doesn't take them as speech), and calls
@@ -294,13 +348,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }) async {
     final l10n = AppLocalizations.of(context)!;
     final language = Localizations.localeOf(context).languageCode;
-    var answered = false;
-    void finish(String heard) {
-      if (answered || !mounted) return;
-      answered = true;
-      setState(() => _listening = false);
-      onHeard(heard);
-    }
 
     if (_verifiedAnchors.isEmpty) await _loadAnchors();
     if (_buildingNames.isEmpty) {
@@ -316,23 +363,27 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       }
     }
     if (!mounted) return false;
+    _speech.statusListener = _onSpeechStatus;
+    _speech.errorListener = _onSpeechError;
     final available = await _speech.initialize(
-      onStatus: (status) {
-        if (!mounted) return;
-        if (status == 'notListening') setState(() => _listening = false);
-        // After the final result, if one came; otherwise what was heard.
-        if (status == 'done') finish(_heard);
-      },
-      onError: (_) => finish(''),
+      onStatus: _onSpeechStatus,
+      onError: _onSpeechError,
     );
     if (!mounted) return false;
     if (!available) {
-      // Said once; the buttons stay. Retrying can't bring a microphone back.
+      // Said once, and the choices appear. Retrying can't bring a
+      // microphone back.
       _voiceMisses = 0;
+      setState(() => _revealChoices = true);
       await _say(l10n.homeVoiceUnavailable);
       return false;
     }
     await _tts.stop(); // so the recognizer doesn't hear the app itself
+    // One listen at a time: the last one may still be closing.
+    for (var i = 0; i < 10 && _speech.isListening; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (_speech.isListening) await _speech.cancel();
     final localeId = await _speechLocale(language);
     if (!mounted) return false;
     setState(() {
@@ -340,36 +391,44 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       _heard = '';
       _voiceStatus = l10n.homeListeningShort;
     });
+    _onHeard = onHeard;
+    // If the recognizer never reports back, this still ends the listen.
+    _listenTimeout?.cancel();
+    _listenTimeout = Timer(
+      listenFor + const Duration(seconds: 4),
+      () => _finishListening(_heard),
+    );
     // Felt and heard before the microphone opens: once it's on, anything
     // the app plays would be taken as speech.
-    HapticFeedback.heavyImpact();
+    await buzz(Buzz.short);
     await SystemSound.play(SystemSoundType.click);
-    await _speech.listen(
-      onResult: (result) {
-        if (!mounted) return;
-        setState(() => _heard = result.recognizedWords);
-        if (result.finalResult) finish(result.recognizedWords);
-      },
-      listenOptions: SpeechListenOptions(
-        localeId: localeId,
-        listenFor: listenFor,
-        pauseFor: const Duration(seconds: 3),
-        partialResults: true,
-        cancelOnError: true,
-      ),
-    );
+    try {
+      await _speech.listen(
+        onResult: (result) {
+          if (!mounted) return;
+          setState(() => _heard = result.recognizedWords);
+          if (result.finalResult) _finishListening(result.recognizedWords);
+        },
+        listenOptions: SpeechListenOptions(
+          localeId: localeId,
+          listenFor: listenFor,
+          pauseFor: const Duration(seconds: 3),
+          partialResults: true,
+          cancelOnError: true,
+        ),
+      );
+    } catch (_) {
+      _finishListening('');
+      return false;
+    }
     return true;
   }
 
   Future<void> _handleSpoken(String heard) async {
     final l10n = AppLocalizations.of(context)!;
     // Felt: listening has stopped.
-    HapticFeedback.mediumImpact();
+    buzz(Buzz.short);
     if (heard.trim().isEmpty) {
-      if (_voiceMisses > _kVoiceRetries) {
-        _voiceMisses = 0; // the Speak button stopped it on purpose
-        return;
-      }
       await _missed(l10n.homeVoiceNothingHeard);
       return;
     }
@@ -514,14 +573,23 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       ),
     );
     openDialog = null;
+    _onHeard = null; // an answer still coming is for a dialog that's gone
+    _listenTimeout?.cancel();
+    if (_listening) setState(() => _listening = false);
     await _speech.cancel();
     await _tts.stop();
     if (!mounted) return;
     if (start == true) {
       _findRoute();
     } else if (start == false) {
-      // "Change destination": every tester was unsure how to (2026-11-03).
-      _pickEnd();
+      if (_showsChoices) {
+        // "Change destination": every tester was unsure how to (2026-11-03).
+        _pickEnd();
+      } else {
+        // No list on screen: ask again instead.
+        setState(() => _end = null);
+        _askForDestination();
+      }
     }
   }
 
@@ -1213,6 +1281,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }
 
   Widget _body(AppLocalizations l10n) {
+    // Without the choices the screen is one big Speak button (D1/D2): the
+    // simplest it can be. They appear when voice can't be used.
+    final choices = _showsChoices;
     return Column(
       children: [
         if (widget.adminPreview)
@@ -1232,78 +1303,104 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               ),
             ),
           ),
-        ListTile(
-          leading: const Icon(Icons.radio_button_checked, color: Colors.blue),
-          title: Text(l10n.homeStartLabel),
-          subtitle: Semantics(
-            liveRegion: true,
-            child: Text(
-              _locatingStart
-                  ? (_startCheckProgress > 0
-                        ? l10n.homeCheckingStartProgress(
-                            _startCheckProgress,
-                            _kStartCheckPhotos,
-                          )
-                        : l10n.homeLocatingStart)
-                  : _start != null
-                  ? _startLabel(l10n, _start!)
-                  : l10n.homeStartSubtitle,
+        if (choices) ...[
+          ListTile(
+            leading: const Icon(Icons.radio_button_checked, color: Colors.blue),
+            title: Text(l10n.homeStartLabel),
+            subtitle: Semantics(
+              liveRegion: true,
+              child: Text(
+                _locatingStart
+                    ? (_startCheckProgress > 0
+                          ? l10n.homeCheckingStartProgress(
+                              _startCheckProgress,
+                              _kStartCheckPhotos,
+                            )
+                          : l10n.homeLocatingStart)
+                    : _start != null
+                    ? _startLabel(l10n, _start!)
+                    : l10n.homeStartSubtitle,
+              ),
+            ),
+            trailing: _locatingStart
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : widget.adminPreview
+                ? Icon(
+                    Icons.my_location,
+                    semanticLabel: l10n.homeCheckStartTooltip,
+                  )
+                : null,
+            onTap: !widget.adminPreview || _locatingStart || _finding
+                ? null
+                : _relocateStart,
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: Icon(
+              _end == null ? Icons.radio_button_unchecked : Icons.location_on,
+              color: _end == null ? Colors.grey : Colors.blue,
+            ),
+            // "¿A dónde vas? Biblioteca" read as a question about the place
+            // already chosen: no tester knew it was where to change it.
+            title: Text(
+              _end == null
+                  ? l10n.homeChooseDestination
+                  : l10n.homeDestinationLabel(
+                      _end!['location_description'] as String? ??
+                          _end!['id'] as String,
+                    ),
+            ),
+            subtitle: Text(
+              _end == null
+                  ? l10n.homeTapToChooseDestination
+                  : l10n.homeTapToChangeDestination,
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _pickEnd,
+          ),
+        ],
+        if (!choices)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(200),
+                  textStyle: Theme.of(context).textTheme.headlineSmall,
+                ),
+                onPressed: _finding ? null : _listenForDestination,
+                icon: Icon(
+                  _listening ? Icons.stop_circle_outlined : Icons.mic,
+                  size: 48,
+                ),
+                label: Text(
+                  _listening
+                      ? l10n.homeListening
+                      : l10n.homeSayDestinationButton,
+                  textAlign: TextAlign.center,
+                ),
+              ),
             ),
           ),
-          trailing: _locatingStart
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : widget.adminPreview
-              ? Icon(
-                  Icons.my_location,
-                  semanticLabel: l10n.homeCheckStartTooltip,
-                )
-              : null,
-          onTap: !widget.adminPreview || _locatingStart || _finding
-              ? null
-              : _relocateStart,
-        ),
-        const Divider(height: 1),
-        ListTile(
-          leading: Icon(
-            _end == null ? Icons.radio_button_unchecked : Icons.location_on,
-            color: _end == null ? Colors.grey : Colors.blue,
-          ),
-          // "¿A dónde vas? Biblioteca" read as a question about the place
-          // already chosen: no tester knew it was where to change it.
-          title: Text(
-            _end == null
-                ? l10n.homeChooseDestination
-                : l10n.homeDestinationLabel(
-                    _end!['location_description'] as String? ??
-                        _end!['id'] as String,
-                  ),
-          ),
-          subtitle: Text(
-            _end == null
-                ? l10n.homeTapToChooseDestination
-                : l10n.homeTapToChangeDestination,
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: _pickEnd,
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(56),
-            ),
-            onPressed: _finding ? null : _listenForDestination,
-            icon: Icon(_listening ? Icons.stop_circle_outlined : Icons.mic),
-            label: Text(
-              _listening ? l10n.homeListening : l10n.homeSayDestinationButton,
-              textAlign: TextAlign.center,
+        if (choices)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(56),
+              ),
+              onPressed: _finding ? null : _listenForDestination,
+              icon: Icon(_listening ? Icons.stop_circle_outlined : Icons.mic),
+              label: Text(
+                _listening ? l10n.homeListening : l10n.homeSayDestinationButton,
+                textAlign: TextAlign.center,
+              ),
             ),
           ),
-        ),
         if (_listening && _heard.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -1325,27 +1422,36 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               child: Text(_error!, style: const TextStyle(color: Colors.red)),
             ),
           ),
-        const Spacer(),
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(64),
-              textStyle: Theme.of(context).textTheme.titleLarge,
+        if (!choices && _finding)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: LinearProgressIndicator(
+              semanticsLabel: l10n.homeFindingRoute,
             ),
-            onPressed: (_end != null && !_finding) ? _findRoute : null,
-            child: _finding
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      semanticsLabel: l10n.homeFindingRoute,
-                    ),
-                  )
-                : Text(l10n.homeFindRouteButton),
           ),
-        ),
+        if (choices) ...[
+          const Spacer(),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(64),
+                textStyle: Theme.of(context).textTheme.titleLarge,
+              ),
+              onPressed: (_end != null && !_finding) ? _findRoute : null,
+              child: _finding
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        semanticsLabel: l10n.homeFindingRoute,
+                      ),
+                    )
+                  : Text(l10n.homeFindRouteButton),
+            ),
+          ),
+        ],
         const Divider(height: 1),
         ListTile(
           leading: const Icon(Icons.help_outline),

@@ -34,6 +34,21 @@ final ValueNotifier<bool> voiceGuidanceNotifier = ValueNotifier<bool>(true);
 /// default: most users are blind, and didn't know what "the map" was.
 final ValueNotifier<bool> showMapNotifier = ValueNotifier<bool>(false);
 
+/// Whether the home screen shows the Start and destination rows (D1/D2).
+/// Off by default, so the screen is one big Speak button: the simplest it
+/// can be.
+final ValueNotifier<bool> showChoicesNotifier = ValueNotifier<bool>(false);
+
+/// Whether the home screen shows the Start and destination rows: when the
+/// user turned them on, when voice couldn't be used this time ([revealed]:
+/// no recognizer, or nothing understood after the retries), or with a screen
+/// reader, since voice first doesn't start by itself then.
+bool homeShowsChoices({
+  required bool setting,
+  required bool revealed,
+  required bool screenReader,
+}) => setting || revealed || screenReader;
+
 /// Reads `high_contrast`/`language`/`font_scale`/`voice_guidance` out of a
 /// `profiles.preferences` map (as returned by `GET /profiles/{id}`) and
 /// applies them to the notifiers above. `defaultHighContrast` and
@@ -58,4 +73,5 @@ void applyPreferences(
       (prefs['font_scale'] as num?)?.toDouble() ?? defaultTextScale;
   voiceGuidanceNotifier.value = prefs['voice_guidance'] as bool? ?? true;
   showMapNotifier.value = prefs['show_map'] as bool? ?? false;
+  showChoicesNotifier.value = prefs['show_choices'] as bool? ?? false;
 }

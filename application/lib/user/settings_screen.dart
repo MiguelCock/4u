@@ -42,6 +42,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   double _fontScale = 1.0;
   bool _voiceGuidance = true;
   bool _showMap = false;
+  bool _showChoices = false;
 
   @override
   void initState() {
@@ -74,6 +75,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
         _voiceGuidance = prefs['voice_guidance'] as bool? ?? true;
         _showMap = prefs['show_map'] as bool? ?? false;
+        _showChoices = prefs['show_choices'] as bool? ?? false;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -103,6 +105,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'font_scale': _fontScale,
           'voice_guidance': _voiceGuidance,
           'show_map': _showMap,
+          'show_choices': _showChoices,
         },
       });
       applyPreferences(
@@ -113,6 +116,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'font_scale': _fontScale,
           'voice_guidance': _voiceGuidance,
           'show_map': _showMap,
+          'show_choices': _showChoices,
         },
         defaultHighContrast: _highContrast,
         defaultTextScale: _fontScale,
@@ -247,6 +251,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       subtitle: Text(l10n.settingsShowMapSubtitle),
                       value: _showMap,
                       onChanged: (value) => setState(() => _showMap = value),
+                    ),
+                    SwitchListTile(
+                      title: Text(l10n.settingsShowChoicesLabel),
+                      subtitle: Text(l10n.settingsShowChoicesSubtitle),
+                      value: _showChoices,
+                      onChanged: (value) =>
+                          setState(() => _showChoices = value),
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 12),
