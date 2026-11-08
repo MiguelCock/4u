@@ -35,7 +35,9 @@ AWS Academy sessions last about 4 hours. The live view counts down from when you
 
 The server keeps running while you do this.
 
-**If the timer ever runs out,** the lab may stop the machines. Press Start Lab, then run `deployment/phase1-ec2/start.sh --with-model-machines`, and give it a few minutes. *Confirm in the rehearsal whether the lab really stops them.*
+**If the timer runs out, the lab stops every machine,** and the app goes offline. This was seen on 2026-11-07. **Pressing Start Lab starts them all again, the model machines included**, and the services come back by themselves within a few minutes.
+- **On an ordinary day:** stop the model machines straight after (`deployment/model-machines/stop.sh`), since they cost money while running.
+- **During an event:** keep them, and check the live view is all green.
 
 ## The server stops answering
 

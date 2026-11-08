@@ -19,6 +19,8 @@ admins verifying → gateway → main's ai-training
 
 `../phase1-ec2/start.sh --with-model-machines` starts them along with the main machine, and `../phase1-ec2/stop.sh` always stops them too.
 
+**The lab starts them again** whenever you press Start Lab after a session has ended, along with the main machine. Stop them after that unless you need them.
+
 **Remember to stop them.** Check your lab's page for the real prices. As an estimate, a running `c5.large` is about $0.09 per hour, so two left on for a month cost about $130. A stopped one still costs about $2.60 per month for its disk.
 
 ## Setting them up
