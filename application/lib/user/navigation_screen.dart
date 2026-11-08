@@ -30,6 +30,7 @@ import '../services/heading_tracker.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import '../services/speech_voice.dart';
+import '../services/device_details.dart';
 import '../services/route_points.dart';
 import '../services/test_walk.dart';
 import '../services/turn_guidance.dart';
@@ -1515,7 +1516,8 @@ class _NavigationScreenState extends State<NavigationScreen>
                   'latitude': startPosition.latitude,
                   'longitude': startPosition.longitude,
                 },
-              'device_info': {'platform': defaultTargetPlatform.name},
+              // The phone, for the trip report (B2).
+              'device_info': await deviceDetails(),
             });
       // backend-navigation-management's POST /sessions returns Supabase's
       // insert result as-is, which is always a list (even for one row).
