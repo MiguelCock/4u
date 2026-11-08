@@ -258,12 +258,36 @@ List<DestinationMatch> nearestFirst(
 enum SpokenAnswer { start, change }
 
 const Set<String> _startWords = {
-  'si', 'claro', 'empezar', 'empieza', 'empecemos', 'comenzar', 'comienza',
-  'iniciar', 'inicia', 'vamos', 'dale', 'listo', 'ok', 'okay', 'vale',
-  'yes', 'yeah', 'start', 'go', 'sure',
+  'si',
+  'claro',
+  'empezar',
+  'empieza',
+  'empecemos',
+  'comenzar',
+  'comienza',
+  'iniciar',
+  'inicia',
+  'vamos',
+  'dale',
+  'listo',
+  'ok',
+  'okay',
+  'vale',
+  'yes',
+  'yeah',
+  'start',
+  'go',
+  'sure',
 };
 const Set<String> _changeWords = {
-  'no', 'cambiar', 'cambia', 'cambio', 'otro', 'otra', 'change', 'other',
+  'no',
+  'cambiar',
+  'cambia',
+  'cambio',
+  'otro',
+  'otra',
+  'change',
+  'other',
   'nope',
 };
 
