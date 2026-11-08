@@ -37,7 +37,7 @@ The `campus` fixture (`conftest.py`) builds the smallest map a trip can use: a u
 
 ## Proven
 
-**A field removed on purpose fails it.** Hiding `notes` from the connections response failed four tests, each naming the field: `connections: the app reads ['notes'], which are gone`.
+**A field removed on purpose fails it,** locally and in CI. Hiding `notes` from the connections response failed four tests, each naming the field: `connections: the app reads ['notes'], which are gone`. The map service's own tests didn't notice. The CI run is on the throwaway PR #219, closed unmerged.
 
 **It found a real bug while being written.** Postgres stores coordinates with more digits than it sends back, so A5's conflict check refused every move of a GPS-placed point (#217).
 
