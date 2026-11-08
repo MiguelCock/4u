@@ -285,6 +285,8 @@ jobs:
             echo "SUPABASE_URL=https://example.supabase.co"
             echo "SUPABASE_SERVICE_ROLE_KEY=placeholder-key"
           } > backend-positioning/.env
+          # Photo search's own Qdrant (E2).
+          echo "QDRANT__SERVICE__API_KEY=placeholder-key" > qdrant/.env
 
       - name: docker compose up
         run: docker compose up --build -d

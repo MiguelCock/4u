@@ -30,6 +30,7 @@ import '../services/heading_tracker.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import '../services/speech_voice.dart';
+import '../services/route_points.dart';
 import '../services/test_walk.dart';
 import '../services/turn_guidance.dart';
 import '../services/api_error_messages.dart';
@@ -535,33 +536,12 @@ class _NavigationScreenState extends State<NavigationScreen>
           .cast<String>(),
       widget.route['end_anchor_id'] as String,
     ];
-    // All at once: one request after another took ~90 s on campus mobile
-    // data in a test walk, and guidance can't start without the path.
-    final anchors = await Future.wait(
-      anchorIds.map((id) async {
-        try {
-          return await MapManagementApi().get('/anchor-points/$id')
-              as Map<String, dynamic>;
-        } on ApiException {
-          // The guidance line/checkpoints are a nice-to-have overlay - a
-          // missing/deleted anchor shouldn't block navigation, it just
-          // means no line/announcement for that point.
-          return null;
-        }
-      }),
-    );
-    // The admins' warnings on each connection along the route, best effort.
-    final connections = await Future.wait(
-      anchorIds.take(anchorIds.length - 1).map((id) async {
-        try {
-          return (await MapManagementApi().get('/anchor-points/$id/connections')
-                  as List)
-              .cast<Map<String, dynamic>>();
-        } on ApiException {
-          return const <Map<String, dynamic>>[];
-        }
-      }),
-    );
+    // One request when the server has it (E2), else all at once: one request
+    // after another took ~90 s on campus mobile data in a test walk, and
+    // guidance can't start without the path.
+    final route = await fetchRoutePoints(MapManagementApi(), anchorIds);
+    final anchors = route.anchors;
+    final connections = route.connections;
     String? noteBetween(int i) {
       final a = anchorIds[i];
       final b = anchorIds[i + 1];

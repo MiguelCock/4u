@@ -65,7 +65,7 @@ async def root():
 
 
 @app.post("/routes")
-async def create_route(route: RouteCreate, caller_id: str = Depends(get_caller_id)):
+def create_route(route: RouteCreate, caller_id: str = Depends(get_caller_id)):
     # created_by is an audit field - force it to the verified caller rather
     # than trusting whatever the body sent, same principle #111 applied to
     # profiles.id. Any authenticated user can create a route now - trip
@@ -76,14 +76,14 @@ async def create_route(route: RouteCreate, caller_id: str = Depends(get_caller_i
 
 
 @app.get("/routes")
-async def list_routes(
+def list_routes(
     caller_id: str = Depends(get_caller_id),
 ) -> list[RouteResponse]:
     return select_all(lambda: db.client.table("routes").select("*").order("id"))
 
 
 @app.get("/routes/{id}")
-async def get_route(id: str, caller_id: str = Depends(get_caller_id)) -> RouteResponse:
+def get_route(id: str, caller_id: str = Depends(get_caller_id)) -> RouteResponse:
     result = db.client.table("routes").select("*").eq("id", id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Route not found")
@@ -91,7 +91,7 @@ async def get_route(id: str, caller_id: str = Depends(get_caller_id)) -> RouteRe
 
 
 @app.delete("/routes/{id}")
-async def delete_route(id: str, caller_id: str = Depends(get_caller_id)):
+def delete_route(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = db.client.table("routes").delete().eq("id", id).execute()
@@ -285,7 +285,7 @@ def _reachable_start(
 
 
 @app.post("/routes/find_or_create")
-async def find_or_create_route(
+def find_or_create_route(
     request: RouteFindOrCreate, caller_id: str = Depends(get_caller_id)
 ):
     if request.start_anchor_id == request.end_anchor_id:

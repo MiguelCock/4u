@@ -52,6 +52,23 @@ services:
     memswap_limit: 1800m
     restart: unless-stopped
 
+  # Photo search's vectors, next to ai-training (E2). Qdrant Cloud was in
+  # Sao Paulo while this machine is in Virginia: 344 ms of every photo's 873 ms
+  # (docs/loadtest/e2-results.md). ai-training uses it when its QDRANT_URL is
+  # http://qdrant:6333. Everything in it can be rebuilt from the database with
+  # the admin "Re-index verified points".
+  qdrant:
+    image: qdrant/qdrant:v1.13.6
+    env_file:
+      - qdrant/.env
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      # The model machines reach it on the private address (QDRANT_BIND, in
+      # the server's ~/4u/.env); never on a public one.
+      - "${QDRANT_BIND:-127.0.0.1}:6333:6333"
+    restart: unless-stopped
+
   # Fuses GPS + a visual anchor-point match (from ai-training) into a
   # corrected position (#31-34). No Supabase/Qdrant credentials of its own
   # (see backend-positioning/CLAUDE.md) - env_file still needs to exist
@@ -110,3 +127,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  qdrant_data:

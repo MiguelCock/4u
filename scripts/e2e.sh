@@ -21,7 +21,7 @@ cd "$REPO"
 # before docker-compose.e2e.yml's `!reset` drops them. Where one is missing (as
 # in CI), an empty one stands in. An existing .env is never touched, and is
 # never read either.
-for service_dir in backend-*/; do
+for service_dir in backend-*/ qdrant/; do
   [[ -e "$service_dir.env" ]] || : > "$service_dir.env"
 done
 

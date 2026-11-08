@@ -2,10 +2,12 @@
 navigation_screen): a route, a session, photos corrected against the map, logs,
 the end, and feedback. Then what an admin sees of it."""
 
+import itertools
 from datetime import UTC, datetime
 
 import pytest
 
+import contracts
 import stack
 
 
@@ -159,3 +161,26 @@ def test_a_guidance_report_is_saved(user, trip, ok):
                 },
             )
         )
+
+
+def test_a_trip_starts_with_one_request_for_its_points(user, trip, campus, ok):
+    """GET /anchor-points/by-ids: the route's points in order, and the
+    connections between them, as NavigationScreen needs them (E2)."""
+    route = trip["route"]
+    ids = [
+        route["start_anchor_id"],
+        *route["waypoint_anchor_ids"],
+        route["end_anchor_id"],
+    ]
+    with user.client() as api:
+        body = ok(api.get("/map/anchor-points/by-ids", params={"ids": ",".join(ids)}))
+    assert [p["id"] for p in body["points"]] == ids
+    for point in body["points"]:
+        assert contracts.POINT <= set(point)
+    pairs = {
+        frozenset((c["anchor_point_a_id"], c["anchor_point_b_id"]))
+        for c in body["connections"]
+    }
+    assert {frozenset(pair) for pair in itertools.pairwise(ids)} <= pairs
+    for connection in body["connections"]:
+        assert contracts.CONNECTION <= set(connection)

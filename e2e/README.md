@@ -44,7 +44,7 @@ The `campus` fixture (`conftest.py`) builds the smallest map a trip can use: a u
 ## Found, not fixed here
 
 - **A photo uploaded under a name already in storage answers 500, not a readable error.** The app never sends one, since it adds a random suffix.
-- **`backend-user-management`'s endpoints are still `async def` around blocking calls,** the pattern A2 removed from map and navigation management. That's for E2.
+- ~~`backend-user-management`'s endpoints are still `async def` around blocking calls.~~ Fixed in E2, with route-management and data-collection.
 
 ## Not covered yet
 

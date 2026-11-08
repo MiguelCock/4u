@@ -1,4 +1,5 @@
 from loadtool.event import (
+    endpoint_times,
     meters_between,
     route_problems,
     summarize_gateway,
@@ -96,3 +97,18 @@ def test_route_problems_name_each_point():
 
 def test_meters_between():
     assert round(meters_between(_point("a", 6.2), _point("b", 6.2001))) == 11
+
+
+def test_endpoint_times_group_by_endpoint_and_skip_health_checks():
+    lines = [
+        '1.1.1.1 - - [08/Nov/2026:01:30:00 +0000] "GET /map/anchor-points/3f2a1b4c-1111-2222-3333-444455556666 HTTP/1.1" 200 9 "-" "x" rt=0.250 urt=0.248',
+        '1.1.1.1 - - [08/Nov/2026:01:30:01 +0000] "GET /map/anchor-points/aaaaaaaa-1111-2222-3333-444455556666 HTTP/1.1" 200 9 "-" "x" rt=0.150 urt=0.148',
+        '1.1.1.1 - - [08/Nov/2026:01:30:02 +0000] "GET /map/changes?since=x HTTP/1.1" 200 9 "-" "x" rt=1.002 urt=1.000',
+        '1.1.1.1 - - [08/Nov/2026:01:30:03 +0000] "GET /user/app-version HTTP/1.1" 200 9 "-" "curl" rt=0.001 urt=0.001',
+        '1.1.1.1 - - [08/Nov/2026:01:30:04 +0000] "GET /map/ HTTP/1.1" 200 9 "-" "curl" rt=0.001 urt=0.001',
+        'an old line without timing "GET /map/places HTTP/1.1" 200 9',
+    ]
+    assert endpoint_times(lines) == {
+        "GET /map/anchor-points/[id]": [0.25, 0.15],
+        "GET /map/changes": [1.002],
+    }

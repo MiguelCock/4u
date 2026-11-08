@@ -43,7 +43,7 @@ In Supabase Storage, create two **public** buckets — neither service creates i
 - `Photo` (used by `backend-data-collection`)
 - `anchor-points` (used by `backend-map-management`)
 
-Also create a Qdrant instance ([Qdrant Cloud](https://qdrant.tech) or self-hosted) and note its URL/API key — used by `backend-ai-training`.
+Photo search needs a Qdrant. `docker compose up` starts one next to the services (E2): copy `qdrant/.env.example` to `qdrant/.env`, choose an API key, and give `backend-ai-training`'s `.env` `QDRANT_URL=http://qdrant:6333` and the same key as `QDRANT_KEY`. Its port is published only on `QDRANT_BIND` (default `127.0.0.1`; production sets its private address, for the model machines). A [Qdrant Cloud](https://qdrant.tech) cluster still works: put its URL and key there instead.
 
 ## 4. Run the backend services
 
