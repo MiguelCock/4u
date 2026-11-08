@@ -152,3 +152,7 @@ If **Confirm email** is on (Authentication → Sign In / Providers → Email), t
 7. Confirm `navigation_logs` rows accumulate in Supabase roughly every second while the navigation screen stays open (a self-rescheduling loop, not a fixed timer). With a working camera and the verified, indexed anchor points nearby, `corrected_lat`/`corrected_long`/`anchor_match_id`/`confidence_score` populate too; otherwise (no camera on an emulator, no nearby match, `backend-positioning` unreachable) those columns stay `NULL` and only raw GPS is logged for that tick — this is the designed degradation, not a bug.
 8. Tap **End navigation** and leave a feedback comment — confirm the session's `status` becomes `completed` and a `user_feedback` row appears.
 9. **As the admin**, open the drawer's **Sessions**, pick the user from step 5/6, and open that session — confirm the planned route and the logged trail both draw on the map, and a comment badge appears if feedback was left. Open the drawer's **Feedback** screen and confirm the same comment shows there too.
+
+## Behavior test suite (E3)
+
+`scripts/e2e.sh` runs the whole system on this computer: Supabase's local stack, a local Qdrant, and every service, then `e2e/`. It needs Docker, `uv` and the Supabase CLI, and never uses your `.env` files or production. See `e2e/README.md`.
