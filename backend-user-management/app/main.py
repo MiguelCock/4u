@@ -40,16 +40,14 @@ async def root():
 
 
 @app.get("/app-version")
-async def app_version():
+def app_version():
     """Public: the app versions the backend serves (packages/app_versions.py).
     The app checks it at sign-in to tell its user to update."""
     return load_policy()
 
 
 @app.post("/profiles")
-async def create_profile(
-    profile: ProfileCreate, caller_id: str = Depends(get_caller_id)
-):
+def create_profile(profile: ProfileCreate, caller_id: str = Depends(get_caller_id)):
     # A caller can only ever create *their own* profile, as the verified
     # token identifies them - not an arbitrary id from the request body
     # (that would let someone pre-create/overwrite another user's row).
@@ -65,7 +63,7 @@ async def create_profile(
 
 
 @app.get("/profiles")
-async def list_profiles(
+def list_profiles(
     caller_id: str = Depends(get_caller_id),
 ) -> list[ProfileResponse]:
     if not db.is_admin(caller_id):
@@ -80,7 +78,7 @@ _AUTH_USERS_PAGE_SIZE = 200
 # Must stay declared above GET /profiles/{id}, or "orphaned" would be
 # captured as an {id}.
 @app.get("/profiles/orphaned")
-async def list_orphaned_profiles(
+def list_orphaned_profiles(
     caller_id: str = Depends(get_caller_id),
 ) -> list[OrphanedUser]:
     """Auth accounts with no profiles row - signup's POST /profiles can fail
@@ -119,7 +117,7 @@ async def list_orphaned_profiles(
 
 
 @app.post("/profiles/{user_id}/repair")
-async def repair_profile(
+def repair_profile(
     user_id: str,
     profile: ProfileUpdate,
     caller_id: str = Depends(get_caller_id),
@@ -145,9 +143,7 @@ async def repair_profile(
 
 
 @app.get("/profiles/{id}")
-async def get_profile(
-    id: str, caller_id: str = Depends(get_caller_id)
-) -> ProfileResponse:
+def get_profile(id: str, caller_id: str = Depends(get_caller_id)) -> ProfileResponse:
     if id != caller_id and not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Forbidden")
     result = db.client.table("profiles").select("*").eq("id", id).execute()
@@ -157,7 +153,7 @@ async def get_profile(
 
 
 @app.patch("/profiles/{id}")
-async def update_profile(
+def update_profile(
     id: str, profile: ProfileUpdate, caller_id: str = Depends(get_caller_id)
 ):
     is_admin = db.is_admin(caller_id)
@@ -190,7 +186,7 @@ def _ensure_not_last_admin(profile_id: str) -> None:
 
 
 @app.delete("/profiles/{id}")
-async def delete_profile(id: str, caller_id: str = Depends(get_caller_id)):
+def delete_profile(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     if id == caller_id:
@@ -209,13 +205,13 @@ async def delete_profile(id: str, caller_id: str = Depends(get_caller_id)):
 
 
 @app.get("/roles")
-async def list_roles() -> list[RoleResponse]:
+def list_roles() -> list[RoleResponse]:
     result = db.client.table("roles").select("*").execute()
     return result.data
 
 
 @app.get("/roles/{id}")
-async def get_role(id: int) -> RoleResponse:
+def get_role(id: int) -> RoleResponse:
     result = db.client.table("roles").select("*").eq("id", id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Role not found")

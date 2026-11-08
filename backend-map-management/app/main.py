@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 from dotenv import load_dotenv
@@ -22,6 +23,7 @@ from .models import (
     AnchorPointPhotoCreate,
     AnchorPointPhotoResponse,
     AnchorPointResponse,
+    AnchorPointsByIds,
     AnchorPointUpdate,
     BuildingCreate,
     BuildingResponse,
@@ -396,6 +398,50 @@ def list_anchor_points(
     caller_id: str = Depends(get_caller_id),
 ) -> list[AnchorPointResponse]:
     return _list_all("anchor_points")
+
+
+# Most a route has had is 22; more than this is not one route.
+_MAX_BY_IDS = 150
+
+
+# Declared before /anchor-points/{id}, which would otherwise take "by-ids" as an id.
+@app.get("/anchor-points/by-ids")
+def anchor_points_by_ids(
+    ids: str, caller_id: str = Depends(get_caller_id)
+) -> AnchorPointsByIds:
+    """A route's points and the connections between them, in one answer: the
+    app made one request per point and one per point's connections, about 40,
+    before guidance could start (E2). Missing ids are left out."""
+    wanted = list(dict.fromkeys(i for i in ids.split(",") if i))
+    if not wanted:
+        return AnchorPointsByIds(points=[], connections=[])
+    if len(wanted) > _MAX_BY_IDS:
+        raise HTTPException(
+            status_code=400, detail=f"At most {_MAX_BY_IDS} points at once"
+        )
+    for point_id in wanted:
+        if not _ID_PATTERN.fullmatch(point_id):
+            raise HTTPException(status_code=404, detail="Anchor point not found")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        points_job = pool.submit(
+            lambda: (
+                db.client.table("anchor_points").select("*").in_("id", wanted).execute()
+            )
+        )
+        connections_job = pool.submit(
+            lambda: (
+                db.client.table("anchor_point_connections")
+                .select("*")
+                .in_("anchor_point_a_id", wanted)
+                .in_("anchor_point_b_id", wanted)
+                .execute()
+            )
+        )
+        by_id = {p["id"]: p for p in points_job.result().data}
+        connections = connections_job.result().data
+    return AnchorPointsByIds(
+        points=[by_id[i] for i in wanted if i in by_id], connections=connections
+    )
 
 
 @app.get("/anchor-points/{id}")
@@ -842,20 +888,32 @@ def list_changes(since: datetime, caller_id: str = Depends(get_caller_id)) -> di
         return {"full": True, "next_since": next_since}
     stamp = since.isoformat()
     changes: dict = {"full": False, "next_since": next_since}
-    for table in _CHANGED_TABLES:
-        changes[table] = select_all(
-            lambda table=table: (
+
+    def changed(table: str) -> list[dict]:
+        return select_all(
+            lambda: (
                 db.client.table(table).select("*").gte("updated_at", stamp).order("id")
             )
         )
-    deletions = select_all(
-        lambda: (
-            db.client.table("map_deletions")
-            .select("table_name,row_id")
-            .gte("deleted_at", stamp)
-            .order("id")
+
+    def deleted() -> list[dict]:
+        return select_all(
+            lambda: (
+                db.client.table("map_deletions")
+                .select("table_name,row_id")
+                .gte("deleted_at", stamp)
+                .order("id")
+            )
         )
-    )
+
+    # At the same time: one after another, the six round trips to Supabase took
+    # about 1 s, and the admin screen waits for this after every edit (E2).
+    with ThreadPoolExecutor(max_workers=len(_CHANGED_TABLES) + 1) as pool:
+        tables = {table: pool.submit(changed, table) for table in _CHANGED_TABLES}
+        deletions_job = pool.submit(deleted)
+        for table, job in tables.items():
+            changes[table] = job.result()
+        deletions = deletions_job.result()
     changes["deleted"] = {
         table: sorted({d["row_id"] for d in deletions if d["table_name"] == table})
         for table in _CHANGED_TABLES

@@ -64,7 +64,12 @@ services:
       - "127.0.0.1:${E2E_GATEWAY_PORT:-18000}:80"
 
   qdrant:
-    image: qdrant/qdrant:v1.13.6
+    env_file: !reset []
+    environment:
+      QDRANT__SERVICE__API_KEY: e2e
+    # Not published: only the services reach it, so it can't clash with a
+    # development stack's.
+    ports: !reset []
 
 networks:
   supabase:

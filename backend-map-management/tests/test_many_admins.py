@@ -301,3 +301,43 @@ def test_a_coordinate_really_moved_meanwhile_is_still_a_conflict():
     assert response.status_code == 409
     assert response.json()["detail"]["fields"] == ["latitude"]
     assert table.updates == []
+
+
+def test_by_ids_returns_points_in_order_and_their_connections():
+    points = MagicMock()
+    points.select.return_value.in_.return_value.execute.return_value.data = [
+        {**POINT, "id": "b", "building_id": "x"},
+        {**POINT, "id": "a", "building_id": "x"},
+    ]
+    connections = MagicMock()
+    connections.select.return_value.in_.return_value.in_.return_value.execute.return_value.data = [
+        {
+            "id": "c1",
+            "anchor_point_a_id": "a",
+            "anchor_point_b_id": "b",
+            "created_at": "2026-11-08T00:00:00+00:00",
+            "notes": "Escalones",
+        }
+    ]
+    db_client = MagicMock()
+    db_client.table.side_effect = lambda name: {
+        "anchor_points": points,
+        "anchor_point_connections": connections,
+    }[name]
+    app.dependency_overrides[get_caller_id] = lambda: "user1"
+    try:
+        with patch("app.main.db.client", db_client):
+            response = client.get(
+                "/anchor-points/by-ids", params={"ids": "a,missing,b"}
+            )
+            too_many = client.get(
+                "/anchor-points/by-ids",
+                params={"ids": ",".join(f"p{i}" for i in range(151))},
+            )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    body = response.json()
+    assert [p["id"] for p in body["points"]] == ["a", "b"]
+    assert body["connections"][0]["notes"] == "Escalones"
+    assert too_many.status_code == 400

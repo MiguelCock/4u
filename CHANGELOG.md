@@ -15,6 +15,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - Admins editing the same point at once: a save no longer silently overwrites another admin's change. You see both versions and choose.
 - The admin screen shows other admins' changes within about 30 s, and refreshes much faster after each edit.
 - When the server is busy, the phone sends fewer photos for a few seconds, and guidance carries on from GPS.
+- Starting a trip loads the route in one request instead of about 40.
+- Signing in, finding a route and the admin refresh no longer queue behind each other's requests.
 
 ## [0.5.6] - 2026-11-05
 

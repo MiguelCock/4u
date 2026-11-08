@@ -125,3 +125,23 @@ def route_problems(
             if gap > MAX_SPACING_M:
                 warnings.append(f"{name}: {gap:.0f} m from the point before it")
     return problems, warnings, gaps
+
+
+_TIMED_LINE = re.compile(r'"(\S+) (\S+) [^"]*" (\d{3}) .* rt=([\d.]+)')
+_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f-]{27}")
+
+
+def endpoint_times(lines: list[str]) -> dict[str, list[float]]:
+    """Seconds per endpoint from the gateway's "timed" log lines: ids become
+    [id] and queries are dropped, so one endpoint is one row."""
+    times: dict[str, list[float]] = {}
+    for line in lines:
+        match = _TIMED_LINE.search(line)
+        if not match:
+            continue
+        method, path, _status, seconds = match.groups()
+        path = _ID.sub("[id]", path.split("?")[0])
+        if path in ("/user/app-version",) or path.endswith("/"):
+            continue  # health checks
+        times.setdefault(f"{method} {path}", []).append(float(seconds))
+    return times

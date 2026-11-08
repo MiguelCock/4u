@@ -196,6 +196,14 @@ class AnchorPointConnectionUpdate(BaseModel):
     notes: str | None = None
 
 
+class AnchorPointsByIds(BaseModel):
+    """GET /anchor-points/by-ids: the points asked for, in the order asked, and
+    the connections between any two of them."""
+
+    points: list[AnchorPointResponse]
+    connections: list[AnchorPointConnectionResponse]
+
+
 class AnchorPointConnectionResponse(AnchorPointConnectionCreate):
     id: str
     created_at: str
@@ -205,3 +213,6 @@ class AnchorPointConnectionResponse(AnchorPointConnectionCreate):
     # Compared by admins' screens to tell a change from what they already have
     # (A5, GET /changes). Optional: rows from before the migration may lack it.
     updated_at: str | None = None
+
+
+AnchorPointsByIds.model_rebuild()
