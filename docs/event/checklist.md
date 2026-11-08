@@ -31,7 +31,7 @@ Fill in on the day. Anything not ready, or not rehearsed, waits for the next eve
 ## During
 
 - [ ] Glance at the live view every few minutes. **Red names the runbook section to use.**
-- [ ] **About 30 minutes before the lab session ends** (the live view counts down), press **Start Lab** again and copy the new credentials. This resets the timer. The server keeps running.
+- [ ] **About 30 minutes before the lab session ends** (the live view counts down), press **Start Lab** again and copy the new credentials. This resets the timer. The server keeps running. If the timer does run out, every machine stops: see the runbook's "The lab session is about to expire".
 - [ ] Admins: editing is fine. Verifying only while the model machines are running.
 
 ## After
