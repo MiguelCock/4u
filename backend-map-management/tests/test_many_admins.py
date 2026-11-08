@@ -50,9 +50,24 @@ class FakeTable:
         self._filters.append((field, None))
         return self
 
+    def gte(self, field, value):
+        self._filters.append((field, ("gte", value)))
+        return self
+
+    def lte(self, field, value):
+        self._filters.append((field, ("lte", value)))
+        return self
+
     def execute(self):
+        def holds(field, wanted):
+            have = self.row.get(field)
+            if isinstance(wanted, tuple):
+                op, bound = wanted
+                return have >= bound if op == "gte" else have <= bound
+            return have == wanted
+
         matches = self.row is not None and all(
-            self.row.get(f) == v for f, v in self._filters if f != "id"
+            holds(f, v) for f, v in self._filters if f != "id"
         )
         if self._pending is None:
             return MagicMock(data=[dict(self.row)] if self.row else [])
@@ -265,3 +280,24 @@ def test_lists_and_single_points_carry_updated_at():
     finally:
         app.dependency_overrides.clear()
     assert response.json()["updated_at"] == "2026-11-07T20:00:00+00:00"
+
+
+def test_coordinates_match_though_postgres_sends_back_fewer_digits():
+    """Stored 6.200428135106001 is read back as 6.200428135106: an app that
+    sends back what it was shown must not get a conflict (found by e2e/)."""
+    stored = {**POINT, "latitude": 6.200428135106001}
+    response, table = _patch(
+        {"latitude": 6.2005, "expected": {"latitude": 6.200428135106}}, row=stored
+    )
+    assert response.status_code == 200
+    assert table.updates == [{"latitude": 6.2005}]
+
+
+def test_a_coordinate_really_moved_meanwhile_is_still_a_conflict():
+    moved = {**POINT, "latitude": 6.2402}
+    response, table = _patch(
+        {"latitude": 6.25, "expected": {"latitude": 6.24}}, row=moved
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["fields"] == ["latitude"]
+    assert table.updates == []

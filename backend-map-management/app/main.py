@@ -477,7 +477,17 @@ def update_anchor_point(
     for field, value in expected.items():
         if field == "metadata":
             continue
-        query = query.is_(field, "null") if value is None else query.eq(field, value)
+        if value is None:
+            query = query.is_(field, "null")
+        elif field in _COORDINATE_FIELDS:
+            # Postgres keeps a few more digits than it sends back
+            # (6.200428135106001 is read as 6.200428135106), so the value an
+            # app saw never equals the stored one exactly.
+            query = query.gte(field, value - _COORDINATE_TOLERANCE).lte(
+                field, value + _COORDINATE_TOLERANCE
+            )
+        else:
+            query = query.eq(field, value)
     result = query.execute()
     if expected and not result.data:
         _conflict(id, expected)
@@ -505,6 +515,17 @@ _EXPECTABLE_FIELDS = frozenset(
 )
 
 
+# Coordinates compare within this, about 0.1 mm (see update_anchor_point).
+_COORDINATE_FIELDS = frozenset(("latitude", "longitude", "altitude"))
+_COORDINATE_TOLERANCE = 1e-9
+
+
+def _differs(field: str, now, expected) -> bool:
+    if field in _COORDINATE_FIELDS and now is not None and expected is not None:
+        return abs(now - expected) > _COORDINATE_TOLERANCE
+    return now != expected
+
+
 def _conflict(id: str, expected: dict) -> None:
     """409 with the point as it is now, and which of the expected fields differ."""
     rows = db.client.table("anchor_points").select("*").eq("id", id).execute().data
@@ -515,7 +536,9 @@ def _conflict(id: str, expected: dict) -> None:
         status_code=409,
         detail={
             "message": "Another admin changed this point since you opened it.",
-            "fields": sorted(f for f, value in expected.items() if now.get(f) != value),
+            "fields": sorted(
+                f for f, value in expected.items() if _differs(f, now.get(f), value)
+            ),
             "current": now,
         },
     )
