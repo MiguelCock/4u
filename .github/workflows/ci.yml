@@ -19,6 +19,8 @@ jobs:
     outputs:
       app: ${{ steps.filter.outputs.app }}
       packages: ${{ steps.filter.outputs.packages }}
+      e2e: ${{ steps.filter.outputs.e2e }}
+      workflows: ${{ steps.filter.outputs.workflows }}
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v5
@@ -58,6 +60,18 @@ jobs:
               - 'packages/**'
             workflows:
               - '.github/workflows/**'
+            # The behavior suite runs for anything the system's behavior
+            # depends on. Not in the matrix below: it needs the whole stack.
+            e2e:
+              - 'backend-*/**'
+              - 'packages/**'
+              - 'gateway/**'
+              - 'db_schema/**'
+              - 'e2e/**'
+              - 'supabase/**'
+              - 'docker-compose.yml'
+              - 'docker-compose.e2e.yml'
+              - 'scripts/e2e*.sh'
             # Add more services here
 
       - name: Build matrix
@@ -197,6 +211,41 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: The page matches its Markdown and images
         run: uv run --no-project --python 3.14 --with markdown==3.11.2 python docs/admin-guide/tools/build_site.py --check
+
+  # ----------------------------------------------------------------------
+  # Behavior suite (E3, e2e/README.md): the whole system on Supabase's local
+  # stack, a local Qdrant and all services, through the gateway like the app.
+  # Never touches production.
+  # ----------------------------------------------------------------------
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true' || needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Install uv
+        run: pip install uv
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.121.0
+
+      - name: Run the behavior suite
+        run: scripts/e2e.sh -v
+
+      - name: Service logs (on failure)
+        if: failure()
+        run: E2E_SERVICE_ROLE_KEY=unused docker compose -p eyes4u-e2e -f docker-compose.yml -f docker-compose.e2e.yml logs --tail 200
+
+      - name: Stop everything
+        if: always()
+        run: scripts/e2e.sh down
 
   gateway-integration:
     runs-on: ubuntu-latest

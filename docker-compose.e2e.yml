@@ -1,0 +1,72 @@
+# The behavior test suite's stack (E3, e2e/README.md), on top of docker-compose.yml:
+#
+#   docker compose -p eyes4u-e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d
+#
+# (scripts/e2e.sh does this.) Every service gets its settings here and none from
+# its .env file (`!reset`), so a run can never reach production even on a
+# computer whose .env files hold real keys. They talk to Supabase's local stack
+# (`supabase start`) over its Docker network, and to a local Qdrant.
+
+x-supabase: &supabase
+  SUPABASE_URL: http://supabase_kong_eyes4u-e2e:8000
+  SUPABASE_SERVICE_ROLE_KEY: ${E2E_SERVICE_ROLE_KEY:?run scripts/e2e.sh, which sets it}
+
+x-qdrant: &qdrant
+  QDRANT_URL: http://qdrant:6333
+  QDRANT_KEY: e2e
+
+x-service: &service
+  env_file: !reset []
+  networks: [default, supabase]
+
+services:
+  data-collection:
+    <<: *service
+    environment:
+      <<: [*supabase, *qdrant]
+
+  map-management:
+    <<: *service
+    environment:
+      <<: *supabase
+
+  route-management:
+    <<: *service
+    environment:
+      <<: *supabase
+
+  user-management:
+    <<: *service
+    environment:
+      <<: *supabase
+
+  navigation-management:
+    <<: *service
+    environment:
+      <<: *supabase
+
+  ai-training:
+    <<: *service
+    environment:
+      <<: [*supabase, *qdrant]
+    depends_on: [qdrant]
+
+  positioning:
+    <<: *service
+    environment:
+      <<: *supabase
+      AI_TRAINING_URL: http://ai-training:80
+      AI_TRAINING_URLS: ""
+
+  gateway:
+    # Its own port, so it can run next to a development stack on 8000.
+    ports: !override
+      - "127.0.0.1:${E2E_GATEWAY_PORT:-18000}:80"
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.6
+
+networks:
+  supabase:
+    name: supabase_network_eyes4u-e2e
+    external: true
