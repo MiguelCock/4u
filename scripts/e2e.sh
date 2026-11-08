@@ -17,6 +17,14 @@ export E2E_GATEWAY_PORT="${E2E_GATEWAY_PORT:-18000}"
 
 cd "$REPO"
 
+# docker-compose.yml names each service's .env, and Compose checks they exist
+# before docker-compose.e2e.yml's `!reset` drops them. Where one is missing (as
+# in CI), an empty one stands in. An existing .env is never touched, and is
+# never read either.
+for service_dir in backend-*/; do
+  [[ -e "$service_dir.env" ]] || : > "$service_dir.env"
+done
+
 if [[ "${1:-}" == "down" ]]; then
   E2E_SERVICE_ROLE_KEY=unused "${COMPOSE[@]}" down --remove-orphans
   "$SUPABASE_CLI" stop --no-backup
