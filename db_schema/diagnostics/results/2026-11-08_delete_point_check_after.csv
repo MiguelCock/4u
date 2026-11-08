@@ -1,0 +1,23 @@
+QUERY PLAN
+Index Only Scan using idx_navigation_logs_anchor_match on navigation_logs  (cost=32.18..33.70 rows=24 width=4) (actual time=5.414..5.424 rows=85 loops=1)
+"  Index Cond: (anchor_match_id = (InitPlan 1).col1)"
+"  Heap Fetches: 0"
+"  Buffers: shared hit=7 read=3"
+"  InitPlan 1"
+"    ->  Limit  (cost=31.90..31.90 rows=1 width=24) (actual time=5.384..5.385 rows=1 loops=1)"
+"          Buffers: shared hit=4 read=3"
+"          ->  Sort  (cost=31.90..32.03 rows=53 width=24) (actual time=5.383..5.383 rows=1 loops=1)"
+"                Sort Key: (count(*)) DESC"
+"                Sort Method: top-N heapsort  Memory: 25kB"
+"                Buffers: shared hit=4 read=3"
+"                ->  GroupAggregate  (cost=0.28..31.63 rows=53 width=24) (actual time=3.788..5.347 rows=53 loops=1)"
+"                      Group Key: navigation_logs_1.anchor_match_id"
+"                      Buffers: shared hit=1 read=3"
+"                      ->  Index Only Scan using idx_navigation_logs_anchor_match on navigation_logs navigation_logs_1  (cost=0.28..24.74 rows=1272 width=16) (actual time=3.775..5.197 rows=1272 loops=1)"
+"                            Index Cond: (anchor_match_id IS NOT NULL)"
+"                            Heap Fetches: 0"
+"                            Buffers: shared hit=1 read=3"
+Planning:
+"  Buffers: shared hit=135 read=1"
+Planning Time: 7.741 ms
+Execution Time: 5.563 ms
