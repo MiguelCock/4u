@@ -197,6 +197,8 @@ class AnchorPointConnectionUpdate(BaseModel):
 
 
 class AnchorPointConnectionResponse(AnchorPointConnectionCreate):
+    # DELIBERATELY BROKEN to prove E3 catches it. Never merge.
+    notes: str | None = Field(default=None, exclude=True)
     id: str
     created_at: str
     # Loose on output, so an older row can never fail response validation.
