@@ -16,7 +16,7 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - Vibrations are now felt even when the phone's touch vibration is off.
 - Before listening, the app says what you can say. The round button is bigger.
 - New setting: bold text everywhere, next to high contrast and font size.
-- With the app's voice turned off, the home screen shows the start and destination rows and its messages as text.
+- The home screen always speaks and says what each action does; "Guía de voz" now only covers the trip's instructions. It also keeps listening longer while you think.
 
 ### Fixed
 
