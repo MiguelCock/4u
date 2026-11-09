@@ -14,6 +14,9 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - A new setting shows the map during trips, for people who can see some of the screen.
 - The home screen is now one round button to say where you want to go, and works the same with TalkBack. More time to say the place; when several places match, they're read out with numbers, and you say the number or the name. Settings can bring back the start and destination rows.
 - Vibrations are now felt even when the phone's touch vibration is off.
+- Before listening, the app says what you can say. The round button is bigger.
+- New setting: bold text everywhere, next to high contrast and font size.
+- With the app's voice turned off, the home screen shows the start and destination rows and its messages as text.
 
 ### Fixed
 

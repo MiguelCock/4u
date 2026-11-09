@@ -18,9 +18,29 @@ void main() {
     expect(showChoicesNotifier.value, isTrue);
   });
 
-  test('the choices appear only when asked for, or with no recognizer', () {
-    expect(homeShowsChoices(setting: false, revealed: false), isFalse);
-    expect(homeShowsChoices(setting: true, revealed: false), isTrue);
-    expect(homeShowsChoices(setting: false, revealed: true), isTrue);
+  test(
+    'the choices appear when asked for, with no recognizer, or voice off',
+    () {
+      bool shows({
+        bool setting = false,
+        bool revealed = false,
+        bool voiceOn = true,
+      }) => homeShowsChoices(
+        setting: setting,
+        revealed: revealed,
+        voiceOn: voiceOn,
+      );
+      expect(shows(), isFalse);
+      expect(shows(setting: true), isTrue);
+      expect(shows(revealed: true), isTrue);
+      expect(shows(voiceOn: false), isTrue, reason: 'it can not ask by voice');
+    },
+  );
+
+  test('bold text follows the phone until the user chooses', () {
+    applyPreferences({}, defaultHighContrast: false);
+    expect(boldTextNotifier.value, isNull);
+    applyPreferences({'bold_text': true}, defaultHighContrast: false);
+    expect(boldTextNotifier.value, isTrue);
   });
 }

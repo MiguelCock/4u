@@ -141,7 +141,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   /// listening" after stopping), and TalkBack reading it would be heard by
   /// the recognizer (D1).
   Future<void> _say(String text) async {
-    if (!voiceGuidanceNotifier.value) return;
+    if (!voiceGuidanceNotifier.value) {
+      // With the voice off this is the only way to know what happened.
+      if (mounted) setState(() => _voiceOffText = text);
+      return;
+    }
     await _ttsReady;
     await _tts.stop();
     // Waits for the voice to finish, but never longer than the sentence
@@ -155,9 +159,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   /// in Settings, or when voice can't be used this time (D1, D2).
   bool _revealChoices = false;
 
+  /// What [_say] would have said, shown only with the voice off.
+  String? _voiceOffText;
+
   bool get _showsChoices => homeShowsChoices(
     setting: showChoicesNotifier.value,
     revealed: _revealChoices,
+    voiceOn: voiceGuidanceNotifier.value,
   );
 
   /// Buildings a user can be sent to: active, on the campus they're on. A
@@ -270,11 +278,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       await Future<void>.delayed(const Duration(seconds: 2));
       if (!mounted) return;
     }
-    await _say(AppLocalizations.of(context)!.homeAskDestination);
+    final l10n = AppLocalizations.of(context)!;
+    await _say(l10n.homeAskDestination);
     if (!mounted || _end != null || ModalRoute.of(context)?.isCurrent != true) {
       return;
     }
-    await _startListening(_handleSpoken);
+    await _startListening(_handleSpoken, prompt: l10n.homeListenExample);
   }
 
   /// Nothing usable was heard: say why, and try again up to [_kVoiceRetries]
@@ -289,7 +298,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     }
     await _say(why);
     if (mounted && _end == null && ModalRoute.of(context)?.isCurrent == true) {
-      await _startListening(_handleSpoken);
+      await _startListening(_handleSpoken, prompt: l10n.homeListenPrompt);
     }
   }
 
@@ -306,7 +315,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       return;
     }
     _voiceMisses = 0;
-    await _startListening(_handleSpoken);
+    await _startListening(
+      _handleSpoken,
+      prompt: AppLocalizations.of(context)!.homeListenPrompt,
+    );
   }
 
   /// Who gets the current listen's answer; null when nobody is listening.
@@ -324,7 +336,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     _onHeard = null;
     _listenTimeout?.cancel();
     if (!mounted) return;
-    setState(() => _listening = false);
+    setState(() {
+      _listening = false;
+      _voiceOffText = null; // it said what to say; that's over now
+    });
     if (onHeard != null) onHeard(heard);
   }
 
@@ -344,12 +359,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     if (_listenSawStart) _finishListening('');
   }
 
-  /// Opens the microphone once, with a felt and heard mark just before (the
-  /// recognizer isn't on yet, so it doesn't take them as speech), and calls
-  /// [onHeard] once with what was said, '' for nothing. False when there's
-  /// no recognizer or microphone.
+  /// Opens the microphone once, after saying [prompt] (what to say: a tester
+  /// heard nothing and didn't know what to answer), with a felt and heard
+  /// mark just before (the recognizer isn't on yet, so it doesn't take them
+  /// as speech). Calls [onHeard] once with what was said, '' for nothing.
+  /// False when there's no recognizer or microphone.
   Future<bool> _startListening(
     Future<void> Function(String heard) onHeard, {
+    String? prompt,
     Duration listenFor = const Duration(seconds: 30),
     Duration pauseFor = const Duration(seconds: 5),
   }) async {
@@ -384,6 +401,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       setState(() => _revealChoices = true);
       await _say(l10n.homeVoiceUnavailable);
       return false;
+    }
+    if (prompt != null) {
+      await _say(prompt);
+      if (!mounted) return false;
     }
     await _tts.stop(); // so the recognizer doesn't hear the app itself
     // One listen at a time: the last one may still be closing.
@@ -469,7 +490,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       _distanceFromUser,
     );
     if (matches.isEmpty) {
-      await _missed(l10n.homeVoiceNoMatch(heard));
+      // Only mention a list when there's one on screen.
+      await _missed(
+        _showsChoices
+            ? l10n.homeVoiceNoMatchWithList(heard)
+            : l10n.homeVoiceNoMatch(heard),
+      );
       return;
     }
     final winner = clearWinner(matches);
@@ -1365,7 +1391,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   /// pill. While listening its colour and icon change; no text says so.
   Widget _speakCircle(AppLocalizations l10n) {
     final scheme = Theme.of(context).colorScheme;
-    final size = min(220.0, MediaQuery.sizeOf(context).width * 0.7);
+    final size = min(320.0, MediaQuery.sizeOf(context).width * 0.85);
     return SizedBox.square(
       dimension: size,
       child: FilledButton(
@@ -1374,13 +1400,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           backgroundColor: _listening ? scheme.error : scheme.primary,
           foregroundColor: _listening ? scheme.onError : scheme.onPrimary,
           padding: const EdgeInsets.all(24),
-          textStyle: Theme.of(context).textTheme.titleMedium,
+          textStyle: Theme.of(context).textTheme.headlineSmall,
         ),
         onPressed: _finding ? null : _listenForDestination,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_listening ? Icons.stop_rounded : Icons.mic, size: 64),
+            Icon(_listening ? Icons.stop_rounded : Icons.mic, size: 96),
             const SizedBox(height: 8),
             Text(
               _listening
@@ -1478,6 +1504,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           ),
         ],
         if (!choices) Expanded(child: Center(child: _speakCircle(l10n))),
+        // Only with the voice off: then this is how the app tells you.
+        if (!voiceGuidanceNotifier.value && _voiceOffText != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(_voiceOffText!, textAlign: TextAlign.center),
+          ),
         if (choices)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),

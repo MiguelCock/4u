@@ -43,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _voiceGuidance = true;
   bool _showMap = false;
   bool _showChoices = false;
+  bool _boldText = false;
 
   @override
   void initState() {
@@ -76,6 +77,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _voiceGuidance = prefs['voice_guidance'] as bool? ?? true;
         _showMap = prefs['show_map'] as bool? ?? false;
         _showChoices = prefs['show_choices'] as bool? ?? false;
+        _boldText =
+            prefs['bold_text'] as bool? ?? MediaQuery.of(context).boldText;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -106,6 +109,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'voice_guidance': _voiceGuidance,
           'show_map': _showMap,
           'show_choices': _showChoices,
+          'bold_text': _boldText,
         },
       });
       applyPreferences(
@@ -117,6 +121,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'voice_guidance': _voiceGuidance,
           'show_map': _showMap,
           'show_choices': _showChoices,
+          'bold_text': _boldText,
         },
         defaultHighContrast: _highContrast,
         defaultTextScale: _fontScale,
@@ -251,6 +256,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       subtitle: Text(l10n.settingsShowMapSubtitle),
                       value: _showMap,
                       onChanged: (value) => setState(() => _showMap = value),
+                    ),
+                    SwitchListTile(
+                      title: Text(l10n.settingsBoldTextLabel),
+                      subtitle: Text(l10n.settingsBoldTextSubtitle),
+                      value: _boldText,
+                      onChanged: (value) => setState(() => _boldText = value),
                     ),
                     SwitchListTile(
                       title: Text(l10n.settingsShowChoicesLabel),

@@ -40,11 +40,19 @@ final ValueNotifier<bool> showMapNotifier = ValueNotifier<bool>(false);
 final ValueNotifier<bool> showChoicesNotifier = ValueNotifier<bool>(false);
 
 /// Whether the home screen shows the Start and destination rows: when the
-/// user turned them on, or when this phone has no speech recognizer at all
-/// ([revealed]). Not after failed tries, and not for TalkBack: voice first
-/// is for everyone (D1).
-bool homeShowsChoices({required bool setting, required bool revealed}) =>
-    setting || revealed;
+/// user turned them on, when this phone has no speech recognizer at all
+/// ([revealed]), or with the app's voice off, since then it can't ask. Not
+/// after failed tries, and not for TalkBack: voice first is for everyone
+/// (D1).
+bool homeShowsChoices({
+  required bool setting,
+  required bool revealed,
+  required bool voiceOn,
+}) => setting || revealed || !voiceOn;
+
+/// Bold text everywhere (Settings, next to high contrast and font size).
+/// Null until the user chooses: then the phone's own bold-text setting.
+final ValueNotifier<bool?> boldTextNotifier = ValueNotifier<bool?>(null);
 
 /// Reads `high_contrast`/`language`/`font_scale`/`voice_guidance` out of a
 /// `profiles.preferences` map (as returned by `GET /profiles/{id}`) and
@@ -71,4 +79,5 @@ void applyPreferences(
   voiceGuidanceNotifier.value = prefs['voice_guidance'] as bool? ?? true;
   showMapNotifier.value = prefs['show_map'] as bool? ?? false;
   showChoicesNotifier.value = prefs['show_choices'] as bool? ?? false;
+  boldTextNotifier.value = prefs['bold_text'] as bool?;
 }
