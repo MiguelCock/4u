@@ -40,14 +40,11 @@ final ValueNotifier<bool> showMapNotifier = ValueNotifier<bool>(false);
 final ValueNotifier<bool> showChoicesNotifier = ValueNotifier<bool>(false);
 
 /// Whether the home screen shows the Start and destination rows: when the
-/// user turned them on, when voice couldn't be used this time ([revealed]:
-/// no recognizer, or nothing understood after the retries), or with a screen
-/// reader, since voice first doesn't start by itself then.
-bool homeShowsChoices({
-  required bool setting,
-  required bool revealed,
-  required bool screenReader,
-}) => setting || revealed || screenReader;
+/// user turned them on, or when this phone has no speech recognizer at all
+/// ([revealed]). Not after failed tries, and not for TalkBack: voice first
+/// is for everyone (D1).
+bool homeShowsChoices({required bool setting, required bool revealed}) =>
+    setting || revealed;
 
 /// Reads `high_contrast`/`language`/`font_scale`/`voice_guidance` out of a
 /// `profiles.preferences` map (as returned by `GET /profiles/{id}`) and

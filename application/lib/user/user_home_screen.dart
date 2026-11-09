@@ -84,7 +84,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   String? _ttsLanguage;
   bool _listening = false;
   String _heard = '';
-  String? _voiceStatus;
   Map<String, String> _buildingNames = {};
   List<Map<String, dynamic>> _buildings = [];
 
@@ -137,14 +136,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     super.dispose();
   }
 
-  /// Shows [text] as the voice-search status (a live region) and, unless a
-  /// screen reader is already reading that live region aloud, speaks it.
-  Future<void> _say(String text, {bool show = true}) async {
-    if (show) setState(() => _voiceStatus = text);
-    if (!voiceGuidanceNotifier.value ||
-        MediaQuery.of(context).accessibleNavigation) {
-      return;
-    }
+  /// Speaks [text] with the app's own voice, TalkBack on or not. Nothing is
+  /// shown: a status line on screen read as if it were still true ("I'm
+  /// listening" after stopping), and TalkBack reading it would be heard by
+  /// the recognizer (D1).
+  Future<void> _say(String text) async {
+    if (!voiceGuidanceNotifier.value) return;
     await _ttsReady;
     await _tts.stop();
     // Waits for the voice to finish, but never longer than the sentence
@@ -161,7 +158,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   bool get _showsChoices => homeShowsChoices(
     setting: showChoicesNotifier.value,
     revealed: _revealChoices,
-    screenReader: MediaQuery.of(context).accessibleNavigation,
   );
 
   /// Buildings a user can be sent to: active, on the campus they're on. A
@@ -257,9 +253,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   /// Voice first (D1): the app asks and listens by itself, unless the voice is
   /// off or a screen reader is on (it would be heard as the answer). Not
   /// over a dialog, and never again once a destination is chosen.
-  bool get _voiceFirst =>
-      voiceGuidanceNotifier.value &&
-      !MediaQuery.of(context).accessibleNavigation;
+  bool get _voiceFirst => voiceGuidanceNotifier.value;
 
   /// How many times in a row nothing usable was heard. After the first try
   /// and [_kVoiceRetries] more, it stops and points to the buttons.
@@ -271,6 +265,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     if (!mounted || _end != null || !_voiceFirst) return;
     if (ModalRoute.of(context)?.isCurrent != true) return;
     _voiceMisses = 0;
+    if (MediaQuery.of(context).accessibleNavigation) {
+      // TalkBack reads the new screen first; the question comes after it.
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+    }
     await _say(AppLocalizations.of(context)!.homeAskDestination);
     if (!mounted || _end != null || ModalRoute.of(context)?.isCurrent != true) {
       return;
@@ -285,8 +284,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     _voiceMisses++;
     if (_voiceMisses > _kVoiceRetries || !_voiceFirst) {
       _voiceMisses = 0;
-      // Never a dead end: the choices appear below.
-      setState(() => _revealChoices = true);
       await _say('$why ${l10n.homeVoiceGiveUp}');
       return;
     }
@@ -331,12 +328,21 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     if (onHeard != null) onHeard(heard);
   }
 
+  /// Whether the current listen has itself reported "listening". A listen
+  /// that ended a moment ago still sends its "done" late, and it reached the
+  /// next one (the "sí" at "Go to X?"), ending it at once with the old words.
+  /// Until this is set, "done" and errors belong to an earlier listen.
+  bool _listenSawStart = false;
+
   /// "done" comes after the final result, if there was one.
   void _onSpeechStatus(String status) {
-    if (status == 'done') _finishListening(_heard);
+    if (status == 'listening') _listenSawStart = true;
+    if (status == 'done' && _listenSawStart) _finishListening(_heard);
   }
 
-  void _onSpeechError(SpeechRecognitionError error) => _finishListening('');
+  void _onSpeechError(SpeechRecognitionError error) {
+    if (_listenSawStart) _finishListening('');
+  }
 
   /// Opens the microphone once, with a felt and heard mark just before (the
   /// recognizer isn't on yet, so it doesn't take them as speech), and calls
@@ -344,7 +350,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   /// no recognizer or microphone.
   Future<bool> _startListening(
     Future<void> Function(String heard) onHeard, {
-    Duration listenFor = const Duration(seconds: 10),
+    Duration listenFor = const Duration(seconds: 30),
+    Duration pauseFor = const Duration(seconds: 5),
   }) async {
     final l10n = AppLocalizations.of(context)!;
     final language = Localizations.localeOf(context).languageCode;
@@ -389,9 +396,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     setState(() {
       _listening = true;
       _heard = '';
-      _voiceStatus = l10n.homeListeningShort;
     });
     _onHeard = onHeard;
+    _listenSawStart = false;
     // If the recognizer never reports back, this still ends the listen.
     _listenTimeout?.cancel();
     _listenTimeout = Timer(
@@ -412,7 +419,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         listenOptions: SpeechListenOptions(
           localeId: localeId,
           listenFor: listenFor,
-          pauseFor: const Duration(seconds: 3),
+          pauseFor: pauseFor,
           partialResults: true,
           cancelOnError: true,
         ),
@@ -480,7 +487,47 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     }
     final l10n = AppLocalizations.of(context)!;
     final options = found.take(3).toList();
-    _say(l10n.homeVoiceSeveralMatches(options.map(_spokenLabel).join('; ')));
+    final labels = options.map(_spokenLabel).toList();
+    BuildContext? openSheet;
+    // Read out numbered, then chosen by saying the number or the name (D1).
+    // The list stays on screen for tapping.
+    () async {
+      await _say(
+        l10n.homeVoiceSeveralMatches(
+          [
+            for (final (i, label) in labels.indexed) '${i + 1}, $label',
+          ].join('; '),
+        ),
+      );
+      var tries = 0;
+      Future<void> answer(String heard) async {
+        final sheet = openSheet;
+        if (sheet == null || !sheet.mounted) return;
+        final picked = pickSpokenOption(heard, labels);
+        if (picked != null) {
+          Navigator.of(sheet).pop(picked < 0 ? _kNone : options[picked]);
+          return;
+        }
+        if (++tries > 1) return; // the list is still there to tap
+        await _say(l10n.homeVoiceOptionNotUnderstood);
+        if (sheet.mounted) {
+          await _startListening(
+            answer,
+            listenFor: const Duration(seconds: 15),
+            pauseFor: const Duration(seconds: 3),
+          );
+        }
+      }
+
+      final sheet = openSheet;
+      if (_voiceFirst && sheet != null && sheet.mounted) {
+        await _startListening(
+          answer,
+          listenFor: const Duration(seconds: 15),
+          pauseFor: const Duration(seconds: 3),
+        );
+      }
+    }();
     final picked = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       builder: (context) => SafeArea(
@@ -488,9 +535,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              title: Text(
-                l10n.homeVoiceChooseTitle,
-                style: Theme.of(context).textTheme.titleMedium,
+              title: Builder(
+                builder: (_) {
+                  openSheet = context;
+                  return Text(
+                    l10n.homeVoiceChooseTitle,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  );
+                },
               ),
             ),
             for (final option in options)
@@ -503,7 +555,26 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ),
       ),
     );
-    if (picked != null && mounted) _chooseVoiceDestination(picked);
+    openSheet = null;
+    _stopAnyListening();
+    if (!mounted) return;
+    if (identical(picked, _kNone)) {
+      _askForDestination(); // "ninguno": ask again
+    } else if (picked != null) {
+      _chooseVoiceDestination(picked);
+    }
+  }
+
+  /// "None of them", from the read-out list.
+  static const Map<String, dynamic> _kNone = {};
+
+  /// A dialog or list closed: an answer still on its way is for something
+  /// that's gone.
+  void _stopAnyListening() {
+    _onHeard = null;
+    _listenTimeout?.cancel();
+    if (_listening && mounted) setState(() => _listening = false);
+    _speech.cancel();
   }
 
   void _chooseVoiceDestination(Map<String, dynamic> anchor) =>
@@ -517,12 +588,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     setState(() {
       _end = anchor;
       _error = null;
-      _voiceStatus = null;
     });
     final l10n = AppLocalizations.of(context)!;
     final title = l10n.homeGoToTitle(_destinationLabel(anchor));
     BuildContext? openDialog;
-    if (!MediaQuery.of(context).accessibleNavigation) {
+    {
       final voiceFirst = _voiceFirst;
       () async {
         await _say(
@@ -533,14 +603,31 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         // Saying "yes" starts it (D1): the buttons stay for everyone else.
         final dialog = openDialog;
         if (!voiceFirst || dialog == null || !dialog.mounted) return;
-        await _startListening(listenFor: const Duration(seconds: 6), (
-          heard,
-        ) async {
-          final answer = spokenAnswer(heard);
+        var tries = 0;
+        Future<void> heardAnswer(String heard) async {
           final still = openDialog;
-          if (answer == null || still == null || !still.mounted) return;
-          Navigator.of(still).pop(answer == SpokenAnswer.start);
-        });
+          if (still == null || !still.mounted) return;
+          final answer = spokenAnswer(heard);
+          if (answer != null) {
+            Navigator.of(still).pop(answer == SpokenAnswer.start);
+            return;
+          }
+          if (++tries > 1) return; // the buttons are still there
+          await _say(l10n.homeSayYesOrNo);
+          if (still.mounted) {
+            await _startListening(
+              heardAnswer,
+              listenFor: const Duration(seconds: 15),
+              pauseFor: const Duration(seconds: 3),
+            );
+          }
+        }
+
+        await _startListening(
+          heardAnswer,
+          listenFor: const Duration(seconds: 15),
+          pauseFor: const Duration(seconds: 3),
+        );
       }();
     }
     final start = await showDialog<bool>(
@@ -573,10 +660,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       ),
     );
     openDialog = null;
-    _onHeard = null; // an answer still coming is for a dialog that's gone
-    _listenTimeout?.cancel();
-    if (_listening) setState(() => _listening = false);
-    await _speech.cancel();
+    _stopAnyListening();
     await _tts.stop();
     if (!mounted) return;
     if (start == true) {
@@ -861,8 +945,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   /// A trip left open by closing the app mid-route: offer to continue it
   /// or finish it, instead of it staying "active" forever.
-  // v2: the 3-page tutorial, so the Icesi testers see it too.
-  static const _kTutorialSeenKey = 'tutorial_seen_v2';
+  // v3: the tutorial for the one-button, voice-first screen (D1).
+  static const _kTutorialSeenKey = 'tutorial_seen_v3';
 
   /// First launch: the spoken tutorial once, on its own.
   Future<void> _showTutorialOnFirstRun() async {
@@ -888,7 +972,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       l10n.homeTutorialPage3,
     ];
     for (var i = 0; i < pages.length && mounted; i++) {
-      _say(pages[i], show: false);
+      _say(pages[i]);
       final next = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -1051,7 +1135,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     final l10n = AppLocalizations.of(context)!;
     _askingFloor = true;
     final labels = [for (final f in floors) l10n.commonFloorOption(f + 1)];
-    _say('${l10n.homeWhichFloorTitle} ${labels.join(', ')}.', show: false);
+    _say('${l10n.homeWhichFloorTitle} ${labels.join(', ')}.');
     final floor = await showDialog<int>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1130,7 +1214,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     } finally {
       ApiService.retries.removeListener(sayRetrying);
       _stillFindingTimer?.cancel();
-      if (mounted && _error == null) setState(() => _voiceStatus = null);
     }
   }
 
@@ -1149,7 +1232,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             : l10n.homeErrorNoGpsFix;
         _finding = false;
       });
-      _say(_error!, show: false);
+      _say(_error!);
       return;
     }
 
@@ -1176,7 +1259,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         if (floor == null) {
           setState(() {
             _finding = false;
-            _voiceStatus = null;
           });
           return;
         }
@@ -1237,9 +1319,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 friendlyApiErrorMessage(context, e),
               );
         _finding = false;
-        _voiceStatus = null;
       });
-      _say(_error!, show: false);
+      _say(_error!);
     }
   }
 
@@ -1275,6 +1356,39 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// The one button of the simple home screen: a circle, not a screen-wide
+  /// pill. While listening its colour and icon change; no text says so.
+  Widget _speakCircle(AppLocalizations l10n) {
+    final scheme = Theme.of(context).colorScheme;
+    final size = min(220.0, MediaQuery.sizeOf(context).width * 0.7);
+    return SizedBox.square(
+      dimension: size,
+      child: FilledButton(
+        style: FilledButton.styleFrom(
+          shape: const CircleBorder(),
+          backgroundColor: _listening ? scheme.error : scheme.primary,
+          foregroundColor: _listening ? scheme.onError : scheme.onPrimary,
+          padding: const EdgeInsets.all(24),
+          textStyle: Theme.of(context).textTheme.titleMedium,
+        ),
+        onPressed: _finding ? null : _listenForDestination,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_listening ? Icons.stop_rounded : Icons.mic, size: 64),
+            const SizedBox(height: 8),
+            Text(
+              _listening
+                  ? l10n.homeStopListeningButton
+                  : l10n.homeSayDestinationButton,
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );
@@ -1363,29 +1477,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             onTap: _pickEnd,
           ),
         ],
-        if (!choices)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(200),
-                  textStyle: Theme.of(context).textTheme.headlineSmall,
-                ),
-                onPressed: _finding ? null : _listenForDestination,
-                icon: Icon(
-                  _listening ? Icons.stop_circle_outlined : Icons.mic,
-                  size: 48,
-                ),
-                label: Text(
-                  _listening
-                      ? l10n.homeListening
-                      : l10n.homeSayDestinationButton,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-          ),
+        if (!choices) Expanded(child: Center(child: _speakCircle(l10n))),
         if (choices)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -1400,19 +1492,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 textAlign: TextAlign.center,
               ),
             ),
-          ),
-        if (_listening && _heard.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text(
-              '"$_heard"',
-              style: const TextStyle(fontStyle: FontStyle.italic),
-            ),
-          ),
-        if (!_listening && _voiceStatus != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Semantics(liveRegion: true, child: Text(_voiceStatus!)),
           ),
         if (_error != null)
           Padding(

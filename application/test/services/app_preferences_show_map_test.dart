@@ -18,19 +18,9 @@ void main() {
     expect(showChoicesNotifier.value, isTrue);
   });
 
-  test('the choices appear whenever voice can not be used', () {
-    bool shows({
-      bool setting = false,
-      bool revealed = false,
-      bool reader = false,
-    }) => homeShowsChoices(
-      setting: setting,
-      revealed: revealed,
-      screenReader: reader,
-    );
-    expect(shows(), isFalse);
-    expect(shows(setting: true), isTrue);
-    expect(shows(revealed: true), isTrue, reason: 'no voice, or gave up');
-    expect(shows(reader: true), isTrue, reason: 'TalkBack: no auto-listen');
+  test('the choices appear only when asked for, or with no recognizer', () {
+    expect(homeShowsChoices(setting: false, revealed: false), isFalse);
+    expect(homeShowsChoices(setting: true, revealed: false), isTrue);
+    expect(homeShowsChoices(setting: false, revealed: true), isTrue);
   });
 }

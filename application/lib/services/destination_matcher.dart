@@ -301,3 +301,66 @@ SpokenAnswer? spokenAnswer(String heard) {
   if (start == change) return null;
   return start ? SpokenAnswer.start : SpokenAnswer.change;
 }
+
+// Not "one" or "una": "the second one", "la una" aren't the first.
+const Map<String, int> _optionNumbers = {
+  '1': 0,
+  'uno': 0,
+
+  'primero': 0,
+  'primera': 0,
+
+  'first': 0,
+  '2': 1,
+  'dos': 1,
+  'segundo': 1,
+  'segunda': 1,
+  'two': 1,
+  'second': 1,
+  '3': 2,
+  'tres': 2,
+  'tercero': 2,
+  'tercera': 2,
+  'three': 2,
+  'third': 2,
+};
+
+/// Which of the options read out ("one, Biblioteca; two, …") was chosen by
+/// voice: a number, or words of one option's name that no other option has.
+/// -1 for "none" ("no", "ninguno"), null when it isn't clear, so the app
+/// asks again rather than guess.
+int? pickSpokenOption(String heard, List<String> labels) {
+  final words = normalizeForMatch(heard).split(' ').where((w) => w.isNotEmpty);
+  final numbers = {
+    for (final w in words)
+      if (_optionNumbers[w] case final n? when n < labels.length) n,
+  };
+  if (numbers.length == 1) return numbers.single;
+  if (numbers.length > 1) return null;
+  final said = words.toSet();
+  if (said.contains('ninguno') ||
+      said.contains('ninguna') ||
+      said.contains('none') ||
+      (said.length == 1 && said.contains('no'))) {
+    return -1;
+  }
+  // Words of 4+ letters, so "de" or "la" never decide it.
+  Set<String> named(String label) => {
+    for (final w in normalizeForMatch(label).split(' '))
+      if (w.length >= 4) w,
+  };
+  final hits = [
+    for (var i = 0; i < labels.length; i++)
+      if (named(labels[i]).intersection(said).isNotEmpty &&
+          // Only what tells it apart from the others counts.
+          named(labels[i])
+              .difference({
+                for (var j = 0; j < labels.length; j++)
+                  if (j != i) ...named(labels[j]),
+              })
+              .intersection(said)
+              .isNotEmpty)
+        i,
+  ];
+  return hits.length == 1 ? hits.single : null;
+}
