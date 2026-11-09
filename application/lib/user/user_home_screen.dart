@@ -125,7 +125,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     _stillFindingTimer?.cancel();
     _positionSub?.cancel();
     _onHeard = null;
-    _closeWindow();
     _listenTimeout?.cancel();
     // The recognizer outlives this screen: leave it no callbacks into it.
     if (_speech.statusListener == _onSpeechStatus) {
@@ -144,6 +143,15 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   /// Always, whatever "Guía de voz" says: that setting is for the trip's
   /// instructions, and with it off this screen was silent.
   Future<void> _say(String text) async {
+    // Never over an open microphone: a sentence spoken while the recognizer
+    // is still closing is lost on Android ("Di sí…" after a place, "gira
+    // despacio" after "sí").
+    if (_listening || _speech.isListening) _stopAnyListening();
+    for (var i = 0; i < 10 && _speech.isListening; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
     await _ttsReady;
     await _tts.stop();
     // Waits for the voice to finish, but never longer than the sentence
@@ -303,7 +311,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Future<void> _listenForDestination() async {
     if (_listening) {
       _onHeard = null; // stopped on purpose: no answer, no retry
-      _closeWindow();
       _listenTimeout?.cancel();
       setState(() => _listening = false);
       _voiceMisses = 0;
@@ -334,22 +341,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     _onHeard = null;
     _listenTimeout?.cancel();
     if (!mounted) return;
-    // Within a listening window the button stays on "listening" while the
-    // recognizer reopens: switching it off and on each time flickered.
-    if (!_inWindow) setState(() => _listening = false);
+    setState(() => _listening = false);
     if (onHeard != null) onHeard(heard);
-  }
-
-  /// A listening window is open ([_startListening]): the recognizer may stop
-  /// and reopen inside it, but to the user it's one listen.
-  bool _inWindow = false;
-
-  /// Which window is open, so a stopped one never reopens.
-  int _windowId = 0;
-
-  void _closeWindow() {
-    _inWindow = false;
-    _windowId++;
   }
 
   /// Whether the current listen has itself reported "listening". A listen
@@ -422,52 +415,17 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     // the app plays would be taken as speech.
     await buzz(Buzz.short);
     await SystemSound.play(SystemSoundType.click);
-    final started = DateTime.now();
-    final window = ++_windowId;
-    _inWindow = true;
-    var opened = started;
-    var quickEnds = 0;
-    // Android's recognizer stops after a few seconds of silence before
-    // anyone speaks. Until the window is up, silence quietly opens it again,
-    // at a calm pace: on some phones it stops at once, and reopening right
-    // away made the button flicker.
-    Future<void> heardOrAgain(String heard) async {
-      if (window != _windowId || !mounted) return; // stopped meanwhile
-      final now = DateTime.now();
-      if (now.difference(opened) < const Duration(milliseconds: 1500)) {
-        quickEnds++;
-      } else {
-        quickEnds = 0;
-      }
-      final elapsed = now.difference(started);
-      // Stopping at once three times in a row means it won't listen now.
-      if (quickEnds < 3 && shouldListenAgain(heard, elapsed, listenFor)) {
-        await Future<void>.delayed(const Duration(milliseconds: 600));
-        if (window != _windowId || !mounted) return;
-        opened = DateTime.now();
-        await _openRecognizer(
-          heardOrAgain,
-          localeId: localeId,
-          listenFor: listenFor - DateTime.now().difference(started),
-          pauseFor: pauseFor,
-        );
-        return;
-      }
-      _closeWindow();
-      setState(() => _listening = false);
-      await onHeard(heard);
-    }
-
     return _openRecognizer(
-      heardOrAgain,
+      onHeard,
       localeId: localeId,
       listenFor: listenFor,
       pauseFor: pauseFor,
     );
   }
 
-  /// One recognizer session, no prompt and no marks: [_startListening]'s
-  /// first one, and the quiet ones after silence.
+  /// One recognizer session, no prompt and no marks. Silence ends it, and
+  /// the caller says so: reopening quietly left people in a long silent
+  /// cycle, with the button flickering.
   Future<bool> _openRecognizer(
     Future<void> Function(String heard) onHeard, {
     required String? localeId,
@@ -596,7 +554,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           Navigator.of(sheet).pop(picked < 0 ? _kNone : options[picked]);
           return;
         }
-        if (++tries > 1) return; // the list is still there to tap
+        if (++tries > 2) {
+          await _say(l10n.homeOptionsGiveUp);
+          return; // the list is still there to tap
+        }
         await _say(l10n.homeVoiceOptionNotUnderstood);
         if (sheet.mounted) {
           await _startListening(
@@ -660,7 +621,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   /// that's gone.
   void _stopAnyListening() {
     _onHeard = null;
-    _closeWindow();
     _listenTimeout?.cancel();
     if (_listening && mounted) setState(() => _listening = false);
     _speech.cancel();
@@ -701,7 +661,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             Navigator.of(still).pop(answer == SpokenAnswer.start);
             return;
           }
-          if (++tries > 1) return; // the buttons are still there
+          if (++tries > 2) {
+            await _say(l10n.homeConfirmGiveUp);
+            return; // the buttons are still there
+          }
           await _say(l10n.homeSayYesOrNo);
           if (still.mounted) {
             await _startListening(
@@ -977,7 +940,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       _locatingStart = true;
       _startCheckProgress = 0;
     });
-    _say(l10n.homeCheckingStartPrompt);
+    // Said in full before the first photo: the user turns while it's taken.
+    await _say(l10n.homeCheckingStartPrompt);
+    if (!mounted) return null;
     final check = await _checkStartPosition();
     if (!mounted) return null;
     final position = check.position;
@@ -1331,19 +1296,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     }
 
     try {
-      // Users: the start comes straight from GPS - the camera check
-      // ("photo 0 of 6, turn around") confused everyone in the first user
-      // test, and navigation's own correction takes over from the first
-      // ticks. Admins testing keep it (tapping Start, or Find route).
-      Map<String, dynamic>? start;
+      // Everyone gets the camera check of the start (it says to hold the
+      // phone up and turn slowly). The first user test found it confusing
+      // when its instruction wasn't heard: it was spoken over the open
+      // microphone, which `_say` no longer does.
       final here = LatLng(position.latitude, position.longitude);
-      if (widget.adminPreview) {
-        start = _startCheckIsFresh ? _start : await _locateStart();
-      } else {
-        _verifiedAnchors = await _fetchVerifiedAnchors();
-        start = _nearestAnchor(_verifiedAnchors, here);
-        if (mounted) setState(() => _start = start);
-      }
+      var start = _startCheckIsFresh ? _start : await _locateStart();
       if (!mounted) return;
       // GPS can't tell floors apart: the nearest point may be overhead.
       final floors = floorsNear(_verifiedAnchors, here);

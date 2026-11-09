@@ -16,7 +16,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - Vibrations are now felt even when the phone's touch vibration is off.
 - Before listening, the app says what you can say. The round button is bigger.
 - New setting: bold text everywhere, next to high contrast and font size.
-- The home screen always speaks and says what each action does; "Guía de voz" now only covers the trip's instructions. It also keeps listening longer while you think.
+- The home screen always speaks and says what each action does; "Guía de voz" now only covers the trip's instructions. It says when it's listening and when it didn't hear you.
+- Every route starts by checking where you are with the camera: hold the phone up and turn slowly when asked.
 
 ### Fixed
 
