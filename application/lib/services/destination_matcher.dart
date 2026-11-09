@@ -364,3 +364,10 @@ int? pickSpokenOption(String heard, List<String> labels) {
   ];
   return hits.length == 1 ? hits.single : null;
 }
+
+/// Whether a listen that ended should quietly start again: Android's
+/// recognizer gives up after a few seconds of silence before anyone speaks,
+/// whatever the app asked for. Only nothing heard, with time left in the
+/// [window] (at least 2 s, or it's not worth opening the microphone), does.
+bool shouldListenAgain(String heard, Duration elapsed, Duration window) =>
+    heard.trim().isEmpty && window - elapsed >= const Duration(seconds: 2);

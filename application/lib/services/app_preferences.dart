@@ -40,15 +40,11 @@ final ValueNotifier<bool> showMapNotifier = ValueNotifier<bool>(false);
 final ValueNotifier<bool> showChoicesNotifier = ValueNotifier<bool>(false);
 
 /// Whether the home screen shows the Start and destination rows: when the
-/// user turned them on, when this phone has no speech recognizer at all
-/// ([revealed]), or with the app's voice off, since then it can't ask. Not
-/// after failed tries, and not for TalkBack: voice first is for everyone
-/// (D1).
-bool homeShowsChoices({
-  required bool setting,
-  required bool revealed,
-  required bool voiceOn,
-}) => setting || revealed || !voiceOn;
+/// user turned them on, or when this phone has no speech recognizer at all
+/// ([revealed]). Not after failed tries, and not for TalkBack: voice first
+/// is for everyone (D1). The home screen speaks whatever "Guía de voz" says.
+bool homeShowsChoices({required bool setting, required bool revealed}) =>
+    setting || revealed;
 
 /// Bold text everywhere (Settings, next to high contrast and font size).
 /// Null until the user chooses: then the phone's own bold-text setting.

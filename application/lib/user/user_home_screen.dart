@@ -140,12 +140,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   /// shown: a status line on screen read as if it were still true ("I'm
   /// listening" after stopping), and TalkBack reading it would be heard by
   /// the recognizer (D1).
+  /// Always, whatever "Guía de voz" says: that setting is for the trip's
+  /// instructions, and with it off this screen was silent.
   Future<void> _say(String text) async {
-    if (!voiceGuidanceNotifier.value) {
-      // With the voice off this is the only way to know what happened.
-      if (mounted) setState(() => _voiceOffText = text);
-      return;
-    }
     await _ttsReady;
     await _tts.stop();
     // Waits for the voice to finish, but never longer than the sentence
@@ -159,13 +156,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   /// in Settings, or when voice can't be used this time (D1, D2).
   bool _revealChoices = false;
 
-  /// What [_say] would have said, shown only with the voice off.
-  String? _voiceOffText;
-
   bool get _showsChoices => homeShowsChoices(
     setting: showChoicesNotifier.value,
     revealed: _revealChoices,
-    voiceOn: voiceGuidanceNotifier.value,
   );
 
   /// Buildings a user can be sent to: active, on the campus they're on. A
@@ -261,7 +254,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   /// Voice first (D1): the app asks and listens by itself, unless the voice is
   /// off or a screen reader is on (it would be heard as the answer). Not
   /// over a dialog, and never again once a destination is chosen.
-  bool get _voiceFirst => voiceGuidanceNotifier.value;
+  bool get _voiceFirst => !_revealChoices;
 
   /// How many times in a row nothing usable was heard. After the first try
   /// and [_kVoiceRetries] more, it stops and points to the buttons.
@@ -291,13 +284,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Future<void> _missed(String why) async {
     final l10n = AppLocalizations.of(context)!;
     _voiceMisses++;
-    if (_voiceMisses > _kVoiceRetries || !_voiceFirst) {
+    if (_voiceMisses > _kVoiceRetries) {
       _voiceMisses = 0;
       await _say('$why ${l10n.homeVoiceGiveUp}');
       return;
     }
     await _say(why);
-    if (mounted && _end == null && ModalRoute.of(context)?.isCurrent == true) {
+    // A destination chosen earlier doesn't stop it: the user is asking again.
+    if (mounted && ModalRoute.of(context)?.isCurrent == true) {
       await _startListening(_handleSpoken, prompt: l10n.homeListenPrompt);
     }
   }
@@ -311,7 +305,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       _listenTimeout?.cancel();
       setState(() => _listening = false);
       _voiceMisses = 0;
+      final stopped = AppLocalizations.of(context)!.homeStoppedListening;
       await _speech.cancel();
+      await _say(stopped);
       return;
     }
     _voiceMisses = 0;
@@ -336,10 +332,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     _onHeard = null;
     _listenTimeout?.cancel();
     if (!mounted) return;
-    setState(() {
-      _listening = false;
-      _voiceOffText = null; // it said what to say; that's over now
-    });
+    setState(() => _listening = false);
     if (onHeard != null) onHeard(heard);
   }
 
@@ -407,12 +400,50 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       if (!mounted) return false;
     }
     await _tts.stop(); // so the recognizer doesn't hear the app itself
+    final localeId = await _speechLocale(language);
+    if (!mounted) return false;
+    // Felt and heard before the microphone opens: once it's on, anything
+    // the app plays would be taken as speech.
+    await buzz(Buzz.short);
+    await SystemSound.play(SystemSoundType.click);
+    final started = DateTime.now();
+    // Android's recognizer stops after a few seconds of silence before
+    // anyone speaks. Until the window is up, silence quietly opens it again.
+    Future<void> heardOrAgain(String heard) async {
+      final elapsed = DateTime.now().difference(started);
+      if (mounted && shouldListenAgain(heard, elapsed, listenFor)) {
+        await _openRecognizer(
+          heardOrAgain,
+          localeId: localeId,
+          listenFor: listenFor - elapsed,
+          pauseFor: pauseFor,
+        );
+        return;
+      }
+      await onHeard(heard);
+    }
+
+    return _openRecognizer(
+      heardOrAgain,
+      localeId: localeId,
+      listenFor: listenFor,
+      pauseFor: pauseFor,
+    );
+  }
+
+  /// One recognizer session, no prompt and no marks: [_startListening]'s
+  /// first one, and the quiet ones after silence.
+  Future<bool> _openRecognizer(
+    Future<void> Function(String heard) onHeard, {
+    required String? localeId,
+    required Duration listenFor,
+    required Duration pauseFor,
+  }) async {
     // One listen at a time: the last one may still be closing.
     for (var i = 0; i < 10 && _speech.isListening; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     if (_speech.isListening) await _speech.cancel();
-    final localeId = await _speechLocale(language);
     if (!mounted) return false;
     setState(() {
       _listening = true;
@@ -426,10 +457,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       listenFor + const Duration(seconds: 4),
       () => _finishListening(_heard),
     );
-    // Felt and heard before the microphone opens: once it's on, anything
-    // the app plays would be taken as speech.
-    await buzz(Buzz.short);
-    await SystemSound.play(SystemSoundType.click);
     try {
       await _speech.listen(
         onResult: (result) {
@@ -539,7 +566,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         if (sheet.mounted) {
           await _startListening(
             answer,
-            listenFor: const Duration(seconds: 15),
+            listenFor: const Duration(seconds: 20),
             pauseFor: const Duration(seconds: 3),
           );
         }
@@ -549,7 +576,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       if (_voiceFirst && sheet != null && sheet.mounted) {
         await _startListening(
           answer,
-          listenFor: const Duration(seconds: 15),
+          listenFor: const Duration(seconds: 20),
           pauseFor: const Duration(seconds: 3),
         );
       }
@@ -643,7 +670,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           if (still.mounted) {
             await _startListening(
               heardAnswer,
-              listenFor: const Duration(seconds: 15),
+              listenFor: const Duration(seconds: 20),
               pauseFor: const Duration(seconds: 3),
             );
           }
@@ -651,7 +678,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
         await _startListening(
           heardAnswer,
-          listenFor: const Duration(seconds: 15),
+          listenFor: const Duration(seconds: 20),
           pauseFor: const Duration(seconds: 3),
         );
       }();
@@ -802,7 +829,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ),
       ),
     );
-    if (picked != null && mounted) _confirmAndStart(picked);
+    if (picked != null && mounted) {
+      await _say(
+        AppLocalizations.of(context)!.homeYouChose(_spokenLabel(picked)),
+      );
+      if (mounted) _confirmAndStart(picked);
+    }
   }
 
   /// Photos taken by the start-point check, and the minimum gap between
@@ -1504,12 +1536,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           ),
         ],
         if (!choices) Expanded(child: Center(child: _speakCircle(l10n))),
-        // Only with the voice off: then this is how the app tells you.
-        if (!voiceGuidanceNotifier.value && _voiceOffText != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text(_voiceOffText!, textAlign: TextAlign.center),
-          ),
         if (choices)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -1567,19 +1593,29 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ListTile(
           leading: const Icon(Icons.help_outline),
           title: Text(l10n.homeTutorialButton),
-          onTap: _showTutorial,
+          onTap: () async {
+            await _say(l10n.homeOpeningHelp);
+            if (mounted) _showTutorial();
+          },
         ),
         ListTile(
           leading: const Icon(Icons.settings_outlined),
           title: Text(l10n.homeSettingsTooltip),
-          onTap: () => Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+          onTap: () async {
+            await _say(l10n.homeOpeningSettings);
+            if (!mounted) return;
+            await Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+          },
         ),
         ListTile(
           leading: const Icon(Icons.logout),
           title: Text(l10n.commonLogOut),
-          onTap: () => Supabase.instance.client.auth.signOut(),
+          onTap: () async {
+            await _say(l10n.homeLoggingOut);
+            await Supabase.instance.client.auth.signOut();
+          },
         ),
       ],
     );
