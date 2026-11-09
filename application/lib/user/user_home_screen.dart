@@ -125,6 +125,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     _stillFindingTimer?.cancel();
     _positionSub?.cancel();
     _onHeard = null;
+    _closeWindow();
     _listenTimeout?.cancel();
     // The recognizer outlives this screen: leave it no callbacks into it.
     if (_speech.statusListener == _onSpeechStatus) {
@@ -302,6 +303,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Future<void> _listenForDestination() async {
     if (_listening) {
       _onHeard = null; // stopped on purpose: no answer, no retry
+      _closeWindow();
       _listenTimeout?.cancel();
       setState(() => _listening = false);
       _voiceMisses = 0;
@@ -332,8 +334,22 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     _onHeard = null;
     _listenTimeout?.cancel();
     if (!mounted) return;
-    setState(() => _listening = false);
+    // Within a listening window the button stays on "listening" while the
+    // recognizer reopens: switching it off and on each time flickered.
+    if (!_inWindow) setState(() => _listening = false);
     if (onHeard != null) onHeard(heard);
+  }
+
+  /// A listening window is open ([_startListening]): the recognizer may stop
+  /// and reopen inside it, but to the user it's one listen.
+  bool _inWindow = false;
+
+  /// Which window is open, so a stopped one never reopens.
+  int _windowId = 0;
+
+  void _closeWindow() {
+    _inWindow = false;
+    _windowId++;
   }
 
   /// Whether the current listen has itself reported "listening". A listen
@@ -407,19 +423,38 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     await buzz(Buzz.short);
     await SystemSound.play(SystemSoundType.click);
     final started = DateTime.now();
+    final window = ++_windowId;
+    _inWindow = true;
+    var opened = started;
+    var quickEnds = 0;
     // Android's recognizer stops after a few seconds of silence before
-    // anyone speaks. Until the window is up, silence quietly opens it again.
+    // anyone speaks. Until the window is up, silence quietly opens it again,
+    // at a calm pace: on some phones it stops at once, and reopening right
+    // away made the button flicker.
     Future<void> heardOrAgain(String heard) async {
-      final elapsed = DateTime.now().difference(started);
-      if (mounted && shouldListenAgain(heard, elapsed, listenFor)) {
+      if (window != _windowId || !mounted) return; // stopped meanwhile
+      final now = DateTime.now();
+      if (now.difference(opened) < const Duration(milliseconds: 1500)) {
+        quickEnds++;
+      } else {
+        quickEnds = 0;
+      }
+      final elapsed = now.difference(started);
+      // Stopping at once three times in a row means it won't listen now.
+      if (quickEnds < 3 && shouldListenAgain(heard, elapsed, listenFor)) {
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+        if (window != _windowId || !mounted) return;
+        opened = DateTime.now();
         await _openRecognizer(
           heardOrAgain,
           localeId: localeId,
-          listenFor: listenFor - elapsed,
+          listenFor: listenFor - DateTime.now().difference(started),
           pauseFor: pauseFor,
         );
         return;
       }
+      _closeWindow();
+      setState(() => _listening = false);
       await onHeard(heard);
     }
 
@@ -625,6 +660,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   /// that's gone.
   void _stopAnyListening() {
     _onHeard = null;
+    _closeWindow();
     _listenTimeout?.cancel();
     if (_listening && mounted) setState(() => _listening = false);
     _speech.cancel();
