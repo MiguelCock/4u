@@ -291,6 +291,21 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 - **Option C** (the Okabe–Ito colour-blind-safe set): rejected is a ✕, and dots have a black outline that carries their contrast on the map. Marks are `kPointRadius` (9) and `kMarkSize` (34) in `lib/widgets/admin_map/layers.dart`, and ▲▼ are 40 px.
 - **Tests:** `lib/theme/palette_checks.dart` measures WCAG contrast on the map's backgrounds and CIEDE2000 distances under simulated colour blindness. `test/theme/admin_palette_test.dart` fails if the palette breaks a threshold. The options and numbers are in `docs/decisions/c4-palette.md`.
 
+## iOS (#160)
+
+- **What it is:** `ios/` exists for an **unsigned** build only. There's no paid Apple account, so no App Store or TestFlight.
+- **How it's built:** `.github/workflows/ios.yml` builds `Eyes4U-unsigned.ipa` on a macOS runner (`flutter build ios --no-codesign`, `Runner.app` zipped in `Payload/`). It runs on PRs touching iOS, and after each release build, when it attaches the file to the release.
+- **How testers install it:** with their own Apple ID through Sideloadly or AltStore (`docs/ios-sideload.md`). It stops opening after 7 days.
+- **`Info.plist`:**
+  - bundle id `io.github.miguelcock.eyes4u`;
+  - permission texts in Spanish then English, in one string each (no extra localization files in the Xcode project);
+  - the `io.github.miguelcock.eyes4u` URL scheme for the email link;
+  - `permission_handler` (Swift Package Manager) enables what `Info.plist` describes.
+- **Platform code:**
+  - `positionSettings` (`location_service.dart`) gives iOS `AppleSettings` that don't pause updates;
+  - `configureTts` shares one audio session with the microphone on iOS.
+- **Not yet checked on a real iPhone:** the voice, speech recognition, compass, gyroscope, barometer, VoiceOver and the email link.
+
 ## Many admins at once (A5)
 
 - **Saving a point** goes through `saveAnchorPoint` (`lib/widgets/map_conflict.dart`): the edit screen, verify/unverify, moving on the map, and the photo screen's back-to-pending. It sends `expected`, each changed field's value as this admin saw it (`expectedFor`, `lib/services/map_sync.dart`). The edit screen sends only the fields that differ (`changedFields`), with metadata normalised to the same keys and order, and the point's real altitude as expected when it moves. A 409 from the backend (`MapConflict.of`) opens a dialog showing theirs against yours: **Keep theirs** saves nothing, **Save mine anyway** sends it again without `expected`.

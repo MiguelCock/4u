@@ -10,7 +10,7 @@ This is a Python/Dart monorepo, not a single deployable app — each top-level d
 
 ## Repository layout
 
-- `application/` — Flutter mobile app (Dart). Single codebase for both `user` (sends photo+GPS+IMU, receives corrected position) and `admin` (captures anchor points) roles.
+- `application/` — Flutter mobile app (Dart). Single codebase for both `user` (sends photo+GPS+IMU, receives corrected position) and `admin` (captures anchor points) roles. Built for Android (the APK), the web (admins, `/admin/`), and an unsigned iOS `.ipa` that testers sideload with their own Apple ID (`.github/workflows/ios.yml`, `docs/ios-sideload.md`, #160).
 - `backend-data-collection/` — FastAPI service that receives images + GPS metadata from the app and persists them via Supabase (Postgres + Storage).
 - `backend-ai-training/` — FastAPI service extracting embeddings (pretrained EfficientNet-B0) from anchor-point photos and indexing/searching them in Qdrant (`POST /index_anchor`, `POST /search_similar`); fine-tuning the model remains an offline task, not yet implemented.
 - `backend-map-management/` — FastAPI service for the admin view: creating/listing anchor points, buildings, and places (`anchor_points`, `buildings`, `places` tables).
