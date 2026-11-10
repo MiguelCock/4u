@@ -60,15 +60,14 @@ Future<bool> configureTts(FlutterTts tts, String languageCode) async {
       // voice and speech_to_text don't cut each other off, and out loud
       // through the speaker rather than the earpiece.
       await tts.setSharedInstance(true);
-      await tts.setIosAudioCategory(
-        IosTextToSpeechAudioCategory.playAndRecord,
-        [
-          IosTextToSpeechAudioCategoryOptions.defaultToSpeaker,
-          IosTextToSpeechAudioCategoryOptions.allowBluetooth,
-          IosTextToSpeechAudioCategoryOptions.allowBluetoothA2DP,
-        ],
-        IosTextToSpeechAudioMode.voicePrompt,
-      );
+      const options = [
+        IosTextToSpeechAudioCategoryOptions.defaultToSpeaker,
+        IosTextToSpeechAudioCategoryOptions.allowBluetooth,
+        IosTextToSpeechAudioCategoryOptions.allowBluetoothA2DP,
+      ];
+      const category = IosTextToSpeechAudioCategory.playAndRecord;
+      const mode = IosTextToSpeechAudioMode.voicePrompt;
+      await tts.setIosAudioCategory(category, options, mode);
     } catch (_) {}
   }
   try {
