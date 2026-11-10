@@ -1,6 +1,6 @@
 # C1: One admin map, and the map-first flow (#183)
 
-**Status: proposal, waiting for approval.** C2 to C4 build on it. The parity check is [`c1-parity.md`](c1-parity.md).
+**Status: approved on 2026-11-10**, with all four decisions below accepted. C1's own scope is built. C2 to C4 build on it. The parity check is [`c1-parity.md`](c1-parity.md).
 
 ## What's shared today
 
@@ -45,7 +45,7 @@ AdminMap                       lib/widgets/admin_map/admin_map.dart
 
 Icesi has about 270 points. Each one is a `Marker` widget today, rebuilt on every frame of a pan.
 - **Points on the selected floor as a `CircleLayer`.** It's drawn on one canvas, not one widget per point. Taps already go through `nearestOnScreen`, so markers don't need their own gestures.
-- **Adjacent floors (▲/▼):** the same, through one painter.
+- **Adjacent floors (▲/▼)** stay markers for now. There are fewer of them, and a hand-made painter would have to follow the map's rotation itself. If a big map shows they're slow, they move to one painter too.
 - **What's shown follows the zoom:**
   - below about zoom 15, universities only
   - 15–17, buildings
@@ -75,9 +75,15 @@ Icesi has about 270 points. Each one is a `Marker` widget today, rebuilt on ever
 - The Anchor points tab's map runs on it, with no lost function (parity P3, P12, F1–F3). `shot:points-map`, `points-map-floor2`, `points-map-only-floor`, `point-sheet` and `point-moving` are retaken and compared.
 - Widget tests: tap → nearest point on the selected floor first; move mode reports the tap; the floor choice is shared; 1000 points build within budget.
 
-## Needs your decision
+**Built:**
+- `lib/widgets/admin_map/admin_map.dart` (the base, `AdminMapLayer`, `AdminMapHit`, `AdminMapMode`) and `layers.dart`.
+- `AnchorPointsMap` is now a thin wrapper, and `admin_home_screen.dart` didn't change.
+- `test/widgets/admin_map_test.dart`: 1000 points build the same number of widgets as 10.
+- The guide's map pictures were retaken and compared. They look the same; only tile and anti-aliasing pixels differ, so the committed ones were kept.
 
-1. **Map as the first admin screen**, with the lists one tap away (point 1)?
-2. **Zoom levels** for universities, buildings and points: about 15 and 17, tuned on EAFIT and Icesi?
-3. **Removing the separate Connect screen** once its rows pass on the map (point 5)?
-4. **Side panel at 900 px or wider** on the web, bottom sheet on phones?
+## Decisions (approved 2026-11-10)
+
+1. **The map is the first admin screen**, with the lists one tap away (point 1).
+2. **Zoom levels:** universities below about 15, buildings 15–17, points from 17, tuned on EAFIT and Icesi.
+3. **The separate Connect screen is removed** once its rows pass on the map (point 5).
+4. **Side panel at 900 px or wider** on the web, bottom sheet on phones.

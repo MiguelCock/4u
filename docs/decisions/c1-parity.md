@@ -55,7 +55,7 @@ The [parity list](../roadmap/0.6-stories.md#admin-parity-list) as rows to tick. 
 |---|---|---|---|---|
 | P1 | Search; status filter with counts | Points tab | `shot:points-list` | ☐ |
 | P2 | Filters: category/type, floor, in/outdoors, lighting, photos, connections; clear | Filters sheet | `shot:points-filters`, `test:services/anchor_filters_test.dart` | ☐ |
-| P3 | List and map views | Segmented button | `shot:points-map` | ☐ |
+| P3 | List and map views | Segmented button | `shot:points-map` | ☑ C1: `AdminMap` |
 | P4 | Create: university, building, floor, type (search, categories), description, in/outdoors, lighting, surface | FAB → Capture | `shot:point-form` | ☐ |
 | P5 | Create: pick on map, seeing existing points | Location picker | `shot:location-picker` | ☐ |
 | P6 | Create: use GPS on a phone (±8 m) | Capture | manual (phone) | ☐ |
@@ -64,7 +64,7 @@ The [parity list](../roadmap/0.6-stories.md#admin-parity-list) as rows to tick. 
 | P9 | Edit all of the above; status; move on map; thumbnails | Edit screen | `shot:point-edit`, `test:widgets/map_conflict_test.dart` | ☐ |
 | P10 | Photos: web upload with direction; phone camera with heading; delete; done | Photo screen | `shot:point-photos` | ☐ |
 | P11 | Verify from list, map or edit; refused with no photos; warning with no connections; unverify | Row, sheet, edit | `shot:verify-needs-photo`, `shot:verify-unconnected` | ☐ |
-| P12 | From the map: data, connect, move (pin, save, cancel), verify, add photo, edit | Map sheet | `shot:point-sheet`, `shot:point-moving` | ☐ |
+| P12 | From the map: data, connect, move (pin, save, cancel), verify, add photo, edit | Map sheet | `shot:point-sheet`, `shot:point-moving` | ☑ C1: `AdminMap` |
 | P13 | Delete with what else goes | Row menu | `shot:points-row-menu` | ☐ |
 | P14 | Another admin's change: conflict dialog; edit screen notice | Every save | `test:widgets/map_conflict_test.dart`, `test:services/map_sync_test.dart` | ☐ |
 
@@ -72,9 +72,9 @@ The [parity list](../roadmap/0.6-stories.md#admin-parity-list) as rows to tick. 
 
 | ID | Capability | Today | Check | C2–C4 |
 |---|---|---|---|---|
-| F1 | Up and down | Every admin map | `shot:points-map-floor2`, `test:services/floor_view_test.dart` | ☐ |
-| F2 | Adjacent floors shown differently, and tappable | Every admin map | `test:services/floor_view_test.dart` | ☐ |
-| F3 | Only this floor, remembered | Every admin map | `shot:points-map-only-floor` | ☐ |
+| F1 | Up and down | Every admin map | `shot:points-map-floor2`, `test:services/floor_view_test.dart` | ☑ C1: `AdminMap` |
+| F2 | Adjacent floors shown differently, and tappable | Every admin map | `test:services/floor_view_test.dart` | ☑ C1: `AdminMap` |
+| F3 | Only this floor, remembered | Every admin map | `shot:points-map-only-floor` | ☑ C1: `AdminMap` |
 
 ## Connections
 

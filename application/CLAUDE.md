@@ -235,6 +235,14 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 - **Guidance.** GPS can't tell floors apart, so `_checkProximity` stops at the first waypoint on another floor than `_currentFloor`. Reaching the last point before a change (`floorChangeAfter`, `lib/services/floor_steps.dart`; hops collapse into one) speaks the instruction and pauses guidance until `FloorChangeDetector` (`lib/services/floor_detector.dart`) hears it: 0.28 hPa per floor, the right way, held 3 s. If it doesn't within 3 min, or 60 s per floor with no barometer, the trip carries on and says so. The barometer is the only signal for now; a confirmation button is the fallback if tests need one. Logs: `pressure_hpa`, `floor`, `waiting_floor` per tick, events `floor_wait`, `floor_detected`, `floor_timeout`, `barometer_missing` (`docs/TUNING.md` §9).
 - **Start.** `_findRoute` asks "which floor are you on?" when `floorsNear` (15 m) finds several, and keeps the answer until the user moves 15 m.
 
+## One admin map (C1)
+
+`lib/widgets/admin_map/` is the shared admin map (`docs/decisions/c1-admin-map.md`; parity rows in `c1-parity.md`). New admin maps build on it instead of their own `FlutterMap`.
+- **`AdminMap`** handles the tiles, no double-tap zoom, the opening fit (`fitTo`) and the floor shown (`FloorSelector`, with the remembered "only this floor"). It also takes the taps: in `pick`/`move` mode every tap is a position (`onTapPosition`); otherwise the layers are asked top first (`onHit`).
+- **Layers** (`layers.dart`): `PointsLayer` draws the selected floor as one `CircleLayer`, since a widget per point would be slow with hundreds. `ConnectionsLayer` and `PinLayer` complete it. Each layer has `build(view)` and `hitTest`, which returns an `AdminMapHit` (`PointHit` so far).
+- **On it today:** the Anchor points tab (`AnchorPointsMap`, now a thin wrapper). Connect, the location picker and the session view still have their own maps, until C2 and C3 move them.
+- **Tests:** `test/widgets/admin_map_test.dart` pass `showTiles: false`, and let 1 s pass after a tap, for flutter_map's gesture timer.
+
 ## Many admins at once (A5)
 
 - **Saving a point** goes through `saveAnchorPoint` (`lib/widgets/map_conflict.dart`): the edit screen, verify/unverify, moving on the map, and the photo screen's back-to-pending. It sends `expected`, each changed field's value as this admin saw it (`expectedFor`, `lib/services/map_sync.dart`). The edit screen sends only the fields that differ (`changedFields`), with metadata normalised to the same keys and order, and the point's real altitude as expected when it moves. A 409 from the backend (`MapConflict.of`) opens a dialog showing theirs against yours: **Keep theirs** saves nothing, **Save mine anyway** sends it again without `expected`.
