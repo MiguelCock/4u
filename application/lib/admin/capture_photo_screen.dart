@@ -377,6 +377,7 @@ class _CapturePhotoScreenState extends State<CapturePhotoScreen> {
         final saved = await saveAnchorPoint(
           context,
           _mapApi,
+          id: widget.anchorPointId,
           original: _anchorPoint!,
           changes: {'status': 'pending'},
           name: widget.anchorPointDescription,

@@ -277,6 +277,7 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
         final saved = await saveAnchorPoint(
           context,
           _mapApi,
+          id: id,
           original: _original,
           changes: changes,
           name: anchorDisplayName(l10n, widget.anchorPoint),

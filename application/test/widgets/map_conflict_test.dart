@@ -50,6 +50,7 @@ Future<bool?> _save(WidgetTester tester, ApiService api) async {
           onPressed: () async => result = await saveAnchorPoint(
             context,
             api,
+            id: 'p1',
             original: _point,
             changes: {'location_description': 'Door 2'},
             name: 'Front door',
@@ -96,6 +97,7 @@ void main() {
             onPressed: () async => result = await saveAnchorPoint(
               context,
               api,
+              id: 'p1',
               original: _point,
               changes: {'location_description': 'Door 2'},
               name: 'Front door',
@@ -119,9 +121,11 @@ void main() {
     tester,
   ) async {
     final sent = <Map<String, dynamic>>[];
+    final paths = <String>[];
     final api = ApiService(
       'http://gateway.example/map',
       client: MockClient((request) async {
+        paths.add(request.url.path);
         sent.add(jsonDecode(request.body) as Map<String, dynamic>);
         return http.Response(jsonEncode([_point]), 200);
       }),
@@ -130,6 +134,9 @@ void main() {
     );
     final result = await _save(tester, api);
     expect(result, isTrue);
+    // The id is passed on its own: the edit screen's original holds only the
+    // edited fields, and taking it from there sent saves to /null.
+    expect(paths.single, '/map/anchor-points/p1');
     expect(sent.single, {
       'location_description': 'Door 2',
       'expected': {'location_description': 'Front door'},

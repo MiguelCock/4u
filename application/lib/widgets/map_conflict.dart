@@ -9,15 +9,18 @@ import '../services/map_sync.dart';
 /// Saves [changes] to an anchor point, with the values they were based on, so
 /// another admin's edit is never silently overwritten (A5). On a conflict it
 /// shows both versions and asks. Returns false when the admin kept the other
-/// admin's version, and rethrows any other error.
+/// admin's version, and rethrows any other error. [id] is separate from
+/// [original], which may hold only the edited fields: taking it from there
+/// sent the edit screen's saves to `/anchor-points/null`, a 404.
 Future<bool> saveAnchorPoint(
   BuildContext context,
   ApiService api, {
+  required String id,
   required Map<String, dynamic> original,
   required Map<String, dynamic> changes,
   required String name,
 }) async {
-  final path = '/anchor-points/${original['id']}';
+  final path = '/anchor-points/$id';
   try {
     await api.patch(path, {
       ...changes,

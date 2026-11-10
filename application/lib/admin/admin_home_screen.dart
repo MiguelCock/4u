@@ -1274,6 +1274,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       final saved = await saveAnchorPoint(
         context,
         _mapApi,
+        id: point['id'] as String,
         original: point,
         changes: {'status': status},
         name: name,
@@ -1468,6 +1469,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       final saved = await saveAnchorPoint(
         context,
         _mapApi,
+        id: point['id'] as String,
         original: point,
         changes: {
           'latitude': target.latitude,
