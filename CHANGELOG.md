@@ -6,6 +6,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.6.0-pre] - 2026-11-10
+
 ### Added
 
 - Each trip records which phone and app version it ran on, so problems that only happen on some phones can be found.
@@ -291,7 +293,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.6...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.6.0-pre...develop
+[0.6.0-pre]: https://github.com/MiguelCock/4u/compare/v0.5.6...v0.6.0-pre
 [0.5.6]: https://github.com/MiguelCock/4u/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/MiguelCock/4u/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/MiguelCock/4u/compare/v0.5.3...v0.5.4
