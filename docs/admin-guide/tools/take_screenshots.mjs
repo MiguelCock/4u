@@ -1,7 +1,7 @@
 // Takes the admin guide's screenshots from the real web app, against
 // mock_server.py's made-up data. See README.md.
 //
-//   node take_screenshots.mjs [--lang es] [--only name]
+//   node take_screenshots.mjs [--lang es] [--only name[,name...]]
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -201,7 +201,7 @@ class Run {
   /** Saves a screenshot, with numbered markers on [marks]: labels, [label,
    * nth] pairs, or boxes. */
   async shot(name, marks = []) {
-    if (only && only !== name) return;
+    if (only && !only.split(',').includes(name)) return;
     await this.wait(600);
     const boxes = [];
     for (const mark of marks) {

@@ -8,6 +8,7 @@ import 'package:eyes4u/l10n/app_localizations.dart';
 import 'package:eyes4u/services/floor_view.dart';
 import 'package:eyes4u/services/map_tap.dart';
 import 'package:eyes4u/widgets/admin_map/admin_map.dart';
+import 'package:eyes4u/theme/admin_palette.dart';
 import 'package:eyes4u/widgets/admin_map/layers.dart';
 
 const _here = LatLng(6.2, -75.58);
@@ -144,10 +145,11 @@ void main() {
     expect(watch.elapsedMilliseconds, lessThan(3000));
   });
 
-  test('status colours stay what admins know', () {
-    expect(anchorStatusColor('verified'), Colors.green);
-    expect(anchorStatusColor('rejected'), Colors.red);
-    expect(anchorStatusColor('pending'), Colors.grey);
+  test('status colours come from the palette', () {
+    expect(anchorStatusColor('verified'), kAdminPalette.verified);
+    expect(anchorStatusColor('rejected'), kAdminPalette.rejected);
+    expect(anchorStatusColor('pending'), kAdminPalette.pending);
+    expect(anchorStatusColor(null), kAdminPalette.pending);
     expect(anchorPosition(_point('p', 0)), _here);
   });
 

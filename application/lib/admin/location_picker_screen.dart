@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/floor_view.dart';
 import '../widgets/admin_map/admin_map.dart';
 import '../widgets/admin_map/layers.dart';
+import '../theme/admin_palette.dart';
 
 /// Reusable "tap the map to pick a location" screen - pops with the tapped
 /// `LatLng` on confirm, or `null` if the admin just backs out. Used by
@@ -161,7 +162,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             maxZoom: double.infinity,
           ),
           PointsLayer(points: _anchorPoints),
-          PinLayer(position: _picked, color: Colors.red),
+          PinLayer(position: _picked, color: kAdminPalette.pickPin),
         ],
       ),
     );

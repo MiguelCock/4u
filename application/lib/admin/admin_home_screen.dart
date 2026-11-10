@@ -40,6 +40,7 @@ import '../widgets/guardrail_dialogs.dart';
 import '../widgets/fab_row.dart';
 import '../widgets/scope_dropdowns.dart';
 import '../widgets/scrollable_message.dart';
+import '../theme/admin_palette.dart';
 
 /// `admin`-role home screen: four tabs (places / buildings / anchor points /
 /// connections), each searchable, with edit and delete (cascade-impact
@@ -1253,7 +1254,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       children: [
         ListTile(
           contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.timeline, color: Colors.teal),
+          leading: Icon(Icons.timeline, color: kAdminPalette.connectionActive),
           title: Text('${_describePoint(aId)} ↔ ${_describePoint(bId)}'),
           subtitle: Text(
             [
@@ -1349,7 +1350,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         );
                         _tabController.animateTo(_kBuildings);
                       },
-                      leading: const Icon(Icons.flag, color: Colors.purple),
+                      leading: Icon(
+                        Icons.flag,
+                        color: kAdminPalette.university,
+                      ),
                       title: Text(
                         place['name'] as String? ?? place['id'] as String,
                       ),
@@ -1448,9 +1452,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         });
                         _tabController.animateTo(_kPoints);
                       },
-                      leading: const Icon(
+                      leading: Icon(
                         Icons.apartment,
-                        color: Colors.orange,
+                        color: kAdminPalette.building,
                       ),
                       title: Text(
                         building['name'] as String? ?? building['id'] as String,
@@ -1568,7 +1572,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     return IconButton(
       icon: Icon(
         verified ? Icons.remove_done : Icons.verified_outlined,
-        color: verified ? null : Colors.green,
+        color: verified ? null : kAdminPalette.verified,
       ),
       tooltip: verified
           ? l10n.adminAnchorUnverifyTooltip
@@ -1702,7 +1706,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           contentPadding: EdgeInsets.zero,
           leading: Icon(
             Icons.flag,
-            color: active ? Colors.purple : Colors.grey,
+            color: active ? kAdminPalette.university : kAdminPalette.inactive,
           ),
           title: Text(place['name'] as String? ?? ''),
           subtitle: Text(
@@ -1757,7 +1761,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           contentPadding: EdgeInsets.zero,
           leading: Icon(
             Icons.apartment,
-            color: active ? Colors.orange : Colors.grey,
+            color: active ? kAdminPalette.building : kAdminPalette.inactive,
           ),
           title: Text(building['name'] as String? ?? ''),
           subtitle: Text(
@@ -2296,7 +2300,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                                 fit: BoxFit.cover,
                               ),
                             )
-                          : const Icon(Icons.location_pin, color: Colors.green),
+                          : Icon(
+                              Icons.location_pin,
+                              color: kAdminPalette.verified,
+                            ),
                       title: Text(anchorDisplayName(l10n, point)),
                       subtitle: Text(
                         '${building?['name'] as String? ?? l10n.commonUnknownBuilding} · '
@@ -2421,7 +2428,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                     final distance = (connection['distance_meters'] as num?)
                         ?.toStringAsFixed(1);
                     return ListTile(
-                      leading: const Icon(Icons.timeline, color: Colors.teal),
+                      leading: Icon(
+                        Icons.timeline,
+                        color: kAdminPalette.connectionActive,
+                      ),
                       title: Text(
                         '${describe(connection['anchor_point_a_id'] as String?)} '
                         '↔ ${describe(connection['anchor_point_b_id'] as String?)}',
@@ -2747,8 +2757,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final long = longConnections(_anchorPoints, _connections);
     final floorChange = floorChangeConnections(_anchorPoints, _connections);
     Widget tile(String text, IconData icon, VoidCallback onTap) => ListTile(
-      leading: Icon(icon, color: Colors.orange),
-      title: Text(text, style: const TextStyle(color: Colors.deepOrange)),
+      leading: Icon(icon, color: kAdminPalette.notice),
+      title: Text(text, style: TextStyle(color: kAdminPalette.notice)),
       onTap: () {
         _closeDrawer();
         onTap();
@@ -2970,25 +2980,25 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           item(
             _kUniversities,
             Icons.flag,
-            Colors.purple,
+            kAdminPalette.university,
             l10n.adminSectionUniversities,
           ),
           item(
             _kBuildings,
             Icons.apartment,
-            Colors.orange,
+            kAdminPalette.building,
             l10n.adminSectionBuildings,
           ),
           item(
             _kPoints,
             Icons.location_pin,
-            Colors.green,
+            kAdminPalette.verified,
             l10n.adminSectionAnchorPoints,
           ),
           item(
             _kConnections,
             Icons.timeline,
-            Colors.teal,
+            kAdminPalette.connectionActive,
             l10n.adminSectionConnections,
           ),
           item(_kUsers, Icons.people, Colors.indigo, l10n.adminUsersTabLabel),

@@ -281,6 +281,12 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 - **The map's side panel** is in a `SafeArea` (right and bottom) and leaves room at the bottom for the floating buttons.
 - **The menu header** is a compact role and email, not a `DrawerHeader` (fixed ~160 px).
 
+## One palette (C4)
+
+- **Where the colours live:** every colour the admin screens give a meaning to comes from `kAdminPalette` (`lib/theme/admin_palette.dart`): statuses, floors, connections, selection, pins, universities and buildings, a session's map, and the notices. Don't write `Colors.*` for those meanings; add a field to the palette.
+- **Option C** (the Okabe–Ito colour-blind-safe set): rejected is a ✕, and dots have a black outline that carries their contrast on the map. Marks are `kPointRadius` (9) and `kMarkSize` (34) in `lib/widgets/admin_map/layers.dart`, and ▲▼ are 40 px.
+- **Tests:** `lib/theme/palette_checks.dart` measures WCAG contrast on the map's backgrounds and CIEDE2000 distances under simulated colour blindness. `test/theme/admin_palette_test.dart` fails if the palette breaks a threshold. The options and numbers are in `docs/decisions/c4-palette.md`.
+
 ## Many admins at once (A5)
 
 - **Saving a point** goes through `saveAnchorPoint` (`lib/widgets/map_conflict.dart`): the edit screen, verify/unverify, moving on the map, and the photo screen's back-to-pending. It sends `expected`, each changed field's value as this admin saw it (`expectedFor`, `lib/services/map_sync.dart`). The edit screen sends only the fields that differ (`changedFields`), with metadata normalised to the same keys and order, and the point's real altitude as expected when it moves. A 409 from the backend (`MapConflict.of`) opens a dialog showing theirs against yours: **Keep theirs** saves nothing, **Save mine anyway** sends it again without `expected`.
