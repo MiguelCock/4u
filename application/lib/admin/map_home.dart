@@ -66,9 +66,6 @@ class MapHome extends StatefulWidget {
   /// Which points show (status and filters); the selected one always does.
   final bool Function(Map<String, dynamic> point)? pointFilter;
 
-  /// Under the breadcrumb: the status chips and filters.
-  final Widget? toolbar;
-
   final MapFocus? focus;
 
   /// Details beside the map (a wide screen) instead of in a bottom sheet.
@@ -98,7 +95,6 @@ class MapHome extends StatefulWidget {
     this.selectedPointId,
     this.onConnectTap,
     this.pointFilter,
-    this.toolbar,
     this.focus,
     this.sidePanel = false,
     this.controlsTop = 8,
@@ -439,7 +435,6 @@ class _MapHomeState extends State<MapHome> {
       children: [
         _searchBar(),
         _breadcrumb(),
-        ?widget.toolbar,
         Expanded(
           child: Stack(
             fit: StackFit.expand,
@@ -707,20 +702,30 @@ class _MapHomeState extends State<MapHome> {
 
   Widget _panel(AdminMapHit item) {
     final l10n = AppLocalizations.of(context)!;
+    // Clear of the phone's own buttons, and of the floating buttons at the
+    // bottom.
     return Material(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 8, 16),
-        children: [
-          Align(
-            alignment: Alignment.centerRight,
-            child: IconButton(
-              icon: const Icon(Icons.close),
-              tooltip: l10n.commonClose,
-              onPressed: () => setState(() => _selected = null),
+      child: SafeArea(
+        left: false,
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 4, 8, 96),
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: l10n.commonClose,
+                onPressed: () => setState(() => _selected = null),
+              ),
             ),
-          ),
-          widget.details(context, item, () => setState(() => _selected = null)),
-        ],
+            widget.details(
+              context,
+              item,
+              () => setState(() => _selected = null),
+            ),
+          ],
+        ),
       ),
     );
   }

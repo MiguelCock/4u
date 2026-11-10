@@ -95,8 +95,8 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
   - **Drawer notices** (`_dataHealthTiles`): verified points with no connection (opens the Anchor points tab with `AnchorFilters(hasConnections: false)` and the verified chip), named hidden points and connections over 30 m (each a bottom-sheet list to edit the point or delete the connection). Nothing shows when the data is clean.
   - **Users see only connected points**: `fetchConnectedAnchorIds` (`destinations.dart`) filters `UserHomeScreen`'s start/destination candidates and `AnchorPointPickerScreen`'s list; if the connections can't be loaded nothing is filtered. A 404 from `find_or_create` is mapped by its `detail` to `homeErrorNoPathStart` / `homeErrorNoPathDestination`.
 - **Anchor-point metadata filters** (`lib/services/anchor_filters.dart`, pure and unit-tested):
-  - **The control:** a Filters chip on the Anchor points tab opens a sheet with category and type, floor, indoor/outdoor/not set, lighting (or not set), has photos, and has connections.
-  - **Behaviour:** filters apply to both the list and the map, combine with the building scope, status chips and search, and are cleared by "Clear filters" or by system back first.
+  - **The control:** the **Filters** floating button (bottom left, a badge with how many are on) opens a sheet with status (with counts for the current scope), category and type, floor, indoor/outdoor/not set, lighting (or not set), has photos, and has connections. Status is part of `AnchorFilters` (`status`).
+  - **Behaviour:** filters apply to both the list and the map (one state), combine with the university/building scope and search, and are cleared by "Clear filters" or by system back first.
 - **CRUD integrity** (from a full audit; see the root `CLAUDE.md` and each service's notes):
   - **Floors**: capture and edit have a **Floor** dropdown (`lib/widgets/floor_field.dart`). It's 0-based in the database but shown as "Floor 1" for the ground floor, and offers the building's floors. Every point used to be saved on floor 0.
   - **Altitude**: a point placed on the map, or moved, gets `altitude: null` instead of the phone's GPS altitude for some other spot.
@@ -263,7 +263,7 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 
   A point row's tap and the point details' Connect enter it with that point selected. The Connections FAB enters it where that tab is narrowed to, or where the map already is. Leaving the Map tab ends it, and back first lets go of the selection, then leaves the mode.
 - **A line, in either mode,** opens the connection's details (`_connectionDetails`): ends, distance (typed or measured), whether it changes floor, and the warning for users, with **Edit warning** and **Delete**.
-- **Filters on the map.** `_mapToolbar` holds the Filters chip and the status chips, counted for the map's scope. They're the same state as the Anchor points list (`_pointFilter`), and back on the map clears them before going up a level. The Anchor points tab is a list only now.
+- **Filters on the map.** The Filters floating button opens the same sheet as the list's (`_showAnchorFilters(scoped, buildingId)`), with status counted for the map's scope. It's one state with the list (`_pointFilter`), and back on the map clears it before going up a level. The Anchor points tab is a list only.
 - **"Show on the map".** `MapFocus` (`map_home.dart`) is a one-shot request: building scope, floor, centred, details opened (`open: false` only centres). It's used by:
   - the four menu notices' review lists: unconnected verified points are a review list now, like the others;
   - the Connections tab's **Show on map**;
@@ -272,6 +272,14 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
   It's cleared on leaving the Map tab, so a map built again doesn't repeat it. A fit asked for before the map is ready waits for it (`_fitPending`).
 - **The Connections tab** has University and Building dropdowns; a connection shows when either end is inside.
 - **Tests:** `test/services/connect_chain_test.dart`, and `test/widgets/map_home_connect_test.dart`, which finds screen positions through the map's own `MapCamera` (connect taps, a line's details, a point winning over a line, filters, a focus request, the location picker).
+
+## Admin layout (after C3)
+
+- **Two floating buttons** (`FabRow`, `lib/widgets/fab_row.dart`, `centerFloat`): **Filters** bottom left on the Map, Anchor points and Connections; the add button bottom right. Each list ends with `fabClearance(context)` (88 px plus the phone's bottom inset), so its last row's buttons can be tapped; a test in `test/widgets/scope_dropdowns_test.dart` taps one.
+- **University and building dropdowns** (`ScopeDropdowns`, `lib/widgets/scope_dropdowns.dart`) narrow the Buildings (university only), Anchor points and Connections tabs. A row's drill-down (a university's, a building's) fills them; a new university resets the building.
+- **Connections filters** (`ConnectionFilters`, `lib/services/connection_filters.dart`, pure): over 15 m (the stored distance, else the straight line), with a warning, changes floor.
+- **The map's side panel** is in a `SafeArea` (right and bottom) and leaves room at the bottom for the floating buttons.
+- **The menu header** is a compact role and email, not a `DrawerHeader` (fixed ~160 px).
 
 ## Many admins at once (A5)
 

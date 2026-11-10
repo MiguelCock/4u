@@ -109,11 +109,12 @@ Editing also shows a switch to **deactivate** it without deleting: its buildings
 
 | # | Control | What it does |
 |---|---|---|
-| 1 | **Search buildings** | Filters the list as you type. |
-| 2 | Building row | Shows its university and how many points it has. |
-| 3 | **Edit** (pencil) | Changes its details, including which university it belongs to. The code can't be changed. |
-| 4 | **Delete** (trash) | Deletes it with everything in it. See [Deleting data](#deleting). |
-| 5 | **Add building** (+) | Opens the form below. |
+| 1 | **University** | Shows only that university's buildings. Tapping a university's row fills it in. |
+| 2 | **Search buildings** | Filters the list as you type. |
+| 3 | Building row | Shows its university and how many points it has. |
+| 4 | **Edit** (pencil) | Changes its details, including which university it belongs to. The code can't be changed. |
+| 5 | **Delete** (trash) | Deletes it with everything in it. See [Deleting data](#deleting). |
+| 6 | **Add building** (+) | Opens the form below. |
 
 ### Adding a building
 
@@ -151,14 +152,15 @@ There are two kinds of point, by their **location type**:
 
 | # | Control | What it does |
 |---|---|---|
-| 1 | **All / Pending / Verified / Rejected** | Shows only points with that status, and how many there are. |
-| 2 | **Filters** | Opens more filters (below). |
+| 1 | **University** | Shows only that university's points. |
+| 2 | **Building** | Shows only that building's points. Tapping a building's row fills both in. |
 | 3 | **Search anchor points** | Searches by name. |
 | 4 | Point row | Shows its building, status and photo count. **Tapping it opens the map in Connect mode** with this point already selected. |
 | 5 | **Verify** | Verifies the point. On a verified one, this button puts it back to pending. See [Verifying](#verify). |
 | 6 | **Edit** (pencil) | Opens [the point's edit page](#point-edit). |
 | 7 | **More actions** (⋮) | Opens the menu below. |
-| 8 | **New anchor point** (camera) | Opens [the form](#point-form). |
+| 8 | **Filters** | Status (All / Pending / Verified / Rejected, with how many) and more filters (below). The number on it is how many are on. |
+| 9 | **New anchor point** (camera) | Opens [the form](#point-form). |
 
 Unnamed points show their type and the start of their id, for example "Hallway · 284a".
 
@@ -335,11 +337,14 @@ A connection says that **a person can walk directly between two points**. Routes
 
 | # | Control | What it does |
 |---|---|---|
-| 1 | **Search connections** | Searches by its points' names. |
-| 2 | **Add connection (form)** | Opens [the form](#connection-form). |
-| 3 | Connection row | Shows its two points, their buildings and its distance. **Tapping it** opens its warning for users (below). ⚠ means it has one. |
-| 4 | **Delete** (trash) | Deletes the connection, after asking. The points aren't touched. |
-| 5 | **Connect on map** | Opens [the map](#connect-on-map). |
+| 1 | **University** | Shows only connections with a point in that university. |
+| 2 | **Building** | Shows only connections with a point in that building. |
+| 3 | **Search connections** | Searches by its points' names. |
+| 4 | **Add connection (form)** | Opens [the form](#connection-form). |
+| 5 | Connection row | Shows its two points, their buildings and its distance. **Tapping it** opens its warning for users (below). ⚠ means it has one. The map button shows it on the map. |
+| 6 | **Delete** (trash) | Deletes the connection, after asking. The points aren't touched. |
+| 7 | **Filters** | Over 15 m, with a warning for users, or changing floor. |
+| 8 | **Connect on map** | Opens [the map](#connect-on-map). |
 
 ### Rules
 

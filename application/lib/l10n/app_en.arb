@@ -805,5 +805,11 @@
   "adminConnectionNoWarning": "No warning for users",
   "adminConnectionEditWarning": "Edit warning",
   "adminConnectionsAllBuildings": "All buildings",
-  "adminHealthUnconnectedHint": "Each one can't be reached or started from. Connect it to the path, or unverify it."
+  "adminHealthUnconnectedHint": "Each one can't be reached or started from. Connect it to the path, or unverify it.",
+  "adminFilterStatus": "Status",
+  "adminConnectionFiltersTitle": "Filter connections",
+  "adminConnectionFilterLong": "Over 15 m",
+  "adminConnectionFilterWarning": "Warning for users",
+  "adminFilterYes": "Yes",
+  "adminFilterNo": "No"
 }

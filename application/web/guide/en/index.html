@@ -424,26 +424,31 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 <tbody>
 <tr>
 <td>1</td>
+<td><strong>University</strong></td>
+<td>Shows only that university's buildings. Tapping a university's row fills it in.</td>
+</tr>
+<tr>
+<td>2</td>
 <td><strong>Search buildings</strong></td>
 <td>Filters the list as you type.</td>
 </tr>
 <tr>
-<td>2</td>
+<td>3</td>
 <td>Building row</td>
 <td>Shows its university and how many points it has.</td>
 </tr>
 <tr>
-<td>3</td>
+<td>4</td>
 <td><strong>Edit</strong> (pencil)</td>
 <td>Changes its details, including which university it belongs to. The code can't be changed.</td>
 </tr>
 <tr>
-<td>4</td>
+<td>5</td>
 <td><strong>Delete</strong> (trash)</td>
 <td>Deletes it with everything in it. See <a href="#deleting">Deleting data</a>.</td>
 </tr>
 <tr>
-<td>5</td>
+<td>6</td>
 <td><strong>Add building</strong> (+)</td>
 <td>Opens the form below.</td>
 </tr>
@@ -549,13 +554,13 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 <tbody>
 <tr>
 <td>1</td>
-<td><strong>All / Pending / Verified / Rejected</strong></td>
-<td>Shows only points with that status, and how many there are.</td>
+<td><strong>University</strong></td>
+<td>Shows only that university's points.</td>
 </tr>
 <tr>
 <td>2</td>
-<td><strong>Filters</strong></td>
-<td>Opens more filters (below).</td>
+<td><strong>Building</strong></td>
+<td>Shows only that building's points. Tapping a building's row fills both in.</td>
 </tr>
 <tr>
 <td>3</td>
@@ -584,6 +589,11 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 </tr>
 <tr>
 <td>8</td>
+<td><strong>Filters</strong></td>
+<td>Status (All / Pending / Verified / Rejected, with how many) and more filters (below). The number on it is how many are on.</td>
+</tr>
+<tr>
+<td>9</td>
 <td><strong>New anchor point</strong> (camera)</td>
 <td>Opens <a href="#point-form">the form</a>.</td>
 </tr>
@@ -956,26 +966,41 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 <tbody>
 <tr>
 <td>1</td>
+<td><strong>University</strong></td>
+<td>Shows only connections with a point in that university.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Building</strong></td>
+<td>Shows only connections with a point in that building.</td>
+</tr>
+<tr>
+<td>3</td>
 <td><strong>Search connections</strong></td>
 <td>Searches by its points' names.</td>
 </tr>
 <tr>
-<td>2</td>
+<td>4</td>
 <td><strong>Add connection (form)</strong></td>
 <td>Opens <a href="#connection-form">the form</a>.</td>
 </tr>
 <tr>
-<td>3</td>
+<td>5</td>
 <td>Connection row</td>
-<td>Shows its two points, their buildings and its distance. <strong>Tapping it</strong> opens its warning for users (below). ⚠ means it has one.</td>
+<td>Shows its two points, their buildings and its distance. <strong>Tapping it</strong> opens its warning for users (below). ⚠ means it has one. The map button shows it on the map.</td>
 </tr>
 <tr>
-<td>4</td>
+<td>6</td>
 <td><strong>Delete</strong> (trash)</td>
 <td>Deletes the connection, after asking. The points aren't touched.</td>
 </tr>
 <tr>
-<td>5</td>
+<td>7</td>
+<td><strong>Filters</strong></td>
+<td>Over 15 m, with a warning for users, or changing floor.</td>
+</tr>
+<tr>
+<td>8</td>
 <td><strong>Connect on map</strong></td>
 <td>Opens <a href="#connect-on-map">the map</a>.</td>
 </tr>

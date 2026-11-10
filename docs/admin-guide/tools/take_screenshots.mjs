@@ -323,6 +323,7 @@ async function allShots(r) {
   // Buildings.
   await r.click(t('adminSectionBuildings'));
   await r.shot('buildings', [
+    t('commonUniversityLabel'),
     t('adminSearchBuildingsHint'),
     'Biblioteca',
     [t('commonEdit'), 0],
@@ -348,13 +349,14 @@ async function allShots(r) {
   // Anchor points: list, filters, row menu.
   await r.click(t('adminSectionAnchorPoints'));
   await r.shot('points-list', [
-    t('adminStatusChipLabel', { label: t('commonStatusPending'), count: 3 }),
-    t('adminFiltersButton'),
+    t('commonUniversityLabel'),
+    t('commonBuildingLabel'),
     t('adminSearchAnchorPointsHint'),
     'Archivo',
     t('adminAnchorVerifyTooltip'),
     [t('commonEdit'), 0],
     [t('adminMoreActionsTooltip'), 0],
+    t('adminFiltersButton'),
     t('adminFabNewAnchorPoint'),
   ]);
   await r.click(t('adminFiltersButton'));
@@ -484,10 +486,13 @@ async function allShots(r) {
   // Connections.
   await r.click(t('adminSectionConnections'));
   await r.shot('connections', [
+    t('commonUniversityLabel'),
+    t('commonBuildingLabel'),
     t('adminSearchConnectionsHint'),
     t('adminAddConnectionFormTooltip'),
     'Tres escalones',
     [t('commonDelete'), 0],
+    t('adminFiltersButton'),
     t('adminFabConnectOnMap'),
   ]);
   await r.click('Tres escalones', 0, 900);

@@ -32,10 +32,13 @@ import '../services/api_error_messages.dart';
 import '../widgets/admin_guide.dart';
 import '../services/capture_checks.dart';
 import '../services/connect_chain.dart';
+import '../services/connection_filters.dart';
 import '../services/exit_guard.dart';
 import '../services/location_types.dart';
 import '../services/floor_view.dart';
 import '../widgets/guardrail_dialogs.dart';
+import '../widgets/fab_row.dart';
+import '../widgets/scope_dropdowns.dart';
 import '../widgets/scrollable_message.dart';
 
 /// `admin`-role home screen: four tabs (places / buildings / anchor points /
@@ -76,10 +79,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   String _buildingQuery = '';
   String _anchorQuery = '';
   String _connectionQuery = '';
-  String? _anchorStatusFilter;
   AnchorFilters _anchorFilters = AnchorFilters.none;
   String? _buildingsPlaceFilterId;
   String? _anchorPointsBuildingFilterId;
+  String? _anchorPointsPlaceFilterId;
+  ConnectionFilters _connectionFilters = ConnectionFilters.none;
 
   /// The sections, in drawer order. The map is first and opens the app (C2).
   static const _kMap = 0;
@@ -302,6 +306,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         !_buildings.any((b) => b['id'] == _anchorPointsBuildingFilterId)) {
       _anchorPointsBuildingFilterId = null;
     }
+    if (!_places.any((p) => p['id'] == _anchorPointsPlaceFilterId)) {
+      _anchorPointsPlaceFilterId = null;
+    }
     if (!_places.any((p) => p['id'] == _connectionsPlaceId)) {
       _connectionsPlaceId = null;
     }
@@ -405,12 +412,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       setState(() => _connecting = false);
       return;
     }
-    if (index == _kMap &&
-        (_anchorStatusFilter != null || !_anchorFilters.isEmpty)) {
-      setState(() {
-        _anchorStatusFilter = null;
-        _anchorFilters = AnchorFilters.none;
-      });
+    if (index == _kMap && !_anchorFilters.isEmpty) {
+      setState(() => _anchorFilters = AnchorFilters.none);
       return;
     }
     if (index == _kMap && !_mapScope.isAll) {
@@ -424,7 +427,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     }
     void clearFilterOf(int tab) {
       if (tab == _kBuildings) _buildingsPlaceFilterId = null;
-      if (tab == _kPoints) _anchorPointsBuildingFilterId = null;
+      if (tab == _kPoints) {
+        _anchorPointsBuildingFilterId = null;
+        _anchorPointsPlaceFilterId = null;
+      }
     }
 
     if (_tabHistory.isNotEmpty) {
@@ -432,7 +438,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       _navigatingBack = true;
       _tabController.animateTo(_tabHistory.removeLast());
     } else if ((index == _kBuildings && _buildingsPlaceFilterId != null) ||
-        (index == _kPoints && _anchorPointsBuildingFilterId != null)) {
+        (index == _kPoints &&
+            (_anchorPointsBuildingFilterId != null ||
+                _anchorPointsPlaceFilterId != null))) {
       setState(() => clearFilterOf(index));
     } else if (index != _kMap) {
       _navigatingBack = true;
@@ -1327,7 +1335,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   physics: const AlwaysScrollableScrollPhysics(),
                   // Clears the FAB, which otherwise covers the last row's
                   // trailing buttons.
-                  padding: const EdgeInsets.only(bottom: 88),
+                  padding: EdgeInsets.only(bottom: _fabClearance),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final place = filtered[index];
@@ -1399,21 +1407,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
     return Column(
       children: [
-        if (scopedPlace != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: InputChip(
-                label: Text(
-                  l10n.adminBuildingsInPlaceChip(
-                    scopedPlace['name'] as String? ?? scopedPlace['id'],
-                  ),
-                ),
-                onDeleted: () => setState(() => _buildingsPlaceFilterId = null),
-              ),
-            ),
-          ),
+        ScopeDropdowns(
+          places: _places,
+          buildings: _buildings,
+          placeId: _buildingsPlaceFilterId,
+          buildingId: null,
+          showBuilding: false,
+          onChanged: (placeId, _) =>
+              setState(() => _buildingsPlaceFilterId = placeId),
+        ),
         _searchField(_buildingSearchController, l10n.adminSearchBuildingsHint),
         Expanded(
           child: filtered.isEmpty
@@ -1428,7 +1430,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   physics: const AlwaysScrollableScrollPhysics(),
                   // Clears the FAB, which otherwise covers the last row's
                   // trailing buttons.
-                  padding: const EdgeInsets.only(bottom: 88),
+                  padding: EdgeInsets.only(bottom: _fabClearance),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final building = filtered[index];
@@ -1438,10 +1440,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                     ).length;
                     return ListTile(
                       onTap: () {
-                        setState(
-                          () => _anchorPointsBuildingFilterId =
-                              building['id'] as String,
-                        );
+                        setState(() {
+                          _anchorPointsBuildingFilterId =
+                              building['id'] as String;
+                          _anchorPointsPlaceFilterId =
+                              building['place_id'] as String?;
+                        });
                         _tabController.animateTo(_kPoints);
                       },
                       leading: const Icon(
@@ -1484,47 +1488,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// is currently selected, not every building's anchor points, or an
   /// admin drilled into one building sees a global "Verified (47)" count
   /// that doesn't match anything on screen.
-  Widget _statusChipsRow(List<Map<String, dynamic>> scopedAnchorPoints) {
-    final l10n = AppLocalizations.of(context)!;
-    const statuses = ['pending', 'verified', 'rejected'];
-    final counts = {
-      for (final s in statuses)
-        s: scopedAnchorPoints.where((p) => p['status'] == s).length,
-    };
-
-    Widget chip(String? value, String label) {
-      final count = value == null
-          ? scopedAnchorPoints.length
-          : counts[value] ?? 0;
-      return Padding(
-        padding: const EdgeInsets.only(right: 6),
-        child: ChoiceChip(
-          label: Text(l10n.adminStatusChipLabel(label, count)),
-          selected: _anchorStatusFilter == value,
-          onSelected: (_) => setState(() => _anchorStatusFilter = value),
-        ),
-      );
-    }
-
-    return Row(
-      children: [
-        chip(null, l10n.commonStatusAll),
-        chip('pending', l10n.commonStatusPending),
-        chip('verified', l10n.commonStatusVerified),
-        chip('rejected', l10n.commonStatusRejected),
-      ],
-    );
-  }
-
-  Widget _statusFilterChips(List<Map<String, dynamic>> scopedAnchorPoints) =>
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: _statusChipsRow(scopedAnchorPoints),
-        ),
-      );
-
   /// Verify or unverify straight from the list or the map. Verifying needs
   /// at least one photo (the backend enforces it too) and adds the point to
   /// photo search; unverifying puts it back to pending and removes it.
@@ -1825,10 +1788,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               label: Text(l10n.adminMapOpenPointsList),
               onPressed: () {
                 close();
-                setState(
-                  () =>
-                      _anchorPointsBuildingFilterId = building['id'] as String,
-                );
+                setState(() {
+                  _anchorPointsBuildingFilterId = building['id'] as String;
+                  _anchorPointsPlaceFilterId = building['place_id'] as String?;
+                });
                 _tabController.animateTo(_kPoints);
               },
             ),
@@ -1850,52 +1813,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       ],
     }.whereType<String>().toSet();
     return (p) =>
-        (_anchorStatusFilter == null || p['status'] == _anchorStatusFilter) &&
         _anchorFilters.matches(p, withPhotos: withPhotos, connected: connected);
-  }
-
-  /// The Filters chip, and Clear while any is on.
-  List<Widget> _filtersChips(String? buildingId) {
-    final l10n = AppLocalizations.of(context)!;
-    return [
-      ActionChip(
-        avatar: const Icon(Icons.filter_list, size: 18),
-        label: Text(
-          _anchorFilters.isEmpty
-              ? l10n.adminFiltersButton
-              : l10n.adminFiltersButtonCount(_anchorFilters.activeCount),
-        ),
-        onPressed: () => _showAnchorFilters(buildingId),
-      ),
-      if (!_anchorFilters.isEmpty) ...[
-        const SizedBox(width: 6),
-        InputChip(
-          label: Text(l10n.adminFiltersClear),
-          onDeleted: () => setState(() => _anchorFilters = AnchorFilters.none),
-        ),
-      ],
-    ];
-  }
-
-  /// The map's filter row: Filters, then the status chips with the scope's
-  /// counts. Shared with the list, so both always agree.
-  Widget _mapToolbar() {
-    final scoped = pointsInScope(
-      _mapScope,
-      buildings: _buildings,
-      points: _anchorPoints,
-    );
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-      child: Row(
-        children: [
-          ..._filtersChips(_mapScope.buildingId),
-          const SizedBox(width: 6),
-          _statusChipsRow(scoped),
-        ],
-      ),
-    );
   }
 
   /// The Map section (C2): universities, then buildings, then points.
@@ -1924,7 +1842,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         selectedPointId: _connectFromId,
         onConnectTap: _onConnectTap,
         pointFilter: _pointFilter(),
-        toolbar: _mapToolbar(),
         focus: _mapFocus,
         sidePanel: _permanentDrawer,
         pointName: (point) => _pointLabel(l10n, point),
@@ -2069,8 +1986,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   /// The metadata filters sheet for the Anchor points tab. Changes apply
   /// right away to the list and map behind it.
-  Future<void> _showAnchorFilters(String? buildingId) async {
+  /// [scoped]: the points the list or map shows before these filters, for
+  /// the status counts; [buildingId] for the floors offered.
+  Future<void> _showAnchorFilters(
+    List<Map<String, dynamic>> scoped,
+    String? buildingId,
+  ) async {
     final l10n = AppLocalizations.of(context)!;
+    int count(String? status) => status == null
+        ? scoped.length
+        : scoped.where((p) => p['status'] == status).length;
     final scopedBuilding = _buildings.firstWhere(
       (b) => b['id'] == buildingId,
       orElse: () => const {},
@@ -2148,6 +2073,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         ),
                     ],
                   ),
+                  section(l10n.adminFilterStatus, [
+                    for (final (value, label) in [
+                      (null, l10n.commonStatusAll),
+                      ('pending', l10n.commonStatusPending),
+                      ('verified', l10n.commonStatusVerified),
+                      ('rejected', l10n.commonStatusRejected),
+                    ])
+                      choice<String>(
+                        l10n.adminStatusChipLabel(label, count(value)),
+                        value,
+                        f.status,
+                        (v) => update(f.copyWith(status: v)),
+                      ),
+                  ]),
                   section(l10n.adminFilterCategory, [
                     choice<LocationCategory>(
                       l10n.adminFilterAny,
@@ -2261,6 +2200,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  /// The Anchor points list's university and building scope.
+  List<Map<String, dynamic>> get _anchorPointsScoped => pointsInScope(
+    MapScope(
+      placeId: _anchorPointsPlaceFilterId,
+      buildingId: _anchorPointsBuildingFilterId,
+    ),
+    buildings: _buildings,
+    points: _anchorPoints,
+  );
+
   Widget _anchorPointsTab() {
     final l10n = AppLocalizations.of(context)!;
     final withPhotos = {
@@ -2276,19 +2225,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final scopedBuilding = _anchorPointsBuildingFilterId != null
         ? buildingsById[_anchorPointsBuildingFilterId]
         : null;
-    final buildingScoped = _anchorPoints
-        .where(
-          (p) =>
-              _anchorPointsBuildingFilterId == null ||
-              p['building_id'] == _anchorPointsBuildingFilterId,
-        )
-        .toList();
+    final buildingScoped = _anchorPointsScoped;
     final filtered =
         buildingScoped
             .where(
               (p) =>
-                  (_anchorStatusFilter == null ||
-                      p['status'] == _anchorStatusFilter) &&
                   _anchorFilters.matches(
                     p,
                     withPhotos: withPhotos,
@@ -2309,26 +2250,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
     return Column(
       children: [
-        if (scopedBuilding != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: InputChip(
-                label: Text(
-                  l10n.adminAnchorsInBuildingChip(
-                    scopedBuilding['name'] as String? ?? scopedBuilding['id'],
-                  ),
-                ),
-                onDeleted: () =>
-                    setState(() => _anchorPointsBuildingFilterId = null),
-              ),
-            ),
-          ),
-        _statusFilterChips(buildingScoped),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-          child: Row(children: _filtersChips(_anchorPointsBuildingFilterId)),
+        ScopeDropdowns(
+          places: _places,
+          buildings: _buildings,
+          placeId: _anchorPointsPlaceFilterId,
+          buildingId: _anchorPointsBuildingFilterId,
+          onChanged: (placeId, buildingId) => setState(() {
+            _anchorPointsPlaceFilterId = placeId;
+            _anchorPointsBuildingFilterId = buildingId;
+          }),
         ),
         _searchField(_anchorSearchController, l10n.adminSearchAnchorPointsHint),
         Expanded(
@@ -2345,7 +2275,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   physics: const AlwaysScrollableScrollPhysics(),
                   // Clears the FAB, which otherwise covers the last row's
                   // trailing buttons.
-                  padding: const EdgeInsets.only(bottom: 88),
+                  padding: EdgeInsets.only(bottom: _fabClearance),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final point = filtered[index];
@@ -2448,6 +2378,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       final a = c['anchor_point_a_id'] as String?;
       final b = c['anchor_point_b_id'] as String?;
       if (!inside(a) && !inside(b)) return false;
+      if (!_connectionFilters.matches(c, anchorPointsById)) return false;
       final aDesc = describe(a).toLowerCase();
       final bDesc = describe(b).toLowerCase();
       return aDesc.contains(_connectionQuery) ||
@@ -2456,67 +2387,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String?>(
-                  initialValue: _connectionsPlaceId,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: l10n.commonUniversityLabel,
-                    isDense: true,
-                    border: const OutlineInputBorder(),
-                  ),
-                  items: [
-                    DropdownMenuItem(
-                      value: null,
-                      child: Text(l10n.commonStatusAll),
-                    ),
-                    for (final place in _places)
-                      DropdownMenuItem(
-                        value: place['id'] as String,
-                        child: Text(place['name'] as String? ?? ''),
-                      ),
-                  ],
-                  onChanged: (id) => setState(() {
-                    _connectionsPlaceId = id;
-                    _connectionsBuildingId = null;
-                  }),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: DropdownButtonFormField<String?>(
-                  // A new university resets the building list.
-                  key: ValueKey(_connectionsPlaceId),
-                  initialValue: _connectionsBuildingId,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: l10n.commonBuildingLabel,
-                    isDense: true,
-                    border: const OutlineInputBorder(),
-                  ),
-                  items: [
-                    DropdownMenuItem(
-                      value: null,
-                      child: Text(l10n.adminConnectionsAllBuildings),
-                    ),
-                    for (final building in _buildings)
-                      if (_connectionsPlaceId == null ||
-                          building['place_id'] == _connectionsPlaceId)
-                        DropdownMenuItem(
-                          value: building['id'] as String,
-                          child: Text(building['name'] as String? ?? ''),
-                        ),
-                  ],
-                  onChanged: (id) =>
-                      setState(() => _connectionsBuildingId = id),
-                ),
-              ),
-            ],
-          ),
+        ScopeDropdowns(
+          places: _places,
+          buildings: _buildings,
+          placeId: _connectionsPlaceId,
+          buildingId: _connectionsBuildingId,
+          onChanged: (placeId, buildingId) => setState(() {
+            _connectionsPlaceId = placeId;
+            _connectionsBuildingId = buildingId;
+          }),
         ),
         _searchField(
           _connectionSearchController,
@@ -2529,7 +2408,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   physics: const AlwaysScrollableScrollPhysics(),
                   // Clears the FAB, which otherwise covers the last row's
                   // trailing buttons.
-                  padding: const EdgeInsets.only(bottom: 88),
+                  padding: EdgeInsets.only(bottom: _fabClearance),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final connection = filtered[index];
@@ -2578,12 +2457,158 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  double get _fabClearance => fabClearance(context);
+
+  Future<void> _showConnectionFilters() async {
+    final l10n = AppLocalizations.of(context)!;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final f = _connectionFilters;
+          void update(ConnectionFilters next) {
+            setState(() => _connectionFilters = next);
+            setSheetState(() {});
+          }
+
+          Widget section(
+            String title,
+            bool? current,
+            void Function(bool?) set,
+          ) {
+            Widget choice(String label, bool? value) => ChoiceChip(
+              label: Text(label),
+              selected: value == current,
+              onSelected: (_) => set(value),
+            );
+            return Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 6,
+                    children: [
+                      choice(l10n.adminFilterAny, null),
+                      choice(l10n.adminFilterYes, true),
+                      choice(l10n.adminFilterNo, false),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          l10n.adminConnectionFiltersTitle,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      if (!f.isEmpty)
+                        TextButton(
+                          onPressed: () => update(ConnectionFilters.none),
+                          child: Text(l10n.adminFiltersClear),
+                        ),
+                    ],
+                  ),
+                  section(
+                    l10n.adminConnectionFilterLong,
+                    f.long,
+                    (v) => update(f.copyWith(long: v)),
+                  ),
+                  section(
+                    l10n.adminConnectionFilterWarning,
+                    f.hasWarning,
+                    (v) => update(f.copyWith(hasWarning: v)),
+                  ),
+                  section(
+                    l10n.adminConnectionChangesFloor,
+                    f.changesFloor,
+                    (v) => update(f.copyWith(changesFloor: v)),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// The Filters button, bottom left, with how many are on: the Map, the
+  /// Anchor points list and the Connections tab.
+  Widget? _filtersFab() {
+    final l10n = AppLocalizations.of(context)!;
+    final (int count, VoidCallback open) = switch (_tabController.index) {
+      _kMap => (
+        _anchorFilters.activeCount,
+        () => _showAnchorFilters(
+          pointsInScope(
+            _mapScope,
+            buildings: _buildings,
+            points: _anchorPoints,
+          ),
+          _mapScope.buildingId,
+        ),
+      ),
+      _kPoints => (
+        _anchorFilters.activeCount,
+        () => _showAnchorFilters(
+          _anchorPointsScoped,
+          _anchorPointsBuildingFilterId,
+        ),
+      ),
+      _kConnections => (_connectionFilters.activeCount, _showConnectionFilters),
+      _ => (0, () {}),
+    };
+    if (_tabController.index != _kMap &&
+        _tabController.index != _kPoints &&
+        _tabController.index != _kConnections) {
+      return null;
+    }
+    return FloatingActionButton(
+      heroTag: 'filters-fab',
+      tooltip: count == 0
+          ? l10n.adminFiltersButton
+          : l10n.adminFiltersButtonCount(count),
+      onPressed: open,
+      child: Badge(
+        isLabelVisible: count > 0,
+        label: Text('$count'),
+        child: const Icon(Icons.filter_list),
+      ),
+    );
+  }
+
+  /// Filters bottom left, the add button bottom right.
+  Widget? _fabs() {
+    final filters = _filtersFab();
+    final add = _fab();
+    if (filters == null && add == null) return null;
+    return FabRow(left: filters, right: add);
+  }
+
   Widget? _fab() {
     final l10n = AppLocalizations.of(context)!;
     switch (_tabController.index) {
       case _kMap:
         // A new point where the admin is looking, in the field.
         return FloatingActionButton(
+          heroTag: 'add-fab',
           tooltip: l10n.adminFabNewAnchorPoint,
           onPressed: () async {
             await Navigator.of(context).push(
@@ -2600,6 +2625,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         );
       case _kUniversities:
         return FloatingActionButton(
+          heroTag: 'add-fab',
           tooltip: l10n.adminFabAddUniversity,
           onPressed: () async {
             await Navigator.of(
@@ -2611,6 +2637,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         );
       case _kBuildings:
         return FloatingActionButton(
+          heroTag: 'add-fab',
           tooltip: l10n.adminFabAddBuilding,
           onPressed: () async {
             await Navigator.of(context).push(
@@ -2625,6 +2652,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         );
       case _kPoints:
         return FloatingActionButton(
+          heroTag: 'add-fab',
           tooltip: l10n.adminFabNewAnchorPoint,
           onPressed: () async {
             final buildingId = _anchorPointsBuildingFilterId;
@@ -2649,6 +2677,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         );
       case _kConnections:
         return FloatingActionButton(
+          heroTag: 'add-fab',
           tooltip: l10n.adminFabConnectOnMap,
           onPressed: () {
             _tabController.animateTo(_kMap);
@@ -2902,24 +2931,31 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          DrawerHeader(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.adminUsersRoleAdmin,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                Text(
-                  Supabase.instance.client.auth.currentUser?.email ?? '',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+          // A compact header: DrawerHeader's fixed height left a band of
+          // empty space under the email.
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.adminUsersRoleAdmin,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
-                ),
-              ],
+                  Text(
+                    Supabase.instance.client.auth.currentUser?.email ?? '',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
+          const Divider(height: 1),
           // The tutorial is a page next to the web app, for reading beside it.
           if (kIsWeb)
             ListTile(
@@ -3094,7 +3130,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           ),
         ],
       ),
-      floatingActionButton: _fab(),
+      floatingActionButton: _fabs(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
