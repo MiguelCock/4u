@@ -150,4 +150,40 @@ void main() {
     expect(anchorStatusColor('pending'), Colors.grey);
     expect(anchorPosition(_point('p', 0)), _here);
   });
+
+  testWidgets('each layer shows and is tapped only in its zoom band', (
+    tester,
+  ) async {
+    Future<AdminMapHit?> tapAtZoom(double maxZoom) async {
+      AdminMapHit? hit;
+      final place = {'id': 'u', 'latitude': 6.2, 'longitude': -75.58};
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: AdminMap(
+              key: UniqueKey(),
+              showTiles: false,
+              floors: const [0],
+              fitTo: [_here],
+              fitMaxZoom: maxZoom,
+              layers: [
+                PlacesLayer(places: [place], buildingCounts: const {}),
+                PointsLayer(points: [_point('p', 0)], minZoom: kMapPointsZoom),
+              ],
+              onHit: (h) => hit = h,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _tapCentre(tester);
+      return hit;
+    }
+
+    // The same spot: far out it's the university, close in it's the point.
+    expect(await tapAtZoom(14), isA<PlaceHit>());
+    expect(await tapAtZoom(19), isA<PointHit>());
+  });
 }

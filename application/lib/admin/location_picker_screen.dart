@@ -7,6 +7,7 @@ import '../map.dart' show locationPinMarker;
 import '../services/api_service.dart';
 import '../services/floor_view.dart';
 import '../services/map_tile_config.dart';
+import '../widgets/admin_map/layers.dart' show buildingMarker, placeMarker;
 import '../widgets/floor_selector.dart';
 
 /// Reusable "tap the map to pick a location" screen - pops with the tapped
@@ -120,32 +121,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     }
   }
 
-  Widget _badge(String label, {required Color color}) {
-    // On the top-right corner of the centred 30px icon in a 60px marker.
-    return Positioned(
-      right: 8,
-      top: 8,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-        constraints: const BoxConstraints(minWidth: 16),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white, width: 1),
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
   List<Marker> _overlayMarkers() {
     final markers = <Marker>[];
 
@@ -167,23 +142,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       final lat = (place['latitude'] as num?)?.toDouble();
       final lng = (place['longitude'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
-      final count = buildingCountByPlace[place['id']] ?? 0;
       markers.add(
-        Marker(
-          point: LatLng(lat, lng),
-          width: 60,
-          height: 60,
-          // Centred, so the icon (not the Stack's top-left corner) sits on
-          // the coordinate.
-          child: Stack(
-            alignment: Alignment.center,
-            clipBehavior: Clip.none,
-            children: [
-              const Icon(Icons.flag, color: Colors.purple, size: 30),
-              if (count > 0) _badge('$count', color: Colors.purple),
-            ],
-          ),
-        ),
+        placeMarker(LatLng(lat, lng), buildingCountByPlace[place['id']] ?? 0),
       );
     }
 
@@ -191,22 +151,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       final lat = (building['latitude'] as num?)?.toDouble();
       final lng = (building['longitude'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
-      final count = anchorCountByBuilding[building['id']] ?? 0;
       markers.add(
-        Marker(
-          point: LatLng(lat, lng),
-          width: 60,
-          height: 60,
-          // Centred, so the icon (not the Stack's top-left corner) sits on
-          // the coordinate.
-          child: Stack(
-            alignment: Alignment.center,
-            clipBehavior: Clip.none,
-            children: [
-              const Icon(Icons.apartment, color: Colors.orange, size: 30),
-              if (count > 0) _badge('$count', color: Colors.orange),
-            ],
-          ),
+        buildingMarker(
+          LatLng(lat, lng),
+          anchorCountByBuilding[building['id']] ?? 0,
         ),
       );
     }

@@ -7,7 +7,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/map_scope.dart';
 import '../services/map_sync.dart';
+import '../widgets/admin_map/admin_map.dart';
 import '../widgets/map_conflict.dart';
 import 'add_building_screen.dart';
 import 'add_connection_screen.dart';
@@ -21,6 +23,7 @@ import 'edit_anchor_point_screen.dart'
 import 'edit_building_screen.dart';
 import 'edit_place_screen.dart';
 import 'feedback_screen.dart';
+import 'map_home.dart';
 import 'sessions_screen.dart';
 import '../user/settings_screen.dart';
 import '../user/user_home_screen.dart';
@@ -78,6 +81,17 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   String? _buildingsPlaceFilterId;
   String? _anchorPointsBuildingFilterId;
 
+  /// The sections, in drawer order. The map is first and opens the app (C2).
+  static const _kMap = 0;
+  static const _kUniversities = 1;
+  static const _kBuildings = 2;
+  static const _kPoints = 3;
+  static const _kConnections = 4;
+  static const _kUsers = 5;
+
+  /// Where the Map section is: everything, a university or a building.
+  MapScope _mapScope = MapScope.all;
+
   /// Tabs visited before the current one, so system back walks back
   /// through them instead of closing the app.
   final List<int> _tabHistory = [];
@@ -106,16 +120,19 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this)
+    _tabController = TabController(length: 6, vsync: this)
       ..addListener(() {
         final index = _tabController.index;
         if (index != _lastTabIndex) {
           if (!_navigatingBack) _tabHistory.add(_lastTabIndex);
           _lastTabIndex = index;
           _navigatingBack = false;
+          // A move belongs to the map it started on.
+          _movingPoint = null;
+          _moveTarget = null;
         }
         setState(() {});
-        if (index == 4 && !_usersLoaded) _loadUsers();
+        if (index == _kUsers && !_usersLoaded) _loadUsers();
       });
     _placeSearchController.addListener(
       () => setState(
@@ -267,6 +284,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         !_buildings.any((b) => b['id'] == _anchorPointsBuildingFilterId)) {
       _anchorPointsBuildingFilterId = null;
     }
+    _mapScope = _mapScope.existingIn(
+      placeIds: {for (final p in _places) p['id'] as String},
+      buildingIds: {for (final b in _buildings) b['id'] as String},
+    );
   }
 
   /// All five lists: on opening, on pull-to-refresh, and as a fallback.
@@ -339,31 +360,43 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     await Future.wait([_loadAll(), if (_usersLoaded) _loadUsers()]);
   }
 
-  /// System back: leave the current tab (dropping the filter a drill-down
-  /// set on it) for the previous one, then clear a remaining filter, then
-  /// go to the first tab, and only then ask to press again to exit.
+  /// System back: on the map, cancel a move, then go up a level. Elsewhere,
+  /// leave the current tab (dropping the filter a drill-down set on it) for
+  /// the previous one, then clear a remaining filter, then go to the map,
+  /// and only then ask to press again to exit.
   void _handleBack() {
     final index = _tabController.index;
+    if (index == _kMap && _movingPoint != null) {
+      setState(() {
+        _movingPoint = null;
+        _moveTarget = null;
+      });
+      return;
+    }
+    if (index == _kMap && !_mapScope.isAll) {
+      setState(() => _mapScope = _mapScope.up);
+      return;
+    }
     // Metadata filters on the Anchor points tab are cleared first.
-    if (index == 2 && !_anchorFilters.isEmpty) {
+    if (index == _kPoints && !_anchorFilters.isEmpty) {
       setState(() => _anchorFilters = AnchorFilters.none);
       return;
     }
     void clearFilterOf(int tab) {
-      if (tab == 1) _buildingsPlaceFilterId = null;
-      if (tab == 2) _anchorPointsBuildingFilterId = null;
+      if (tab == _kBuildings) _buildingsPlaceFilterId = null;
+      if (tab == _kPoints) _anchorPointsBuildingFilterId = null;
     }
 
     if (_tabHistory.isNotEmpty) {
       setState(() => clearFilterOf(index));
       _navigatingBack = true;
       _tabController.animateTo(_tabHistory.removeLast());
-    } else if ((index == 1 && _buildingsPlaceFilterId != null) ||
-        (index == 2 && _anchorPointsBuildingFilterId != null)) {
+    } else if ((index == _kBuildings && _buildingsPlaceFilterId != null) ||
+        (index == _kPoints && _anchorPointsBuildingFilterId != null)) {
       setState(() => clearFilterOf(index));
-    } else if (index != 0) {
+    } else if (index != _kMap) {
       _navigatingBack = true;
-      _tabController.animateTo(0);
+      _tabController.animateTo(_kMap);
     } else {
       _exitGuard.onBack(context);
     }
@@ -1059,7 +1092,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         setState(
                           () => _buildingsPlaceFilterId = place['id'] as String,
                         );
-                        _tabController.animateTo(1);
+                        _tabController.animateTo(_kBuildings);
                       },
                       leading: const Icon(Icons.flag, color: Colors.purple),
                       title: Text(
@@ -1162,7 +1195,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                           () => _anchorPointsBuildingFilterId =
                               building['id'] as String,
                         );
-                        _tabController.animateTo(2);
+                        _tabController.animateTo(_kPoints);
                       },
                       leading: const Icon(
                         Icons.apartment,
@@ -1333,7 +1366,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   /// Details and actions for a point tapped on the Anchor points map.
-  Future<void> _showAnchorSheet(Map<String, dynamic> point) async {
+  Future<void> _showAnchorSheet(Map<String, dynamic> point) =>
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: _pointDetails(point, () => Navigator.of(context).pop()),
+          ),
+        ),
+      );
+
+  /// A point's data and actions: the map's sheet, or the map's side panel.
+  /// [close] hides it before an action runs.
+  Widget _pointDetails(Map<String, dynamic> point, VoidCallback close) {
     final l10n = AppLocalizations.of(context)!;
     final photos = _photosOf(point['id'] as String);
     final building = _buildings.firstWhere(
@@ -1351,106 +1398,231 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         icon: Icon(icon),
         label: Text(label),
         onPressed: () {
-          Navigator.of(context).pop();
+          close();
           onTap();
         },
       );
     }
 
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            if (thumbUrl != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.network(
+                    thumbUrl,
+                    width: 64,
+                    height: 64,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (thumbUrl != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.network(
-                          thumbUrl,
-                          width: 64,
-                          height: 64,
-                          fit: BoxFit.cover,
+                  Text(
+                    anchorDisplayName(l10n, point),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  Text(
+                    [
+                      if (type != null) locationTypeLabel(l10n, type),
+                      building['name'] as String? ?? l10n.commonUnknownBuilding,
+                      l10n.adminStatusLabel(
+                        anchorStatusLabel(
+                          l10n,
+                          point['status'] as String? ?? 'unknown',
                         ),
                       ),
-                    ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          anchorDisplayName(l10n, point),
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        Text(
-                          [
-                            if (type != null) locationTypeLabel(l10n, type),
-                            building['name'] as String? ??
-                                l10n.commonUnknownBuilding,
-                            l10n.adminStatusLabel(
-                              anchorStatusLabel(
-                                l10n,
-                                point['status'] as String? ?? 'unknown',
-                              ),
-                            ),
-                            l10n.adminPhotoCountLabel(photos.length),
-                          ].join(' · '),
-                        ),
-                      ],
-                    ),
+                      l10n.adminPhotoCountLabel(photos.length),
+                    ].join(' · '),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 4,
-                children: [
-                  action(
-                    Icons.edit_outlined,
-                    l10n.commonEdit,
-                    () => _editAnchorPoint(point),
-                  ),
-                  action(
-                    Icons.open_with,
-                    l10n.adminAnchorMoveAction,
-                    () => setState(() {
-                      _movingPoint = point;
-                      _moveTarget = null;
-                    }),
-                  ),
-                  action(
-                    verified ? Icons.remove_done : Icons.verified_outlined,
-                    verified
-                        ? l10n.adminAnchorUnverifyTooltip
-                        : l10n.adminAnchorVerifyTooltip,
-                    () => _setAnchorStatus(
-                      point,
-                      verified ? 'pending' : 'verified',
-                    ),
-                  ),
-                  action(
-                    Icons.timeline,
-                    l10n.adminAnchorConnectAction,
-                    () => _connectFromAnchorPoint(point),
-                  ),
-                  action(
-                    Icons.add_a_photo_outlined,
-                    l10n.adminAddPhotoTooltip,
-                    () => _addPhoto(point),
-                  ),
-                ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 4,
+          children: [
+            action(
+              Icons.edit_outlined,
+              l10n.commonEdit,
+              () => _editAnchorPoint(point),
+            ),
+            action(
+              Icons.open_with,
+              l10n.adminAnchorMoveAction,
+              () => setState(() {
+                _movingPoint = point;
+                _moveTarget = null;
+              }),
+            ),
+            action(
+              verified ? Icons.remove_done : Icons.verified_outlined,
+              verified
+                  ? l10n.adminAnchorUnverifyTooltip
+                  : l10n.adminAnchorVerifyTooltip,
+              () => _setAnchorStatus(point, verified ? 'pending' : 'verified'),
+            ),
+            action(
+              Icons.timeline,
+              l10n.adminAnchorConnectAction,
+              () => _connectFromAnchorPoint(point),
+            ),
+            action(
+              Icons.add_a_photo_outlined,
+              l10n.adminAddPhotoTooltip,
+              () => _addPhoto(point),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// A university's data and actions on the map.
+  Widget _placeDetails(Map<String, dynamic> place, VoidCallback close) {
+    final l10n = AppLocalizations.of(context)!;
+    final active = place['is_active'] as bool? ?? true;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(
+            Icons.flag,
+            color: active ? Colors.purple : Colors.grey,
+          ),
+          title: Text(place['name'] as String? ?? ''),
+          subtitle: Text(
+            [
+              if (place['code'] case final String code) code,
+              l10n.adminBuildingCountLabel(
+                _buildingsOf(place['id'] as String).length,
               ),
-            ],
+              if (!active) l10n.adminMapInactive,
+            ].join(' · '),
           ),
         ),
+        Wrap(
+          spacing: 4,
+          children: [
+            TextButton.icon(
+              icon: const Icon(Icons.edit_outlined),
+              label: Text(l10n.commonEdit),
+              onPressed: () {
+                close();
+                _editPlace(place);
+              },
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.list),
+              label: Text(l10n.adminMapOpenBuildingsList),
+              onPressed: () {
+                close();
+                setState(() => _buildingsPlaceFilterId = place['id'] as String);
+                _tabController.animateTo(_kBuildings);
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// A building's data and actions on the map.
+  Widget _buildingDetails(Map<String, dynamic> building, VoidCallback close) {
+    final l10n = AppLocalizations.of(context)!;
+    final active = building['is_active'] as bool? ?? true;
+    final place = _places.firstWhere(
+      (p) => p['id'] == building['place_id'],
+      orElse: () => const {},
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(
+            Icons.apartment,
+            color: active ? Colors.orange : Colors.grey,
+          ),
+          title: Text(building['name'] as String? ?? ''),
+          subtitle: Text(
+            [
+              place['name'] as String? ?? l10n.commonUnknownUniversity,
+              if (building['floors'] case final int floors)
+                l10n.adminMapFloorsLabel(floors),
+              l10n.adminAnchorCountLabel(
+                _anchorPointsOf(building['id'] as String).length,
+              ),
+              if (!active) l10n.adminMapInactive,
+            ].join(' · '),
+          ),
+        ),
+        Wrap(
+          spacing: 4,
+          children: [
+            TextButton.icon(
+              icon: const Icon(Icons.edit_outlined),
+              label: Text(l10n.commonEdit),
+              onPressed: () {
+                close();
+                _editBuilding(building);
+              },
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.list),
+              label: Text(l10n.adminMapOpenPointsList),
+              onPressed: () {
+                close();
+                setState(
+                  () =>
+                      _anchorPointsBuildingFilterId = building['id'] as String,
+                );
+                _tabController.animateTo(_kPoints);
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// The Map section (C2): universities, then buildings, then points.
+  Widget _mapTab() {
+    final l10n = AppLocalizations.of(context)!;
+    return _withMoveControls(
+      MapHome(
+        places: _places,
+        buildings: _buildings,
+        points: _anchorPoints,
+        connections: _connections,
+        scope: _mapScope,
+        onScopeChanged: (scope) => setState(() => _mapScope = scope),
+        movingPointId: _movingPoint?['id'] as String?,
+        moveTarget: _moveTarget,
+        onMoveTargetTapped: (target) => setState(() => _moveTarget = target),
+        // Below the move banner while moving a point.
+        controlsTop: _movingPoint == null ? 8 : 72,
+        sidePanel: _permanentDrawer,
+        pointName: (point) => _pointLabel(l10n, point),
+        details: (context, item, close) => switch (item) {
+          PlaceHit(:final place) => _placeDetails(place, close),
+          BuildingHit(:final building) => _buildingDetails(building, close),
+          PointHit(:final point) => _pointDetails(point, close),
+        },
       ),
     );
   }
@@ -1531,18 +1703,28 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     if (!points.any((p) => anchorPosition(p) != null)) {
       return ScrollableMessage(l10n.adminAnchorMapEmpty);
     }
+    return _withMoveControls(
+      AnchorPointsMap(
+        // A new scope (building filter) fits the camera again.
+        key: ValueKey(_anchorPointsBuildingFilterId),
+        points: points,
+        connections: _connections,
+        movingPointId: moving?['id'] as String?,
+        moveTarget: _moveTarget,
+        onPointTapped: _showAnchorSheet,
+        onMoveTargetTapped: (target) => setState(() => _moveTarget = target),
+      ),
+    );
+  }
+
+  /// [map] with the move banner and its Save button over it, while a point
+  /// is being moved.
+  Widget _withMoveControls(Widget map) {
+    final l10n = AppLocalizations.of(context)!;
+    final moving = _movingPoint;
     return Stack(
       children: [
-        AnchorPointsMap(
-          // A new scope (building filter) fits the camera again.
-          key: ValueKey(_anchorPointsBuildingFilterId),
-          points: points,
-          connections: _connections,
-          movingPointId: moving?['id'] as String?,
-          moveTarget: _moveTarget,
-          onPointTapped: _showAnchorSheet,
-          onMoveTargetTapped: (target) => setState(() => _moveTarget = target),
-        ),
+        map,
         if (moving != null)
           Positioned(
             left: 8,
@@ -2062,7 +2244,24 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   Widget? _fab() {
     final l10n = AppLocalizations.of(context)!;
     switch (_tabController.index) {
-      case 0:
+      case _kMap:
+        // A new point where the admin is looking, in the field.
+        return FloatingActionButton(
+          tooltip: l10n.adminFabNewAnchorPoint,
+          onPressed: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => CaptureScreen(
+                  initialPlaceId: _mapScope.placeId,
+                  initialBuildingId: _mapScope.buildingId,
+                ),
+              ),
+            );
+            _loadData();
+          },
+          child: const Icon(Icons.add_a_photo),
+        );
+      case _kUniversities:
         return FloatingActionButton(
           tooltip: l10n.adminFabAddUniversity,
           onPressed: () async {
@@ -2073,7 +2272,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           },
           child: const Icon(Icons.add),
         );
-      case 1:
+      case _kBuildings:
         return FloatingActionButton(
           tooltip: l10n.adminFabAddBuilding,
           onPressed: () async {
@@ -2087,7 +2286,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           },
           child: const Icon(Icons.add),
         );
-      case 2:
+      case _kPoints:
         return FloatingActionButton(
           tooltip: l10n.adminFabNewAnchorPoint,
           onPressed: () async {
@@ -2111,7 +2310,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           },
           child: const Icon(Icons.add_a_photo),
         );
-      case 3:
+      case _kConnections:
         return FloatingActionButton(
           tooltip: l10n.adminFabConnectOnMap,
           onPressed: () async {
@@ -2125,7 +2324,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           child: const Icon(Icons.timeline),
         );
       default:
-        // Users tab (index 4) - no "add" action, accounts are created via
+        // Users tab - no "add" action, accounts are created via
         // signup, not an admin-initiated flow.
         return null;
     }
@@ -2134,6 +2333,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   List<String> get _sectionTitles {
     final l10n = AppLocalizations.of(context)!;
     return [
+      l10n.adminSectionMap,
       l10n.adminSectionUniversities,
       l10n.adminSectionBuildings,
       l10n.adminSectionAnchorPoints,
@@ -2144,6 +2344,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   /// The tutorial's section for each tab (anchors in `docs/admin-guide/`).
   static const _kGuideSections = [
+    'points-map',
     'universities',
     'buildings',
     'anchor-points',
@@ -2290,7 +2491,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       _anchorStatusFilter = 'verified';
       _anchorFilters = const AnchorFilters(hasConnections: false);
     });
-    _tabController.animateTo(2);
+    _tabController.animateTo(_kPoints);
   }
 
   Future<void> _showReviewList({
@@ -2375,16 +2576,32 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 openAdminGuide(context);
               },
             ),
-          item(0, Icons.flag, Colors.purple, l10n.adminSectionUniversities),
-          item(1, Icons.apartment, Colors.orange, l10n.adminSectionBuildings),
+          item(_kMap, Icons.map_outlined, Colors.blue, l10n.adminSectionMap),
           item(
-            2,
+            _kUniversities,
+            Icons.flag,
+            Colors.purple,
+            l10n.adminSectionUniversities,
+          ),
+          item(
+            _kBuildings,
+            Icons.apartment,
+            Colors.orange,
+            l10n.adminSectionBuildings,
+          ),
+          item(
+            _kPoints,
             Icons.location_pin,
             Colors.green,
             l10n.adminSectionAnchorPoints,
           ),
-          item(3, Icons.timeline, Colors.teal, l10n.adminSectionConnections),
-          item(4, Icons.people, Colors.indigo, l10n.adminUsersTabLabel),
+          item(
+            _kConnections,
+            Icons.timeline,
+            Colors.teal,
+            l10n.adminSectionConnections,
+          ),
+          item(_kUsers, Icons.people, Colors.indigo, l10n.adminUsersTabLabel),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.my_location, color: Colors.teal),
@@ -2488,7 +2705,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 section: _kGuideSections[_tabController.index],
               ),
             ),
-          if (_tabController.index == 3)
+          if (_tabController.index == _kConnections)
             IconButton(
               icon: const Icon(Icons.list_alt),
               tooltip: l10n.adminAddConnectionFormTooltip,
@@ -2539,6 +2756,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       controller: _tabController,
                       physics: const NeverScrollableScrollPhysics(),
                       children: [
+                        _mapTab(),
                         _placesTab(),
                         _buildingsTab(),
                         _anchorPointsTab(),

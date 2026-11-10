@@ -22,8 +22,13 @@ Color anchorStatusColor(String? status) => switch (status) {
 class PointsLayer extends AdminMapLayer {
   final List<Map<String, dynamic>> points;
   final String? movingId;
+  @override
+  final double minZoom;
 
-  const PointsLayer({required this.points, this.movingId});
+  const PointsLayer({required this.points, this.movingId, this.minZoom = 0});
+
+  @override
+  bool get usesFloors => true;
 
   @override
   List<Widget> build(AdminMapView view) {
@@ -92,8 +97,17 @@ class PointsLayer extends AdminMapLayer {
 class ConnectionsLayer extends AdminMapLayer {
   final List<Map<String, dynamic>> points;
   final List<Map<String, dynamic>> connections;
+  @override
+  final double minZoom;
 
-  const ConnectionsLayer({required this.points, required this.connections});
+  const ConnectionsLayer({
+    required this.points,
+    required this.connections,
+    this.minZoom = 0,
+  });
+
+  @override
+  bool get usesFloors => true;
 
   @override
   List<Widget> build(AdminMapView view) {
@@ -140,4 +154,146 @@ class PinLayer extends AdminMapLayer {
   List<Widget> build(AdminMapView view) => [
     MarkerLayer(markers: [locationPinMarker(position, color)]),
   ];
+}
+
+/// A university's flag with its building count: the location picker's, and
+/// the admin map's far view. Greyed when inactive.
+Marker placeMarker(LatLng position, int buildingCount, {bool active = true}) =>
+    _countedMarker(
+      position,
+      Icons.flag,
+      active ? Colors.purple : Colors.grey,
+      buildingCount,
+    );
+
+/// A building with its point count. Greyed when inactive.
+Marker buildingMarker(LatLng position, int pointCount, {bool active = true}) =>
+    _countedMarker(
+      position,
+      Icons.apartment,
+      active ? Colors.orange : Colors.grey,
+      pointCount,
+    );
+
+Marker _countedMarker(LatLng position, IconData icon, Color color, int count) =>
+    Marker(
+      point: position,
+      width: 60,
+      height: 60,
+      // Centred, so the icon (not the Stack's top-left corner) sits on the
+      // coordinate.
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          Icon(icon, color: color, size: 30),
+          if (count > 0)
+            // On the top-right corner of the centred 30px icon.
+            Positioned(
+              right: 8,
+              top: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                constraints: const BoxConstraints(minWidth: 16),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white, width: 1),
+                ),
+                child: Text(
+                  '$count',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+
+/// Universities, each with its building count, below [maxZoom].
+class PlacesLayer extends AdminMapLayer {
+  final List<Map<String, dynamic>> places;
+  final Map<String, int> buildingCounts;
+  @override
+  final double maxZoom;
+
+  const PlacesLayer({
+    required this.places,
+    required this.buildingCounts,
+    this.maxZoom = kMapBuildingsZoom,
+  });
+
+  @override
+  List<Widget> build(AdminMapView view) => [
+    MarkerLayer(
+      markers: [
+        for (final place in places)
+          if (anchorPosition(place) case final position?)
+            placeMarker(
+              position,
+              buildingCounts[place['id']] ?? 0,
+              active: place['is_active'] != false,
+            ),
+      ],
+    ),
+  ];
+
+  @override
+  AdminMapHit? hitTest(MapCamera camera, LatLng tapped, AdminMapView view) {
+    final place = nearestOnScreen(
+      camera: camera,
+      tapped: tapped,
+      items: places,
+      positionOf: anchorPosition,
+    );
+    return place == null ? null : PlaceHit(place);
+  }
+}
+
+/// Buildings, each with its point count, from [minZoom] up to [maxZoom].
+class BuildingsLayer extends AdminMapLayer {
+  final List<Map<String, dynamic>> buildings;
+  final Map<String, int> pointCounts;
+  @override
+  final double minZoom;
+  @override
+  final double maxZoom;
+
+  const BuildingsLayer({
+    required this.buildings,
+    required this.pointCounts,
+    this.minZoom = kMapBuildingsZoom,
+    this.maxZoom = kMapPointsZoom,
+  });
+
+  @override
+  List<Widget> build(AdminMapView view) => [
+    MarkerLayer(
+      markers: [
+        for (final building in buildings)
+          if (anchorPosition(building) case final position?)
+            buildingMarker(
+              position,
+              pointCounts[building['id']] ?? 0,
+              active: building['is_active'] != false,
+            ),
+      ],
+    ),
+  ];
+
+  @override
+  AdminMapHit? hitTest(MapCamera camera, LatLng tapped, AdminMapView view) {
+    final building = nearestOnScreen(
+      camera: camera,
+      tapped: tapped,
+      items: buildings,
+      positionOf: anchorPosition,
+    );
+    return building == null ? null : BuildingHit(building);
+  }
 }

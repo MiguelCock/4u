@@ -57,6 +57,7 @@ class AnchorPointsMap extends StatelessWidget {
       ],
       onHit: (hit) => switch (hit) {
         PointHit(:final point) => onPointTapped(point),
+        _ => null,
       },
       onTapPosition: moving == null ? null : onMoveTargetTapped,
     );
