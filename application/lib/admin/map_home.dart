@@ -531,24 +531,44 @@ class _MapHomeState extends State<MapHome> {
 
   Widget _searchBar() {
     final l10n = AppLocalizations.of(context)!;
+    final onConnecting = widget.onConnectingChanged;
+    // Connect sits beside the search box, always in view: at the end of the
+    // breadcrumb it scrolled off a phone's screen.
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-      child: TextField(
-        controller: _search,
-        focusNode: _searchFocus,
-        decoration: InputDecoration(
-          hintText: l10n.adminMapSearchHint,
-          prefixIcon: const Icon(Icons.search),
-          suffixIcon: _search.text.isEmpty
-              ? null
-              : IconButton(
-                  icon: const Icon(Icons.clear),
-                  tooltip: l10n.adminMapSearchClear,
-                  onPressed: _search.clear,
-                ),
-          border: const OutlineInputBorder(),
-          isDense: true,
-        ),
+      child: Row(
+        children: [
+          Expanded(child: _searchField(l10n)),
+          if (onConnecting != null) ...[
+            const SizedBox(width: 8),
+            FilterChip(
+              avatar: const Icon(Icons.timeline, size: 18),
+              label: Text(l10n.adminMapConnectChip),
+              selected: widget.connecting,
+              onSelected: onConnecting,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _searchField(AppLocalizations l10n) {
+    return TextField(
+      controller: _search,
+      focusNode: _searchFocus,
+      decoration: InputDecoration(
+        hintText: l10n.adminMapSearchHint,
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: _search.text.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.clear),
+                tooltip: l10n.adminMapSearchClear,
+                onPressed: _search.clear,
+              ),
+        border: const OutlineInputBorder(),
+        isDense: true,
       ),
     );
   }
@@ -646,15 +666,6 @@ class _MapHomeState extends State<MapHome> {
               tooltip: l10n.adminMapDetailsTooltip,
               onPressed: () => _open(current),
             ),
-          if (widget.onConnectingChanged case final onChanged?) ...[
-            const SizedBox(width: 8),
-            FilterChip(
-              avatar: const Icon(Icons.timeline, size: 18),
-              label: Text(l10n.adminMapConnectChip),
-              selected: widget.connecting,
-              onSelected: onChanged,
-            ),
-          ],
         ],
       ),
     );

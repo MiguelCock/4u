@@ -540,7 +540,7 @@
   "adminHealthHiddenNamedHint": "Su tipo es de paso (pasillo, intersección…). Si los usuarios van allí, cambia el tipo.",
   "adminHealthLongConnections": "{count} conexiones de más de 30 m",
   "adminHealthLongConnectionsHint": "Las rutas no las usan. Borra cada una y vuelve a conectar el camino con puntos cada 6-8 m.",
-  "adminHealthConnectionSubtitle": "{meters} m · toca para borrar",
+  "adminHealthConnectionSubtitle": "{meters} m · toca para verla en el mapa",
 
   "homeErrorNoPathStart": "Tu punto de partida todavía no está conectado a los caminos que llevan allí - un administrador debe conectarlo.",
   "homeErrorNoPathDestination": "Ese destino todavía no está conectado a ningún camino - un administrador debe conectarlo.",
@@ -639,5 +639,6 @@
   "adminConnectionFilterLong": "Más de 15 m",
   "adminConnectionFilterWarning": "Aviso para usuarios",
   "adminFilterYes": "Sí",
-  "adminFilterNo": "No"
+  "adminFilterNo": "No",
+  "adminHealthHowToFix": "Cómo arreglarlo"
 }

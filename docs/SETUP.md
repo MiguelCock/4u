@@ -122,6 +122,8 @@ rsync -az --include 'admin-web/assets/.env' --exclude '.venv' --exclude '.env' \
 curl -s -o /dev/null -w "%{http_code}\n" https://<domain>/admin/assets/.env   # expect 200
 ```
 
+**No offline cache.** The admin web app doesn't use Flutter's service worker: an old one kept serving the previous app after a deploy. `application/web/flutter_bootstrap.js` loads the app without registering one, the gateway sends `/admin/` with `Cache-Control: no-cache`, and it answers `/admin/flutter_service_worker.js` with a script that removes a leftover worker (`gateway/nginx.conf`). A new build shows on the next load.
+
 The build also carries the admin tutorial, `application/web/guide/`, to `/admin/guide/`; it's public, and generated from `docs/admin-guide/` (see `docs/admin-guide/tools/README.md`). Every release also attaches `admin-web.zip` with the same build; unzip it into `gateway/admin-web/` instead of building. The build reads the same `application/.env` as the phone app, which holds only client-safe values.
 
 ## 6. Run every automated test suite

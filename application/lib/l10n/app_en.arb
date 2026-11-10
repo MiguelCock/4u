@@ -686,7 +686,7 @@
   "adminHealthLongConnections": "{count} connections over 30 m",
   "@adminHealthLongConnections": {"placeholders": {"count": {"type": "int"}}},
   "adminHealthLongConnectionsHint": "Routes don't use them. Delete each one and connect the path again through points every 6-8 m.",
-  "adminHealthConnectionSubtitle": "{meters} m · tap to delete",
+  "adminHealthConnectionSubtitle": "{meters} m · tap to see it on the map",
   "@adminHealthConnectionSubtitle": {"placeholders": {"meters": {"type": "String"}}},
 
   "homeErrorNoPathStart": "Your starting point isn't connected to the paths that lead there yet - an admin needs to connect it.",
@@ -811,5 +811,6 @@
   "adminConnectionFilterLong": "Over 15 m",
   "adminConnectionFilterWarning": "Warning for users",
   "adminFilterYes": "Yes",
-  "adminFilterNo": "No"
+  "adminFilterNo": "No",
+  "adminHealthHowToFix": "How to fix"
 }

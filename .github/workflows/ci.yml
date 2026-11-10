@@ -325,6 +325,17 @@ jobs:
           curl -s http://localhost:8000/admin/guide/es/ | grep -q 'the guide' \
             || { echo "FAILED: /admin/guide/es/ doesn't serve the guide"; exit 1; }
 
+      - name: The admin app is never served from an old cache
+        run: |
+          # Every load revalidates, and a leftover service worker retires
+          # itself (an old one kept serving a stale app after a deploy).
+          curl -sI http://localhost:8000/admin/ | grep -qi '^cache-control: no-cache' \
+            || { echo "FAILED: /admin/ isn't sent with Cache-Control: no-cache"; exit 1; }
+          curl -s http://localhost:8000/admin/flutter_service_worker.js | grep -q 'unregister' \
+            || { echo "FAILED: /admin/flutter_service_worker.js isn't the kill switch"; exit 1; }
+          grep -q 'serviceWorker' application/web/flutter_bootstrap.js \
+            && { echo "FAILED: the web app registers a service worker again"; exit 1; } || true
+
       - name: Internal-only and size rules hold at the gateway
         run: |
           # Photo search is internal (positioning -> ai-training direct).

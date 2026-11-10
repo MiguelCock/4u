@@ -215,7 +215,11 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 
 ## Admin guide (web only)
 
-`web/guide/` is the tutorial served at `/admin/guide/`, generated from `docs/admin-guide/` (see `docs/admin-guide/tools/README.md`; CI fails if it's out of date). The drawer's **User guide** and the app bar's **?** open it behind `kIsWeb` (`lib/widgets/admin_guide.dart`); `_kGuideSections` names its anchors, which the guide's Markdown keeps stable in both languages. When a screen changes, retake its pictures and update the table under them: the numbers come from `take_screenshots.mjs`.
+`web/guide/` is the tutorial served at `/admin/guide/`, generated from `docs/admin-guide/` (see `docs/admin-guide/tools/README.md`; CI fails if it's out of date). The drawer's **User guide** and the app bar's **?** open it behind `kIsWeb` (`lib/widgets/admin_guide.dart`); `_kGuideSections` names its anchors, which the guide's Markdown keeps stable in both languages.
+- **Pitfalls first (C6).** The guide opens with the mistakes that break routes, one anchor each (`pitfall-type`, `pitfall-unconnected`, `pitfall-gap`, `pitfall-floor`, …).
+- **Notice links.** The menu notices' review lists (`ReviewList`, `lib/widgets/review_list.dart`) link to their pitfall with **How to fix**, on the web only.
+- **Checks.** `build_site.py --check` fails if one of those anchors disappears, a link breaks, a picture is missing or unused, or the two languages' anchors differ.
+- **When a screen changes,** retake its pictures and update the table under them: the numbers come from `take_screenshots.mjs`, which takes only the pictures the guides use.
 
 ## After the Icesi tests of 2026-11-05 (`docs/TUNING.md` §10)
 
@@ -256,7 +260,7 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 
 ## Points and connections on the map (C3)
 
-- **Connect mode.** The **Connect** chip on the Map section's breadcrumb switches it. While on:
+- **Connect mode.** The **Connect** chip beside the Map section's search box switches it (on the breadcrumb it scrolled off a phone's screen). While on:
   - a tapped point goes to `_onConnectTap`, which runs `connectTap` (`lib/services/connect_chain.dart`, pure): select, let go, move on (already connected), refused, or connect;
   - the selected point shows as a blue ring on any floor, and connecting to another floor moves the view there;
   - lines are drawn strongly.

@@ -37,7 +37,9 @@ import '../services/exit_guard.dart';
 import '../services/location_types.dart';
 import '../services/floor_view.dart';
 import '../widgets/guardrail_dialogs.dart';
+import '../widgets/connection_warning_dialog.dart';
 import '../widgets/fab_row.dart';
+import '../widgets/review_list.dart';
 import '../widgets/scope_dropdowns.dart';
 import '../widgets/scrollable_message.dart';
 import '../theme/admin_palette.dart';
@@ -973,34 +975,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// they start walking it. Testers asked to be told about obstacles.
   Future<void> _editConnectionWarning(Map<String, dynamic> connection) async {
     final l10n = AppLocalizations.of(context)!;
-    final controller = TextEditingController(
-      text: connection['notes'] as String? ?? '',
+    final notes = await showConnectionWarningDialog(
+      context,
+      connection['notes'] as String? ?? '',
     );
-    final notes = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.connectionWarningLabel),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 3,
-          decoration: InputDecoration(helperText: l10n.connectionWarningHint),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: Text(
-              MaterialLocalizations.of(dialogContext).saveButtonLabel,
-            ),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
     if (notes == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -2777,6 +2755,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           Icons.visibility_off_outlined,
           () => _showReviewList(
             title: l10n.adminHealthHiddenNamed(hidden.length),
+            guideSection: 'pitfall-type',
             hint: l10n.adminHealthHiddenNamedHint,
             items: [
               for (final point in hidden)
@@ -2802,6 +2781,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             final byId = {for (final p in _anchorPoints) p['id']: p};
             _showReviewList(
               title: l10n.adminHealthLongConnections(long.length),
+              guideSection: 'pitfall-gap',
               hint: l10n.adminHealthLongConnectionsHint,
               items: [
                 for (final c in long)
@@ -2827,6 +2807,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           final byId = {for (final p in _anchorPoints) p['id']: p};
           _showReviewList(
             title: l10n.adminHealthFloorChange(floorChange.length),
+            guideSection: 'pitfall-floor',
             hint: l10n.adminHealthFloorChangeHint,
             items: [
               for (final c in floorChange)
@@ -2875,6 +2856,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final points = verifiedUnconnectedPoints(_anchorPoints, _connections);
     _showReviewList(
       title: l10n.adminHealthUnconnected(points.length),
+      guideSection: 'pitfall-unconnected',
       hint: l10n.adminHealthUnconnectedHint,
       items: [
         for (final point in points)
@@ -2890,7 +2872,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   Future<void> _showReviewList({
     required String title,
     required String hint,
-    required List<({String title, String subtitle, VoidCallback onTap})> items,
+    required List<ReviewItem> items,
+    String? guideSection,
   }) => showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -2898,24 +2881,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     builder: (context) => DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.6,
-      builder: (context, controller) => ListView(
+      builder: (context, controller) => ReviewList(
         controller: controller,
-        children: [
-          ListTile(
-            title: Text(title, style: Theme.of(context).textTheme.titleMedium),
-            subtitle: Text(hint),
-          ),
-          const Divider(),
-          for (final item in items)
-            ListTile(
-              title: Text(item.title),
-              subtitle: Text(item.subtitle),
-              onTap: () {
-                Navigator.of(context).pop();
-                item.onTap();
-              },
-            ),
-        ],
+        title: title,
+        hint: hint,
+        items: items,
+        guideSection: guideSection,
       ),
     ),
   );

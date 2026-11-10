@@ -20,6 +20,13 @@ HERE = Path(__file__).resolve().parent
 GUIDE = HERE.parent
 OUTPUT = GUIDE.parent.parent / "application" / "web" / "guide"
 
+# Anchors the app opens: its "?" button (admin_home_screen.dart's
+# _kGuideSections) and the menu notices' "How to fix" links (C6).
+APP_ANCHORS = {
+    "points-map", "universities", "buildings", "anchor-points", "connections", "users",
+    "pitfall-type", "pitfall-unconnected", "pitfall-gap", "pitfall-floor",
+}
+
 LANGUAGES = {
     "es": {"other": "en", "switch": "English", "index": "Contenido", "back": "Volver a la aplicación"},
     "en": {"other": "es", "switch": "Español", "index": "Contents", "back": "Back to the app"},
@@ -208,7 +215,39 @@ def _expected():
     return files
 
 
+def _problems():
+    """What would make the guide wrong: a link to a missing anchor, a missing
+    or unused picture, an anchor the app opens that's gone, or the two
+    languages drifting apart."""
+    problems = []
+    used = set()
+    anchors_by_language = {}
+    for language in LANGUAGES:
+        text = (GUIDE / language / "README.md").read_text(encoding="utf-8")
+        anchors = re.findall(r'<a id="([^"]+)"></a>', text)
+        anchors_by_language[language] = anchors
+        for link in sorted(set(re.findall(r"\]\(#([^)]+)\)", text)) - set(anchors)):
+            problems.append(f"{language}: link to a missing anchor #{link}")
+        for missing in sorted(APP_ANCHORS - set(anchors)):
+            problems.append(f"{language}: the app opens #{missing}, which is gone")
+        for picture in re.findall(r"\]\(\.\./(images/[^)]+\.webp)\)", text):
+            used.add(picture)
+            if not (GUIDE / picture).exists():
+                problems.append(f"{language}: missing picture {picture}")
+    if anchors_by_language["es"] != anchors_by_language["en"]:
+        problems.append("es and en have different anchors")
+    for image in sorted((GUIDE / "images").rglob("*.webp")):
+        path = str(image.relative_to(GUIDE))
+        if path not in used:
+            problems.append(f"unused picture {path}: delete it, or use it")
+    return problems
+
+
 def main():
+    problems = _problems()
+    if problems:
+        print("The guide has problems:", *problems, sep="\n  ")
+        sys.exit(1)
     files = _expected()
     if "--check" in sys.argv[1:]:
         found = (
