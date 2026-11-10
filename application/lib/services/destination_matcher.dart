@@ -252,3 +252,115 @@ List<DestinationMatch> nearestFirst(
         : distanceOf(a.anchor).compareTo(distanceOf(b.anchor));
   });
 }
+
+/// The answer to "Go to X?" said aloud (D1). Participants expected saying
+/// "yes" to start the route, and couldn't find the button.
+enum SpokenAnswer { start, change }
+
+const Set<String> _startWords = {
+  'si',
+  'claro',
+  'empezar',
+  'empieza',
+  'empecemos',
+  'comenzar',
+  'comienza',
+  'iniciar',
+  'inicia',
+  'vamos',
+  'dale',
+  'listo',
+  'ok',
+  'okay',
+  'vale',
+  'yes',
+  'yeah',
+  'start',
+  'go',
+  'sure',
+};
+const Set<String> _changeWords = {
+  'no',
+  'cambiar',
+  'cambia',
+  'cambio',
+  'otro',
+  'otra',
+  'change',
+  'other',
+  'nope',
+};
+
+/// [SpokenAnswer.start] or [SpokenAnswer.change] for what was heard, or null
+/// when it's neither, or both ("no, sí"): then nothing happens and the
+/// buttons are still there.
+SpokenAnswer? spokenAnswer(String heard) {
+  final words = normalizeForMatch(heard).split(' ').toSet();
+  final start = words.any(_startWords.contains);
+  final change = words.any(_changeWords.contains);
+  if (start == change) return null;
+  return start ? SpokenAnswer.start : SpokenAnswer.change;
+}
+
+// Not "one" or "una": "the second one", "la una" aren't the first.
+const Map<String, int> _optionNumbers = {
+  '1': 0,
+  'uno': 0,
+
+  'primero': 0,
+  'primera': 0,
+
+  'first': 0,
+  '2': 1,
+  'dos': 1,
+  'segundo': 1,
+  'segunda': 1,
+  'two': 1,
+  'second': 1,
+  '3': 2,
+  'tres': 2,
+  'tercero': 2,
+  'tercera': 2,
+  'three': 2,
+  'third': 2,
+};
+
+/// Which of the options read out ("one, Biblioteca; two, …") was chosen by
+/// voice: a number, or words of one option's name that no other option has.
+/// -1 for "none" ("no", "ninguno"), null when it isn't clear, so the app
+/// asks again rather than guess.
+int? pickSpokenOption(String heard, List<String> labels) {
+  final words = normalizeForMatch(heard).split(' ').where((w) => w.isNotEmpty);
+  final numbers = {
+    for (final w in words)
+      if (_optionNumbers[w] case final n? when n < labels.length) n,
+  };
+  if (numbers.length == 1) return numbers.single;
+  if (numbers.length > 1) return null;
+  final said = words.toSet();
+  if (said.contains('ninguno') ||
+      said.contains('ninguna') ||
+      said.contains('none') ||
+      (said.length == 1 && said.contains('no'))) {
+    return -1;
+  }
+  // Words of 4+ letters, so "de" or "la" never decide it.
+  Set<String> named(String label) => {
+    for (final w in normalizeForMatch(label).split(' '))
+      if (w.length >= 4) w,
+  };
+  final hits = [
+    for (var i = 0; i < labels.length; i++)
+      if (named(labels[i]).intersection(said).isNotEmpty &&
+          // Only what tells it apart from the others counts.
+          named(labels[i])
+              .difference({
+                for (var j = 0; j < labels.length; j++)
+                  if (j != i) ...named(labels[j]),
+              })
+              .intersection(said)
+              .isNotEmpty)
+        i,
+  ];
+  return hits.length == 1 ? hits.single : null;
+}

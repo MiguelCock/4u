@@ -9,6 +9,15 @@ Each release's section becomes its GitHub release description (`.github/workflow
 ### Added
 
 - Each trip records which phone and app version it ran on, so problems that only happen on some phones can be found.
+- **Voice first:** after signing in, the app asks "Where do you want to go?" and listens straight away. Saying "yes" starts the route, and "no" changes the destination. A vibration and a click mark when it starts listening. The buttons all stay. With TalkBack on, it waits for you to press "Speak" instead, so it doesn't hear TalkBack.
+- Help, settings and log out are now at the bottom of the home screen, out of the way of choosing where to go.
+- A new setting shows the map during trips, for people who can see some of the screen.
+- The home screen is now one round button to say where you want to go, and works the same with TalkBack. More time to say the place; when several places match, they're read out with numbers, and you say the number or the name. Settings can bring back the start and destination rows.
+- Vibrations are now felt even when the phone's touch vibration is off.
+- Before listening, the app says what you can say. The round button is bigger.
+- New setting: bold text everywhere, next to high contrast and font size.
+- The home screen always speaks and says what each action does; "Guía de voz" now only covers the trip's instructions. It says when it's listening and when it didn't hear you.
+- Every route starts by checking where you are with the camera: hold the phone up and turn slowly when asked.
 
 ### Fixed
 

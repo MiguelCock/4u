@@ -30,6 +30,7 @@ import '../services/heading_tracker.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import '../services/speech_voice.dart';
+import '../services/buzz.dart';
 import '../services/device_details.dart';
 import '../services/route_points.dart';
 import '../services/test_walk.dart';
@@ -495,10 +496,10 @@ class _NavigationScreenState extends State<NavigationScreen>
     }
     _lastSpokenAt = DateTime.now();
     if (_kInstructionCues.contains(cueType)) {
-      HapticFeedback.mediumImpact();
+      buzz(Buzz.short);
     } else if (cueType == 'start_walking') {
       // The "I'll vibrate when you face the right way" of SlowTurnCue.
-      HapticFeedback.heavyImpact();
+      buzz(Buzz.long);
     }
     _pendingCues.add({
       'at': DateTime.now().toUtc().toIso8601String(),
@@ -1149,7 +1150,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     _floorDetector.stop();
     _currentFloor = change.floor;
     final l10n = AppLocalizations.of(context)!;
-    HapticFeedback.heavyImpact();
+    buzz(Buzz.long);
     _speak(
       detected
           ? l10n.navFloorReached(change.floor + 1)
@@ -1344,7 +1345,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   void _markCheckpoint() {
     final index = _checkpoints.mark();
     if (index == null) return;
-    HapticFeedback.heavyImpact();
+    buzz(Buzz.short);
     final raw = _rawPosition;
     final corrected = _liveCorrected();
     final correctedAt = _correctedAt;
@@ -1830,7 +1831,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     if (sessionId == null) return;
     final l10n = AppLocalizations.of(context)!;
     final messenger = ScaffoldMessenger.of(context);
-    HapticFeedback.heavyImpact();
+    buzz(Buzz.short);
     final position = _locationService.lastPosition;
     final instruction = _lastAnnouncement;
     try {
@@ -2049,6 +2050,10 @@ class _NavigationScreenState extends State<NavigationScreen>
                               style: const TextStyle(color: Colors.green),
                             ),
                           ),
+                      ],
+                      // Users with low vision can turn the map on (D2); the
+                      // coordinates above stay for admins.
+                      if (widget.adminPreview || showMapNotifier.value) ...[
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                           child: ExcludeSemantics(
