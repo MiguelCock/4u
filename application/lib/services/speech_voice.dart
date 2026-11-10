@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 /// TTS locales to try for an app language, best first. Colombian Spanish
@@ -53,6 +54,23 @@ Future<bool> configureTts(FlutterTts tts, String languageCode) async {
     // off the last (the default flushes). Assertive ones still stop() first.
     await tts.setQueueMode(1);
   } catch (_) {}
+  if (defaultTargetPlatform == TargetPlatform.iOS) {
+    try {
+      // iOS (#160): one audio session shared with the microphone, so the
+      // voice and speech_to_text don't cut each other off, and out loud
+      // through the speaker rather than the earpiece.
+      await tts.setSharedInstance(true);
+      await tts.setIosAudioCategory(
+        IosTextToSpeechAudioCategory.playAndRecord,
+        [
+          IosTextToSpeechAudioCategoryOptions.defaultToSpeaker,
+          IosTextToSpeechAudioCategoryOptions.allowBluetooth,
+          IosTextToSpeechAudioCategoryOptions.allowBluetoothA2DP,
+        ],
+        IosTextToSpeechAudioMode.voicePrompt,
+      );
+    } catch (_) {}
+  }
   try {
     // A little faster than the engine's normal 0.5: users in the first
     // test, used to TalkBack, found the instructions slow.

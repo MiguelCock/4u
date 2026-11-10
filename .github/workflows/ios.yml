@@ -1,0 +1,99 @@
+name: iOS (unsigned IPA)
+
+# An unsigned .ipa for iPhone testers, without Apple's paid account (#160):
+# each tester signs and installs it with their own Apple ID through
+# Sideloadly or AltStore (docs/ios-sideload.md). It stops opening after 7
+# days until it's installed again.
+#
+# - On a pull request that touches iOS: builds it, as a check and an
+#   artifact.
+# - After "Release APK" succeeds for a tag: builds that tag and attaches the
+#   .ipa to its release.
+# - By hand, for an existing tag (once this file is on main).
+
+on:
+  pull_request:
+    paths:
+      - 'application/ios/**'
+      - 'application/pubspec.yaml'
+      - 'application/lib/services/location_service.dart'
+      - 'application/lib/services/speech_voice.dart'
+      - '.github/workflows/ios.yml'
+  workflow_run:
+    workflows: ['Release APK']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build and attach the .ipa to (e.g. v0.6.0-pre)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  ipa:
+    # After a release build: only when it succeeded, and only for a tag.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: macos-latest
+    env:
+      # The release tag, when there is one (empty on a pull request).
+      TAG: ${{ inputs.tag || github.event.workflow_run.head_branch || '' }}
+      # permission_handler compiles in only what's enabled; Info.plist's
+      # camera text enables it too, this makes sure.
+      PERMISSION_CAMERA: 1
+    defaults:
+      run:
+        working-directory: application
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG || github.ref }}
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: 'stable'
+
+      # The same client-safe values as the APK (see release.yml).
+      - name: Write real .env
+        run: |
+          {
+            echo "API_GATEWAY_URL=${{ vars.API_GATEWAY_URL }}"
+            echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}"
+            echo "SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}"
+          } > .env
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build iOS app (unsigned)
+        run: flutter build ios --release --no-codesign
+
+      # An .ipa is the .app inside a Payload folder, zipped. Unsigned:
+      # Sideloadly or AltStore signs it with the tester's Apple ID.
+      - name: Package Eyes4U-unsigned.ipa
+        run: |
+          rm -rf Payload Eyes4U-unsigned.ipa
+          mkdir Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qr Eyes4U-unsigned.ipa Payload
+          ls -lh Eyes4U-unsigned.ipa
+
+      - name: Keep the .ipa as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Eyes4U-unsigned-ipa
+          path: application/Eyes4U-unsigned.ipa
+          retention-days: 14
+
+      - name: Attach it to the release
+        if: env.TAG != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: application/Eyes4U-unsigned.ipa
