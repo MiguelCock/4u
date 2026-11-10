@@ -260,7 +260,7 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 
 ## Points and connections on the map (C3)
 
-- **Connect mode.** The **Connect** chip on the Map section's breadcrumb switches it. While on:
+- **Connect mode.** The **Connect** chip beside the Map section's search box switches it (on the breadcrumb it scrolled off a phone's screen). While on:
   - a tapped point goes to `_onConnectTap`, which runs `connectTap` (`lib/services/connect_chain.dart`, pure): select, let go, move on (already connected), refused, or connect;
   - the selected point shows as a blue ring on any floor, and connecting to another floor moves the view there;
   - lines are drawn strongly.

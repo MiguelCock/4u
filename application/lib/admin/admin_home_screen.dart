@@ -37,6 +37,7 @@ import '../services/exit_guard.dart';
 import '../services/location_types.dart';
 import '../services/floor_view.dart';
 import '../widgets/guardrail_dialogs.dart';
+import '../widgets/connection_warning_dialog.dart';
 import '../widgets/fab_row.dart';
 import '../widgets/review_list.dart';
 import '../widgets/scope_dropdowns.dart';
@@ -974,34 +975,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// they start walking it. Testers asked to be told about obstacles.
   Future<void> _editConnectionWarning(Map<String, dynamic> connection) async {
     final l10n = AppLocalizations.of(context)!;
-    final controller = TextEditingController(
-      text: connection['notes'] as String? ?? '',
+    final notes = await showConnectionWarningDialog(
+      context,
+      connection['notes'] as String? ?? '',
     );
-    final notes = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.connectionWarningLabel),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 3,
-          decoration: InputDecoration(helperText: l10n.connectionWarningHint),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: Text(
-              MaterialLocalizations.of(dialogContext).saveButtonLabel,
-            ),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
     if (notes == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {

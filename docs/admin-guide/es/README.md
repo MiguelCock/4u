@@ -2,7 +2,7 @@
 
 Cómo construir y cuidar el mapa con el que Eyes4U guía a las personas con discapacidad visual: primero los errores que rompen las rutas, luego el trabajo completo en el mapa, y luego cada pantalla en breve.
 
-Las imágenes son de una **universidad de ejemplo con datos inventados**. Los números rojos corresponden a la tabla debajo de la imagen.
+Las imágenes son de una **universidad de ejemplo con datos inventados**. Los números rojos corresponden a la tabla debajo de la imagen. Las del mapa están en tamaño de teléfono, como lo usarás en el campus; las demás, en un computador.
 
 <a id="pitfalls"></a>
 
@@ -183,14 +183,11 @@ Una conexión significa que **una persona puede caminar en línea recta entre do
 |---|---|---|
 | 1 | **Conectar** | Enciende y apaga el modo. |
 | 2 | **Listo** | Sale del modo. Atrás también, después de soltar el punto. |
-| 3 | **Subir un piso** | Muestra el piso de arriba. |
-| 4 | **Bajar un piso** | Muestra el piso de abajo. |
-| 5 | **Solo este piso** | Debe estar apagado para conectar entre pisos. |
-| 6 | **Ayuda de esta página** | Abre esta sección. |
+| 3 | **Ayuda de esta página** | Abre esta sección. |
 
 - Toca otra vez el punto seleccionado para soltarlo. Una línea nueva se ve gris punteada mientras se guarda.
 - Como mucho **30 m** en línea recta (aviso desde 15 m), y los pisos solo cambian por una escalera, un elevador o una rampa. Un toque rechazado no pierde tu lugar en la cadena.
-- **Entre pisos:** selecciona la escalera de este piso y luego su ▲ o ▼ en el otro; el mapa lo sigue. Conecta también el elevador: las rutas lo prefieren.
+- **Entre pisos:** con **Solo este piso** apagado, selecciona la escalera de este piso y luego su ▲ o ▼ en el otro; el mapa lo sigue. Conecta también el elevador: las rutas lo prefieren.
 
 ### Los detalles de una conexión
 

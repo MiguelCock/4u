@@ -2,7 +2,7 @@
 
 How to build and look after the map Eyes4U uses to guide people with visual impairments: first the mistakes that break routes, then the whole job on the map, then each screen in short.
 
-The pictures show an **example university with made-up data**. Red numbers match the table under the picture.
+The pictures show an **example university with made-up data**. Red numbers match the table under the picture. Map pictures are at phone size, as you'll use it in the field; the rest are on a computer.
 
 <a id="pitfalls"></a>
 
@@ -183,14 +183,11 @@ A connection means **a person can walk straight between two points**; routes onl
 |---|---|---|
 | 1 | **Connect** | Turns the mode on and off. |
 | 2 | **Done** | Leaves it. Back does too, after letting go of the point. |
-| 3 | **Go up a floor** | Shows the floor above. |
-| 4 | **Go down a floor** | Shows the floor below. |
-| 5 | **Only this floor** | Must be off to connect across floors. |
-| 6 | **Help for this page** | Opens this section. |
+| 3 | **Help for this page** | Opens this section. |
 
 - Tap the selected point again to let go. A new line is dotted grey while it saves.
 - At most **30 m** in a straight line (warning above 15 m), and floors only change through a stairwell, elevator or ramp. A refused tap keeps your place.
-- **Across floors:** select the stairwell here, then its ▲ or ▼ on the other floor; the map follows. Connect the elevator too: routes prefer it.
+- **Across floors:** with **Only this floor** off, select the stairwell here, then its ▲ or ▼ on the other floor; the map follows. Connect the elevator too: routes prefer it.
 
 ### A connection's details
 

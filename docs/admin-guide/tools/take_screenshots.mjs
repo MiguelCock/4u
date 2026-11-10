@@ -13,6 +13,18 @@ const here = dirname(fileURLToPath(import.meta.url));
 // The pictures the guides use. The walk below visits every screen in
 // order, and takes only these, so a picture dropped from the guide stops
 // being taken.
+// Taken at phone width, as admins use them in the field; the rest at a
+// wide window (C6).
+const PHONE_SHOTS = new Set([
+  'map-home',
+  'points-map',
+  'points-map-floor2',
+  'point-sheet',
+  'connect-selected',
+  'map-connection',
+  'phone-menu',
+]);
+
 const USED = new Set(
   ['es', 'en'].flatMap((lang) =>
     [
@@ -58,6 +70,7 @@ class Run {
   }
 
   async open({ width = 1280, height = 1000 } = {}) {
+    this.phone = width < 600;
     await fetch(`${SERVER}/__reset`, { method: 'POST' });
     await fetch(`${SERVER}/__language`, {
       method: 'POST',
@@ -180,7 +193,9 @@ class Run {
   /** Waits for a map's tiles. */
   async mapLoaded() {
     await this.page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
-    await this.wait(3000);
+    // Tiles first arrive blurred, from the zoom before; the sharp ones
+    // replace them a moment later.
+    await this.wait(5000);
   }
 
   async click(text, nth = 0, wait = 900, exact = false) {
@@ -215,6 +230,7 @@ class Run {
    * nth] pairs, or boxes. */
   async shot(name, marks = []) {
     if (!USED.has(name)) return;
+    if (PHONE_SHOTS.has(name) !== this.phone) return;
     if (only && !only.split(',').includes(name)) return;
     await this.wait(600);
     const boxes = [];
@@ -474,12 +490,11 @@ async function allShots(r) {
   await r.search(t('adminSearchAnchorPointsHint'), 'Sala de estudio');
   await r.click('Sala de estudio', 0, 1500);
   await r.mapLoaded();
+  // The floor buttons aren't marked: Flutter reports them where they were
+  // before the banner pushed them down.
   await r.shot('connect-selected', [
     t('adminMapConnectChip'),
     t('adminMapConnectDone'),
-    t('mapFloorUp'),
-    t('mapFloorDown'),
-    t('mapOnlyThisFloor'),
     t('adminGuideSectionTooltip'),
   ]);
   await r.click(t('adminMapConnectDone'));
@@ -581,11 +596,76 @@ async function allShots(r) {
   await r.shot('reindex');
   await r.close();
 
-  // Phone width: the same app, the menu slides in.
+  // Phone width: the field screens, and the menu sliding in.
   await r.open({ width: 412, height: 800 });
   await r.signIn();
-  await r.click(t('adminSectionAnchorPoints')).catch(() => {});
-  await r.shot('phone-home');
+  await r.mapLoaded();
+  await r.shot('map-home', [
+    t('adminMapSearchHint'),
+    t('adminMapAll'),
+    t('adminFabNewAnchorPoint'),
+  ]);
+  await r.search(t('adminMapSearchHint'), 'Biblioteca');
+  await r.click('Biblioteca', 0, 1500);
+  // Opened again, the map loads sharp tiles at once; after the jump from
+  // search they stayed blurred in this browser.
+  await r.page.mouse.click(28, 28);
+  await r.wait(900);
+  await r.click(t('adminSectionAnchorPoints'), 0, 1200);
+  await r.page.mouse.click(28, 28);
+  await r.wait(900);
+  await r.click(t('adminSectionMap'), 0, 1500);
+  await r.mapLoaded();
+  await r.shot('points-map', [
+    t('mapFloorUp'),
+    t('mapFloorDown'),
+    t('mapOnlyThisFloor'),
+    t('adminFabNewAnchorPoint'),
+  ]);
+  await r.click(t('mapFloorUp'), 0, 1500);
+  await r.shot('points-map-floor2');
+  await r.click(t('mapFloorDown'), 0, 800);
+  // The mouse stays over the floor button, and its tooltip would be marked
+  // in place of the button later.
+  await r.page.mouse.move(200, 650);
+  await r.wait(1500);
+  // A point's details, in a sheet from the bottom.
+  await r.search(t('adminMapSearchHint'), 'Sala de estudio');
+  await r.click('Sala de estudio', 0, 1500);
+  // The sheet's Connect: the second match when the map's chip is still in
+  // the tree behind it, else the first.
+  const connect =
+    (await r.find(t('adminAnchorConnectAction'), 1)) ??
+    (await r.find(t('adminAnchorConnectAction'), 0));
+  await r.shot('point-sheet', [
+    connect,
+    t('adminAnchorMoveAction'),
+    t('adminAnchorUnverifyTooltip'),
+    t('adminAddPhotoTooltip'),
+    t('commonEdit'),
+  ]);
+  await r.clickBox(connect, 1500);
+  await r.mapLoaded();
+  // The floor buttons aren't marked: Flutter reports them where they were
+  // before the banner pushed them down.
+  await r.shot('connect-selected', [
+    t('adminMapConnectChip'),
+    t('adminMapConnectDone'),
+    t('adminGuideSectionTooltip'),
+  ]);
+  await r.click(t('adminMapConnectDone'));
+  // A connection's details, from the Connections list.
+  await r.page.mouse.click(28, 28);
+  await r.wait(900);
+  await r.click(t('adminSectionConnections'), 0, 1200);
+  await r.click(t('adminMapShowOnMap'), 0, 1800);
+  await r.mapLoaded();
+  await r.shot('map-connection', [
+    t('adminConnectionEditWarning'),
+    t('commonDelete'),
+  ]);
+  await r.page.keyboard.press('Escape');
+  await r.wait(700);
   await r.page.mouse.click(28, 28);
   await r.wait(900);
   await r.shot('phone-menu');
