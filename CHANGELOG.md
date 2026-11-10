@@ -19,6 +19,12 @@ Each release's section becomes its GitHub release description (`.github/workflow
 - The home screen always speaks and says what each action does; "Guía de voz" now only covers the trip's instructions. It says when it's listening and when it didn't hear you.
 - Every route starts by checking where you are with the camera: hold the phone up and turn slowly when asked.
 
+- **Admin: the map comes first.** The admin app opens on a map of every university. Tap a university to see its buildings, and a building to see its points. One search box finds universities, buildings and points.
+- **Admin: everything from the map.** Connect points in a chain, move, verify, add photos and edit without leaving the map. Tap a connection to see it, edit its warning or delete it. The separate Connect screen is gone.
+- **Admin: filters and lists.** A Filters button (bottom left) on the map and the lists, with status inside it. Connections can be filtered (over 15 m, with a warning, changing floor), and every list has University and Building choices.
+- **Admin: clearer colours.** One colour-blind-safe palette on every admin map, with larger marks: rejected points are an orange ✕, and the floors above and below are a blue ▲ and a purple ▼.
+- **Admin: a shorter guide.** It now starts with the mistakes that break routes, each with how to spot and fix it. The menu's notices link to the matching one.
+
 ### Fixed
 
 - An overloaded photo model no longer freezes the whole server: it restarts by itself, and guidance carries on from GPS meanwhile.

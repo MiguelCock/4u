@@ -9,6 +9,19 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+// The pictures the guides use. The walk below visits every screen in
+// order, and takes only these, so a picture dropped from the guide stops
+// being taken.
+const USED = new Set(
+  ['es', 'en'].flatMap((lang) =>
+    [
+      ...readFileSync(join(here, `../${lang}/README.md`), 'utf8').matchAll(
+        /images\/\w+\/([\w-]+)\.webp/g,
+      ),
+    ].map((m) => m[1]),
+  ),
+);
 const SERVER = 'http://localhost:8765';
 const arg = (name) => {
   const i = process.argv.indexOf(name);
@@ -201,6 +214,7 @@ class Run {
   /** Saves a screenshot, with numbered markers on [marks]: labels, [label,
    * nth] pairs, or boxes. */
   async shot(name, marks = []) {
+    if (!USED.has(name)) return;
     if (only && !only.split(',').includes(name)) return;
     await this.wait(600);
     const boxes = [];
@@ -255,18 +269,7 @@ async function allShots(r) {
   await r.shot('home-menu', [
     t('adminGuide'),
     t('adminSectionMap'),
-    t('adminSectionUniversities'),
-    t('adminSectionBuildings'),
-    t('adminSectionAnchorPoints'),
-    t('adminSectionConnections'),
-    t('adminUsersTabLabel'),
-    t('adminSessions'),
-    t('feedbackScreenTitle'),
-    t('adminReindexMenu'),
     t('adminHealthUnconnected', { count: 1 }),
-    t('adminHealthHiddenNamed', { count: 2 }),
-    t('adminHealthLongConnections', { count: 1 }),
-    t('adminHealthFloorChange', { count: 1 }),
     t('adminGuideSectionTooltip'),
     t('commonRefresh'),
     t('homeSettingsTooltip'),
@@ -444,7 +447,7 @@ async function allShots(r) {
   ]);
   await r.shot('map-filters', [t('adminFiltersButton'), t('adminMapConnectChip')]);
   await r.click(t('mapFloorUp'), 0, 1500);
-  await r.shot('points-map-floor2', [t('mapFloorUp'), t('mapFloorDown')]);
+  await r.shot('points-map-floor2');
   await r.click(t('mapOnlyThisFloor'), 0, 1500);
   await r.shot('points-map-only-floor', [t('mapOnlyThisFloor')]);
   await r.click(t('mapOnlyThisFloor'), 0, 800);
@@ -562,7 +565,8 @@ async function allShots(r) {
 
   // The menu's notices.
   await r.click(t('adminHealthLongConnections', { count: 1 }));
-  await r.shot('health-long-connections');
+  // With its "How to fix" link to the guide.
+  await r.shot('notice-review');
   await r.page.keyboard.press('Escape');
   await r.wait(700);
   await r.click(t('adminHealthFloorChange', { count: 1 }));

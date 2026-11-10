@@ -14,7 +14,7 @@ The [parity list](../roadmap/0.6-stories.md#admin-parity-list) as rows to tick. 
 | ID | Capability | Today | Check | C2–C4 |
 |---|---|---|---|---|
 | O1 | Sign in, sign up | Login, Signup | `shot:login` | ☐ |
-| O2 | Open the guide; help for the current page (web) | Drawer, app bar **?** | `test:widgets/admin_guide_test.dart` | ☐ |
+| O2 | Open the guide; help for the current page (web) | Drawer, app bar **?** | `test:widgets/admin_guide_test.dart` | ☑ C6: and the menu notices' **How to fix** (`test:widgets/review_list_test.dart`) |
 | O3 | Refresh (button and pull) | App bar, every list | `test:widgets/tab_refresh_test.dart` | ☐ |
 | O4 | Settings (detail, contrast, language, text size, voice) | App bar gear | manual | ☐ |
 | O5 | Log out | Drawer | manual | ☐ |
