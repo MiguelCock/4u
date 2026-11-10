@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../l10n/app_localizations.dart';
-import '../map.dart' show locationPinMarker;
 import '../services/api_service.dart';
 import '../services/floor_view.dart';
-import '../services/map_tile_config.dart';
-import '../widgets/admin_map/layers.dart' show buildingMarker, placeMarker;
-import '../widgets/floor_selector.dart';
+import '../widgets/admin_map/admin_map.dart';
+import '../widgets/admin_map/layers.dart';
 
 /// Reusable "tap the map to pick a location" screen - pops with the tapped
 /// `LatLng` on confirm, or `null` if the admin just backs out. Used by
@@ -21,7 +18,7 @@ import '../widgets/floor_selector.dart';
 /// coverage gaps while picking - building markers show a small badge with
 /// their anchor-point count, place markers show their building count, and
 /// anchor-point markers are colored by `status` (green = verified, grey =
-/// pending, red = rejected).
+/// pending, red = rejected). Built on [AdminMap] in pick mode (C3).
 class LocationPickerScreen extends StatefulWidget {
   final LatLng initialPosition;
   final bool showPlaces;
@@ -42,6 +39,10 @@ class LocationPickerScreen extends StatefulWidget {
   /// on it. Changing floor here only changes the view.
   final int? initialFloor;
 
+  /// Off in tests, which have no network for tiles.
+  @visibleForTesting
+  final bool showTiles;
+
   const LocationPickerScreen({
     super.key,
     required this.initialPosition,
@@ -51,6 +52,7 @@ class LocationPickerScreen extends StatefulWidget {
     this.anchorPointsBuildingId,
     this.buildingsPlaceId,
     this.initialFloor,
+    this.showTiles = true,
   });
 
   @override
@@ -63,28 +65,17 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   List<Map<String, dynamic>> _places = [];
   List<Map<String, dynamic>> _buildings = [];
   List<Map<String, dynamic>> _anchorPoints = [];
-  int? _floor;
-  bool _onlySelectedFloor = false;
 
   @override
   void initState() {
     super.initState();
     _picked = widget.initialPosition;
-    _floor = widget.initialFloor;
     _loadOverlayData();
-    loadOnlySelectedFloor().then((value) {
-      if (mounted) setState(() => _onlySelectedFloor = value);
-    });
   }
 
   /// The overlay's floors, plus the one the new point is going on.
   List<int> get _floors =>
       {...floorsOf(_anchorPoints), ?widget.initialFloor}.toList()..sort();
-
-  int get _selectedFloor {
-    final floors = _floors;
-    return floorInRange(_floor ?? openingFloor(floors) ?? 0, floors) ?? 0;
-  }
 
   Future<void> _loadOverlayData() async {
     try {
@@ -121,85 +112,21 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     }
   }
 
-  List<Marker> _overlayMarkers() {
-    final markers = <Marker>[];
-
-    final buildingCountByPlace = <String, int>{};
-    for (final building in _buildings) {
-      final placeId = building['place_id'] as String?;
-      if (placeId == null) continue;
-      buildingCountByPlace[placeId] = (buildingCountByPlace[placeId] ?? 0) + 1;
-    }
-    final anchorCountByBuilding = <String, int>{};
-    for (final point in _anchorPoints) {
-      final buildingId = point['building_id'] as String?;
-      if (buildingId == null) continue;
-      anchorCountByBuilding[buildingId] =
-          (anchorCountByBuilding[buildingId] ?? 0) + 1;
-    }
-
-    for (final place in _places) {
-      final lat = (place['latitude'] as num?)?.toDouble();
-      final lng = (place['longitude'] as num?)?.toDouble();
-      if (lat == null || lng == null) continue;
-      markers.add(
-        placeMarker(LatLng(lat, lng), buildingCountByPlace[place['id']] ?? 0),
-      );
-    }
-
-    for (final building in _buildings) {
-      final lat = (building['latitude'] as num?)?.toDouble();
-      final lng = (building['longitude'] as num?)?.toDouble();
-      if (lat == null || lng == null) continue;
-      markers.add(
-        buildingMarker(
-          LatLng(lat, lng),
-          anchorCountByBuilding[building['id']] ?? 0,
-        ),
-      );
-    }
-
-    // The other floors first, so the selected one is drawn on top.
-    final floor = _selectedFloor;
-    for (final point in _anchorPoints) {
-      final lat = (point['latitude'] as num?)?.toDouble();
-      final lng = (point['longitude'] as num?)?.toDouble();
-      if (lat == null || lng == null) continue;
-      final relation = floorRelation(
-        point,
-        floor,
-        onlySelected: _onlySelectedFloor,
-      );
-      if (relation == FloorRelation.above || relation == FloorRelation.below) {
-        markers.add(floorPointMarker(LatLng(lat, lng), relation));
-      }
-    }
-    for (final point in _anchorPoints) {
-      final lat = (point['latitude'] as num?)?.toDouble();
-      final lng = (point['longitude'] as num?)?.toDouble();
-      if (lat == null || lng == null) continue;
-      if (pointFloor(point) != floor) continue;
-      final color = switch (point['status'] as String?) {
-        'verified' => Colors.green,
-        'rejected' => Colors.red,
-        _ => Colors.grey,
-      };
-      markers.add(
-        Marker(
-          point: LatLng(lat, lng),
-          width: 40,
-          height: 40,
-          child: Icon(Icons.circle, color: color, size: 16),
-        ),
-      );
-    }
-
-    return markers;
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final buildingCounts = <String, int>{};
+    for (final building in _buildings) {
+      final placeId = building['place_id'] as String?;
+      if (placeId == null) continue;
+      buildingCounts[placeId] = (buildingCounts[placeId] ?? 0) + 1;
+    }
+    final pointCounts = <String, int>{};
+    for (final point in _anchorPoints) {
+      final buildingId = point['building_id'] as String?;
+      if (buildingId == null) continue;
+      pointCounts[buildingId] = (pointCounts[buildingId] ?? 0) + 1;
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.locationPickerTitle),
@@ -211,37 +138,30 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          FlutterMap(
-            options: MapOptions(
-              initialCenter: _picked,
-              initialZoom: 16,
-              onTap: (tapPosition, point) => setState(() => _picked = point),
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: kMapTileUrlTemplate,
-                userAgentPackageName: kMapUserAgentPackageName,
-              ),
-              MarkerLayer(markers: _overlayMarkers()),
-              MarkerLayer(markers: [locationPinMarker(_picked, Colors.red)]),
-            ],
+      body: AdminMap(
+        showTiles: widget.showTiles,
+        floors: _floors,
+        focusFloor: widget.initialFloor,
+        fitTo: [widget.initialPosition],
+        fitMinZoom: 16,
+        fitMaxZoom: 16,
+        mode: AdminMapMode.pick,
+        onTapPosition: (point) => setState(() => _picked = point),
+        // Everything at every zoom: the picker shows what's around the spot.
+        layers: [
+          PlacesLayer(
+            places: _places,
+            buildingCounts: buildingCounts,
+            maxZoom: double.infinity,
           ),
-          Positioned(
-            right: 8,
-            top: 8,
-            child: FloorSelector(
-              floors: _floors,
-              selected: _selectedFloor,
-              onlySelected: _onlySelectedFloor,
-              onFloorChanged: (floor) => setState(() => _floor = floor),
-              onOnlySelectedChanged: (value) {
-                setState(() => _onlySelectedFloor = value);
-                saveOnlySelectedFloor(value);
-              },
-            ),
+          BuildingsLayer(
+            buildings: _buildings,
+            pointCounts: pointCounts,
+            minZoom: 0,
+            maxZoom: double.infinity,
           ),
+          PointsLayer(points: _anchorPoints),
+          PinLayer(position: _picked, color: Colors.red),
         ],
       ),
     );

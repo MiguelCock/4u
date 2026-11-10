@@ -15,9 +15,9 @@ const arg = (name) => {
   return i < 0 ? null : process.argv[i + 1];
 };
 const only = arg('--only');
-// Where a point of the demo campus lands on the Anchor points map, for the
-// shot of tapping it. The map frames the same points at this window size.
-const SHEET_POINT = { x: 720, y: 580 };
+// The new spot tapped in the shot of moving a point: just beside the point,
+// which search centres in the Map section's map at this window size.
+const SHEET_POINT = { x: 840, y: 630 };
 
 /** One language's run: the page, its labels, and the helpers shots use. */
 class Run {
@@ -296,7 +296,7 @@ async function allShots(r) {
   await r.shot('map-point', [
     t('adminMapDetailsTooltip'),
     t('adminAnchorMoveAction'),
-    t('adminAnchorConnectAction'),
+    [t('adminAnchorConnectAction'), 1],
   ]);
 
   // Universities.
@@ -351,8 +351,6 @@ async function allShots(r) {
     t('adminStatusChipLabel', { label: t('commonStatusPending'), count: 3 }),
     t('adminFiltersButton'),
     t('adminSearchAnchorPointsHint'),
-    t('adminAnchorViewList'),
-    t('adminAnchorViewMap'),
     'Archivo',
     t('adminAnchorVerifyTooltip'),
     [t('commonEdit'), 0],
@@ -432,8 +430,9 @@ async function allShots(r) {
   await r.goBack();
   await r.goBack();
 
-  // Map view: the floors.
-  await r.click(t('adminAnchorViewMap'), 0, 1500);
+  // The points map: the Map section, still on the Biblioteca from the
+  // search above (C3).
+  await r.click(t('adminSectionMap'), 0, 1500);
   await r.mapLoaded();
   await r.shot('points-map', [
     t('mapFloorUp'),
@@ -441,42 +440,45 @@ async function allShots(r) {
     t('mapOnlyThisFloor'),
     t('adminFabNewAnchorPoint'),
   ]);
+  await r.shot('map-filters', [t('adminFiltersButton'), t('adminMapConnectChip')]);
   await r.click(t('mapFloorUp'), 0, 1500);
   await r.shot('points-map-floor2', [t('mapFloorUp'), t('mapFloorDown')]);
   await r.click(t('mapOnlyThisFloor'), 0, 1500);
   await r.shot('points-map-only-floor', [t('mapOnlyThisFloor')]);
   await r.click(t('mapOnlyThisFloor'), 0, 800);
   await r.click(t('mapFloorDown'), 0, 800);
-  // A tap near a point: its actions.
-  await r.page.mouse.click(SHEET_POINT.x, SHEET_POINT.y);
-  await r.wait(1000);
+  // A point's actions, found by search.
+  await r.search(t('adminMapSearchHint'), 'Sala de estudio');
+  await r.click('Sala de estudio', 0, 1500);
   await r.shot('point-sheet', [
-    t('adminAnchorConnectAction'),
+    // The second: the first is the map's Connect chip, with the same label.
+    [t('adminAnchorConnectAction'), 1],
     t('adminAnchorMoveAction'),
     t('adminAnchorUnverifyTooltip'),
     t('adminAddPhotoTooltip'),
     t('commonEdit'),
   ]);
   await r.click(t('adminAnchorMoveAction'), 0, 1000);
-  await r.page.mouse.click(SHEET_POINT.x + 60, SHEET_POINT.y + 30);
+  await r.page.mouse.click(SHEET_POINT.x, SHEET_POINT.y);
   await r.wait(900);
   await r.shot('point-moving');
   await r.click(t('commonCancel'));
-  await r.click(t('adminAnchorViewList'));
 
-  // Tapping a point's row opens Connect on map with it selected.
+  // Tapping a point's row opens the map in Connect mode, with it selected.
+  await r.click(t('adminSectionAnchorPoints'), 0, 1200);
   await r.search(t('adminSearchAnchorPointsHint'), 'Sala de estudio');
   await r.click('Sala de estudio', 0, 1500);
   await r.mapLoaded();
   await r.shot('connect-selected', [
-    t('commonUniversityLabel'),
-    t('commonBuildingLabel'),
+    t('adminMapConnectChip'),
+    t('adminMapConnectDone'),
     t('mapFloorUp'),
     t('mapFloorDown'),
     t('mapOnlyThisFloor'),
     t('adminGuideSectionTooltip'),
   ]);
-  await r.goBack();
+  await r.click(t('adminMapConnectDone'));
+  await r.click(t('adminSectionAnchorPoints'), 0, 1200);
   await r.search(t('adminSearchAnchorPointsHint'), '');
 
   // Connections.
@@ -502,10 +504,18 @@ async function allShots(r) {
     t('addConnectionSaveButton'),
   ]);
   await r.goBack();
+  // A connection on the map: its data and actions.
+  await r.click(t('adminMapShowOnMap'), 0, 1800);
+  await r.mapLoaded();
+  await r.shot('map-connection', [
+    t('adminConnectionEditWarning'),
+    t('commonDelete'),
+  ]);
+  await r.click(t('adminSectionConnections'), 0, 1200);
   await r.click(t('adminFabConnectOnMap'), 0, 1500);
   await r.mapLoaded();
   await r.shot('connect-map');
-  await r.goBack();
+  await r.click(t('adminMapConnectDone'));
 
   // Users.
   await r.click(t('adminUsersTabLabel'));

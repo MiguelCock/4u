@@ -8,7 +8,7 @@ import '../services/capture_checks.dart';
 import '../services/location_types.dart' show anchorDisplayName, anchorLabel;
 
 /// Dropdown-based fallback/precision flow for creating an anchor-point
-/// connection - mirrors the map-tap flow in `ConnectAnchorPointsScreen` but
+/// connection - mirrors connecting on the admin map (Connect mode) but
 /// without needing to be looking at the map, and lets an admin override the
 /// auto-computed straight-line distance when the real walking distance
 /// differs (a bend in a corridor, a floor change via elevator/stairs).

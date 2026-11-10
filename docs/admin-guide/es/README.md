@@ -154,13 +154,11 @@ Hay dos clases de punto, según su **tipo de lugar**:
 | 1 | **Todos / Pendiente / Verificado / Rechazado** | Muestra solo los puntos con ese estado, y cuántos hay. |
 | 2 | **Filtros** | Abre más filtros (abajo). |
 | 3 | **Buscar puntos de referencia** | Busca por nombre. |
-| 4 | **Lista** | Muestra los puntos en esta lista. |
-| 5 | **Mapa** | Muestra los mismos puntos en un mapa. Ver [El mapa](#points-map). |
-| 6 | Fila del punto | Muestra su edificio, estado y número de fotos. **Tocarla abre Conectar en el mapa** con este punto ya seleccionado. |
-| 7 | **Verificar** | Verifica el punto. En uno ya verificado, este botón lo devuelve a pendiente. Ver [Verificar](#verify). |
-| 8 | **Editar** (lápiz) | Abre [la edición del punto](#point-edit). |
-| 9 | **Más acciones** (⋮) | Abre el menú de abajo. |
-| 10 | **Nuevo punto de referencia** (cámara) | Abre [el formulario](#point-form). |
+| 4 | Fila del punto | Muestra su edificio, estado y número de fotos. **Tocarla abre el mapa en modo Conectar** con este punto ya seleccionado. |
+| 5 | **Verificar** | Verifica el punto. En uno ya verificado, este botón lo devuelve a pendiente. Ver [Verificar](#verify). |
+| 6 | **Editar** (lápiz) | Abre [la edición del punto](#point-edit). |
+| 7 | **Más acciones** (⋮) | Abre el menú de abajo. |
+| 8 | **Nuevo punto de referencia** (cámara) | Abre [el formulario](#point-form). |
 
 Los puntos sin nombre se muestran por su tipo y el inicio de su código, por ejemplo "Pasillo · 284a".
 
@@ -381,8 +379,8 @@ Las conexiones son líneas verdes. Una nueva se ve gris punteada mientras se gua
 
 | # | Control | Qué hace |
 |---|---|---|
-| 1 | **Universidad** | Qué campus muestra el mapa. |
-| 2 | **Edificio** | Acota los puntos a un edificio. |
+| 1 | **Conectar** | Modo Conectar: encendido, un punto tocado se suma a la cadena en vez de abrirse. |
+| 2 | **Listo** | Sale del modo Conectar. Atrás también, después de soltar el punto seleccionado. |
 | 3 | **Subir un piso** | Muestra el piso de arriba. |
 | 4 | **Bajar un piso** | Muestra el piso de abajo. |
 | 5 | **Solo este piso** | Oculta los pisos vecinos. Para conectar entre pisos debe estar apagado. |

@@ -620,5 +620,18 @@
   "adminMapOpenBuildingsList": "Lista de edificios",
   "adminMapOpenPointsList": "Lista de puntos",
   "adminMapFloorsLabel": "{count} piso(s)",
-  "adminMapInactive": "Inactivo"
+  "adminMapInactive": "Inactivo",
+  "adminMapConnectChip": "Conectar",
+  "adminMapConnectBanner": "Toca un punto y luego los siguientes para conectarlos en cadena. Toca una línea para verla.",
+  "adminMapConnectBannerFrom": "Conectando desde {name}. Toca el siguiente punto, o el mismo para soltarlo.",
+  "adminMapConnectDone": "Listo",
+  "adminMapShowOnMap": "Ver en el mapa",
+  "adminConnectionDistance": "{meters} m",
+  "adminConnectionDistanceTyped": "{meters} m, escrita",
+  "adminConnectionChangesFloor": "Cambia de piso",
+  "adminConnectionWarning": "Aviso para usuarios: {text}",
+  "adminConnectionNoWarning": "Sin aviso para usuarios",
+  "adminConnectionEditWarning": "Editar aviso",
+  "adminConnectionsAllBuildings": "Todos los edificios",
+  "adminHealthUnconnectedHint": "Nadie puede llegar a ellos ni salir de ellos. Conéctalos al camino, o quítales la verificación."
 }

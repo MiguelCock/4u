@@ -38,6 +38,7 @@ String _detailsOf(AdminMapHit hit) => switch (hit) {
   PlaceHit(:final place) => 'details ${place['name']}',
   BuildingHit(:final building) => 'details ${building['name']}',
   PointHit(:final point) => 'details ${point['location_description']}',
+  ConnectionHit(:final connection) => 'details line ${connection['id']}',
 };
 
 /// A MapHome holding its own scope, as AdminHomeScreen does.

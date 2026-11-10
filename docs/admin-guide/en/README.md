@@ -154,13 +154,11 @@ There are two kinds of point, by their **location type**:
 | 1 | **All / Pending / Verified / Rejected** | Shows only points with that status, and how many there are. |
 | 2 | **Filters** | Opens more filters (below). |
 | 3 | **Search anchor points** | Searches by name. |
-| 4 | **List** | Shows the points in this list. |
-| 5 | **Map** | Shows the same points on a map. See [The map](#points-map). |
-| 6 | Point row | Shows its building, status and photo count. **Tapping it opens Connect on map** with this point already selected. |
-| 7 | **Verify** | Verifies the point. On a verified one, this button puts it back to pending. See [Verifying](#verify). |
-| 8 | **Edit** (pencil) | Opens [the point's edit page](#point-edit). |
-| 9 | **More actions** (⋮) | Opens the menu below. |
-| 10 | **New anchor point** (camera) | Opens [the form](#point-form). |
+| 4 | Point row | Shows its building, status and photo count. **Tapping it opens the map in Connect mode** with this point already selected. |
+| 5 | **Verify** | Verifies the point. On a verified one, this button puts it back to pending. See [Verifying](#verify). |
+| 6 | **Edit** (pencil) | Opens [the point's edit page](#point-edit). |
+| 7 | **More actions** (⋮) | Opens the menu below. |
+| 8 | **New anchor point** (camera) | Opens [the form](#point-form). |
 
 Unnamed points show their type and the start of their id, for example "Hallway · 284a".
 
@@ -381,8 +379,8 @@ Connections are green lines. A new one is dotted grey while it saves, and you ca
 
 | # | Control | What it does |
 |---|---|---|
-| 1 | **University** | Which campus the map shows. |
-| 2 | **Building** | Narrows the points to one building. |
+| 1 | **Connect** | Connect mode: on, a tapped point joins the chain instead of opening. |
+| 2 | **Done** | Leaves Connect mode. Back does too, after letting go of the selected point. |
 | 3 | **Go up a floor** | Shows the floor above. |
 | 4 | **Go down a floor** | Shows the floor below. |
 | 5 | **Only this floor** | Hides the neighboring floors. It must be off to connect across floors. |

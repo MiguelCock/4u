@@ -109,3 +109,12 @@ Icesi has about 270 points. Each one is a `Marker` widget today, rebuilt on ever
 
 **Left for C3:** connect, filters and status on this map, and the Anchor points tab's own map view.
 
+## C3: built (#185)
+
+- **Connect mode** on the Map section replaces `ConnectAnchorPointsScreen`. The chain's decisions are `connectTap` (pure); optimistic lines, refusals, long warnings and floor changes are kept as they were.
+- **Lines are tappable** (`ConnectionHit`, `nearestLineOnScreen`) and open a connection's details: Edit warning, Delete.
+- **Filters and status chips** sit on the map and are shared with the list. The Anchor points tab's own map (`AnchorPointsMap`) is gone.
+- **The menu notices** open their items on the map (`MapFocus`). The Connections tab got University and Building.
+- **The location picker** runs on `AdminMap` in pick mode. The session view keeps its own map, since it draws a trip, not the admin's data.
+- **Every point and connection row** of the parity list is ticked.
+

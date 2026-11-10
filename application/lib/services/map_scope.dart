@@ -141,3 +141,28 @@ List<MapSearchResult> searchMap(
   });
   return [for (final s in scored.take(limit)) s.$2];
 }
+
+/// The points of [scope]: a building's, a university's, or all of them.
+List<Map<String, dynamic>> pointsInScope(
+  MapScope scope, {
+  required List<Map<String, dynamic>> buildings,
+  required List<Map<String, dynamic>> points,
+}) {
+  if (scope.buildingId case final id?) {
+    return [
+      for (final p in points)
+        if (p['building_id'] == id) p,
+    ];
+  }
+  if (scope.placeId case final id?) {
+    final buildingIds = {
+      for (final b in buildings)
+        if (b['place_id'] == id) b['id'],
+    };
+    return [
+      for (final p in points)
+        if (buildingIds.contains(p['building_id'])) p,
+    ];
+  }
+  return points;
+}
