@@ -28,6 +28,7 @@ import 'navigation_screen.dart';
 import 'settings_screen.dart';
 import '../services/api_error_messages.dart';
 import '../services/exit_guard.dart';
+import '../services/speech_queue.dart';
 import '../services/speech_voice.dart';
 
 /// The `user`-role home screen IS the trip-planning flow now (not a map,
@@ -79,7 +80,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   // Saying the destination out loud (speech_to_text) instead of drilling
   // down University -> Building -> place.
   final _speech = SpeechToText();
-  final _tts = FlutterTts();
+  FlutterTts _tts = FlutterTts();
+
+  /// One sentence at a time, each waited for until the voice says it's done:
+  /// a guessed duration cut sentences off when the microphone opened.
+  late final _voice = SpeechQueue(
+    speak: (text) async => _tts.speak(text),
+    stop: () async => _tts.stop(),
+  );
   Future<bool>? _ttsReady;
   String? _ttsLanguage;
   bool _listening = false;
@@ -109,11 +117,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     final language = Localizations.localeOf(context).languageCode;
     if (language != _ttsLanguage) {
       _ttsLanguage = language;
+      // The end of each sentence comes from the voice's own events
+      // (_claimVoiceEvents), not from speak() returning.
       _ttsReady = configureTts(_tts, language).then((ready) async {
-        // Speaking returns once it's said, so listening never starts while
-        // the app is still talking: the recognizer would hear it.
         try {
-          await _tts.awaitSpeakCompletion(true);
+          await _tts.awaitSpeakCompletion(false);
         } catch (_) {}
         return ready;
       });
@@ -142,7 +150,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   /// the recognizer (D1).
   /// Always, whatever "Guía de voz" says: that setting is for the trip's
   /// instructions, and with it off this screen was silent.
-  Future<void> _say(String text) async {
+  Future<void> _say(String text, {bool interrupt = false}) async {
     // Never over an open microphone: a sentence spoken while the recognizer
     // is still closing is lost on Android ("Di sí…" after a place, "gira
     // despacio" after "sí").
@@ -153,12 +161,21 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     await Future<void>.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
     await _ttsReady;
-    await _tts.stop();
-    // Waits for the voice to finish, but never longer than the sentence
-    // could take: a voice that doesn't report finishing mustn't stop the
-    // listening that comes next.
-    final most = Duration(milliseconds: (80 * text.length).clamp(1500, 12000));
-    await _tts.speak(text).timeout(most, onTimeout: () => null);
+    _claimVoiceEvents();
+    // Returns when the voice says this sentence is over, after any before it.
+    await _voice.say(text, interrupt: interrupt);
+  }
+
+  /// The voice's events go to whichever FlutterTts was created last (one
+  /// channel for the app): after a trip, NavigationScreen's had them, and
+  /// this screen never heard a sentence end. A new one takes them back; the
+  /// engine and its settings are shared, so nothing else changes.
+  void _claimVoiceEvents() {
+    _tts = FlutterTts()
+      ..setStartHandler(_voice.onStarted)
+      ..setCompletionHandler(_voice.onEnded)
+      ..setCancelHandler(_voice.onEnded)
+      ..setErrorHandler((_) => _voice.onEnded());
   }
 
   /// Start and destination rows, shown only when the user asked for them
@@ -316,7 +333,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       _voiceMisses = 0;
       final stopped = AppLocalizations.of(context)!.homeStoppedListening;
       await _speech.cancel();
-      await _say(stopped);
+      await _say(stopped, interrupt: true);
       return;
     }
     _voiceMisses = 0;
@@ -408,7 +425,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       await _say(prompt);
       if (!mounted) return false;
     }
-    await _tts.stop(); // so the recognizer doesn't hear the app itself
+    // The prompt has finished (its own end event): a short pause, and then
+    // the marks and the microphone, always in that order.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return false;
     final localeId = await _speechLocale(language);
     if (!mounted) return false;
     // Felt and heard before the microphone opens: once it's on, anything
@@ -1607,7 +1627,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           leading: const Icon(Icons.logout),
           title: Text(l10n.commonLogOut),
           onTap: () async {
-            await _say(l10n.homeLoggingOut);
+            await _say(l10n.homeLoggingOut, interrupt: true);
             await Supabase.instance.client.auth.signOut();
           },
         ),
