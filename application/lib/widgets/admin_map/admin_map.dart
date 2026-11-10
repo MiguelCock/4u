@@ -24,7 +24,7 @@ class AdminMapView {
       floorRelation(point, floor, onlySelected: onlySelected);
 }
 
-/// What a tap on an [AdminMap] found. Connections come with C3.
+/// What a tap on an [AdminMap] found.
 sealed class AdminMapHit {
   const AdminMapHit();
 }
@@ -42,6 +42,11 @@ class BuildingHit extends AdminMapHit {
 class PointHit extends AdminMapHit {
   final Map<String, dynamic> point;
   const PointHit(this.point);
+}
+
+class ConnectionHit extends AdminMapHit {
+  final Map<String, dynamic> connection;
+  const ConnectionHit(this.connection);
 }
 
 /// One kind of thing on an [AdminMap]: what it draws, and what a tap hits.

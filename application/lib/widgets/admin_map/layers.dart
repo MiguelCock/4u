@@ -22,10 +22,18 @@ Color anchorStatusColor(String? status) => switch (status) {
 class PointsLayer extends AdminMapLayer {
   final List<Map<String, dynamic>> points;
   final String? movingId;
+
+  /// The first point of a connection being made: a blue ring, on any floor.
+  final String? selectedId;
   @override
   final double minZoom;
 
-  const PointsLayer({required this.points, this.movingId, this.minZoom = 0});
+  const PointsLayer({
+    required this.points,
+    this.movingId,
+    this.selectedId,
+    this.minZoom = 0,
+  });
 
   @override
   bool get usesFloors => true;
@@ -35,9 +43,23 @@ class PointsLayer extends AdminMapLayer {
     final circles = <CircleMarker>[];
     final markers = <Marker>[];
     Marker? moving;
+    Marker? selected;
     for (final point in points) {
       final position = anchorPosition(point);
       if (position == null) continue;
+      if (point['id'] == selectedId) {
+        selected = Marker(
+          point: position,
+          width: 40,
+          height: 40,
+          child: const Icon(
+            Icons.radio_button_checked,
+            color: Colors.blue,
+            size: 30,
+          ),
+        );
+        continue;
+      }
       if (point['id'] == movingId) {
         moving = Marker(
           point: position,
@@ -71,7 +93,8 @@ class PointsLayer extends AdminMapLayer {
       // The other floors first, so the selected one is drawn on top.
       MarkerLayer(markers: markers),
       CircleLayer(circles: circles),
-      if (moving != null) MarkerLayer(markers: [moving]),
+      if (moving != null || selected != null)
+        MarkerLayer(markers: [?moving, ?selected]),
     ];
   }
 
@@ -87,7 +110,14 @@ class PointsLayer extends AdminMapLayer {
         );
     final point =
         nearest((r) => r == FloorRelation.current) ??
-        nearest((r) => r != FloorRelation.hidden);
+        nearest((r) => r != FloorRelation.hidden) ??
+        // The selected point shows on any floor, so it can be tapped there.
+        nearestOnScreen(
+          camera: camera,
+          tapped: tapped,
+          items: points.where((p) => p['id'] == selectedId),
+          positionOf: anchorPosition,
+        );
     return point == null ? null : PointHit(point);
   }
 }
@@ -100,22 +130,24 @@ class ConnectionsLayer extends AdminMapLayer {
   @override
   final double minZoom;
 
+  /// Strong lines while connecting; faint ones otherwise, under the points.
+  final bool prominent;
+
   const ConnectionsLayer({
     required this.points,
     required this.connections,
     this.minZoom = 0,
+    this.prominent = false,
   });
 
-  @override
-  bool get usesFloors => true;
-
-  @override
-  List<Widget> build(AdminMapView view) {
+  /// The two ends of each connection drawn, by connection.
+  Iterable<(Map<String, dynamic>, LatLng, LatLng)> _drawn(
+    AdminMapView view,
+  ) sync* {
     final byId = {
       for (final p in points)
         if (anchorPosition(p) != null) p['id'] as String: p,
     };
-    final lines = <Polyline>[];
     for (final c in connections) {
       final a = byId[c['anchor_point_a_id']];
       final b = byId[c['anchor_point_b_id']];
@@ -128,14 +160,53 @@ class ConnectionsLayer extends AdminMapLayer {
       )) {
         continue;
       }
+      yield (c, anchorPosition(a)!, anchorPosition(b)!);
+    }
+  }
+
+  @override
+  AdminMapHit? hitTest(MapCamera camera, LatLng tapped, AdminMapView view) {
+    final hit = nearestLineOnScreen(
+      camera: camera,
+      tapped: tapped,
+      // A line still being saved has no row to show yet.
+      items: _drawn(view).where((d) => d.$1['pending'] != true),
+      endsOf: (d) => (d.$2, d.$3),
+    );
+    return hit == null ? null : ConnectionHit(hit.$1);
+  }
+
+  @override
+  bool get usesFloors => true;
+
+  @override
+  List<Widget> build(AdminMapView view) {
+    final byId = {
+      for (final p in points)
+        if (anchorPosition(p) != null) p['id'] as String: p,
+    };
+    final lines = <Polyline>[];
+    for (final (c, a, b) in _drawn(view)) {
+      final pending = c['pending'] == true;
+      final sameFloor =
+          pointFloor(byId[c['anchor_point_a_id']]!) ==
+          pointFloor(byId[c['anchor_point_b_id']]!);
       lines.add(
         Polyline(
-          points: [anchorPosition(a)!, anchorPosition(b)!],
-          color: Colors.teal.withValues(alpha: 0.5),
-          strokeWidth: 2,
-          pattern: pointFloor(a) == pointFloor(b)
+          points: [a, b],
+          color: pending
+              ? Colors.grey
+              : prominent
+              ? Colors.green
+              : Colors.teal.withValues(alpha: 0.5),
+          strokeWidth: prominent && !pending ? 3 : 2,
+          pattern: pending
+              ? const StrokePattern.dotted()
+              : sameFloor
               ? const StrokePattern.solid()
-              : StrokePattern.dashed(segments: const [6, 4]),
+              : StrokePattern.dashed(
+                  segments: prominent ? const [8, 6] : const [6, 4],
+                ),
         ),
       );
     }

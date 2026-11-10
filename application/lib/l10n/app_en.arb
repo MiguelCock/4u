@@ -788,5 +788,22 @@
   "adminMapOpenPointsList": "Points list",
   "adminMapFloorsLabel": "{count} floor(s)",
   "@adminMapFloorsLabel": {"placeholders": {"count": {"type": "int"}}},
-  "adminMapInactive": "Inactive"
+  "adminMapInactive": "Inactive",
+  "adminMapConnectChip": "Connect",
+  "adminMapConnectBanner": "Tap a point, then the next ones, to connect them in a chain. Tap a line to see it.",
+  "adminMapConnectBannerFrom": "Connecting from {name}. Tap the next point, or it again to let go.",
+  "@adminMapConnectBannerFrom": {"placeholders": {"name": {"type": "String"}}},
+  "adminMapConnectDone": "Done",
+  "adminMapShowOnMap": "Show on map",
+  "adminConnectionDistance": "{meters} m",
+  "@adminConnectionDistance": {"placeholders": {"meters": {"type": "String"}}},
+  "adminConnectionDistanceTyped": "{meters} m, typed",
+  "@adminConnectionDistanceTyped": {"placeholders": {"meters": {"type": "String"}}},
+  "adminConnectionChangesFloor": "Changes floor",
+  "adminConnectionWarning": "Warning for users: {text}",
+  "@adminConnectionWarning": {"placeholders": {"text": {"type": "String"}}},
+  "adminConnectionNoWarning": "No warning for users",
+  "adminConnectionEditWarning": "Edit warning",
+  "adminConnectionsAllBuildings": "All buildings",
+  "adminHealthUnconnectedHint": "Each one can't be reached or started from. Connect it to the path, or unverify it."
 }

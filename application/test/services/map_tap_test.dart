@@ -58,4 +58,33 @@ void main() {
   test('points without a position are skipped', () {
     expect(anchorPosition({'id': 'x'}), isNull);
   });
+
+  test('distance to a segment: beside it, past its end, on a point', () {
+    const a = Offset(0, 0);
+    const b = Offset(10, 0);
+    expect(distanceToSegment(const Offset(5, 3), a, b), 3);
+    expect(distanceToSegment(const Offset(13, 4), a, b), 5);
+    expect(distanceToSegment(const Offset(3, 4), a, a), 5);
+  });
+
+  test('the nearest line within 16 px of a tap', () {
+    LatLng at(double dx, double dy) => camera.screenOffsetToLatLng(
+      camera.latLngToScreenOffset(center) + Offset(dx, dy),
+    );
+    final lines = {
+      'close': (at(-50, 10), at(50, 10)),
+      'closer': (at(-50, -5), at(50, -5)),
+      'far': (at(-50, 40), at(50, 40)),
+    };
+    String? hit(LatLng tapped) => nearestLineOnScreen(
+      camera: camera,
+      tapped: tapped,
+      items: lines.keys,
+      endsOf: (key) => lines[key],
+    );
+    expect(hit(center), 'closer');
+    expect(hit(at(0, 35)), 'far');
+    // 20 px from the nearest line.
+    expect(hit(at(0, 60)), isNull);
+  });
 }

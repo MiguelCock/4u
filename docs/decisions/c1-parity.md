@@ -24,10 +24,10 @@ The [parity list](../roadmap/0.6-stories.md#admin-parity-list) as rows to tick. 
 
 | ID | Capability | Today | Check | C2–C4 |
 |---|---|---|---|---|
-| N1 | Verified points with no connections → filtered list | Drawer | manual | ☐ |
-| N2 | Named points users can't choose → open, change type | Drawer sheet | manual | ☐ |
-| N3 | Connections over the limit → delete | Drawer sheet | manual | ☐ |
-| N4 | Floor changes with no stairs → delete | Drawer sheet | manual | ☐ |
+| N1 | Verified points with no connections → filtered list | Drawer | manual | ☑ C3: a review list, each to the map |
+| N2 | Named points users can't choose → open, change type | Drawer sheet | manual | ☑ C3: each opens on the map |
+| N3 | Connections over the limit → delete | Drawer sheet | manual | ☑ C3: each opens on the map |
+| N4 | Floor changes with no stairs → delete | Drawer sheet | manual | ☑ C3: each opens on the map |
 
 ## Universities
 
@@ -53,20 +53,20 @@ The [parity list](../roadmap/0.6-stories.md#admin-parity-list) as rows to tick. 
 
 | ID | Capability | Today | Check | C2–C4 |
 |---|---|---|---|---|
-| P1 | Search; status filter with counts | Points tab | `shot:points-list` | ☐ |
-| P2 | Filters: category/type, floor, in/outdoors, lighting, photos, connections; clear | Filters sheet | `shot:points-filters`, `test:services/anchor_filters_test.dart` | ☐ |
-| P3 | List and map views | Segmented button | `shot:points-map` | ☑ C1: `AdminMap` |
-| P4 | Create: university, building, floor, type (search, categories), description, in/outdoors, lighting, surface | FAB → Capture | `shot:point-form` | ☐ |
-| P5 | Create: pick on map, seeing existing points | Location picker | `shot:location-picker` | ☐ |
-| P6 | Create: use GPS on a phone (±8 m) | Capture | manual (phone) | ☐ |
-| P7 | Warnings: point under 3 m; name on an in-between type | Capture, Edit | `test:services/capture_checks_test.dart` | ☐ |
-| P8 | Form remembers the last point | Capture | manual | ☐ |
-| P9 | Edit all of the above; status; move on map; thumbnails | Edit screen | `shot:point-edit`, `test:widgets/map_conflict_test.dart` | ☐ |
-| P10 | Photos: web upload with direction; phone camera with heading; delete; done | Photo screen | `shot:point-photos` | ☐ |
-| P11 | Verify from list, map or edit; refused with no photos; warning with no connections; unverify | Row, sheet, edit | `shot:verify-needs-photo`, `shot:verify-unconnected` | ☐ |
-| P12 | From the map: data, connect, move (pin, save, cancel), verify, add photo, edit | Map sheet | `shot:point-sheet`, `shot:point-moving` | ☑ C1: `AdminMap` |
-| P13 | Delete with what else goes | Row menu | `shot:points-row-menu` | ☐ |
-| P14 | Another admin's change: conflict dialog; edit screen notice | Every save | `test:widgets/map_conflict_test.dart`, `test:services/map_sync_test.dart` | ☐ |
+| P1 | Search; status filter with counts | Points tab | `shot:points-list` | ☑ C3: the list, and the map (search, status chips) |
+| P2 | Filters: category/type, floor, in/outdoors, lighting, photos, connections; clear | Filters sheet | `shot:points-filters`, `test:services/anchor_filters_test.dart` | ☑ C3: the list and the map share them |
+| P3 | List and map views | Segmented button | `shot:points-map` | ☑ C3: the Points tab is the list, the Map section the map |
+| P4 | Create: university, building, floor, type (search, categories), description, in/outdoors, lighting, surface | FAB → Capture | `shot:point-form` | ☑ unchanged |
+| P5 | Create: pick on map, seeing existing points | Location picker | `shot:location-picker` | ☑ C3: the picker runs on `AdminMap` |
+| P6 | Create: use GPS on a phone (±8 m) | Capture | manual (phone) | ☑ unchanged |
+| P7 | Warnings: point under 3 m; name on an in-between type | Capture, Edit | `test:services/capture_checks_test.dart` | ☑ unchanged |
+| P8 | Form remembers the last point | Capture | manual | ☑ unchanged |
+| P9 | Edit all of the above; status; move on map; thumbnails | Edit screen | `shot:point-edit`, `test:widgets/map_conflict_test.dart` | ☑ unchanged, also from the map's details |
+| P10 | Photos: web upload with direction; phone camera with heading; delete; done | Photo screen | `shot:point-photos` | ☑ unchanged, also from the map's details |
+| P11 | Verify from list, map or edit; refused with no photos; warning with no connections; unverify | Row, sheet, edit | `shot:verify-needs-photo`, `shot:verify-unconnected` | ☑ C3: list, map details, edit page |
+| P12 | From the map: data, connect, move (pin, save, cancel), verify, add photo, edit | Map sheet | `shot:point-sheet`, `shot:point-moving` | ☑ C3: the Map section |
+| P13 | Delete with what else goes | Row menu | `shot:points-row-menu` | ☑ unchanged (row menu) |
+| P14 | Another admin's change: conflict dialog; edit screen notice | Every save | `test:widgets/map_conflict_test.dart`, `test:services/map_sync_test.dart` | ☑ unchanged |
 
 ## Floors
 
@@ -80,13 +80,13 @@ The [parity list](../roadmap/0.6-stories.md#admin-parity-list) as rows to tick. 
 
 | ID | Capability | Today | Check | C2–C4 |
 |---|---|---|---|---|
-| C1 | Search; list with distance and warning | Connections tab | `shot:connections` | ☐ |
-| C2 | Add on the map by tapping: chain, deselect, across floors | Connect screen | `shot:connect-map`, `shot:connect-selected` | ☐ |
-| C3 | Add by form (university, building filter, A, B, distance, warning) | Connection form | `shot:connection-form` | ☐ |
-| C4 | Refused over the limit or a wrong floor change; warning over 15 m | Connect, form | `test:services/capture_checks_test.dart`, `shot:connection-warning` | ☐ |
-| C5 | Edit a warning | Row tap | manual | ☐ |
-| C6 | Delete from the list or the map line | Row, Connect map | manual | ☐ |
-| C7 | Jump from a point's row, with it selected | Points row tap | manual | ☐ |
+| C1 | Search; list with distance and warning | Connections tab | `shot:connections` | ☑ C3: with University and Building |
+| C2 | Add on the map by tapping: chain, deselect, across floors | Connect screen | `shot:connect-map`, `shot:connect-selected` | ☑ C3: Connect mode on the map |
+| C3 | Add by form (university, building filter, A, B, distance, warning) | Connection form | `shot:connection-form` | ☑ unchanged |
+| C4 | Refused over the limit or a wrong floor change; warning over 15 m | Connect, form | `test:services/capture_checks_test.dart`, `shot:connection-warning` | ☑ C3: `connectTap` and the backend |
+| C5 | Edit a warning | Row tap | manual | ☑ C3: a row, or the line's details |
+| C6 | Delete from the list or the map line | Row, Connect map | manual | ☑ C3: a row, or the line's details |
+| C7 | Jump from a point's row, with it selected | Points row tap | manual | ☑ C3: opens Connect mode with it selected |
 
 ## Users, sessions, feedback, re-index, phone only
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -14,10 +15,8 @@ import '../widgets/map_conflict.dart';
 import 'add_building_screen.dart';
 import 'add_connection_screen.dart';
 import 'add_place_screen.dart';
-import 'anchor_points_map.dart';
 import 'capture_photo_screen.dart';
 import 'capture_screen.dart';
-import 'connect_anchor_points_screen.dart';
 import 'edit_anchor_point_screen.dart'
     show EditAnchorPointScreen, anchorStatusLabel;
 import 'edit_building_screen.dart';
@@ -32,9 +31,10 @@ import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
 import '../widgets/admin_guide.dart';
 import '../services/capture_checks.dart';
+import '../services/connect_chain.dart';
 import '../services/exit_guard.dart';
 import '../services/location_types.dart';
-import '../services/map_tap.dart';
+import '../services/floor_view.dart';
 import '../widgets/guardrail_dialogs.dart';
 import '../widgets/scrollable_message.dart';
 
@@ -112,9 +112,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   Future<void>? _syncing;
   bool _wasCovered = false;
 
-  /// Anchor points tab: map instead of list, and the point being moved on it.
-  bool _anchorMapView = false;
+  /// The point being moved on the map.
   Map<String, dynamic>? _movingPoint;
+
+  /// Connect mode on the map (C3): the first point of the next connection,
+  /// and the pairs (see [connectionPairKey]) still being saved.
+  bool _connecting = false;
+  String? _connectFromId;
+  final Set<String> _pendingPairs = {};
+
+  /// The last "show this on the map" request (MapHome acts on each new one).
+  MapFocus? _mapFocus;
+
+  /// Connections tab: the university and building it's narrowed to.
+  String? _connectionsPlaceId;
+  String? _connectionsBuildingId;
   LatLng? _moveTarget;
 
   @override
@@ -127,9 +139,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           if (!_navigatingBack) _tabHistory.add(_lastTabIndex);
           _lastTabIndex = index;
           _navigatingBack = false;
-          // A move belongs to the map it started on.
+          // A move belongs to the map it started on, and so does connecting.
           _movingPoint = null;
           _moveTarget = null;
+          if (index != _kMap) {
+            _connecting = false;
+            _connectFromId = null;
+            // Done with; a map built again later mustn't act on it again.
+            _mapFocus = null;
+          }
         }
         setState(() {});
         if (index == _kUsers && !_usersLoaded) _loadUsers();
@@ -284,6 +302,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         !_buildings.any((b) => b['id'] == _anchorPointsBuildingFilterId)) {
       _anchorPointsBuildingFilterId = null;
     }
+    if (!_places.any((p) => p['id'] == _connectionsPlaceId)) {
+      _connectionsPlaceId = null;
+    }
+    if (!_buildings.any((b) => b['id'] == _connectionsBuildingId)) {
+      _connectionsBuildingId = null;
+    }
     _mapScope = _mapScope.existingIn(
       placeIds: {for (final p in _places) p['id'] as String},
       buildingIds: {for (final b in _buildings) b['id'] as String},
@@ -370,6 +394,22 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       setState(() {
         _movingPoint = null;
         _moveTarget = null;
+      });
+      return;
+    }
+    if (index == _kMap && _connectFromId != null) {
+      setState(() => _connectFromId = null);
+      return;
+    }
+    if (index == _kMap && _connecting) {
+      setState(() => _connecting = false);
+      return;
+    }
+    if (index == _kMap &&
+        (_anchorStatusFilter != null || !_anchorFilters.isEmpty)) {
+      setState(() {
+        _anchorStatusFilter = null;
+        _anchorFilters = AnchorFilters.none;
       });
       return;
     }
@@ -1019,24 +1059,231 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// Opens the map connection builder already scoped to this point's
   /// university/building, zoomed in on it, and with it pre-selected as the
   /// first point of the pair.
-  Future<void> _connectFromAnchorPoint(Map<String, dynamic> point) async {
-    final buildingId = point['building_id'] as String?;
-    final placeId =
-        _buildings.firstWhere(
-              (b) => b['id'] == buildingId,
-              orElse: () => const {},
-            )['place_id']
-            as String?;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ConnectAnchorPointsScreen(
-          initialPlaceId: placeId,
-          initialBuildingId: buildingId,
-          initialAnchorPointId: point['id'] as String?,
-        ),
-      ),
+  /// Connect mode on the map, with [point] as the first of the pair: the
+  /// next point tapped connects to it (a point row's tap, the sheet's
+  /// Connect).
+  void _connectFromAnchorPoint(Map<String, dynamic> point) {
+    if (_tabController.index != _kMap) _tabController.animateTo(_kMap);
+    setState(() {
+      _movingPoint = null;
+      _moveTarget = null;
+      _connecting = true;
+      _connectFromId = point['id'] as String?;
+      _mapFocus = MapFocus(PointHit(point), open: false);
+    });
+  }
+
+  /// Shows [item] on the map: a notice's point or connection, a row's
+  /// "Show on map".
+  void _showOnMap(AdminMapHit item) {
+    if (_tabController.index != _kMap) _tabController.animateTo(_kMap);
+    setState(() => _mapFocus = MapFocus(item));
+  }
+
+  String _describePoint(String id) {
+    final l10n = AppLocalizations.of(context)!;
+    final point = _anchorPoints.firstWhere(
+      (p) => p['id'] == id,
+      orElse: () => {'id': id},
     );
-    _loadData();
+    return anchorLabel(
+      l10n,
+      point,
+      _buildingName(point['building_id'] as String?),
+    );
+  }
+
+  void _snack(String text, {int seconds = 4}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: Duration(seconds: seconds),
+          content: Text(text),
+        ),
+      );
+  }
+
+  /// A point tapped in connect mode (see [connectTap]). Connecting is
+  /// optimistic: the line shows (dotted grey) and the selection moves on at
+  /// once, so the next tap works while this one saves; only the same pair
+  /// waits.
+  Future<void> _onConnectTap(Map<String, dynamic> point) async {
+    final l10n = AppLocalizations.of(context)!;
+    HapticFeedback.selectionClick();
+    final step = connectTap(
+      selectedId: _connectFromId,
+      tapped: point,
+      connections: _connections,
+      pointsById: {for (final p in _anchorPoints) p['id'] as String: p},
+    );
+    switch (step) {
+      case ConnectSelect(:final id):
+        setState(() => _connectFromId = id);
+      case ConnectDeselect():
+        setState(() => _connectFromId = null);
+      case ConnectMoveOn(:final id):
+        setState(() => _connectFromId = id);
+        _snack(l10n.connectErrorAlreadyConnected, seconds: 2);
+      case ConnectRefused(
+        :final fromId,
+        :final toId,
+        :final problem,
+        :final distance,
+      ):
+        HapticFeedback.heavyImpact();
+        _snack(
+          problem == ConnectionProblem.tooLong
+              ? l10n.connectErrorTooFar(
+                  _describePoint(fromId),
+                  _describePoint(toId),
+                  distance!.toStringAsFixed(0),
+                )
+              : l10n.connectErrorFloorChange(
+                  _describePoint(fromId),
+                  _describePoint(toId),
+                ),
+          seconds: 6,
+        );
+      case ConnectPair():
+        await _saveConnection(step);
+    }
+  }
+
+  Future<void> _saveConnection(ConnectPair pair) async {
+    final l10n = AppLocalizations.of(context)!;
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      _snack(l10n.commonNotSignedIn);
+      return;
+    }
+    final key = connectionPairKey(pair.fromId, pair.toId);
+    if (_pendingPairs.contains(key)) return;
+    final pending = <String, dynamic>{
+      'id': 'pending-$key',
+      'anchor_point_a_id': pair.fromId,
+      'anchor_point_b_id': pair.toId,
+      'pending': true,
+    };
+    setState(() {
+      _pendingPairs.add(key);
+      _connections = [..._connections, pending];
+      _connectFromId = pair.toId;
+    });
+    try {
+      final result = await _mapApi.post('/anchor-point-connections', {
+        'anchor_point_a_id': pair.fromId,
+        'anchor_point_b_id': pair.toId,
+        'created_by': userId,
+      });
+      if (!mounted) return;
+      final created = result is List && result.isNotEmpty
+          ? (result.first as Map).cast<String, dynamic>()
+          : null;
+      setState(() {
+        _connections = [
+          for (final c in _connections)
+            // The sync may have brought the saved row already.
+            if (!identical(c, pending) &&
+                (created == null || c['id'] != created['id']))
+              c,
+          created ?? {...pending, 'pending': false},
+        ];
+      });
+      final distance = pair.distance;
+      pair.long ? HapticFeedback.mediumImpact() : HapticFeedback.lightImpact();
+      _snack(
+        pair.long
+            ? l10n.connectSnackbarConnectedLong(distance!.toStringAsFixed(0))
+            : l10n.connectSnackbarConnected(
+                _describePoint(pair.fromId),
+                _describePoint(pair.toId),
+              ),
+        seconds: pair.long ? 4 : 2,
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _connections = [
+          for (final c in _connections)
+            if (!identical(c, pending)) c,
+        ];
+      });
+      _snack(
+        // Only a real duplicate; a 500 used to read as "already connected"
+        // too, hiding outages.
+        e.statusCode == 409
+            ? l10n.connectErrorAlreadyConnected
+            : l10n.connectErrorConnectFailed(
+                friendlyApiErrorMessage(context, e),
+              ),
+      );
+    } finally {
+      if (mounted) setState(() => _pendingPairs.remove(key));
+    }
+  }
+
+  /// A connection's data and actions on the map.
+  Widget _connectionDetails(Map<String, dynamic> c, VoidCallback close) {
+    final l10n = AppLocalizations.of(context)!;
+    final aId = c['anchor_point_a_id'] as String? ?? '';
+    final bId = c['anchor_point_b_id'] as String? ?? '';
+    Map<String, dynamic>? point(String id) {
+      for (final p in _anchorPoints) {
+        if (p['id'] == id) return p;
+      }
+      return null;
+    }
+
+    final a = point(aId);
+    final b = point(bId);
+    final meters = (c['distance_meters'] as num?)?.toStringAsFixed(1);
+    final notes = (c['notes'] as String? ?? '').trim();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.timeline, color: Colors.teal),
+          title: Text('${_describePoint(aId)} ↔ ${_describePoint(bId)}'),
+          subtitle: Text(
+            [
+              if (meters != null)
+                c['distance_manual'] == true
+                    ? l10n.adminConnectionDistanceTyped(meters)
+                    : l10n.adminConnectionDistance(meters),
+              if (a != null && b != null && pointFloor(a) != pointFloor(b))
+                l10n.adminConnectionChangesFloor,
+              notes.isEmpty
+                  ? l10n.adminConnectionNoWarning
+                  : l10n.adminConnectionWarning(notes),
+            ].join('\n'),
+          ),
+        ),
+        Wrap(
+          spacing: 4,
+          children: [
+            TextButton.icon(
+              icon: const Icon(Icons.warning_amber_outlined),
+              label: Text(l10n.adminConnectionEditWarning),
+              onPressed: () {
+                close();
+                _editConnectionWarning(c);
+              },
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.delete_outline),
+              label: Text(l10n.commonDelete),
+              onPressed: () {
+                close();
+                _deleteConnection(c);
+              },
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   Widget _searchField(TextEditingController controller, String hint) {
@@ -1237,7 +1484,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// is currently selected, not every building's anchor points, or an
   /// admin drilled into one building sees a global "Verified (47)" count
   /// that doesn't match anything on screen.
-  Widget _statusFilterChips(List<Map<String, dynamic>> scopedAnchorPoints) {
+  Widget _statusChipsRow(List<Map<String, dynamic>> scopedAnchorPoints) {
     final l10n = AppLocalizations.of(context)!;
     const statuses = ['pending', 'verified', 'rejected'];
     final counts = {
@@ -1259,21 +1506,24 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            chip(null, l10n.commonStatusAll),
-            chip('pending', l10n.commonStatusPending),
-            chip('verified', l10n.commonStatusVerified),
-            chip('rejected', l10n.commonStatusRejected),
-          ],
-        ),
-      ),
+    return Row(
+      children: [
+        chip(null, l10n.commonStatusAll),
+        chip('pending', l10n.commonStatusPending),
+        chip('verified', l10n.commonStatusVerified),
+        chip('rejected', l10n.commonStatusRejected),
+      ],
     );
   }
+
+  Widget _statusFilterChips(List<Map<String, dynamic>> scopedAnchorPoints) =>
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: _statusChipsRow(scopedAnchorPoints),
+        ),
+      );
 
   /// Verify or unverify straight from the list or the map. Verifying needs
   /// at least one photo (the backend enforces it too) and adds the point to
@@ -1366,18 +1616,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   /// Details and actions for a point tapped on the Anchor points map.
-  Future<void> _showAnchorSheet(Map<String, dynamic> point) =>
-      showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (context) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: _pointDetails(point, () => Navigator.of(context).pop()),
-          ),
-        ),
-      );
-
   /// A point's data and actions: the map's sheet, or the map's side panel.
   /// [close] hides it before an action runs.
   Widget _pointDetails(Map<String, dynamic> point, VoidCallback close) {
@@ -1600,6 +1838,66 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  /// The status chips and filters: one test for the list and the map.
+  bool Function(Map<String, dynamic>) _pointFilter() {
+    final withPhotos = {
+      for (final photo in _photos) photo['anchor_point_id'] as String?,
+    }.whereType<String>().toSet();
+    final connected = {
+      for (final c in _connections) ...[
+        c['anchor_point_a_id'] as String?,
+        c['anchor_point_b_id'] as String?,
+      ],
+    }.whereType<String>().toSet();
+    return (p) =>
+        (_anchorStatusFilter == null || p['status'] == _anchorStatusFilter) &&
+        _anchorFilters.matches(p, withPhotos: withPhotos, connected: connected);
+  }
+
+  /// The Filters chip, and Clear while any is on.
+  List<Widget> _filtersChips(String? buildingId) {
+    final l10n = AppLocalizations.of(context)!;
+    return [
+      ActionChip(
+        avatar: const Icon(Icons.filter_list, size: 18),
+        label: Text(
+          _anchorFilters.isEmpty
+              ? l10n.adminFiltersButton
+              : l10n.adminFiltersButtonCount(_anchorFilters.activeCount),
+        ),
+        onPressed: () => _showAnchorFilters(buildingId),
+      ),
+      if (!_anchorFilters.isEmpty) ...[
+        const SizedBox(width: 6),
+        InputChip(
+          label: Text(l10n.adminFiltersClear),
+          onDeleted: () => setState(() => _anchorFilters = AnchorFilters.none),
+        ),
+      ],
+    ];
+  }
+
+  /// The map's filter row: Filters, then the status chips with the scope's
+  /// counts. Shared with the list, so both always agree.
+  Widget _mapToolbar() {
+    final scoped = pointsInScope(
+      _mapScope,
+      buildings: _buildings,
+      points: _anchorPoints,
+    );
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      child: Row(
+        children: [
+          ..._filtersChips(_mapScope.buildingId),
+          const SizedBox(width: 6),
+          _statusChipsRow(scoped),
+        ],
+      ),
+    );
+  }
+
   /// The Map section (C2): universities, then buildings, then points.
   Widget _mapTab() {
     final l10n = AppLocalizations.of(context)!;
@@ -1614,14 +1912,30 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         movingPointId: _movingPoint?['id'] as String?,
         moveTarget: _moveTarget,
         onMoveTargetTapped: (target) => setState(() => _moveTarget = target),
-        // Below the move banner while moving a point.
-        controlsTop: _movingPoint == null ? 8 : 72,
+        // Below the move or connect banner.
+        controlsTop: _movingPoint == null && !_connecting ? 8 : 72,
+        connecting: _connecting,
+        onConnectingChanged: (on) => setState(() {
+          _connecting = on;
+          _connectFromId = null;
+          _movingPoint = null;
+          _moveTarget = null;
+        }),
+        selectedPointId: _connectFromId,
+        onConnectTap: _onConnectTap,
+        pointFilter: _pointFilter(),
+        toolbar: _mapToolbar(),
+        focus: _mapFocus,
         sidePanel: _permanentDrawer,
         pointName: (point) => _pointLabel(l10n, point),
         details: (context, item, close) => switch (item) {
           PlaceHit(:final place) => _placeDetails(place, close),
           BuildingHit(:final building) => _buildingDetails(building, close),
           PointHit(:final point) => _pointDetails(point, close),
+          ConnectionHit(:final connection) => _connectionDetails(
+            connection,
+            close,
+          ),
         },
       ),
     );
@@ -1697,26 +2011,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     await _loadData();
   }
 
-  Widget _buildAnchorMap(List<Map<String, dynamic>> points) {
-    final l10n = AppLocalizations.of(context)!;
-    final moving = _movingPoint;
-    if (!points.any((p) => anchorPosition(p) != null)) {
-      return ScrollableMessage(l10n.adminAnchorMapEmpty);
-    }
-    return _withMoveControls(
-      AnchorPointsMap(
-        // A new scope (building filter) fits the camera again.
-        key: ValueKey(_anchorPointsBuildingFilterId),
-        points: points,
-        connections: _connections,
-        movingPointId: moving?['id'] as String?,
-        moveTarget: _moveTarget,
-        onPointTapped: _showAnchorSheet,
-        onMoveTargetTapped: (target) => setState(() => _moveTarget = target),
-      ),
-    );
-  }
-
   /// [map] with the move banner and its Save button over it, while a point
   /// is being moved.
   Widget _withMoveControls(Widget map) {
@@ -1775,10 +2069,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   /// The metadata filters sheet for the Anchor points tab. Changes apply
   /// right away to the list and map behind it.
-  Future<void> _showAnchorFilters() async {
+  Future<void> _showAnchorFilters(String? buildingId) async {
     final l10n = AppLocalizations.of(context)!;
     final scopedBuilding = _buildings.firstWhere(
-      (b) => b['id'] == _anchorPointsBuildingFilterId,
+      (b) => b['id'] == buildingId,
       orElse: () => const {},
     );
     final maxFloors = scopedBuilding.isNotEmpty
@@ -2034,58 +2328,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         _statusFilterChips(buildingScoped),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-          child: Row(
-            children: [
-              ActionChip(
-                avatar: const Icon(Icons.filter_list, size: 18),
-                label: Text(
-                  _anchorFilters.isEmpty
-                      ? l10n.adminFiltersButton
-                      : l10n.adminFiltersButtonCount(
-                          _anchorFilters.activeCount,
-                        ),
-                ),
-                onPressed: _showAnchorFilters,
-              ),
-              if (!_anchorFilters.isEmpty) ...[
-                const SizedBox(width: 6),
-                InputChip(
-                  label: Text(l10n.adminFiltersClear),
-                  onDeleted: () =>
-                      setState(() => _anchorFilters = AnchorFilters.none),
-                ),
-              ],
-            ],
-          ),
+          child: Row(children: _filtersChips(_anchorPointsBuildingFilterId)),
         ),
         _searchField(_anchorSearchController, l10n.adminSearchAnchorPointsHint),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-          child: SegmentedButton<bool>(
-            segments: [
-              ButtonSegment(
-                value: false,
-                icon: const Icon(Icons.list),
-                label: Text(l10n.adminAnchorViewList),
-              ),
-              ButtonSegment(
-                value: true,
-                icon: const Icon(Icons.map_outlined),
-                label: Text(l10n.adminAnchorViewMap),
-              ),
-            ],
-            selected: {_anchorMapView},
-            onSelectionChanged: (selection) => setState(() {
-              _anchorMapView = selection.first;
-              _movingPoint = null;
-              _moveTarget = null;
-            }),
-          ),
-        ),
         Expanded(
-          child: _anchorMapView
-              ? _buildAnchorMap(filtered)
-              : filtered.isEmpty
+          child: filtered.isEmpty
               ? ScrollableMessage(
                   scopedBuilding != null
                       ? l10n.adminAnchorsEmptyIn(
@@ -2183,15 +2430,94 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           : anchorDisplayName(l10n, point);
     }
 
+    // Narrowed to a university or building: either end inside counts.
+    final placeBuildings = {
+      for (final b in _buildings)
+        if (b['place_id'] == _connectionsPlaceId) b['id'],
+    };
+    bool inside(String? anchorPointId) {
+      final buildingId = anchorPointsById[anchorPointId]?['building_id'];
+      if (_connectionsBuildingId != null) {
+        return buildingId == _connectionsBuildingId;
+      }
+      return _connectionsPlaceId == null || placeBuildings.contains(buildingId);
+    }
+
     final filtered = _connections.where((c) {
-      final aDesc = describe(c['anchor_point_a_id'] as String?).toLowerCase();
-      final bDesc = describe(c['anchor_point_b_id'] as String?).toLowerCase();
+      if (c['pending'] == true) return false;
+      final a = c['anchor_point_a_id'] as String?;
+      final b = c['anchor_point_b_id'] as String?;
+      if (!inside(a) && !inside(b)) return false;
+      final aDesc = describe(a).toLowerCase();
+      final bDesc = describe(b).toLowerCase();
       return aDesc.contains(_connectionQuery) ||
           bDesc.contains(_connectionQuery);
     }).toList();
 
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String?>(
+                  initialValue: _connectionsPlaceId,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: l10n.commonUniversityLabel,
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: null,
+                      child: Text(l10n.commonStatusAll),
+                    ),
+                    for (final place in _places)
+                      DropdownMenuItem(
+                        value: place['id'] as String,
+                        child: Text(place['name'] as String? ?? ''),
+                      ),
+                  ],
+                  onChanged: (id) => setState(() {
+                    _connectionsPlaceId = id;
+                    _connectionsBuildingId = null;
+                  }),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButtonFormField<String?>(
+                  // A new university resets the building list.
+                  key: ValueKey(_connectionsPlaceId),
+                  initialValue: _connectionsBuildingId,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: l10n.commonBuildingLabel,
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: null,
+                      child: Text(l10n.adminConnectionsAllBuildings),
+                    ),
+                    for (final building in _buildings)
+                      if (_connectionsPlaceId == null ||
+                          building['place_id'] == _connectionsPlaceId)
+                        DropdownMenuItem(
+                          value: building['id'] as String,
+                          child: Text(building['name'] as String? ?? ''),
+                        ),
+                  ],
+                  onChanged: (id) =>
+                      setState(() => _connectionsBuildingId = id),
+                ),
+              ),
+            ],
+          ),
+        ),
         _searchField(
           _connectionSearchController,
           l10n.adminSearchConnectionsHint,
@@ -2228,10 +2554,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         '${(connection['notes'] as String? ?? '').isEmpty ? '' : '\n⚠ ${connection['notes']}'}',
                       ),
                       onTap: () => _editConnectionWarning(connection),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: l10n.commonDelete,
-                        onPressed: () => _deleteConnection(connection),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.map_outlined),
+                            tooltip: l10n.adminMapShowOnMap,
+                            onPressed: () =>
+                                _showOnMap(ConnectionHit(connection)),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            tooltip: l10n.commonDelete,
+                            onPressed: () => _deleteConnection(connection),
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -2313,13 +2650,23 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       case _kConnections:
         return FloatingActionButton(
           tooltip: l10n.adminFabConnectOnMap,
-          onPressed: () async {
-            await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const ConnectAnchorPointsScreen(),
-              ),
-            );
-            _loadData();
+          onPressed: () {
+            _tabController.animateTo(_kMap);
+            setState(() {
+              // Where the tab is narrowed to; otherwise the map stays where
+              // the admin left it.
+              final building = _buildings.firstWhere(
+                (b) => b['id'] == _connectionsBuildingId,
+                orElse: () => const {},
+              );
+              if (building.isNotEmpty) {
+                _mapScope = MapScope.building(building);
+              } else if (_connectionsPlaceId != null) {
+                _mapScope = MapScope(placeId: _connectionsPlaceId);
+              }
+              _connecting = true;
+              _connectFromId = null;
+            });
           },
           child: const Icon(Icons.timeline),
         );
@@ -2403,7 +2750,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                     ),
                     _buildingName(point['building_id'] as String?),
                   ].join(' · '),
-                  onTap: () => _editAnchorPoint(point),
+                  onTap: () => _showOnMap(PointHit(point)),
                 ),
             ],
           ),
@@ -2430,7 +2777,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         byId[c['anchor_point_b_id']]!,
                       )!.toStringAsFixed(0),
                     ),
-                    onTap: () => _deleteConnection(c),
+                    onTap: () => _showOnMap(ConnectionHit(c)),
                   ),
               ],
             );
@@ -2457,7 +2804,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                             0)
                         .toStringAsFixed(0),
                   ),
-                  onTap: () => _deleteConnection(c),
+                  onTap: () => _showOnMap(ConnectionHit(c)),
                 ),
             ],
           );
@@ -2483,15 +2830,22 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           as String? ??
       '';
 
-  /// The Anchor points tab showing only verified points with no connection.
+  /// Verified points with no connection, each opening on the map to fix.
   void _showUnconnectedVerified() {
-    setState(() {
-      _anchorPointsBuildingFilterId = null;
-      _anchorSearchController.clear();
-      _anchorStatusFilter = 'verified';
-      _anchorFilters = const AnchorFilters(hasConnections: false);
-    });
-    _tabController.animateTo(_kPoints);
+    final l10n = AppLocalizations.of(context)!;
+    final points = verifiedUnconnectedPoints(_anchorPoints, _connections);
+    _showReviewList(
+      title: l10n.adminHealthUnconnected(points.length),
+      hint: l10n.adminHealthUnconnectedHint,
+      items: [
+        for (final point in points)
+          (
+            title: anchorDisplayName(l10n, point),
+            subtitle: _buildingName(point['building_id'] as String?),
+            onTap: () => _showOnMap(PointHit(point)),
+          ),
+      ],
+    );
   }
 
   Future<void> _showReviewList({

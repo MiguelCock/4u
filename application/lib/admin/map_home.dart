@@ -9,12 +9,27 @@ import '../services/map_tap.dart';
 import '../widgets/admin_map/admin_map.dart';
 import '../widgets/admin_map/layers.dart';
 
+/// A one-shot request to show something on the map (a notice's item, a list
+/// row's "Show on map"): its building, its floor, centred, and opened. A new
+/// request is a new object, even for the same item.
+class MapFocus {
+  final AdminMapHit item;
+
+  /// False to centre on it without opening its details (starting to
+  /// connect from a point).
+  final bool open;
+
+  MapFocus(this.item, {this.open = true});
+}
+
 /// The admin's first screen (C2): every university on a map. Tapping a
 /// university fits its buildings, tapping a building fits its points, and
 /// tapping a point opens its details. The search box finds any of the three,
 /// and the breadcrumb goes back up. Details are a bottom sheet, or a side
 /// panel when [sidePanel]. [scope] belongs to the caller, so system back can
-/// go up a level too.
+/// go up a level too. In [connecting] mode (C3) a tapped point goes to
+/// [onConnectTap] instead, and lines are drawn strongly; a tapped line opens
+/// its details either way.
 class MapHome extends StatefulWidget {
   final List<Map<String, dynamic>> places;
   final List<Map<String, dynamic>> buildings;
@@ -40,6 +55,22 @@ class MapHome extends StatefulWidget {
 
   final String Function(Map<String, dynamic> point) pointName;
 
+  /// Connect mode, switched by the Connect chip.
+  final bool connecting;
+  final ValueChanged<bool>? onConnectingChanged;
+
+  /// The first point of the next connection (connect mode).
+  final String? selectedPointId;
+  final ValueChanged<Map<String, dynamic>>? onConnectTap;
+
+  /// Which points show (status and filters); the selected one always does.
+  final bool Function(Map<String, dynamic> point)? pointFilter;
+
+  /// Under the breadcrumb: the status chips and filters.
+  final Widget? toolbar;
+
+  final MapFocus? focus;
+
   /// Details beside the map (a wide screen) instead of in a bottom sheet.
   final bool sidePanel;
 
@@ -62,6 +93,13 @@ class MapHome extends StatefulWidget {
     this.movingPointId,
     this.moveTarget,
     this.onMoveTargetTapped,
+    this.connecting = false,
+    this.onConnectingChanged,
+    this.selectedPointId,
+    this.onConnectTap,
+    this.pointFilter,
+    this.toolbar,
+    this.focus,
     this.sidePanel = false,
     this.controlsTop = 8,
     this.showTiles = true,
@@ -80,6 +118,9 @@ class _MapHomeState extends State<MapHome> {
   final _searchFocus = FocusNode();
   final _hover = ValueNotifier<({String label, Offset at})?>(null);
   bool _ready = false;
+
+  /// A fit asked for before the map was ready, done once it is.
+  bool _fitPending = false;
   int? _focusFloor;
 
   /// Shown in the side panel.
@@ -92,12 +133,25 @@ class _MapHomeState extends State<MapHome> {
   void initState() {
     super.initState();
     _search.addListener(() => setState(() {}));
+    if (widget.focus case final focus?) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusOn(focus.item, open: focus.open);
+      });
+    }
   }
 
   @override
   void didUpdateWidget(MapHome oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.scope != oldWidget.scope) _fit();
+    final focus = widget.focus;
+    if (focus != null && !identical(focus, oldWidget.focus)) {
+      // After this build, so a scope it sets is the caller's scope by then.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusOn(focus.item, open: focus.open);
+      });
+    } else if (widget.scope != oldWidget.scope) {
+      _fit();
+    }
   }
 
   @override
@@ -117,25 +171,20 @@ class _MapHomeState extends State<MapHome> {
   };
 
   /// The points of the scope: a building's, a university's, or all.
-  List<Map<String, dynamic>> get _scopedPoints {
-    final scope = widget.scope;
-    if (scope.buildingId case final id?) {
-      return [
-        for (final p in widget.points)
-          if (p['building_id'] == id) p,
-      ];
-    }
-    if (scope.placeId case final id?) {
-      final buildingIds = {
-        for (final b in widget.buildings)
-          if (b['place_id'] == id) b['id'],
-      };
-      return [
-        for (final p in widget.points)
-          if (buildingIds.contains(p['building_id'])) p,
-      ];
-    }
-    return widget.points;
+  List<Map<String, dynamic>> get _scopedPoints => pointsInScope(
+    widget.scope,
+    buildings: widget.buildings,
+    points: widget.points,
+  );
+
+  /// The scope's points that pass the filters, and the selected one.
+  List<Map<String, dynamic>> get _shownPoints {
+    final filter = widget.pointFilter;
+    final selectedId = widget.connecting ? widget.selectedPointId : null;
+    return [
+      for (final p in _scopedPoints)
+        if (filter == null || filter(p) || p['id'] == selectedId) p,
+    ];
   }
 
   _Frame _frame() {
@@ -173,7 +222,11 @@ class _MapHomeState extends State<MapHome> {
   /// Moves the camera to the scope, or to a searched point in it.
   void _fit() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_ready) return;
+      if (!mounted) return;
+      if (!_ready) {
+        _fitPending = true;
+        return;
+      }
       final center = _centerOn;
       _centerOn = null;
       if (center != null) {
@@ -229,6 +282,10 @@ class _MapHomeState extends State<MapHome> {
 
   void _onHit(AdminMapHit hit) {
     switch (hit) {
+      case PointHit(:final point) when widget.connecting:
+        widget.onConnectTap?.call(point);
+      case ConnectionHit():
+        _open(hit);
       case PlaceHit(:final place):
         _go(MapScope(placeId: place['id'] as String?));
         if (widget.sidePanel) setState(() => _selected = hit);
@@ -243,28 +300,73 @@ class _MapHomeState extends State<MapHome> {
   void _choose(MapSearchResult result) {
     _search.clear();
     _searchFocus.unfocus();
-    switch (result.kind) {
-      case MapSearchKind.place:
-        _onHit(PlaceHit(result.item));
-      case MapSearchKind.building:
-        _onHit(BuildingHit(result.item));
-      case MapSearchKind.point:
-        final point = result.item;
-        final building = _buildingsById[point['building_id']];
-        setState(() {
-          _focusFloor = pointFloor(point);
-          _centerOn = anchorPosition(point);
-        });
-        _go(building != null ? MapScope.building(building) : widget.scope);
-        _open(PointHit(point));
+    _focusOn(switch (result.kind) {
+      MapSearchKind.place => PlaceHit(result.item),
+      MapSearchKind.building => BuildingHit(result.item),
+      MapSearchKind.point => PointHit(result.item),
+    });
+  }
+
+  /// Shows [item]: a university or building as if tapped; a point or a
+  /// connection in its building, on its floor, centred and opened.
+  void _focusOn(AdminMapHit item, {bool open = true}) {
+    Map<String, dynamic>? pointById(Object? id) {
+      for (final p in widget.points) {
+        if (p['id'] == id) return p;
+      }
+      return null;
     }
+
+    final (Map<String, dynamic>? at, LatLng? center) = switch (item) {
+      PointHit(:final point) => (point, anchorPosition(point)),
+      ConnectionHit(:final connection) => () {
+        final a = pointById(connection['anchor_point_a_id']);
+        final b = pointById(connection['anchor_point_b_id']);
+        final pa = a == null ? null : anchorPosition(a);
+        final pb = b == null ? null : anchorPosition(b);
+        return (
+          a,
+          pa == null || pb == null
+              ? pa
+              : LatLng(
+                  (pa.latitude + pb.latitude) / 2,
+                  (pa.longitude + pb.longitude) / 2,
+                ),
+        );
+      }(),
+      _ => (null, null),
+    };
+    if (at == null) {
+      if (item is PlaceHit || item is BuildingHit) _onHit(item);
+      return;
+    }
+    final building = _buildingsById[at['building_id']];
+    setState(() {
+      _focusFloor = pointFloor(at);
+      _centerOn = center;
+    });
+    _go(building != null ? MapScope.building(building) : widget.scope);
+    if (open) _open(item);
   }
 
   String _hoverLabel(AdminMapHit hit) => switch (hit) {
     PlaceHit(:final place) => place['name'] as String? ?? '',
     BuildingHit(:final building) => building['name'] as String? ?? '',
     PointHit(:final point) => widget.pointName(point),
+    ConnectionHit(:final connection) => _connectionName(connection),
   };
+
+  String _connectionName(Map<String, dynamic> connection) {
+    String end(Object? id) {
+      for (final p in widget.points) {
+        if (p['id'] == id) return widget.pointName(p);
+      }
+      return '?';
+    }
+
+    return '${end(connection['anchor_point_a_id'])} ↔ '
+        '${end(connection['anchor_point_b_id'])}';
+  }
 
   /// [item] as it is in the latest data, after a refresh; null once deleted.
   AdminMapHit? _fresh(AdminMapHit item) {
@@ -291,6 +393,13 @@ class _MapHomeState extends State<MapHome> {
         final p? => PointHit(p),
         null => null,
       },
+      ConnectionHit(:final connection) => switch (find(
+        widget.connections,
+        connection,
+      )) {
+        final c? => ConnectionHit(c),
+        null => null,
+      },
     };
   }
 
@@ -301,6 +410,7 @@ class _MapHomeState extends State<MapHome> {
       fit: StackFit.expand,
       children: [
         _map(),
+        if (widget.connecting) _connectBanner(),
         ValueListenableBuilder(
           valueListenable: _hover,
           builder: (context, hover, _) => hover == null
@@ -329,6 +439,7 @@ class _MapHomeState extends State<MapHome> {
       children: [
         _searchBar(),
         _breadcrumb(),
+        ?widget.toolbar,
         Expanded(
           child: Stack(
             fit: StackFit.expand,
@@ -353,11 +464,17 @@ class _MapHomeState extends State<MapHome> {
 
   Widget _map() {
     final frame = _frame();
-    final points = _scopedPoints;
+    final scoped = _scopedPoints;
+    final points = _shownPoints;
     final movingId = widget.movingPointId;
+    final selectedId = widget.connecting ? widget.selectedPointId : null;
     int? movingFloor;
-    for (final p in points) {
+    int? selectedFloor;
+    for (final p in scoped) {
       if (movingId != null && p['id'] == movingId) movingFloor = pointFloor(p);
+      if (selectedId != null && p['id'] == selectedId) {
+        selectedFloor = pointFloor(p);
+      }
     }
     final buildingCounts = <String, int>{};
     for (final b in widget.buildings) {
@@ -376,14 +493,22 @@ class _MapHomeState extends State<MapHome> {
     final target = widget.moveTarget;
     return AdminMap(
       controller: _controller,
-      onReady: () => _ready = true,
+      onReady: () {
+        _ready = true;
+        if (_fitPending) {
+          _fitPending = false;
+          _fit();
+        }
+      },
       showTiles: widget.showTiles,
-      floors: floorsOf(points),
+      floors: floorsOf(scoped),
       fitTo: frame.coordinates,
       fitMinZoom: frame.minZoom,
       fitMaxZoom: frame.maxZoom,
       mode: movingId == null ? AdminMapMode.browse : AdminMapMode.move,
-      focusFloor: movingFloor ?? _focusFloor,
+      // Connecting to a point on another floor shows that floor, so a chain
+      // carries on there.
+      focusFloor: movingFloor ?? selectedFloor ?? _focusFloor,
       controlsTop: widget.controlsTop,
       layers: [
         PlacesLayer(places: widget.places, buildingCounts: buildingCounts),
@@ -392,10 +517,12 @@ class _MapHomeState extends State<MapHome> {
           points: points,
           connections: widget.connections,
           minZoom: kMapPointsZoom,
+          prominent: widget.connecting,
         ),
         PointsLayer(
           points: points,
           movingId: movingId,
+          selectedId: selectedId,
           minZoom: kMapPointsZoom,
         ),
         if (target != null) PinLayer(position: target),
@@ -524,7 +651,56 @@ class _MapHomeState extends State<MapHome> {
               tooltip: l10n.adminMapDetailsTooltip,
               onPressed: () => _open(current),
             ),
+          if (widget.onConnectingChanged case final onChanged?) ...[
+            const SizedBox(width: 8),
+            FilterChip(
+              avatar: const Icon(Icons.timeline, size: 18),
+              label: Text(l10n.adminMapConnectChip),
+              selected: widget.connecting,
+              onSelected: onChanged,
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  /// What connect mode does, over the map, with Done.
+  Widget _connectBanner() {
+    final l10n = AppLocalizations.of(context)!;
+    String? selectedName;
+    for (final p in widget.points) {
+      if (p['id'] == widget.selectedPointId) selectedName = widget.pointName(p);
+    }
+    return Positioned(
+      left: 8,
+      right: 8,
+      top: 8,
+      child: Material(
+        elevation: 2,
+        borderRadius: BorderRadius.circular(8),
+        color: Theme.of(context).colorScheme.primaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    selectedName == null
+                        ? l10n.adminMapConnectBanner
+                        : l10n.adminMapConnectBannerFrom(selectedName),
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => widget.onConnectingChanged?.call(false),
+                child: Text(l10n.adminMapConnectDone),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
