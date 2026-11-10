@@ -7,13 +7,15 @@ import '../../services/floor_view.dart';
 import '../../services/map_tap.dart';
 import '../floor_selector.dart';
 import 'admin_map.dart';
+import '../../theme/admin_palette.dart';
+
+/// The sizes of the admin map's marks, in logical pixels (C4 made them a
+/// little larger than the first 15 px dots).
+const double kPointRadius = 9;
+const double kMarkSize = 34;
 
 /// The colour of a point's review status.
-Color anchorStatusColor(String? status) => switch (status) {
-  'verified' => Colors.green,
-  'rejected' => Colors.red,
-  _ => Colors.grey,
-};
+Color anchorStatusColor(String? status) => kAdminPalette.status(status);
 
 /// Anchor points: the selected floor as dots coloured by status, the floors
 /// directly above and below as ▲/▼, and the point being moved ([movingId]) on
@@ -50,12 +52,12 @@ class PointsLayer extends AdminMapLayer {
       if (point['id'] == selectedId) {
         selected = Marker(
           point: position,
-          width: 40,
-          height: 40,
-          child: const Icon(
+          width: 44,
+          height: 44,
+          child: Icon(
             Icons.radio_button_checked,
-            color: Colors.blue,
-            size: 30,
+            color: kAdminPalette.selected,
+            size: kMarkSize,
           ),
         );
         continue;
@@ -63,26 +65,54 @@ class PointsLayer extends AdminMapLayer {
       if (point['id'] == movingId) {
         moving = Marker(
           point: position,
-          width: 40,
-          height: 40,
-          child: const Icon(
+          width: 44,
+          height: 44,
+          child: Icon(
             Icons.radio_button_checked,
-            color: Colors.blue,
-            size: 30,
+            color: kAdminPalette.selected,
+            size: kMarkSize,
           ),
         );
         continue;
       }
       switch (view.relation(point)) {
         case FloorRelation.current:
-          // The size of the 18 px circle icon this replaced.
-          circles.add(
-            CircleMarker(
-              point: position,
-              radius: 7.5,
-              color: anchorStatusColor(point['status'] as String?),
-            ),
-          );
+          final palette = kAdminPalette;
+          final status = point['status'] as String?;
+          final color = anchorStatusColor(status);
+          if (status == 'rejected' && palette.rejectedCross) {
+            markers.add(
+              Marker(
+                point: position,
+                width: 30,
+                height: 30,
+                child: Icon(Icons.close, color: color, size: 28),
+              ),
+            );
+          } else if (status != 'verified' &&
+              status != 'rejected' &&
+              palette.pendingHollow) {
+            circles.add(
+              CircleMarker(
+                point: position,
+                radius: kPointRadius - 1.5,
+                color: Colors.transparent,
+                borderColor: color,
+                borderStrokeWidth: 3,
+              ),
+            );
+          } else {
+            final outline = palette.dotOutline;
+            circles.add(
+              CircleMarker(
+                point: position,
+                radius: kPointRadius,
+                color: color,
+                borderColor: outline ?? const Color(0x00000000),
+                borderStrokeWidth: outline == null ? 0 : 1.5,
+              ),
+            );
+          }
         case FloorRelation.above || FloorRelation.below:
           markers.add(floorPointMarker(position, view.relation(point)));
         case FloorRelation.hidden:
@@ -195,10 +225,10 @@ class ConnectionsLayer extends AdminMapLayer {
         Polyline(
           points: [a, b],
           color: pending
-              ? Colors.grey
+              ? kAdminPalette.connectionPending
               : prominent
-              ? Colors.green
-              : Colors.teal.withValues(alpha: 0.5),
+              ? kAdminPalette.connectionActive
+              : kAdminPalette.connection,
           strokeWidth: prominent && !pending ? 3 : 2,
           pattern: pending
               ? const StrokePattern.dotted()
@@ -219,7 +249,8 @@ class PinLayer extends AdminMapLayer {
   final LatLng position;
   final Color color;
 
-  const PinLayer({required this.position, this.color = Colors.blue});
+  PinLayer({required this.position, Color? color})
+    : color = color ?? kAdminPalette.selected;
 
   @override
   List<Widget> build(AdminMapView view) => [
@@ -233,7 +264,7 @@ Marker placeMarker(LatLng position, int buildingCount, {bool active = true}) =>
     _countedMarker(
       position,
       Icons.flag,
-      active ? Colors.purple : Colors.grey,
+      active ? kAdminPalette.university : kAdminPalette.inactive,
       buildingCount,
     );
 
@@ -242,7 +273,7 @@ Marker buildingMarker(LatLng position, int pointCount, {bool active = true}) =>
     _countedMarker(
       position,
       Icons.apartment,
-      active ? Colors.orange : Colors.grey,
+      active ? kAdminPalette.building : kAdminPalette.inactive,
       pointCount,
     );
 
@@ -257,12 +288,12 @@ Marker _countedMarker(LatLng position, IconData icon, Color color, int count) =>
         alignment: Alignment.center,
         clipBehavior: Clip.none,
         children: [
-          Icon(icon, color: color, size: 30),
+          Icon(icon, color: color, size: kMarkSize),
           if (count > 0)
-            // On the top-right corner of the centred 30px icon.
+            // On the top-right corner of the centred icon.
             Positioned(
-              right: 8,
-              top: 8,
+              right: 6,
+              top: 6,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                 constraints: const BoxConstraints(minWidth: 16),

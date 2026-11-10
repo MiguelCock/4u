@@ -72,9 +72,9 @@ The [parity list](../roadmap/0.6-stories.md#admin-parity-list) as rows to tick. 
 
 | ID | Capability | Today | Check | C2–C4 |
 |---|---|---|---|---|
-| F1 | Up and down | Every admin map | `shot:points-map-floor2`, `test:services/floor_view_test.dart` | ☑ C1: `AdminMap` |
-| F2 | Adjacent floors shown differently, and tappable | Every admin map | `test:services/floor_view_test.dart` | ☑ C1: `AdminMap` |
-| F3 | Only this floor, remembered | Every admin map | `shot:points-map-only-floor` | ☑ C1: `AdminMap` |
+| F1 | Up and down | Every admin map | `shot:points-map-floor2`, `test:services/floor_view_test.dart` | ☑ C1: `AdminMap`; C4: re-checked in the new colours |
+| F2 | Adjacent floors shown differently, and tappable | Every admin map | `test:services/floor_view_test.dart` | ☑ C1: `AdminMap`; C4: re-checked in the new colours |
+| F3 | Only this floor, remembered | Every admin map | `shot:points-map-only-floor` | ☑ C1: `AdminMap`; C4: re-checked in the new colours |
 
 ## Connections
 

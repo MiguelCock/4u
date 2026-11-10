@@ -5,23 +5,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/floor_view.dart';
+import '../theme/admin_palette.dart';
 
 /// Points on the floor above and below the one a map is showing. Shape as well
 /// as color (see [floorPointMarker]), for colorblind admins.
-const Color kFloorAboveColor = Colors.purple;
-const Color kFloorBelowColor = Colors.deepOrange;
+Color get kFloorAboveColor => kAdminPalette.floorAbove;
+Color get kFloorBelowColor => kAdminPalette.floorBelow;
 
 /// A point on the floor directly above or below the selected one.
 Marker floorPointMarker(LatLng point, FloorRelation relation) {
   final above = relation == FloorRelation.above;
   return Marker(
     point: point,
-    width: 32,
-    height: 32,
+    width: 40,
+    height: 40,
     child: Icon(
       above ? Icons.arrow_drop_up : Icons.arrow_drop_down,
       color: above ? kFloorAboveColor : kFloorBelowColor,
-      size: 32,
+      size: 40,
     ),
   );
 }
