@@ -776,5 +776,17 @@
   "mapConflictEmpty": "(empty)",
   "mapUpdatedByOthers": "Map updated: {count} changes by other admins.",
   "@mapUpdatedByOthers": {"placeholders": {"count": {"type": "int"}}},
-  "editAnchorChangedMeanwhile": "Another admin changed this point while you had it open. Saving will show you what changed first."
+  "editAnchorChangedMeanwhile": "Another admin changed this point while you had it open. Saving will show you what changed first.",
+  "adminSectionMap": "Map",
+  "adminMapAll": "All",
+  "adminMapSearchHint": "Search universities, buildings and points",
+  "adminMapSearchClear": "Clear search",
+  "adminMapSearchNoResults": "Nothing found",
+  "adminMapDetailsTooltip": "Details",
+  "commonClose": "Close",
+  "adminMapOpenBuildingsList": "Buildings list",
+  "adminMapOpenPointsList": "Points list",
+  "adminMapFloorsLabel": "{count} floor(s)",
+  "@adminMapFloorsLabel": {"placeholders": {"count": {"type": "int"}}},
+  "adminMapInactive": "Inactive"
 }

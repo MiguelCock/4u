@@ -240,7 +240,19 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 `lib/widgets/admin_map/` is the shared admin map (`docs/decisions/c1-admin-map.md`; parity rows in `c1-parity.md`). New admin maps build on it instead of their own `FlutterMap`.
 - **`AdminMap`** handles the tiles, no double-tap zoom, the opening fit (`fitTo`) and the floor shown (`FloorSelector`, with the remembered "only this floor"). It also takes the taps: in `pick`/`move` mode every tap is a position (`onTapPosition`); otherwise the layers are asked top first (`onHit`).
 - **Layers** (`layers.dart`): `PointsLayer` draws the selected floor as one `CircleLayer`, since a widget per point would be slow with hundreds. `ConnectionsLayer` and `PinLayer` complete it. Each layer has `build(view)` and `hitTest`, which returns an `AdminMapHit` (`PointHit` so far).
-- **On it today:** the Anchor points tab (`AnchorPointsMap`, now a thin wrapper). Connect, the location picker and the session view still have their own maps, until C2 and C3 move them.
+- **On it today:** the Anchor points tab (`AnchorPointsMap`, now a thin wrapper) and the Map section (below). Connect, the location picker and the session view still have their own maps until C3; the picker already shares `placeMarker`/`buildingMarker`.
+- **Zoom bands:** a layer's `minZoom`/`maxZoom` decide when it's drawn and tappable. `AdminMap` rebuilds only when one appears or disappears, and shows the floor selector only with a layer that `usesFloors`.
+
+## The Map section (C2)
+
+- **Where the app opens.** `AdminHomeScreen`'s first section (`_kMap`; tabs are named constants now) is `MapHome` (`lib/admin/map_home.dart`).
+- **Levels:** universities, then buildings from zoom 15, then points from 17.
+- **Breadcrumb:** "All › university › building"; its ⓘ opens the current one's details.
+- **Search** covers all three kinds (`searchMap`, `lib/services/map_scope.dart`).
+- **Scope** (`MapScope`) lives in the admin home: `_handleBack` cancels a move, then goes up a level, before the tab history.
+- **Details** come from the admin home (`_placeDetails`, `_buildingDetails`, `_pointDetails`, the last shared with the old sheet). They open as a bottom sheet, or a side panel when the drawer is permanent (900 px).
+- **Moving a point** works here too (`_withMoveControls`, shared with the Anchor points map). A move ends when the tab changes.
+- **Tests:** `test/widgets/map_home_test.dart` places one university, building and point on the same spot, so each level's camera centres on the only thing it frames and a tap in the middle hits it.
 - **Tests:** `test/widgets/admin_map_test.dart` pass `showTiles: false`, and let 1 s pass after a tap, for flutter_map's gesture timer.
 
 ## Many admins at once (A5)

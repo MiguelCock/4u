@@ -34,7 +34,7 @@ The [parity list](../roadmap/0.6-stories.md#admin-parity-list) as rows to tick. 
 | ID | Capability | Today | Check | C2–C4 |
 |---|---|---|---|---|
 | U1 | Search; list with building count | Universities tab | `shot:universities` | ☐ |
-| U2 | Open a university's buildings, chip clears it | Row tap | manual | ☐ |
+| U2 | Open a university's buildings, chip clears it | Row tap | manual | ☑ C2: also from the map (tap, or Details → list) |
 | U3 | Add (code, name, address, lat/lng, pick on map) | FAB → form | `shot:university-form` | ☐ |
 | U4 | Edit; change active state | Row → edit | manual | ☐ |
 | U5 | Delete, saying what else goes | Row | manual | ☐ |
@@ -44,7 +44,7 @@ The [parity list](../roadmap/0.6-stories.md#admin-parity-list) as rows to tick. 
 | ID | Capability | Today | Check | C2–C4 |
 |---|---|---|---|---|
 | B1 | Search; list with university and point count | Buildings tab | `shot:buildings` | ☐ |
-| B2 | Open a building's points, chip clears it | Row tap | manual | ☐ |
+| B2 | Open a building's points, chip clears it | Row tap | manual | ☑ C2: also from the map (tap, or Details → list) |
 | B3 | Add (university, code, name, address, lat/lng, map, floors, elevator, stairs) | FAB → form | `shot:building-form` | ☐ |
 | B4 | Edit, including moving to another university; active state | Row → edit | manual | ☐ |
 | B5 | Delete, saying what else goes | Row | manual | ☐ |

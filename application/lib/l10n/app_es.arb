@@ -609,5 +609,16 @@
   "mapConflictFieldDetails": "Detalles (interior, luz, superficie)",
   "mapConflictEmpty": "(vacío)",
   "mapUpdatedByOthers": "Mapa actualizado: {count} cambios de otros administradores.",
-  "editAnchorChangedMeanwhile": "Otro administrador cambió este punto mientras lo tenías abierto. Al guardar verás primero qué cambió."
+  "editAnchorChangedMeanwhile": "Otro administrador cambió este punto mientras lo tenías abierto. Al guardar verás primero qué cambió.",
+  "adminSectionMap": "Mapa",
+  "adminMapAll": "Todas",
+  "adminMapSearchHint": "Buscar universidades, edificios y puntos",
+  "adminMapSearchClear": "Borrar búsqueda",
+  "adminMapSearchNoResults": "No se encontró nada",
+  "adminMapDetailsTooltip": "Detalles",
+  "commonClose": "Cerrar",
+  "adminMapOpenBuildingsList": "Lista de edificios",
+  "adminMapOpenPointsList": "Lista de puntos",
+  "adminMapFloorsLabel": "{count} piso(s)",
+  "adminMapInactive": "Inactivo"
 }

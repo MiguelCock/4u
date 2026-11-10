@@ -30,24 +30,25 @@ In a wide window, the menu stays open on the left. In a narrow one, it opens wit
 | # | Control | What it does |
 |---|---|---|
 | 1 | **User guide** | Opens this guide in another tab, to read next to the app. |
-| 2 | **Universities** | The campuses. See [Universities](#universities). |
-| 3 | **Buildings** | Each campus's buildings. See [Buildings](#buildings). |
-| 4 | **Anchor points** | The places the app learns to recognize. See [Anchor points](#anchor-points). |
-| 5 | **Connections** | Where people can walk between points. See [Connections](#connections). |
-| 6 | **Users** | The accounts. See [Users](#users). |
-| 7 | **Sessions** | The trips made with the app. See [Sessions](#sessions). |
-| 8 | **Feedback** | What users wrote after a trip. See [Feedback](#feedback). |
-| 9 | **Re-index verified points** | Repairs the photo search. In red, how many photos can't be searched. See [Re-index](#reindex). |
-| 10 | **N verified points not connected** | Notice: nobody can reach those points. Opens the filtered list. |
-| 11 | **N named points users can't choose** | Notice: a destination saved with an in-between type. |
-| 12 | **N connections over 30 m** | Notice: routes don't use them. |
-| 13 | **N connections that change floor without stairs** | Notice: routes don't use them. |
-| 14 | **Help for this page** (?) | Opens this guide at the section for the page you're on. |
-| 15 | **Refresh** | Loads the data from the server again. |
-| 16 | **Settings** | Language, font size and more. See [Settings](#settings). |
-| 17 | **Log out** | Signs you out right away, without asking. |
+| 2 | **Map** | Where the app opens: universities, then their buildings, then their points. See [The points map](#points-map). |
+| 3 | **Universities** | The campuses. See [Universities](#universities). |
+| 4 | **Buildings** | Each campus's buildings. See [Buildings](#buildings). |
+| 5 | **Anchor points** | The places the app learns to recognize. See [Anchor points](#anchor-points). |
+| 6 | **Connections** | Where people can walk between points. See [Connections](#connections). |
+| 7 | **Users** | The accounts. See [Users](#users). |
+| 8 | **Sessions** | The trips made with the app. See [Sessions](#sessions). |
+| 9 | **Feedback** | What users wrote after a trip. See [Feedback](#feedback). |
+| 10 | **Re-index verified points** | Repairs the photo search. In red, how many photos can't be searched. See [Re-index](#reindex). |
+| 11 | **N verified points not connected** | Notice: nobody can reach those points. Opens the filtered list. |
+| 12 | **N named points users can't choose** | Notice: a destination saved with an in-between type. |
+| 13 | **N connections over 30 m** | Notice: routes don't use them. |
+| 14 | **N connections that change floor without stairs** | Notice: routes don't use them. |
+| 15 | **Help for this page** (?) | Opens this guide at the section for the page you're on. |
+| 16 | **Refresh** | Loads the data from the server again. |
+| 17 | **Settings** | Language, font size and more. See [Settings](#settings). |
+| 18 | **Log out** | Signs you out right away, without asking. |
 
-The orange notices (10 to 13) only appear when there's something to fix. See [Menu notices](#notices).
+The orange notices (11 to 14) only appear when there's something to fix. See [Menu notices](#notices).
 
 <a id="workflow"></a>
 

@@ -30,24 +30,25 @@ En una ventana ancha, el menú queda abierto a la izquierda. En una ventana ango
 | # | Control | Qué hace |
 |---|---|---|
 | 1 | **Guía de uso** | Abre esta guía en otra pestaña, para leerla junto a la aplicación. |
-| 2 | **Universidades** | Los campus. Ver [Universidades](#universities). |
-| 3 | **Edificios** | Los edificios de cada campus. Ver [Edificios](#buildings). |
-| 4 | **Puntos de referencia** | Los lugares que la aplicación aprende a reconocer. Ver [Puntos de referencia](#anchor-points). |
-| 5 | **Conexiones** | Por dónde se puede caminar entre puntos. Ver [Conexiones](#connections). |
-| 6 | **Usuarios** | Las cuentas. Ver [Usuarios](#users). |
-| 7 | **Sesiones** | Los viajes hechos con la aplicación. Ver [Sesiones](#sessions). |
-| 8 | **Comentarios** | Lo que escribieron los usuarios al terminar un viaje. Ver [Comentarios](#feedback). |
-| 9 | **Reindexar puntos verificados** | Repara la búsqueda por fotos. En rojo, cuántas fotos no se pueden buscar. Ver [Reindexar](#reindex). |
-| 10 | **N puntos verificados sin conexión** | Aviso: nadie puede llegar a esos puntos. Abre la lista filtrada. |
-| 11 | **N puntos con nombre que los usuarios no pueden elegir** | Aviso: un destino guardado con un tipo intermedio. |
-| 12 | **N conexiones de más de 30 m** | Aviso: las rutas no las usan. |
-| 13 | **N conexiones que cambian de piso sin escaleras** | Aviso: las rutas no las usan. |
-| 14 | **Ayuda de esta página** (?) | Abre esta guía en la sección de la página en la que estás. |
-| 15 | **Actualizar** | Vuelve a cargar los datos del servidor. |
-| 16 | **Configuración** | Idioma, tamaño del texto y más. Ver [Configuración](#settings). |
-| 17 | **Cerrar sesión** | Te desconecta de inmediato, sin preguntar. |
+| 2 | **Mapa** | Donde abre la aplicación: universidades, luego sus edificios, luego sus puntos. Ver [El mapa de puntos](#points-map). |
+| 3 | **Universidades** | Los campus. Ver [Universidades](#universities). |
+| 4 | **Edificios** | Los edificios de cada campus. Ver [Edificios](#buildings). |
+| 5 | **Puntos de referencia** | Los lugares que la aplicación aprende a reconocer. Ver [Puntos de referencia](#anchor-points). |
+| 6 | **Conexiones** | Por dónde se puede caminar entre puntos. Ver [Conexiones](#connections). |
+| 7 | **Usuarios** | Las cuentas. Ver [Usuarios](#users). |
+| 8 | **Sesiones** | Los viajes hechos con la aplicación. Ver [Sesiones](#sessions). |
+| 9 | **Comentarios** | Lo que escribieron los usuarios al terminar un viaje. Ver [Comentarios](#feedback). |
+| 10 | **Reindexar puntos verificados** | Repara la búsqueda por fotos. En rojo, cuántas fotos no se pueden buscar. Ver [Reindexar](#reindex). |
+| 11 | **N puntos verificados sin conexión** | Aviso: nadie puede llegar a esos puntos. Abre la lista filtrada. |
+| 12 | **N puntos con nombre que los usuarios no pueden elegir** | Aviso: un destino guardado con un tipo intermedio. |
+| 13 | **N conexiones de más de 30 m** | Aviso: las rutas no las usan. |
+| 14 | **N conexiones que cambian de piso sin escaleras** | Aviso: las rutas no las usan. |
+| 15 | **Ayuda de esta página** (?) | Abre esta guía en la sección de la página en la que estás. |
+| 16 | **Actualizar** | Vuelve a cargar los datos del servidor. |
+| 17 | **Configuración** | Idioma, tamaño del texto y más. Ver [Configuración](#settings). |
+| 18 | **Cerrar sesión** | Te desconecta de inmediato, sin preguntar. |
 
-Los avisos naranjas (10 a 13) solo aparecen si hay algo que arreglar. Ver [Avisos del menú](#notices).
+Los avisos naranjas (11 a 14) solo aparecen si hay algo que arreglar. Ver [Avisos del menú](#notices).
 
 <a id="workflow"></a>
 

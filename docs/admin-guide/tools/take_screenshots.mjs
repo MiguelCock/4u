@@ -254,6 +254,7 @@ async function allShots(r) {
   // The menu and the top bar.
   await r.shot('home-menu', [
     t('adminGuide'),
+    t('adminSectionMap'),
     t('adminSectionUniversities'),
     t('adminSectionBuildings'),
     t('adminSectionAnchorPoints'),
@@ -272,7 +273,34 @@ async function allShots(r) {
     t('commonLogOut'),
   ]);
 
+  // The map, where the app opens (C2): universities, then a building's
+  // points, found by search.
+  await r.mapLoaded();
+  await r.shot('map-home', [
+    t('adminMapSearchHint'),
+    t('adminMapAll'),
+    t('adminFabNewAnchorPoint'),
+  ]);
+  await r.search(t('adminMapSearchHint'), 'Universidad Demo');
+  await r.click('Universidad Demo', 0, 1500);
+  await r.mapLoaded();
+  await r.shot('map-university', [
+    t('adminMapAll'),
+    t('adminMapOpenBuildingsList'),
+    t('commonEdit'),
+  ]);
+  await r.search(t('adminMapSearchHint'), 'Sala');
+  await r.shot('map-search', ['Sala de estudio']);
+  await r.click('Sala de estudio', 0, 1500);
+  await r.mapLoaded();
+  await r.shot('map-point', [
+    t('adminMapDetailsTooltip'),
+    t('adminAnchorMoveAction'),
+    t('adminAnchorConnectAction'),
+  ]);
+
   // Universities.
+  await r.click(t('adminSectionUniversities'), 0, 1500);
   await r.shot('universities', [
     t('adminSearchPlacesHint'),
     'Universidad Demo',

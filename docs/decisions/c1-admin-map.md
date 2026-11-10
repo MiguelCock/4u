@@ -87,3 +87,25 @@ Icesi has about 270 points. Each one is a `Marker` widget today, rebuilt on ever
 2. **Zoom levels:** universities below about 15, buildings 15–17, points from 17, tuned on EAFIT and Icesi.
 3. **The separate Connect screen is removed** once its rows pass on the map (point 5).
 4. **Side panel at 900 px or wider** on the web, bottom sheet on phones.
+
+## C2: built (#184)
+
+- **The Map section** (`lib/admin/map_home.dart`) is the first in the menu and where the app opens.
+  - Universities show below zoom 15, buildings from 15 to 17, and points with their connections from 17 (`kMapBuildingsZoom`, `kMapPointsZoom`). Each layer says its own band, and the map rebuilds only when a band changes.
+  - Inactive universities and buildings show greyed.
+- **Scope:** `lib/services/map_scope.dart` holds where the map is (everything, a university, a building), going up a level, and falling back when something is deleted. The admin home owns it, so system back goes up one level before leaving the section.
+- **Tapping:**
+  - a university fits its buildings
+  - a building fits its points
+  - a point opens its details
+- **Details:**
+  - **Phones:** a bottom sheet; the breadcrumb's ⓘ opens the current university or building.
+  - **900 px or wider:** a side panel.
+  - **Contents:** universities and buildings show their counts and Edit and the list; points show today's sheet, now a widget shared by both.
+- **Search** (`searchMap`): every word, accents ignored, in names, codes and a point's building. Whole names come first. A point result goes to its building and floor, centres on it and opens it.
+- **Hover** on the web shows the name under the mouse.
+- **The new-point button** on the map starts the form in the current university and building.
+- **Pictures:** `map-home`, `map-university`, `map-search` and `map-point` were added to the guide's tools. Every admin picture was retaken, since the menu gained Map.
+
+**Left for C3:** connect, filters and status on this map, and the Anchor points tab's own map view.
+
