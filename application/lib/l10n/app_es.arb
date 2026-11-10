@@ -633,5 +633,11 @@
   "adminConnectionNoWarning": "Sin aviso para usuarios",
   "adminConnectionEditWarning": "Editar aviso",
   "adminConnectionsAllBuildings": "Todos los edificios",
-  "adminHealthUnconnectedHint": "Nadie puede llegar a ellos ni salir de ellos. Conéctalos al camino, o quítales la verificación."
+  "adminHealthUnconnectedHint": "Nadie puede llegar a ellos ni salir de ellos. Conéctalos al camino, o quítales la verificación.",
+  "adminFilterStatus": "Estado",
+  "adminConnectionFiltersTitle": "Filtrar conexiones",
+  "adminConnectionFilterLong": "Más de 15 m",
+  "adminConnectionFilterWarning": "Aviso para usuarios",
+  "adminFilterYes": "Sí",
+  "adminFilterNo": "No"
 }

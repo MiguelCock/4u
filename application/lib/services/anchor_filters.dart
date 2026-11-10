@@ -4,6 +4,8 @@ import 'location_types.dart';
 /// null means "any"; filters combine (all must match). Pure, so the
 /// matching rules are unit-tested.
 class AnchorFilters {
+  /// 'pending', 'verified' or 'rejected'.
+  final String? status;
   final LocationCategory? category;
   final int? locationTypeId;
   final int? floor;
@@ -17,6 +19,7 @@ class AnchorFilters {
   final bool? hasConnections;
 
   const AnchorFilters({
+    this.status,
     this.category,
     this.locationTypeId,
     this.floor,
@@ -30,6 +33,7 @@ class AnchorFilters {
 
   /// How many filters are set, for the badge on the Filters button.
   int get activeCount => [
+    status,
     category,
     locationTypeId,
     floor,
@@ -48,6 +52,7 @@ class AnchorFilters {
     required Set<String> withPhotos,
     required Set<String> connected,
   }) {
+    if (status != null && point['status'] != status) return false;
     final typeId = point['location_type_id'] as int?;
     if (locationTypeId != null && typeId != locationTypeId) return false;
     if (category != null && locationTypeById(typeId)?.category != category) {
@@ -81,6 +86,7 @@ class AnchorFilters {
   }
 
   AnchorFilters copyWith({
+    Object? status = _keep,
     Object? category = _keep,
     Object? locationTypeId = _keep,
     Object? floor = _keep,
@@ -92,6 +98,7 @@ class AnchorFilters {
     T? pick<T>(Object? value, T? current) =>
         identical(value, _keep) ? current : value as T?;
     return AnchorFilters(
+      status: pick(status, this.status),
       category: pick(category, this.category),
       locationTypeId: pick(locationTypeId, this.locationTypeId),
       floor: pick(floor, this.floor),

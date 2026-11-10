@@ -109,11 +109,12 @@ Al editar aparece también un interruptor para **desactivarla** sin eliminarla: 
 
 | # | Control | Qué hace |
 |---|---|---|
-| 1 | **Buscar edificios** | Filtra la lista mientras escribes. |
-| 2 | Fila del edificio | Muestra su universidad y cuántos puntos tiene. |
-| 3 | **Editar** (lápiz) | Cambia sus datos, incluida la universidad a la que pertenece. El código no se puede cambiar. |
-| 4 | **Eliminar** (basura) | Lo elimina con todo lo que contiene. Ver [Eliminar datos](#deleting). |
-| 5 | **Agregar edificio** (+) | Abre el formulario de abajo. |
+| 1 | **Universidad** | Muestra solo los edificios de esa universidad. Tocar la fila de una universidad la elige. |
+| 2 | **Buscar edificios** | Filtra la lista mientras escribes. |
+| 3 | Fila del edificio | Muestra su universidad y cuántos puntos tiene. |
+| 4 | **Editar** (lápiz) | Cambia sus datos, incluida la universidad a la que pertenece. El código no se puede cambiar. |
+| 5 | **Eliminar** (basura) | Lo elimina con todo lo que contiene. Ver [Eliminar datos](#deleting). |
+| 6 | **Agregar edificio** (+) | Abre el formulario de abajo. |
 
 ### Agregar un edificio
 
@@ -151,14 +152,15 @@ Hay dos clases de punto, según su **tipo de lugar**:
 
 | # | Control | Qué hace |
 |---|---|---|
-| 1 | **Todos / Pendiente / Verificado / Rechazado** | Muestra solo los puntos con ese estado, y cuántos hay. |
-| 2 | **Filtros** | Abre más filtros (abajo). |
+| 1 | **Universidad** | Muestra solo los puntos de esa universidad. |
+| 2 | **Edificio** | Muestra solo los puntos de ese edificio. Tocar la fila de un edificio elige los dos. |
 | 3 | **Buscar puntos de referencia** | Busca por nombre. |
 | 4 | Fila del punto | Muestra su edificio, estado y número de fotos. **Tocarla abre el mapa en modo Conectar** con este punto ya seleccionado. |
 | 5 | **Verificar** | Verifica el punto. En uno ya verificado, este botón lo devuelve a pendiente. Ver [Verificar](#verify). |
 | 6 | **Editar** (lápiz) | Abre [la edición del punto](#point-edit). |
 | 7 | **Más acciones** (⋮) | Abre el menú de abajo. |
-| 8 | **Nuevo punto de referencia** (cámara) | Abre [el formulario](#point-form). |
+| 8 | **Filtros** | El estado (Todos / Pendiente / Verificado / Rechazado, con cuántos hay) y más filtros (abajo). El número encima es cuántos hay puestos. |
+| 9 | **Nuevo punto de referencia** (cámara) | Abre [el formulario](#point-form). |
 
 Los puntos sin nombre se muestran por su tipo y el inicio de su código, por ejemplo "Pasillo · 284a".
 
@@ -335,11 +337,14 @@ Una conexión dice que **una persona puede caminar directamente entre dos puntos
 
 | # | Control | Qué hace |
 |---|---|---|
-| 1 | **Buscar conexiones** | Busca por el nombre de sus puntos. |
-| 2 | **Agregar conexión (formulario)** | Abre [el formulario](#connection-form). |
-| 3 | Fila de la conexión | Muestra sus dos puntos, sus edificios y su distancia. **Tocarla** abre su aviso para usuarios (abajo). ⚠ indica que tiene uno. |
-| 4 | **Eliminar** (basura) | Elimina la conexión, después de confirmar. Los puntos no se tocan. |
-| 5 | **Conectar en el mapa** | Abre [el mapa](#connect-on-map). |
+| 1 | **Universidad** | Muestra solo las conexiones con un punto en esa universidad. |
+| 2 | **Edificio** | Muestra solo las conexiones con un punto en ese edificio. |
+| 3 | **Buscar conexiones** | Busca por el nombre de sus puntos. |
+| 4 | **Agregar conexión (formulario)** | Abre [el formulario](#connection-form). |
+| 5 | Fila de la conexión | Muestra sus dos puntos, sus edificios y su distancia. **Tocarla** abre su aviso para usuarios (abajo). ⚠ indica que tiene uno. El botón del mapa la muestra en el mapa. |
+| 6 | **Eliminar** (basura) | Elimina la conexión, después de confirmar. Los puntos no se tocan. |
+| 7 | **Filtros** | Más de 15 m, con aviso para usuarios, o que cambian de piso. |
+| 8 | **Conectar en el mapa** | Abre [el mapa](#connect-on-map). |
 
 ### Reglas
 
