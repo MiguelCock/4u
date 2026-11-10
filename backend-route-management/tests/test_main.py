@@ -1,3 +1,4 @@
+import inspect
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -738,3 +739,18 @@ def test_find_or_create_needs_exactly_one_destination():
     neither = client.post("/routes/find_or_create", json={"start_anchor_id": "a"})
     assert both.status_code == 422
     assert neither.status_code == 422
+
+
+def test_endpoints_that_block_dont_hold_up_the_others():
+    """A blocking Supabase call in an async endpoint stops the event loop, so
+    requests queue one at a time (E2, as A2 found in map-management)."""
+    from fastapi.routing import APIRoute
+
+    slow = [
+        route.path
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        and inspect.iscoroutinefunction(route.endpoint)
+        and route.path != "/"
+    ]
+    assert slow == []

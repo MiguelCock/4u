@@ -29,7 +29,7 @@ async def root():
 
 
 @app.post("/upload")
-async def upload_photo(
+def upload_photo(
     latitude: Annotated[float, Form()],
     longitude: Annotated[float, Form()],
     accuracy: Annotated[float, Form()],
@@ -42,21 +42,21 @@ async def upload_photo(
 
 
 @app.get("/upload")
-async def list_photos(caller_id: str = Depends(get_caller_id)):
+def list_photos(caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     return db.get_photos()
 
 
 @app.get("/upload/{id}")
-async def get_photo(id: int, caller_id: str = Depends(get_caller_id)):
+def get_photo(id: int, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     return db.get_photo(id)
 
 
 @app.delete("/upload/{id}")
-async def delete_photo(id: int, caller_id: str = Depends(get_caller_id)):
+def delete_photo(id: int, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     db.dele_photo(id)

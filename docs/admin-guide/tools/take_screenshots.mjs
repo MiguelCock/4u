@@ -1,7 +1,7 @@
 // Takes the admin guide's screenshots from the real web app, against
 // mock_server.py's made-up data. See README.md.
 //
-//   node take_screenshots.mjs [--lang es] [--only name]
+//   node take_screenshots.mjs [--lang es] [--only name[,name...]]
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -9,15 +9,40 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+// The pictures the guides use. The walk below visits every screen in
+// order, and takes only these, so a picture dropped from the guide stops
+// being taken.
+// Taken at phone width, as admins use them in the field; the rest at a
+// wide window (C6).
+const PHONE_SHOTS = new Set([
+  'map-home',
+  'points-map',
+  'points-map-floor2',
+  'point-sheet',
+  'connect-selected',
+  'map-connection',
+  'phone-menu',
+]);
+
+const USED = new Set(
+  ['es', 'en'].flatMap((lang) =>
+    [
+      ...readFileSync(join(here, `../${lang}/README.md`), 'utf8').matchAll(
+        /images\/\w+\/([\w-]+)\.webp/g,
+      ),
+    ].map((m) => m[1]),
+  ),
+);
 const SERVER = 'http://localhost:8765';
 const arg = (name) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? null : process.argv[i + 1];
 };
 const only = arg('--only');
-// Where a point of the demo campus lands on the Anchor points map, for the
-// shot of tapping it. The map frames the same points at this window size.
-const SHEET_POINT = { x: 720, y: 580 };
+// The new spot tapped in the shot of moving a point: just beside the point,
+// which search centres in the Map section's map at this window size.
+const SHEET_POINT = { x: 840, y: 630 };
 
 /** One language's run: the page, its labels, and the helpers shots use. */
 class Run {
@@ -45,6 +70,7 @@ class Run {
   }
 
   async open({ width = 1280, height = 1000 } = {}) {
+    this.phone = width < 600;
     await fetch(`${SERVER}/__reset`, { method: 'POST' });
     await fetch(`${SERVER}/__language`, {
       method: 'POST',
@@ -167,7 +193,9 @@ class Run {
   /** Waits for a map's tiles. */
   async mapLoaded() {
     await this.page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
-    await this.wait(3000);
+    // Tiles first arrive blurred, from the zoom before; the sharp ones
+    // replace them a moment later.
+    await this.wait(5000);
   }
 
   async click(text, nth = 0, wait = 900, exact = false) {
@@ -201,7 +229,9 @@ class Run {
   /** Saves a screenshot, with numbered markers on [marks]: labels, [label,
    * nth] pairs, or boxes. */
   async shot(name, marks = []) {
-    if (only && only !== name) return;
+    if (!USED.has(name)) return;
+    if (PHONE_SHOTS.has(name) !== this.phone) return;
+    if (only && !only.split(',').includes(name)) return;
     await this.wait(600);
     const boxes = [];
     for (const mark of marks) {
@@ -254,25 +284,42 @@ async function allShots(r) {
   // The menu and the top bar.
   await r.shot('home-menu', [
     t('adminGuide'),
-    t('adminSectionUniversities'),
-    t('adminSectionBuildings'),
-    t('adminSectionAnchorPoints'),
-    t('adminSectionConnections'),
-    t('adminUsersTabLabel'),
-    t('adminSessions'),
-    t('feedbackScreenTitle'),
-    t('adminReindexMenu'),
+    t('adminSectionMap'),
     t('adminHealthUnconnected', { count: 1 }),
-    t('adminHealthHiddenNamed', { count: 2 }),
-    t('adminHealthLongConnections', { count: 1 }),
-    t('adminHealthFloorChange', { count: 1 }),
     t('adminGuideSectionTooltip'),
     t('commonRefresh'),
     t('homeSettingsTooltip'),
     t('commonLogOut'),
   ]);
 
+  // The map, where the app opens (C2): universities, then a building's
+  // points, found by search.
+  await r.mapLoaded();
+  await r.shot('map-home', [
+    t('adminMapSearchHint'),
+    t('adminMapAll'),
+    t('adminFabNewAnchorPoint'),
+  ]);
+  await r.search(t('adminMapSearchHint'), 'Universidad Demo');
+  await r.click('Universidad Demo', 0, 1500);
+  await r.mapLoaded();
+  await r.shot('map-university', [
+    t('adminMapAll'),
+    t('adminMapOpenBuildingsList'),
+    t('commonEdit'),
+  ]);
+  await r.search(t('adminMapSearchHint'), 'Sala');
+  await r.shot('map-search', ['Sala de estudio']);
+  await r.click('Sala de estudio', 0, 1500);
+  await r.mapLoaded();
+  await r.shot('map-point', [
+    t('adminMapDetailsTooltip'),
+    t('adminAnchorMoveAction'),
+    [t('adminAnchorConnectAction'), 1],
+  ]);
+
   // Universities.
+  await r.click(t('adminSectionUniversities'), 0, 1500);
   await r.shot('universities', [
     t('adminSearchPlacesHint'),
     'Universidad Demo',
@@ -295,6 +342,7 @@ async function allShots(r) {
   // Buildings.
   await r.click(t('adminSectionBuildings'));
   await r.shot('buildings', [
+    t('commonUniversityLabel'),
     t('adminSearchBuildingsHint'),
     'Biblioteca',
     [t('commonEdit'), 0],
@@ -320,15 +368,14 @@ async function allShots(r) {
   // Anchor points: list, filters, row menu.
   await r.click(t('adminSectionAnchorPoints'));
   await r.shot('points-list', [
-    t('adminStatusChipLabel', { label: t('commonStatusPending'), count: 3 }),
-    t('adminFiltersButton'),
+    t('commonUniversityLabel'),
+    t('commonBuildingLabel'),
     t('adminSearchAnchorPointsHint'),
-    t('adminAnchorViewList'),
-    t('adminAnchorViewMap'),
     'Archivo',
     t('adminAnchorVerifyTooltip'),
     [t('commonEdit'), 0],
     [t('adminMoreActionsTooltip'), 0],
+    t('adminFiltersButton'),
     t('adminFabNewAnchorPoint'),
   ]);
   await r.click(t('adminFiltersButton'));
@@ -404,8 +451,9 @@ async function allShots(r) {
   await r.goBack();
   await r.goBack();
 
-  // Map view: the floors.
-  await r.click(t('adminAnchorViewMap'), 0, 1500);
+  // The points map: the Map section, still on the Biblioteca from the
+  // search above (C3).
+  await r.click(t('adminSectionMap'), 0, 1500);
   await r.mapLoaded();
   await r.shot('points-map', [
     t('mapFloorUp'),
@@ -413,51 +461,56 @@ async function allShots(r) {
     t('mapOnlyThisFloor'),
     t('adminFabNewAnchorPoint'),
   ]);
+  await r.shot('map-filters', [t('adminFiltersButton'), t('adminMapConnectChip')]);
   await r.click(t('mapFloorUp'), 0, 1500);
-  await r.shot('points-map-floor2', [t('mapFloorUp'), t('mapFloorDown')]);
+  await r.shot('points-map-floor2');
   await r.click(t('mapOnlyThisFloor'), 0, 1500);
   await r.shot('points-map-only-floor', [t('mapOnlyThisFloor')]);
   await r.click(t('mapOnlyThisFloor'), 0, 800);
   await r.click(t('mapFloorDown'), 0, 800);
-  // A tap near a point: its actions.
-  await r.page.mouse.click(SHEET_POINT.x, SHEET_POINT.y);
-  await r.wait(1000);
+  // A point's actions, found by search.
+  await r.search(t('adminMapSearchHint'), 'Sala de estudio');
+  await r.click('Sala de estudio', 0, 1500);
   await r.shot('point-sheet', [
-    t('adminAnchorConnectAction'),
+    // The second: the first is the map's Connect chip, with the same label.
+    [t('adminAnchorConnectAction'), 1],
     t('adminAnchorMoveAction'),
     t('adminAnchorUnverifyTooltip'),
     t('adminAddPhotoTooltip'),
     t('commonEdit'),
   ]);
   await r.click(t('adminAnchorMoveAction'), 0, 1000);
-  await r.page.mouse.click(SHEET_POINT.x + 60, SHEET_POINT.y + 30);
+  await r.page.mouse.click(SHEET_POINT.x, SHEET_POINT.y);
   await r.wait(900);
   await r.shot('point-moving');
   await r.click(t('commonCancel'));
-  await r.click(t('adminAnchorViewList'));
 
-  // Tapping a point's row opens Connect on map with it selected.
+  // Tapping a point's row opens the map in Connect mode, with it selected.
+  await r.click(t('adminSectionAnchorPoints'), 0, 1200);
   await r.search(t('adminSearchAnchorPointsHint'), 'Sala de estudio');
   await r.click('Sala de estudio', 0, 1500);
   await r.mapLoaded();
+  // The floor buttons aren't marked: Flutter reports them where they were
+  // before the banner pushed them down.
   await r.shot('connect-selected', [
-    t('commonUniversityLabel'),
-    t('commonBuildingLabel'),
-    t('mapFloorUp'),
-    t('mapFloorDown'),
-    t('mapOnlyThisFloor'),
+    t('adminMapConnectChip'),
+    t('adminMapConnectDone'),
     t('adminGuideSectionTooltip'),
   ]);
-  await r.goBack();
+  await r.click(t('adminMapConnectDone'));
+  await r.click(t('adminSectionAnchorPoints'), 0, 1200);
   await r.search(t('adminSearchAnchorPointsHint'), '');
 
   // Connections.
   await r.click(t('adminSectionConnections'));
   await r.shot('connections', [
+    t('commonUniversityLabel'),
+    t('commonBuildingLabel'),
     t('adminSearchConnectionsHint'),
     t('adminAddConnectionFormTooltip'),
     'Tres escalones',
     [t('commonDelete'), 0],
+    t('adminFiltersButton'),
     t('adminFabConnectOnMap'),
   ]);
   await r.click('Tres escalones', 0, 900);
@@ -474,10 +527,18 @@ async function allShots(r) {
     t('addConnectionSaveButton'),
   ]);
   await r.goBack();
+  // A connection on the map: its data and actions.
+  await r.click(t('adminMapShowOnMap'), 0, 1800);
+  await r.mapLoaded();
+  await r.shot('map-connection', [
+    t('adminConnectionEditWarning'),
+    t('commonDelete'),
+  ]);
+  await r.click(t('adminSectionConnections'), 0, 1200);
   await r.click(t('adminFabConnectOnMap'), 0, 1500);
   await r.mapLoaded();
   await r.shot('connect-map');
-  await r.goBack();
+  await r.click(t('adminMapConnectDone'));
 
   // Users.
   await r.click(t('adminUsersTabLabel'));
@@ -519,7 +580,8 @@ async function allShots(r) {
 
   // The menu's notices.
   await r.click(t('adminHealthLongConnections', { count: 1 }));
-  await r.shot('health-long-connections');
+  // With its "How to fix" link to the guide.
+  await r.shot('notice-review');
   await r.page.keyboard.press('Escape');
   await r.wait(700);
   await r.click(t('adminHealthFloorChange', { count: 1 }));
@@ -534,11 +596,76 @@ async function allShots(r) {
   await r.shot('reindex');
   await r.close();
 
-  // Phone width: the same app, the menu slides in.
+  // Phone width: the field screens, and the menu sliding in.
   await r.open({ width: 412, height: 800 });
   await r.signIn();
-  await r.click(t('adminSectionAnchorPoints')).catch(() => {});
-  await r.shot('phone-home');
+  await r.mapLoaded();
+  await r.shot('map-home', [
+    t('adminMapSearchHint'),
+    t('adminMapAll'),
+    t('adminFabNewAnchorPoint'),
+  ]);
+  await r.search(t('adminMapSearchHint'), 'Biblioteca');
+  await r.click('Biblioteca', 0, 1500);
+  // Opened again, the map loads sharp tiles at once; after the jump from
+  // search they stayed blurred in this browser.
+  await r.page.mouse.click(28, 28);
+  await r.wait(900);
+  await r.click(t('adminSectionAnchorPoints'), 0, 1200);
+  await r.page.mouse.click(28, 28);
+  await r.wait(900);
+  await r.click(t('adminSectionMap'), 0, 1500);
+  await r.mapLoaded();
+  await r.shot('points-map', [
+    t('mapFloorUp'),
+    t('mapFloorDown'),
+    t('mapOnlyThisFloor'),
+    t('adminFabNewAnchorPoint'),
+  ]);
+  await r.click(t('mapFloorUp'), 0, 1500);
+  await r.shot('points-map-floor2');
+  await r.click(t('mapFloorDown'), 0, 800);
+  // The mouse stays over the floor button, and its tooltip would be marked
+  // in place of the button later.
+  await r.page.mouse.move(200, 650);
+  await r.wait(1500);
+  // A point's details, in a sheet from the bottom.
+  await r.search(t('adminMapSearchHint'), 'Sala de estudio');
+  await r.click('Sala de estudio', 0, 1500);
+  // The sheet's Connect: the second match when the map's chip is still in
+  // the tree behind it, else the first.
+  const connect =
+    (await r.find(t('adminAnchorConnectAction'), 1)) ??
+    (await r.find(t('adminAnchorConnectAction'), 0));
+  await r.shot('point-sheet', [
+    connect,
+    t('adminAnchorMoveAction'),
+    t('adminAnchorUnverifyTooltip'),
+    t('adminAddPhotoTooltip'),
+    t('commonEdit'),
+  ]);
+  await r.clickBox(connect, 1500);
+  await r.mapLoaded();
+  // The floor buttons aren't marked: Flutter reports them where they were
+  // before the banner pushed them down.
+  await r.shot('connect-selected', [
+    t('adminMapConnectChip'),
+    t('adminMapConnectDone'),
+    t('adminGuideSectionTooltip'),
+  ]);
+  await r.click(t('adminMapConnectDone'));
+  // A connection's details, from the Connections list.
+  await r.page.mouse.click(28, 28);
+  await r.wait(900);
+  await r.click(t('adminSectionConnections'), 0, 1200);
+  await r.click(t('adminMapShowOnMap'), 0, 1800);
+  await r.mapLoaded();
+  await r.shot('map-connection', [
+    t('adminConnectionEditWarning'),
+    t('commonDelete'),
+  ]);
+  await r.page.keyboard.press('Escape');
+  await r.wait(700);
   await r.page.mouse.click(28, 28);
   await r.wait(900);
   await r.shot('phone-menu');

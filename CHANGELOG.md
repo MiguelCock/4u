@@ -6,6 +6,39 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.6.0-pre] - 2026-11-10
+
+### Added
+
+- Each trip records which phone and app version it ran on, so problems that only happen on some phones can be found.
+- **Voice first:** after signing in, the app asks "Where do you want to go?" and listens straight away. Saying "yes" starts the route, and "no" changes the destination. A vibration and a click mark when it starts listening. The buttons all stay. With TalkBack on, it waits for you to press "Speak" instead, so it doesn't hear TalkBack.
+- Help, settings and log out are now at the bottom of the home screen, out of the way of choosing where to go.
+- A new setting shows the map during trips, for people who can see some of the screen.
+- The home screen is now one round button to say where you want to go, and works the same with TalkBack. More time to say the place; when several places match, they're read out with numbers, and you say the number or the name. Settings can bring back the start and destination rows.
+- Vibrations are now felt even when the phone's touch vibration is off.
+- Before listening, the app says what you can say. The round button is bigger.
+- New setting: bold text everywhere, next to high contrast and font size.
+- The home screen always speaks and says what each action does; "Guía de voz" now only covers the trip's instructions. It says when it's listening and when it didn't hear you.
+- Every route starts by checking where you are with the camera: hold the phone up and turn slowly when asked.
+
+- **Admin: the map comes first.** The admin app opens on a map of every university. Tap a university to see its buildings, and a building to see its points. One search box finds universities, buildings and points.
+- **Admin: everything from the map.** Connect points in a chain, move, verify, add photos and edit without leaving the map. Tap a connection to see it, edit its warning or delete it. The separate Connect screen is gone.
+- **Admin: filters and lists.** A Filters button (bottom left) on the map and the lists, with status inside it. Connections can be filtered (over 15 m, with a warning, changing floor), and every list has University and Building choices.
+- **Admin: clearer colours.** One colour-blind-safe palette on every admin map, with larger marks: rejected points are an orange ✕, and the floors above and below are a blue ▲ and a purple ▼.
+- **Admin: a shorter guide.** It now starts with the mistakes that break routes, each with how to spot and fix it. The menu's notices link to the matching one.
+
+### Fixed
+
+- An overloaded photo model no longer freezes the whole server: it restarts by itself, and guidance carries on from GPS meanwhile.
+- With too many people navigating, photos no longer time out one after another. The server answers the photos it can, and the rest get a quick GPS-based position.
+- Map and navigation requests no longer queue behind each other, so routes and admin screens should load faster with several people.
+- More people can navigate at once with extra machines for the photo model, for events. They stay off otherwise, and everything works without them.
+- Admins editing the same point at once: a save no longer silently overwrites another admin's change. You see both versions and choose.
+- The admin screen shows other admins' changes within about 30 s, and refreshes much faster after each edit.
+- When the server is busy, the phone sends fewer photos for a few seconds, and guidance carries on from GPS.
+- Starting a trip loads the route in one request instead of about 40.
+- Signing in, finding a route and the admin refresh no longer queue behind each other's requests.
+
 ## [0.5.6] - 2026-11-05
 
 **For testers:** install `app-release.apk` from this release. Version 0.5.5 keeps working for now (it shows a "new version available" notice), and **0.5.4 no longer works**: anyone still on it sees "Update required". This release fixes the app making people spin near buildings, and getting stuck at the start in plazas. When it gives a direction in the open it uses the phone's compass, so please tell us if that direction is wrong.
@@ -260,7 +293,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.5.6...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.6.0-pre...develop
+[0.6.0-pre]: https://github.com/MiguelCock/4u/compare/v0.5.6...v0.6.0-pre
 [0.5.6]: https://github.com/MiguelCock/4u/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/MiguelCock/4u/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/MiguelCock/4u/compare/v0.5.3...v0.5.4

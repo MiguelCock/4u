@@ -1,0 +1,20 @@
+[project]
+name = "e2e"
+version = "0.1.0"
+description = "Behavior test suite (story E3): the whole system, through the gateway, on a local stack."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "httpx>=0.28.1",
+    "pillow>=11.3.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.6",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

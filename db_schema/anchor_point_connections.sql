@@ -9,6 +9,8 @@ CREATE TABLE anchor_point_connections (
     notes TEXT,
     created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
+    -- For GET /changes (A5). Deletions go to map_deletions.
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
     CHECK (anchor_point_a_id::text < anchor_point_b_id::text),
     UNIQUE (anchor_point_a_id, anchor_point_b_id)
 );
@@ -16,3 +18,7 @@ CREATE TABLE anchor_point_connections (
 -- Indexes
 CREATE INDEX idx_anchor_point_connections_a ON anchor_point_connections (anchor_point_a_id);
 CREATE INDEX idx_anchor_point_connections_b ON anchor_point_connections (anchor_point_b_id);
+CREATE INDEX idx_anchor_point_connections_updated_at ON anchor_point_connections (updated_at);
+
+CREATE TRIGGER anchor_point_connections_set_updated_at BEFORE UPDATE ON anchor_point_connections
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();

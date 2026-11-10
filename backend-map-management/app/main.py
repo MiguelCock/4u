@@ -1,6 +1,8 @@
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
@@ -21,6 +23,7 @@ from .models import (
     AnchorPointPhotoCreate,
     AnchorPointPhotoResponse,
     AnchorPointResponse,
+    AnchorPointsByIds,
     AnchorPointUpdate,
     BuildingCreate,
     BuildingResponse,
@@ -184,7 +187,7 @@ async def root():
 
 
 @app.post("/anchor-points/upload-image")
-async def upload_anchor_point_image(
+def upload_anchor_point_image(
     file: UploadFile = File(...), caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
@@ -196,7 +199,7 @@ async def upload_anchor_point_image(
 # Declared before DELETE /anchor-points/{id}, which would otherwise capture
 # "upload-image" as an id.
 @app.delete("/anchor-points/upload-image")
-async def delete_uploaded_anchor_point_image(
+def delete_uploaded_anchor_point_image(
     url: str, caller_id: str = Depends(get_caller_id)
 ):
     """Removes a file uploaded by the step above whose photo record was
@@ -369,7 +372,7 @@ def _short_description(description: str | None, building_id: str | None) -> str 
 
 
 @app.post("/anchor-points")
-async def create_anchor_point(
+def create_anchor_point(
     anchor_point: AnchorPointCreate, caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
@@ -391,14 +394,58 @@ async def create_anchor_point(
 
 
 @app.get("/anchor-points")
-async def list_anchor_points(
+def list_anchor_points(
     caller_id: str = Depends(get_caller_id),
 ) -> list[AnchorPointResponse]:
     return _list_all("anchor_points")
 
 
+# Most a route has had is 22; more than this is not one route.
+_MAX_BY_IDS = 150
+
+
+# Declared before /anchor-points/{id}, which would otherwise take "by-ids" as an id.
+@app.get("/anchor-points/by-ids")
+def anchor_points_by_ids(
+    ids: str, caller_id: str = Depends(get_caller_id)
+) -> AnchorPointsByIds:
+    """A route's points and the connections between them, in one answer: the
+    app made one request per point and one per point's connections, about 40,
+    before guidance could start (E2). Missing ids are left out."""
+    wanted = list(dict.fromkeys(i for i in ids.split(",") if i))
+    if not wanted:
+        return AnchorPointsByIds(points=[], connections=[])
+    if len(wanted) > _MAX_BY_IDS:
+        raise HTTPException(
+            status_code=400, detail=f"At most {_MAX_BY_IDS} points at once"
+        )
+    for point_id in wanted:
+        if not _ID_PATTERN.fullmatch(point_id):
+            raise HTTPException(status_code=404, detail="Anchor point not found")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        points_job = pool.submit(
+            lambda: (
+                db.client.table("anchor_points").select("*").in_("id", wanted).execute()
+            )
+        )
+        connections_job = pool.submit(
+            lambda: (
+                db.client.table("anchor_point_connections")
+                .select("*")
+                .in_("anchor_point_a_id", wanted)
+                .in_("anchor_point_b_id", wanted)
+                .execute()
+            )
+        )
+        by_id = {p["id"]: p for p in points_job.result().data}
+        connections = connections_job.result().data
+    return AnchorPointsByIds(
+        points=[by_id[i] for i in wanted if i in by_id], connections=connections
+    )
+
+
 @app.get("/anchor-points/{id}")
-async def get_anchor_point(
+def get_anchor_point(
     id: str, caller_id: str = Depends(get_caller_id)
 ) -> AnchorPointResponse:
     result = db.client.table("anchor_points").select("*").eq("id", id).execute()
@@ -408,22 +455,31 @@ async def get_anchor_point(
 
 
 @app.patch("/anchor-points/{id}")
-async def update_anchor_point(
+def update_anchor_point(
     id: str, anchor_point: AnchorPointUpdate, caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    changes = anchor_point.model_dump(exclude_unset=True)
+    changes = anchor_point.model_dump(exclude_unset=True, exclude={"expected"})
+    expected = {
+        field: value
+        for field, value in (anchor_point.expected or {}).items()
+        if field in changes and field in _EXPECTABLE_FIELDS
+    }
     current = _require_found(
         db.client.table("anchor_points")
         .select(
             "id,building_id,floor,location_type_id,location_description,"
-            "latitude,longitude,status"
+            "latitude,longitude,status,metadata"
         )
         .eq("id", id)
         .execute(),
         "Anchor point",
     )[0]
+    # JSON can't be compared inside the update, so metadata is checked here.
+    if "metadata" in expected and current.get("metadata") != expected["metadata"]:
+        _conflict(id, expected)
+    current.pop("metadata", None)
     # Check the row as it will be after this PATCH, not just the payload -
     # changing only the type to "classroom" on an unnamed point must still
     # be rejected.
@@ -462,7 +518,25 @@ async def update_anchor_point(
                 detail="Add at least one photo before verifying this point - "
                 "without photos the camera can never recognise it.",
             )
-    result = db.client.table("anchor_points").update(changes).eq("id", id).execute()
+    query = db.client.table("anchor_points").update(changes).eq("id", id)
+    # In the same statement, so nothing can change between the check and the write.
+    for field, value in expected.items():
+        if field == "metadata":
+            continue
+        if value is None:
+            query = query.is_(field, "null")
+        elif field in _COORDINATE_FIELDS:
+            # Postgres keeps a few more digits than it sends back
+            # (6.200428135106001 is read as 6.200428135106), so the value an
+            # app saw never equals the stored one exactly.
+            query = query.gte(field, value - _COORDINATE_TOLERANCE).lte(
+                field, value + _COORDINATE_TOLERANCE
+            )
+        else:
+            query = query.eq(field, value)
+    result = query.execute()
+    if expected and not result.data:
+        _conflict(id, expected)
     moved = any(
         key in changes and changes[key] != current.get(key)
         for key in ("latitude", "longitude")
@@ -472,8 +546,52 @@ async def update_anchor_point(
     return result.data
 
 
+# The fields an admin edits, which a save can check weren't changed meanwhile.
+_EXPECTABLE_FIELDS = frozenset(
+    (
+        "location_description",
+        "latitude",
+        "longitude",
+        "altitude",
+        "location_type_id",
+        "floor",
+        "status",
+        "metadata",
+    )
+)
+
+
+# Coordinates compare within this, about 0.1 mm (see update_anchor_point).
+_COORDINATE_FIELDS = frozenset(("latitude", "longitude", "altitude"))
+_COORDINATE_TOLERANCE = 1e-9
+
+
+def _differs(field: str, now, expected) -> bool:
+    if field in _COORDINATE_FIELDS and now is not None and expected is not None:
+        return abs(now - expected) > _COORDINATE_TOLERANCE
+    return now != expected
+
+
+def _conflict(id: str, expected: dict) -> None:
+    """409 with the point as it is now, and which of the expected fields differ."""
+    rows = db.client.table("anchor_points").select("*").eq("id", id).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail="Anchor point not found")
+    now = rows[0]
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "message": "Another admin changed this point since you opened it.",
+            "fields": sorted(
+                f for f, value in expected.items() if _differs(f, now.get(f), value)
+            ),
+            "current": now,
+        },
+    )
+
+
 @app.delete("/anchor-points/{id}")
-async def delete_anchor_point(id: str, caller_id: str = Depends(get_caller_id)):
+def delete_anchor_point(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     urls = _photo_urls_for_anchor_points([id])
@@ -486,7 +604,7 @@ async def delete_anchor_point(id: str, caller_id: str = Depends(get_caller_id)):
 
 
 @app.post("/anchor-points/{id}/photos")
-async def create_anchor_point_photo(
+def create_anchor_point_photo(
     id: str, photo: AnchorPointPhotoCreate, caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
@@ -505,7 +623,7 @@ async def create_anchor_point_photo(
 
 
 @app.get("/anchor-points/{id}/photos")
-async def list_anchor_point_photos(
+def list_anchor_point_photos(
     id: str, caller_id: str = Depends(get_caller_id)
 ) -> list[AnchorPointPhotoResponse]:
     result = (
@@ -518,14 +636,14 @@ async def list_anchor_point_photos(
 
 
 @app.get("/anchor-point-photos")
-async def list_all_anchor_point_photos(
+def list_all_anchor_point_photos(
     caller_id: str = Depends(get_caller_id),
 ) -> list[AnchorPointPhotoResponse]:
     return _list_all("anchor_point_photos")
 
 
 @app.delete("/anchor-point-photos/{id}")
-async def delete_anchor_point_photo(id: str, caller_id: str = Depends(get_caller_id)):
+def delete_anchor_point_photo(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = (
@@ -541,7 +659,7 @@ async def delete_anchor_point_photo(id: str, caller_id: str = Depends(get_caller
 
 
 @app.post("/anchor-point-connections")
-async def create_anchor_point_connection(
+def create_anchor_point_connection(
     connection: AnchorPointConnectionCreate, caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
@@ -591,14 +709,14 @@ async def create_anchor_point_connection(
 
 
 @app.get("/anchor-point-connections")
-async def list_anchor_point_connections(
+def list_anchor_point_connections(
     caller_id: str = Depends(get_caller_id),
 ) -> list[AnchorPointConnectionResponse]:
     return _list_all("anchor_point_connections")
 
 
 @app.get("/anchor-points/{id}/connections")
-async def list_anchor_point_connections_for_point(
+def list_anchor_point_connections_for_point(
     id: str, caller_id: str = Depends(get_caller_id)
 ) -> list[AnchorPointConnectionResponse]:
     result = (
@@ -611,7 +729,7 @@ async def list_anchor_point_connections_for_point(
 
 
 @app.patch("/anchor-point-connections/{id}")
-async def update_anchor_point_connection(
+def update_anchor_point_connection(
     id: str,
     connection: AnchorPointConnectionUpdate,
     caller_id: str = Depends(get_caller_id),
@@ -629,9 +747,7 @@ async def update_anchor_point_connection(
 
 
 @app.delete("/anchor-point-connections/{id}")
-async def delete_anchor_point_connection(
-    id: str, caller_id: str = Depends(get_caller_id)
-):
+def delete_anchor_point_connection(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     _require_found(
@@ -642,16 +758,14 @@ async def delete_anchor_point_connection(
 
 
 @app.get("/buildings")
-async def list_buildings(
+def list_buildings(
     caller_id: str = Depends(get_caller_id),
 ) -> list[BuildingResponse]:
     return _list_all("buildings")
 
 
 @app.get("/buildings/{id}")
-async def get_building(
-    id: str, caller_id: str = Depends(get_caller_id)
-) -> BuildingResponse:
+def get_building(id: str, caller_id: str = Depends(get_caller_id)) -> BuildingResponse:
     result = db.client.table("buildings").select("*").eq("id", id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Building not found")
@@ -659,9 +773,7 @@ async def get_building(
 
 
 @app.post("/buildings")
-async def create_building(
-    building: BuildingCreate, caller_id: str = Depends(get_caller_id)
-):
+def create_building(building: BuildingCreate, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = db.client.table("buildings").insert(building.model_dump()).execute()
@@ -669,7 +781,7 @@ async def create_building(
 
 
 @app.patch("/buildings/{id}")
-async def update_building(
+def update_building(
     id: str, building: BuildingUpdate, caller_id: str = Depends(get_caller_id)
 ):
     if not db.is_admin(caller_id):
@@ -684,7 +796,7 @@ async def update_building(
 
 
 @app.delete("/buildings/{id}")
-async def delete_building(id: str, caller_id: str = Depends(get_caller_id)):
+def delete_building(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     urls = _photo_urls_for_anchor_points(_anchor_point_ids_for_buildings([id]))
@@ -696,7 +808,7 @@ async def delete_building(id: str, caller_id: str = Depends(get_caller_id)):
 
 
 @app.post("/places")
-async def create_place(place: PlaceCreate, caller_id: str = Depends(get_caller_id)):
+def create_place(place: PlaceCreate, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = db.client.table("places").insert(place.model_dump()).execute()
@@ -704,14 +816,14 @@ async def create_place(place: PlaceCreate, caller_id: str = Depends(get_caller_i
 
 
 @app.get("/places")
-async def list_places(
+def list_places(
     caller_id: str = Depends(get_caller_id),
 ) -> list[PlaceResponse]:
     return _list_all("places")
 
 
 @app.get("/places/{id}")
-async def get_place(id: str, caller_id: str = Depends(get_caller_id)) -> PlaceResponse:
+def get_place(id: str, caller_id: str = Depends(get_caller_id)) -> PlaceResponse:
     result = db.client.table("places").select("*").eq("id", id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Place not found")
@@ -719,9 +831,7 @@ async def get_place(id: str, caller_id: str = Depends(get_caller_id)) -> PlaceRe
 
 
 @app.patch("/places/{id}")
-async def update_place(
-    id: str, place: PlaceUpdate, caller_id: str = Depends(get_caller_id)
-):
+def update_place(id: str, place: PlaceUpdate, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     result = (
@@ -734,7 +844,7 @@ async def update_place(
 
 
 @app.delete("/places/{id}")
-async def delete_place(id: str, caller_id: str = Depends(get_caller_id)):
+def delete_place(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     building_ids = _building_ids_for_place(id)
@@ -744,3 +854,71 @@ async def delete_place(id: str, caller_id: str = Depends(get_caller_id)):
     )
     _delete_photo_files(urls)
     return "ok"
+
+
+# --- what changed since (A5) ---------------------------------------------
+
+# Rows written in the same moment can commit a little after their updated_at,
+# so each answer reaches back this far. Merging the same row twice is harmless.
+_CHANGES_OVERLAP = timedelta(seconds=10)
+# Further back, the app reloads everything instead.
+_CHANGES_MAX_AGE = timedelta(hours=1)
+_DELETIONS_KEPT = timedelta(days=1)
+_CHANGED_TABLES = (
+    "places",
+    "buildings",
+    "anchor_points",
+    "anchor_point_photos",
+    "anchor_point_connections",
+)
+
+
+@app.get("/changes")
+def list_changes(since: datetime, caller_id: str = Depends(get_caller_id)) -> dict:
+    """What changed or was deleted in the map since `since`, so admins' screens
+    stay fresh without reading every list again (A5). Pass back `next_since`.
+    `full: true` means it's been too long: load everything instead."""
+    if not db.is_admin(caller_id):
+        raise HTTPException(status_code=403, detail="Admin only")
+    now = datetime.now(UTC)
+    if since.tzinfo is None:
+        since = since.replace(tzinfo=UTC)
+    next_since = (now - _CHANGES_OVERLAP).isoformat()
+    if now - since > _CHANGES_MAX_AGE:
+        return {"full": True, "next_since": next_since}
+    stamp = since.isoformat()
+    changes: dict = {"full": False, "next_since": next_since}
+
+    def changed(table: str) -> list[dict]:
+        return select_all(
+            lambda: (
+                db.client.table(table).select("*").gte("updated_at", stamp).order("id")
+            )
+        )
+
+    def deleted() -> list[dict]:
+        return select_all(
+            lambda: (
+                db.client.table("map_deletions")
+                .select("table_name,row_id")
+                .gte("deleted_at", stamp)
+                .order("id")
+            )
+        )
+
+    # At the same time: one after another, the six round trips to Supabase took
+    # about 1 s, and the admin screen waits for this after every edit (E2).
+    with ThreadPoolExecutor(max_workers=len(_CHANGED_TABLES) + 1) as pool:
+        tables = {table: pool.submit(changed, table) for table in _CHANGED_TABLES}
+        deletions_job = pool.submit(deleted)
+        for table, job in tables.items():
+            changes[table] = job.result()
+        deletions = deletions_job.result()
+    changes["deleted"] = {
+        table: sorted({d["row_id"] for d in deletions if d["table_name"] == table})
+        for table in _CHANGED_TABLES
+    }
+    db.client.table("map_deletions").delete().lt(
+        "deleted_at", (now - _DELETIONS_KEPT).isoformat()
+    ).execute()
+    return changes

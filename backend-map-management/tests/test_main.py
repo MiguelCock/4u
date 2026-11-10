@@ -1,3 +1,4 @@
+import inspect
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -438,6 +439,7 @@ def test_delete_anchor_point_succeeds_even_if_storage_cleanup_fails():
 
 
 _ANCHOR_POINT_PHOTO_ROW = {
+    "updated_at": "2026-11-07T20:00:00+00:00",
     "id": "ph1",
     "anchor_point_id": "1",
     "image_url": "https://example.com/a.jpg",
@@ -545,6 +547,7 @@ def test_delete_anchor_point_photo_forbidden_for_non_admin():
 
 
 _CONNECTION_ROW = {
+    "updated_at": "2026-11-07T20:00:00+00:00",
     "id": "c1",
     "anchor_point_a_id": "a1",
     "anchor_point_b_id": "a2",
@@ -774,6 +777,7 @@ def test_update_unknown_connection_is_404():
 
 
 _BUILDING_ROW = {
+    "updated_at": "2026-11-07T20:00:00+00:00",
     "id": "1",
     "place_id": "p1",
     "code": "B1",
@@ -918,6 +922,7 @@ def test_delete_building_returns_ok():
 
 
 _PLACE_ROW = {
+    "updated_at": "2026-11-07T20:00:00+00:00",
     "id": "p1",
     "code": "CAMPUS",
     "name": "Main Campus",
@@ -1641,3 +1646,18 @@ def test_renamed_point_is_saved_without_its_building_name():
         )
     assert response.status_code == 200
     assert points.update.call_args.args[0]["location_description"] == "Entrada norte"
+
+
+def test_endpoints_that_block_dont_hold_up_the_others():
+    """A blocking Supabase call in an async endpoint stops the event loop, so
+    requests queued one at a time: 3.8 s for a simple read during a trip."""
+    from fastapi.routing import APIRoute
+
+    slow = [
+        route.path
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        and inspect.iscoroutinefunction(route.endpoint)
+        and route.path != "/"
+    ]
+    assert slow == []

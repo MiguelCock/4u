@@ -31,6 +31,19 @@ void main() {
         p['id'] as String,
   ];
 
+  test('status is one of the filters, counted and combined', () {
+    final pending = {...hallway, 'id': 'hp', 'status': 'pending'};
+    final verified = {...library, 'id': 'lv', 'status': 'verified'};
+    bool keeps(AnchorFilters f, Map<String, dynamic> p) =>
+        f.matches(p, withPhotos: const {}, connected: const {});
+    const f = AnchorFilters(status: 'pending');
+    expect(keeps(f, pending), isTrue);
+    expect(keeps(f, verified), isFalse);
+    expect(f.activeCount, 1);
+    expect(f.copyWith(floor: 0).activeCount, 2);
+    expect(f.copyWith(status: null).isEmpty, isTrue);
+  });
+
   test('no filters match everything', () {
     expect(ids(AnchorFilters.none), ['h', 'l', 'o']);
     expect(AnchorFilters.none.activeCount, 0);

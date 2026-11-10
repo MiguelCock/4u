@@ -24,6 +24,7 @@ CREATE TABLE routes (
 
 -- Indexes
 CREATE INDEX idx_routes_building ON routes (building_id);
+CREATE INDEX idx_routes_end_anchor ON routes (end_anchor_id);
 -- One route per (start, end) pair; find_or_create relies on it.
 CREATE UNIQUE INDEX routes_start_end_unique ON routes (start_anchor_id, end_anchor_id);
 

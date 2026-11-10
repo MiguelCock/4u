@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -68,6 +68,9 @@ class AnchorPointResponse(BaseModel):
     # existed default to `{}`, and a strict submodel would 500 on any shape
     # that doesn't conform, same reasoning as location_description above.
     metadata: dict = {}
+    # Compared by admins' screens to tell a change from what they already have
+    # (A5, GET /changes). Optional: rows from before the migration may lack it.
+    updated_at: str | None = None
 
 
 class AnchorPointUpdate(BaseModel):
@@ -81,6 +84,10 @@ class AnchorPointUpdate(BaseModel):
     floor: int | None = Field(default=None, ge=-5, le=200)
     status: AnchorStatus | None = None
     metadata: AnchorPointMetadata | None = None
+    # Each changed field's value as the admin saw it before editing (A5). The
+    # update applies only where it still holds, or answers 409, so another
+    # admin's edit isn't silently overwritten. Optional: older apps don't send it.
+    expected: dict[str, Any] | None = None
 
     _normalize_description = field_validator("location_description")(_blank_to_none)
 
@@ -96,6 +103,9 @@ class AnchorPointPhotoResponse(AnchorPointPhotoCreate):
     id: str
     anchor_point_id: str
     captured_at: str
+    # Compared by admins' screens to tell a change from what they already have
+    # (A5, GET /changes). Optional: rows from before the migration may lack it.
+    updated_at: str | None = None
 
 
 class BuildingResponse(BaseModel):
@@ -112,6 +122,9 @@ class BuildingResponse(BaseModel):
     # Without it the app never saw a deactivation: the "(inactive)" label
     # never showed and saving an edit silently reactivated the building.
     is_active: bool = True
+    # Compared by admins' screens to tell a change from what they already have
+    # (A5, GET /changes). Optional: rows from before the migration may lack it.
+    updated_at: str | None = None
 
 
 class BuildingCreate(BaseModel):
@@ -151,6 +164,9 @@ class PlaceResponse(PlaceCreate):
     id: str
     # See BuildingResponse.is_active.
     is_active: bool = True
+    # Compared by admins' screens to tell a change from what they already have
+    # (A5, GET /changes). Optional: rows from before the migration may lack it.
+    updated_at: str | None = None
 
 
 class PlaceUpdate(BaseModel):
@@ -180,9 +196,23 @@ class AnchorPointConnectionUpdate(BaseModel):
     notes: str | None = None
 
 
+class AnchorPointsByIds(BaseModel):
+    """GET /anchor-points/by-ids: the points asked for, in the order asked, and
+    the connections between any two of them."""
+
+    points: list[AnchorPointResponse]
+    connections: list[AnchorPointConnectionResponse]
+
+
 class AnchorPointConnectionResponse(AnchorPointConnectionCreate):
     id: str
     created_at: str
     # Loose on output, so an older row can never fail response validation.
     distance_meters: float | None = None
     distance_manual: bool = False
+    # Compared by admins' screens to tell a change from what they already have
+    # (A5, GET /changes). Optional: rows from before the migration may lack it.
+    updated_at: str | None = None
+
+
+AnchorPointsByIds.model_rebuild()

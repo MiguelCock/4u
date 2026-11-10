@@ -75,77 +75,49 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 <details open>
 <summary>Contenido</summary>
 <ul>
-<li><a href="#getting-started">1. Primeros pasos</a>
+<li><a href="#pitfalls">1. Errores que rompen las rutas</a>
 <ul>
-<li><a href="#entrar">Entrar</a></li>
-<li><a href="#el-menu-y-la-barra-superior">El menú y la barra superior</a></li>
+<li><a href="#pitfall-type">Un destino guardado con un tipo intermedio</a></li>
+<li><a href="#pitfall-unconnected">Un punto verificado sin conexiones</a></li>
+<li><a href="#pitfall-gap">Huecos de más de 30 m</a></li>
+<li><a href="#pitfall-floor">Un cambio de piso sin escalera, ascensor ni rampa</a></li>
+<li><a href="#pitfall-stacked">El mismo lugar dos veces, o en el piso equivocado</a></li>
+<li><a href="#pitfall-doors">Puertas del edificio sin marcar como Entrada</a></li>
+<li><a href="#pitfall-islands">Dos grupos de puntos que nunca se juntan</a></li>
+<li><a href="#pitfall-photos">Puntos sin fotos, o que no se pueden buscar</a></li>
+<li><a href="#pitfall-position">Una posición aproximada</a></li>
 </ul>
 </li>
-<li><a href="#workflow">2. El trabajo completo, de principio a fin</a>
+<li><a href="#getting-started">2. Primeros pasos</a>
 </li>
-<li><a href="#universities">3. Universidades</a>
+<li><a href="#workflow">3. El trabajo completo, de principio a fin</a>
+</li>
+<li><a href="#points-map">4. El mapa</a>
 <ul>
-<li><a href="#agregar-una-universidad">Agregar una universidad</a></li>
+<li><a href="#floors">Los detalles de un punto</a></li>
+<li><a href="#connect-on-map">Modo Conectar</a></li>
+<li><a href="#los-detalles-de-una-conexion">Los detalles de una conexión</a></li>
 </ul>
 </li>
-<li><a href="#buildings">4. Edificios</a>
-<ul>
-<li><a href="#agregar-un-edificio">Agregar un edificio</a></li>
-</ul>
+<li><a href="#universities">5. Universidades y edificios</a>
 </li>
-<li><a href="#anchor-points">5. Puntos de referencia</a>
+<li><a href="#anchor-points">6. Puntos de referencia</a>
 <ul>
-<li><a href="#la-lista">La lista</a></li>
-<li><a href="#filtros">Filtros</a></li>
 <li><a href="#point-form">Crear un punto</a></li>
-<li><a href="#elegir-la-posicion-en-el-mapa">Elegir la posición en el mapa</a></li>
-<li><a href="#point-edit">Editar un punto</a></li>
 <li><a href="#photos">Fotos</a></li>
-<li><a href="#verify">Verificar un punto</a></li>
-<li><a href="#points-map">El mapa de puntos</a></li>
-<li><a href="#floors">Pisos en los mapas</a></li>
+<li><a href="#verify">Verificar</a></li>
 </ul>
 </li>
-<li><a href="#connections">6. Conexiones</a>
-<ul>
-<li><a href="#reglas">Reglas</a></li>
-<li><a href="#connection-warning">Avisos para usuarios</a></li>
-<li><a href="#connect-on-map">Conectar en el mapa</a></li>
-<li><a href="#connection-form">Conectar con el formulario</a></li>
-</ul>
+<li><a href="#connections">7. Conexiones</a>
 </li>
-<li><a href="#users-see">7. Lo que ven los usuarios</a>
+<li><a href="#notices">8. Revisar tu trabajo</a>
 </li>
-<li><a href="#notices">8. Avisos del menú</a>
-<ul>
-<li><a href="#reindex">Reindexar puntos verificados</a></li>
-</ul>
+<li><a href="#users">9. Usuarios, configuración y borrado</a>
 </li>
-<li><a href="#users">9. Usuarios</a>
-</li>
-<li><a href="#sessions">10. Sesiones</a>
-<ul>
-<li><a href="#el-mapa-de-una-sesion">El mapa de una sesión</a></li>
-</ul>
-</li>
-<li><a href="#feedback">11. Comentarios</a>
-</li>
-<li><a href="#settings">12. Configuración</a>
-</li>
-<li><a href="#phone-only">13. Solo en el teléfono</a>
-<ul>
-<li><a href="#tomar-fotos-con-la-camara">Tomar fotos con la cámara</a></li>
-<li><a href="#probar-como-usuario">Probar como usuario</a></li>
-</ul>
-</li>
-<li><a href="#deleting">14. Eliminar datos</a>
-</li>
-<li><a href="#problems">15. Problemas frecuentes</a>
-</li>
-<li><a href="#reference">16. Referencia rápida</a>
+<li><a href="#reference">10. Referencia rápida</a>
 <ul>
 <li><a href="#tipos-de-lugar">Tipos de lugar</a></li>
-<li><a href="#iluminacion">Iluminación</a></li>
+<li><a href="#problems">Otros problemas</a></li>
 </ul>
 </li>
 </ul>
@@ -153,46 +125,59 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 </nav>
 <main>
 <h1 id="guia-de-uso-para-administradores">Guía de uso para administradores</h1>
-<p>Esta guía explica cómo construir y mantener el mapa con el que Eyes4U guía a las personas con discapacidad visual: cada pantalla de la aplicación web, para qué sirve cada botón y el trabajo completo, de principio a fin.</p>
-<p>Las imágenes son de una <strong>universidad de ejemplo</strong> con datos inventados. Los números rojos de cada imagen corresponden a la tabla que tiene debajo.</p>
+<p>Cómo construir y cuidar el mapa con el que Eyes4U guía a las personas con discapacidad visual: primero los errores que rompen las rutas, luego el trabajo completo en el mapa, y luego cada pantalla en breve.</p>
+<p>Las imágenes son de una <strong>universidad de ejemplo con datos inventados</strong>. Los números rojos corresponden a la tabla debajo de la imagen. Las del mapa están en tamaño de teléfono, como lo usarás en el campus; las demás, en un computador.</p>
+<p><a id="pitfalls"></a></p>
+<h2 id="1-errores-que-rompen-las-rutas">1. Errores que rompen las rutas</h2>
+<p>Todos pasaron en pruebas reales. Los <strong>avisos</strong> naranjas del menú detectan solos los cuatro primeros, y su enlace <strong>Cómo arreglarlo</strong> abre aquí la sección correspondiente.</p>
+<p><a id="pitfall-type"></a></p>
+<h3 id="un-destino-guardado-con-un-tipo-intermedio">Un destino guardado con un tipo intermedio</h3>
+<p>Los usuarios solo pueden elegir destinos (★ en la <a href="#reference">Referencia rápida</a>), así que un "Baño" guardado como Pasillo nunca les aparece.
+<strong>Cómo verlo:</strong> el aviso <strong>N puntos con nombre que los usuarios no pueden elegir</strong>.
+<strong>Cómo arreglarlo:</strong> abre el punto y cambia su <strong>Tipo de lugar</strong>. Deja los que sean a propósito ("Pasillo a los salones 202").</p>
+<p><a id="pitfall-unconnected"></a></p>
+<h3 id="un-punto-verificado-sin-conexiones">Un punto verificado sin conexiones</h3>
+<p>Las rutas solo siguen conexiones, así que nadie puede llegar a él ni salir de él.
+<strong>Cómo verlo:</strong> el aviso <strong>N puntos verificados sin conexión</strong>, o el filtro <strong>Conexiones: No tiene</strong>.
+<strong>Cómo arreglarlo:</strong> conéctalo con sus vecinos en el <a href="#connect-on-map">modo Conectar</a>.</p>
+<p><a id="pitfall-gap"></a></p>
+<h3 id="huecos-de-mas-de-30-m">Huecos de más de 30 m</h3>
+<p>Una conexión de más de 30 m se rechaza, y las viejas no se usan, así que a los usuarios se les dice que el lugar "todavía no está conectado a ningún camino".
+<strong>Cómo verlo:</strong> ese mensaje al probar; el aviso <strong>N conexiones de más de 30 m</strong>; el filtro de Conexiones <strong>Más de 15 m</strong>.
+<strong>Cómo arreglarlo:</strong> elimínala, agrega puntos intermedios <strong>cada 6 a 8 m</strong> por el camino real, y conéctalos en cadena.</p>
+<p><a id="pitfall-floor"></a></p>
+<h3 id="un-cambio-de-piso-sin-escalera-ascensor-ni-rampa">Un cambio de piso sin escalera, ascensor ni rampa</h3>
+<p>Los pisos solo pueden cambiar por un punto de tipo <strong>Escalera</strong>, <strong>Elevador</strong> o <strong>Rampa</strong>, para que la aplicación pueda decir "Toma el ascensor al piso 3".
+<strong>Cómo verlo:</strong> el aviso <strong>N conexiones que cambian de piso sin escaleras</strong>.
+<strong>Cómo arreglarlo:</strong> elimínala, crea un punto de escalera o elevador <strong>en cada piso</strong>, y conecta esos. Ver <a href="#floors">Pisos</a>.</p>
+<p><a id="pitfall-stacked"></a></p>
+<h3 id="el-mismo-lugar-dos-veces-o-en-el-piso-equivocado">El mismo lugar dos veces, o en el piso equivocado</h3>
+<p>Los duplicados reparten las fotos; un punto en el piso equivocado se alcanza por la escalera equivocada.
+<strong>Cómo verlo:</strong> la aplicación pregunta antes de guardar a menos de 3 m de otro punto; en el mapa los puntos se superponen, o uno aparece como ▲▼ donde esperabas un punto.
+<strong>Cómo arreglarlo:</strong> agrega las fotos al punto que ya existe, elimina el duplicado y pon el <strong>Piso</strong> correcto ("Piso 1" es la planta baja).</p>
+<p><a id="pitfall-doors"></a></p>
+<h3 id="puertas-del-edificio-sin-marcar-como-entrada">Puertas del edificio sin marcar como Entrada</h3>
+<p>Los usuarios pueden decir un edificio ("Edificio C"), y la ruta termina en su <strong>Entrada</strong> más cercana. Si no tiene ninguna, termina en cualquier punto conectado de su piso más bajo.
+<strong>Cómo verlo:</strong> decir el edificio en <strong>Probar como usuario</strong> termina en un lugar raro.
+<strong>Cómo arreglarlo:</strong> dale a cada puerta el tipo <strong>Entrada</strong> y un nombre, y conéctala.</p>
+<p><a id="pitfall-islands"></a></p>
+<h3 id="dos-grupos-de-puntos-que-nunca-se-juntan">Dos grupos de puntos que nunca se juntan</h3>
+<p>Todos los puntos están conectados, pero los caminos de un edificio nunca llegan a los del siguiente.
+<strong>Cómo verlo:</strong> "no está conectado" entre ellos al probar; en el mapa, un grupo de líneas del que no sale ninguna.
+<strong>Cómo arreglarlo:</strong> captura el camino entre ellos y conéctalo por ambos extremos.</p>
+<p><a id="pitfall-photos"></a></p>
+<h3 id="puntos-sin-fotos-o-que-no-se-pueden-buscar">Puntos sin fotos, o que no se pueden buscar</h3>
+<p>La aplicación reconoce un lugar solo por sus fotos.
+<strong>Cómo verlo:</strong> verificar se rechaza; el menú dice "N fotos no se pueden buscar" en rojo.
+<strong>Cómo arreglarlo:</strong> toma <a href="#photos">de 4 a 8 fotos</a>, una por dirección. Si están pero no se pueden buscar, usa <a href="#reindex">Reindexar</a>.</p>
+<p><a id="pitfall-position"></a></p>
+<h3 id="una-posicion-aproximada">Una posición aproximada</h3>
+<p>Un punto a varios metros del lugar real manda a la gente por donde no es.
+<strong>Cómo verlo:</strong> en el mapa queda fuera de su pasillo, o sus líneas atraviesan paredes.
+<strong>Cómo arreglarlo:</strong> <a href="#points-map">Muévelo</a> apuntando con <strong>la punta del pin</strong>. <strong>Usar mi ubicación</strong> solo funciona con GPS de ±8 m o mejor.</p>
 <p><a id="getting-started"></a></p>
-<h2 id="1-primeros-pasos">1. Primeros pasos</h2>
-<h3 id="entrar">Entrar</h3>
-<p>No hay un inicio de sesión aparte para administradores: la aplicación te lleva a esta vista según el rol de tu cuenta. Una cuenta que no es de administrador no puede usar la web, y se le indica usar la aplicación del teléfono.</p>
-<p><a href="../images/es/login.webp" target="_blank" rel="noopener"><img alt="Pantalla de inicio de sesión" src="../images/es/login.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Control</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Correo electrónico</strong></td>
-<td>El correo de tu cuenta.</td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Contraseña</strong></td>
-<td>Tu contraseña.</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Iniciar sesión</strong></td>
-<td>Entra a la aplicación.</td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>¿No tienes una cuenta? Regístrate</strong></td>
-<td>Crea una cuenta nueva, que empieza como usuario. Otro administrador debe convertirla en administradora (<a href="#users">Usuarios</a>).</td>
-</tr>
-</tbody>
-</table></div>
-<h3 id="el-menu-y-la-barra-superior">El menú y la barra superior</h3>
-<p>En una ventana ancha, el menú queda abierto a la izquierda. En una ventana angosta se abre con el ícono ☰.</p>
+<h2 id="2-primeros-pasos">2. Primeros pasos</h2>
+<p>La aplicación abre la vista de administrador cuando tu cuenta es de administrador. Las cuentas nuevas empiezan como usuarios normales: otro administrador las promueve en <a href="#users">Usuarios</a>. En una ventana angosta, el menú se abre con ☰.</p>
 <p><a href="../images/es/home-menu.webp" target="_blank" rel="noopener"><img alt="Menú lateral y barra superior" src="../images/es/home-menu.webp" width="1280" height="1000" loading="lazy"></a></p>
 <div class="scroll"><table>
 <thead>
@@ -206,664 +191,83 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 <tr>
 <td>1</td>
 <td><strong>Guía de uso</strong></td>
-<td>Abre esta guía en otra pestaña, para leerla junto a la aplicación.</td>
+<td>Abre esta guía en otra pestaña.</td>
 </tr>
 <tr>
 <td>2</td>
-<td><strong>Universidades</strong></td>
-<td>Los campus. Ver <a href="#universities">Universidades</a>.</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Edificios</strong></td>
-<td>Los edificios de cada campus. Ver <a href="#buildings">Edificios</a>.</td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>Puntos de referencia</strong></td>
-<td>Los lugares que la aplicación aprende a reconocer. Ver <a href="#anchor-points">Puntos de referencia</a>.</td>
-</tr>
-<tr>
-<td>5</td>
-<td><strong>Conexiones</strong></td>
-<td>Por dónde se puede caminar entre puntos. Ver <a href="#connections">Conexiones</a>.</td>
-</tr>
-<tr>
-<td>6</td>
-<td><strong>Usuarios</strong></td>
-<td>Las cuentas. Ver <a href="#users">Usuarios</a>.</td>
-</tr>
-<tr>
-<td>7</td>
-<td><strong>Sesiones</strong></td>
-<td>Los viajes hechos con la aplicación. Ver <a href="#sessions">Sesiones</a>.</td>
-</tr>
-<tr>
-<td>8</td>
-<td><strong>Comentarios</strong></td>
-<td>Lo que escribieron los usuarios al terminar un viaje. Ver <a href="#feedback">Comentarios</a>.</td>
-</tr>
-<tr>
-<td>9</td>
-<td><strong>Reindexar puntos verificados</strong></td>
-<td>Repara la búsqueda por fotos. En rojo, cuántas fotos no se pueden buscar. Ver <a href="#reindex">Reindexar</a>.</td>
-</tr>
-<tr>
-<td>10</td>
-<td><strong>N puntos verificados sin conexión</strong></td>
-<td>Aviso: nadie puede llegar a esos puntos. Abre la lista filtrada.</td>
-</tr>
-<tr>
-<td>11</td>
-<td><strong>N puntos con nombre que los usuarios no pueden elegir</strong></td>
-<td>Aviso: un destino guardado con un tipo intermedio.</td>
-</tr>
-<tr>
-<td>12</td>
-<td><strong>N conexiones de más de 30 m</strong></td>
-<td>Aviso: las rutas no las usan.</td>
-</tr>
-<tr>
-<td>13</td>
-<td><strong>N conexiones que cambian de piso sin escaleras</strong></td>
-<td>Aviso: las rutas no las usan.</td>
-</tr>
-<tr>
-<td>14</td>
-<td><strong>Ayuda de esta página</strong> (?)</td>
-<td>Abre esta guía en la sección de la página en la que estás.</td>
-</tr>
-<tr>
-<td>15</td>
-<td><strong>Actualizar</strong></td>
-<td>Vuelve a cargar los datos del servidor.</td>
-</tr>
-<tr>
-<td>16</td>
-<td><strong>Configuración</strong></td>
-<td>Idioma, tamaño del texto y más. Ver <a href="#settings">Configuración</a>.</td>
-</tr>
-<tr>
-<td>17</td>
-<td><strong>Cerrar sesión</strong></td>
-<td>Te desconecta de inmediato, sin preguntar.</td>
-</tr>
-</tbody>
-</table></div>
-<p>Los avisos naranjas (10 a 13) solo aparecen si hay algo que arreglar. Ver <a href="#notices">Avisos del menú</a>.</p>
-<p><a id="workflow"></a></p>
-<h2 id="2-el-trabajo-completo-de-principio-a-fin">2. El trabajo completo, de principio a fin</h2>
-<p>Cada paso se construye sobre el anterior. Si te saltas uno, el menú desplegable del siguiente queda vacío y te dice qué agregar primero.</p>
-<ol>
-<li><strong>Crea la <a href="#universities">universidad</a></strong>, una por campus.</li>
-<li><strong>Crea sus <a href="#buildings">edificios</a></strong>, con cuántos pisos tiene cada uno.</li>
-<li><strong>Crea los <a href="#point-form">puntos de referencia</a>.</strong> Primero los lugares a los que la gente quiere ir (entradas, salones, baños, la cafetería), con un nombre claro. Luego los puntos intermedios (pasillos, intersecciones, escaleras), cada 6 a 8 m a lo largo de los caminos.</li>
-<li><strong>Agrega <a href="#photos">fotos</a></strong> a cada punto, de 4 a 8, una por dirección. Con ellas la aplicación reconoce dónde está el usuario.</li>
-<li><strong><a href="#verify">Verifica</a> cada punto</strong> después de revisar sus fotos. Un punto sin verificar no existe para los usuarios.</li>
-<li><strong><a href="#connect-on-map">Conecta</a> los puntos</strong> en cadena a lo largo de los caminos. Las rutas solo pasan por conexiones: un punto sin conexiones no aparece para los usuarios.</li>
-<li><strong>Prueba una ruta</strong> con <a href="#phone-only">Probar como usuario</a> en el teléfono, caminándola.</li>
-<li><strong>Revisa la <a href="#sessions">sesión</a></strong> para ver qué tan bien funcionó, y corrige lo que haga falta.</li>
-</ol>
-<p><strong>Ejemplo.</strong> Para que alguien pueda ir de la puerta de la Biblioteca al baño: crea "Universidad Demo" y el edificio "Biblioteca". Crea "Entrada principal" (tipo Entrada), "Baño mujeres" (tipo Baño) y un punto de tipo Pasillo cada 7 m entre los dos. Sube las fotos de cada uno, verifícalos y conéctalos en orden en <strong>Conectar en el mapa</strong>. Listo: "Baño mujeres" ya se puede elegir como destino.</p>
-<p><a id="universities"></a></p>
-<h2 id="3-universidades">3. Universidades</h2>
-<p>Una universidad es un campus o sede. Todo lo demás pertenece a una.</p>
-<p><a href="../images/es/universities.webp" target="_blank" rel="noopener"><img alt="Lista de universidades" src="../images/es/universities.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Control</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Buscar universidades</strong></td>
-<td>Filtra la lista mientras escribes.</td>
-</tr>
-<tr>
-<td>2</td>
-<td>Fila de la universidad</td>
-<td>Muestra su nombre y cuántos edificios tiene.</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Editar</strong> (lápiz)</td>
-<td>Cambia sus datos. El código no se puede cambiar.</td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>Eliminar</strong> (basura)</td>
-<td>La elimina con todo lo que contiene. Ver <a href="#deleting">Eliminar datos</a>.</td>
-</tr>
-<tr>
-<td>5</td>
-<td><strong>Agregar universidad</strong> (+)</td>
-<td>Abre el formulario de abajo.</td>
-</tr>
-</tbody>
-</table></div>
-<h3 id="agregar-una-universidad">Agregar una universidad</h3>
-<p><a href="../images/es/university-form.webp" target="_blank" rel="noopener"><img alt="Formulario de universidad" src="../images/es/university-form.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Campo</th>
-<th>Qué significa</th>
-<th>Ejemplo</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Código</strong></td>
-<td>Identificador corto y único. Obligatorio, y no se puede cambiar después.</td>
-<td><code>ICESI</code></td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Nombre</strong></td>
-<td>El nombre completo que se ve en toda la aplicación. Obligatorio.</td>
-<td><code>Universidad Icesi</code></td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Dirección (opcional)</strong></td>
-<td>Solo de referencia.</td>
-<td><code>Calle 18 #122-135</code></td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>Latitud</strong></td>
-<td>Centro aproximado del campus, en grados decimales. Obligatorio.</td>
-<td><code>3.3417</code></td>
-</tr>
-<tr>
-<td>5</td>
-<td><strong>Longitud</strong></td>
-<td>Lo mismo. Obligatorio.</td>
-<td><code>-76.5302</code></td>
-</tr>
-<tr>
-<td>6</td>
-<td><strong>Elegir en el mapa</strong></td>
-<td>Llena los dos anteriores tocando un mapa.</td>
-<td></td>
-</tr>
-<tr>
-<td>7</td>
-<td><strong>Guardar universidad</strong></td>
-<td>Crea la universidad.</td>
-<td></td>
-</tr>
-</tbody>
-</table></div>
-<blockquote>
-<p><strong>En la web, escribe primero unas coordenadas aproximadas.</strong> La web no usa el GPS, así que sin coordenadas el mapa se abre en el océano, en 0,0. Copia la ubicación desde cualquier mapa en línea y ajústala luego con <strong>Elegir en el mapa</strong>.</p>
-</blockquote>
-<p>Al editar aparece también un interruptor para <strong>desactivarla</strong> sin eliminarla: sus edificios y puntos dejan de ofrecerse a los usuarios, y se conserva el historial.</p>
-<p><a id="buildings"></a></p>
-<h2 id="4-edificios">4. Edificios</h2>
-<p><a href="../images/es/buildings.webp" target="_blank" rel="noopener"><img alt="Lista de edificios" src="../images/es/buildings.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Control</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Buscar edificios</strong></td>
-<td>Filtra la lista mientras escribes.</td>
-</tr>
-<tr>
-<td>2</td>
-<td>Fila del edificio</td>
-<td>Muestra su universidad y cuántos puntos tiene.</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Editar</strong> (lápiz)</td>
-<td>Cambia sus datos, incluida la universidad a la que pertenece. El código no se puede cambiar.</td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>Eliminar</strong> (basura)</td>
-<td>Lo elimina con todo lo que contiene. Ver <a href="#deleting">Eliminar datos</a>.</td>
-</tr>
-<tr>
-<td>5</td>
-<td><strong>Agregar edificio</strong> (+)</td>
-<td>Abre el formulario de abajo.</td>
-</tr>
-</tbody>
-</table></div>
-<h3 id="agregar-un-edificio">Agregar un edificio</h3>
-<p><a href="../images/es/building-form.webp" target="_blank" rel="noopener"><img alt="Formulario de edificio" src="../images/es/building-form.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Campo</th>
-<th>Qué significa</th>
-<th>Ejemplo</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Universidad</strong></td>
-<td>A cuál pertenece. Obligatorio.</td>
-<td></td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Código</strong></td>
-<td>Identificador corto y único. Obligatorio, y no se puede cambiar después.</td>
-<td><code>BIB</code></td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Nombre</strong></td>
-<td>El nombre completo. Los usuarios también lo pueden decir por voz, así que usa el nombre con el que la gente lo conoce. Obligatorio.</td>
-<td><code>Edificio C</code></td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>Dirección (opcional)</strong></td>
-<td>Solo de referencia.</td>
-<td></td>
-</tr>
-<tr>
-<td>5</td>
-<td><strong>Latitud</strong></td>
-<td>La posición del edificio. Obligatorio. Un punto a más de 300 m de ella se rechaza.</td>
-<td></td>
-</tr>
-<tr>
-<td>6</td>
-<td><strong>Longitud</strong></td>
-<td>Lo mismo. Obligatorio.</td>
-<td></td>
-</tr>
-<tr>
-<td>7</td>
-<td><strong>Elegir en el mapa</strong></td>
-<td>Llena los dos anteriores tocando un mapa, que se abre en la universidad elegida.</td>
-<td></td>
-</tr>
-<tr>
-<td>8</td>
-<td><strong>Pisos</strong></td>
-<td>Cuántos pisos tiene. Da las opciones de piso de sus puntos.</td>
-<td><code>3</code></td>
-</tr>
-<tr>
-<td>9</td>
-<td><strong>Tiene ascensor</strong></td>
-<td>Información de accesibilidad.</td>
-<td></td>
-</tr>
-<tr>
-<td>10</td>
-<td><strong>Tiene escaleras</strong></td>
-<td>Información de accesibilidad.</td>
-<td></td>
-</tr>
-<tr>
-<td>11</td>
-<td><strong>Guardar edificio</strong></td>
-<td>Crea el edificio.</td>
-<td></td>
-</tr>
-</tbody>
-</table></div>
-<p>Al editar aparece también un interruptor para <strong>desactivarlo</strong> sin eliminarlo.</p>
-<p><a id="anchor-points"></a></p>
-<h2 id="5-puntos-de-referencia">5. Puntos de referencia</h2>
-<p>Un punto de referencia es un lugar físico concreto (una puerta, una intersección, la entrada de un ascensor) que la aplicación aprende a reconocer por sus fotos. Cuando la cámara del usuario ve algo que coincide, la aplicación corrige su posición. Los puntos, además, son las paradas de las rutas.</p>
-<p>Hay dos clases de punto, según su <strong>tipo de lugar</strong>:
-- <strong>Destinos</strong> (salón, baño, cafetería…): los usuarios los eligen. Necesitan un nombre.
-- <strong>Intermedios</strong> (pasillo, intersección, escaleras…): solo sirven para unir caminos. No necesitan nombre, y los usuarios nunca los eligen.</p>
-<h3 id="la-lista">La lista</h3>
-<p><a href="../images/es/points-list.webp" target="_blank" rel="noopener"><img alt="Lista de puntos de referencia" src="../images/es/points-list.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Control</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Todos / Pendiente / Verificado / Rechazado</strong></td>
-<td>Muestra solo los puntos con ese estado, y cuántos hay.</td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Filtros</strong></td>
-<td>Abre más filtros (abajo).</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Buscar puntos de referencia</strong></td>
-<td>Busca por nombre.</td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>Lista</strong></td>
-<td>Muestra los puntos en esta lista.</td>
-</tr>
-<tr>
-<td>5</td>
 <td><strong>Mapa</strong></td>
-<td>Muestra los mismos puntos en un mapa. Ver <a href="#points-map">El mapa</a>.</td>
-</tr>
-<tr>
-<td>6</td>
-<td>Fila del punto</td>
-<td>Muestra su edificio, estado y número de fotos. <strong>Tocarla abre Conectar en el mapa</strong> con este punto ya seleccionado.</td>
-</tr>
-<tr>
-<td>7</td>
-<td><strong>Verificar</strong></td>
-<td>Verifica el punto. En uno ya verificado, este botón lo devuelve a pendiente. Ver <a href="#verify">Verificar</a>.</td>
-</tr>
-<tr>
-<td>8</td>
-<td><strong>Editar</strong> (lápiz)</td>
-<td>Abre <a href="#point-edit">la edición del punto</a>.</td>
-</tr>
-<tr>
-<td>9</td>
-<td><strong>Más acciones</strong> (⋮)</td>
-<td>Abre el menú de abajo.</td>
-</tr>
-<tr>
-<td>10</td>
-<td><strong>Nuevo punto de referencia</strong> (cámara)</td>
-<td>Abre <a href="#point-form">el formulario</a>.</td>
-</tr>
-</tbody>
-</table></div>
-<p>Los puntos sin nombre se muestran por su tipo y el inicio de su código, por ejemplo "Pasillo · 284a".</p>
-<p><a href="../images/es/points-row-menu.webp" target="_blank" rel="noopener"><img alt="Menú de más acciones de un punto" src="../images/es/points-row-menu.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Opción</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Agregar foto</strong></td>
-<td>Abre <a href="#photos">las fotos del punto</a>.</td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Eliminar</strong></td>
-<td>Elimina el punto, sus fotos y sus conexiones. Ver <a href="#deleting">Eliminar datos</a>.</td>
-</tr>
-</tbody>
-</table></div>
-<h3 id="filtros">Filtros</h3>
-<p><a href="../images/es/points-filters.webp" target="_blank" rel="noopener"><img alt="Filtros de puntos" src="../images/es/points-filters.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p>Acota por <strong>categoría</strong> y tipo, <strong>piso</strong>, <strong>interior o exterior</strong>, <strong>iluminación</strong> y si <strong>tiene fotos</strong> o <strong>conexiones</strong>. Se combinan con el estado y la búsqueda. Sirven para encontrar trabajo pendiente: por ejemplo, Verificado + sin conexiones son puntos que nadie puede usar todavía.</p>
-<p><a id="point-form"></a></p>
-<h3 id="crear-un-punto">Crear un punto</h3>
-<p><a href="../images/es/point-form.webp" target="_blank" rel="noopener"><img alt="Formulario de nuevo punto" src="../images/es/point-form.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Campo</th>
-<th>Qué significa</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Universidad</strong></td>
-<td>Filtra la lista de edificios.</td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Edificio</strong></td>
-<td>A cuál pertenece el punto. Obligatorio.</td>
+<td>Donde abre la aplicación. Las entradas de abajo son listas de los mismos datos.</td>
 </tr>
 <tr>
 <td>3</td>
-<td><strong>Piso</strong></td>
-<td>En qué piso está. "Piso 1" es la planta baja. Las opciones salen de los pisos del edificio.</td>
+<td>Avisos naranjas</td>
+<td>Cosas por arreglar, solo cuando las hay. Ver <a href="#notices">Revisar tu trabajo</a>.</td>
 </tr>
 <tr>
 <td>4</td>
-<td><strong>Tipo de lugar</strong></td>
-<td>Qué clase de lugar es. Abre un selector por categorías, con buscador. Lista completa en <a href="#reference">Referencia rápida</a>.</td>
+<td><strong>Ayuda de esta página</strong> (?)</td>
+<td>Abre esta guía en la página donde estás.</td>
 </tr>
 <tr>
 <td>5</td>
-<td><strong>Descripción</strong></td>
-<td>El nombre que los usuarios eligen y escuchan. Obligatoria para los destinos. Describe el lugar real: "Entrada sur" es mucho mejor que "Punto 1". <strong>No repitas el edificio</strong>: se quita solo al guardar, y la aplicación lo muestra al lado.</td>
+<td><strong>Actualizar</strong></td>
+<td>Vuelve a cargar los datos. Los cambios de otros administradores también llegan solos en unos 30 s.</td>
 </tr>
 <tr>
 <td>6</td>
-<td><strong>Interior</strong></td>
-<td>El punto está bajo techo. Hay que elegir uno de los dos cada vez.</td>
+<td><strong>Configuración</strong></td>
+<td>Tu idioma, tamaño de letra y contraste.</td>
 </tr>
 <tr>
 <td>7</td>
-<td><strong>Exterior</strong></td>
-<td>El punto está al aire libre.</td>
-</tr>
-<tr>
-<td>8</td>
-<td><strong>Iluminación</strong></td>
-<td>Opcional: brillante, moderada o tenue. Ayuda a quien revisa las fotos: una foto oscura puede ser simplemente un pasillo oscuro.</td>
-</tr>
-<tr>
-<td>9</td>
-<td><strong>Superficie (opcional)</strong></td>
-<td>Opcional: baldosa, alfombra, concreto…</td>
-</tr>
-<tr>
-<td>10</td>
-<td><strong>Elegir en el mapa</strong></td>
-<td>Fija la posición tocando un mapa. Es lo más preciso.</td>
-</tr>
-<tr>
-<td>11</td>
-<td><strong>Usar mi ubicación</strong></td>
-<td>Fija la posición con el GPS, parado justo en el punto. Solo en el teléfono y con una precisión de ±8 m o mejor. En la web queda desactivado.</td>
-</tr>
-<tr>
-<td>12</td>
-<td><strong>Crear y agregar fotos</strong></td>
-<td>Guarda el punto y abre sus fotos. Está desactivado hasta que fijes la posición.</td>
+<td><strong>Cerrar sesión</strong></td>
+<td>Cierra tu sesión.</td>
 </tr>
 </tbody>
 </table></div>
-<p>La posición es obligatoria a propósito: la aplicación no toma el GPS por su cuenta, porque así se guardaban puntos en lugares equivocados.</p>
-<p>La aplicación te detiene en dos casos:
-- <strong>Otro punto a menos de 3 m</strong>, en el mismo edificio y piso. Casi siempre es el mismo lugar guardado dos veces: agrégale fotos al que ya existe.
-- <strong>Un nombre con un tipo intermedio.</strong> Los usuarios solo pueden elegir destinos, así que un "Baño mujeres" guardado como Pasillo nunca les aparece. Toca <strong>Cambiar tipo</strong>, salvo que de verdad sea un punto de paso con nombre.</p>
-<p>El formulario recuerda la universidad, el edificio, el tipo, el piso, la iluminación y la superficie del último punto que creaste.</p>
-<h3 id="elegir-la-posicion-en-el-mapa">Elegir la posición en el mapa</h3>
-<p><a href="../images/es/location-picker.webp" target="_blank" rel="noopener"><img alt="Elegir una ubicación" src="../images/es/location-picker.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p>Toca el lugar exacto: <strong>la punta del pin</strong> marca dónde queda. Los puntos que ya existen se ven de color según su estado. El mapa se abre en el piso del formulario; cambiar de piso aquí solo cambia lo que ves, no el piso del punto.</p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Control</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Confirmar ubicación</strong> (✓)</td>
-<td>Vuelve al formulario con esa posición.</td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Subir un piso</strong></td>
-<td>Muestra el piso de arriba.</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Bajar un piso</strong></td>
-<td>Muestra el piso de abajo.</td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>Solo este piso</strong></td>
-<td>Oculta los puntos de los pisos vecinos. Ver <a href="#floors">Pisos</a>.</td>
-</tr>
-</tbody>
-</table></div>
-<p><a id="point-edit"></a></p>
-<h3 id="editar-un-punto">Editar un punto</h3>
-<p><a href="../images/es/point-edit.webp" target="_blank" rel="noopener"><img alt="Editar un punto" src="../images/es/point-edit.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Control</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Descripción</strong></td>
-<td>El nombre, como al crearlo.</td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Piso</strong></td>
-<td>En qué piso está.</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Tipo de lugar</strong></td>
-<td>Destino o intermedio.</td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>Ubicación en interior</strong></td>
-<td>Interior o exterior.</td>
-</tr>
-<tr>
-<td>5</td>
-<td><strong>Iluminación</strong></td>
-<td>Como al crearlo.</td>
-</tr>
-<tr>
-<td>6</td>
-<td><strong>Superficie (opcional)</strong></td>
-<td>Como al crearlo.</td>
-</tr>
-<tr>
-<td>7</td>
-<td><strong>Administrar fotos (N)</strong></td>
-<td>Abre <a href="#photos">las fotos</a>. Encima, las miniaturas sirven para revisarlas de un vistazo.</td>
-</tr>
-<tr>
-<td>8</td>
-<td><strong>Estado</strong></td>
-<td>Pendiente, Verificado o Rechazado. Ver <a href="#verify">Verificar</a>.</td>
-</tr>
-<tr>
-<td>9</td>
-<td><strong>Mover en el mapa</strong></td>
-<td>Elige otra posición.</td>
-</tr>
-<tr>
-<td>10</td>
-<td><strong>Guardar cambios</strong></td>
-<td>Guarda.</td>
-</tr>
-</tbody>
-</table></div>
-<p><a id="photos"></a></p>
-<h3 id="fotos">Fotos</h3>
-<p>Una persona puede llegar a un lugar desde cualquier lado, así que la aplicación necesita verlo desde cada dirección. Toma de <strong>4 a 8 fotos parado en el punto</strong>, una hacia cada lado (N, S, E, O, adaptándote al lugar; en una esquina quizá solo haya dos o tres direcciones que valgan la pena).</p>
-<p><a href="../images/es/point-photos.webp" target="_blank" rel="noopener"><img alt="Fotos de un punto en la web" src="../images/es/point-photos.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p>Las imágenes de arriba son de relleno; aquí verás tus fotos, con su dirección en la esquina.</p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Control</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Las fotos miran hacia</strong> (N, NE, E…, No sé)</td>
-<td>Hacia dónde miran las fotos que vas a subir. Elige <strong>No sé</strong> si no estás seguro: esa foto nunca se descarta por mirar hacia otro lado.</td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Subir fotos (N)</strong></td>
-<td>Elige una o más imágenes de tu computador. N es cuántas tiene el punto.</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Listo</strong> (✓)</td>
-<td>Termina y vuelve.</td>
-</tr>
-</tbody>
-</table></div>
-<p>El ícono de basura de cada foto la elimina, después de confirmar. Para tomar fotos con la cámara, ver <a href="#phone-only">Solo en el teléfono</a>.</p>
-<p><a id="verify"></a></p>
-<h3 id="verificar-un-punto">Verificar un punto</h3>
-<p>El estado decide si un punto existe para los usuarios:</p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>Estado</th>
-<th>Significado</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>Pendiente</strong></td>
-<td>Capturado, sin revisar. Los usuarios no lo ven, y la aplicación no lo reconoce.</td>
-</tr>
-<tr>
-<td><strong>Verificado</strong></td>
-<td>Revisado. Sus fotos entran a la búsqueda, y puede ser parte de una ruta.</td>
-</tr>
-<tr>
-<td><strong>Rechazado</strong></td>
-<td>Revisado y descartado (malas fotos, duplicado…). Sale de la búsqueda, sin eliminarse.</td>
-</tr>
-</tbody>
-</table></div>
-<p>Antes de verificar, mira sus fotos: ¿están claras y muestran el lugar correcto? Verifica con el botón ✔ de la fila, o con <strong>Estado</strong> en la edición.</p>
-<p>Sin fotos, no se puede verificar:</p>
-<p><a href="../images/es/verify-needs-photo.webp" target="_blank" rel="noopener"><img alt="Aviso de que falta una foto" src="../images/es/verify-needs-photo.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p>Sin conexiones, la aplicación pregunta primero. Puedes verificar igual y conectar después, pero hasta entonces los usuarios no pueden llegar a ese punto ni salir de él:</p>
-<p><a href="../images/es/verify-unconnected.webp" target="_blank" rel="noopener"><img alt="Aviso de punto sin conexiones" src="../images/es/verify-unconnected.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p><strong>Si aparece un error de indexación</strong>, el punto queda verificado pero la búsqueda por fotos no lo recibió. Ver <a href="#reindex">Reindexar</a>.</p>
+<p><a id="workflow"></a></p>
+<h2 id="3-el-trabajo-completo-de-principio-a-fin">3. El trabajo completo, de principio a fin</h2>
+<ol>
+<li>Crea la <strong><a href="#universities">universidad</a></strong> y sus <strong><a href="#buildings">edificios</a></strong>, con sus pisos.</li>
+<li>Abre el <strong><a href="#points-map">Mapa</a></strong> y entra al edificio.</li>
+<li>Crea los <strong><a href="#point-form">puntos</a></strong> con el botón de la cámara: primero los lugares a donde va la gente, con un nombre claro; luego puntos intermedios cada 6 a 8 m por los caminos.</li>
+<li>Agrega las <strong><a href="#photos">fotos</a></strong>, de 4 a 8 por punto, y <strong><a href="#verify">verifica</a></strong> cada punto.</li>
+<li><strong><a href="#connect-on-map">Conecta</a></strong> los puntos en cadena por los caminos.</li>
+<li>Resuelve los <strong><a href="#notices">avisos</a></strong>, recorre una ruta con <strong><a href="#phone-only">Probar como usuario</a></strong> y mira su <strong><a href="#sessions">sesión</a></strong>.</li>
+</ol>
+<p><strong>Ejemplo.</strong> De la puerta de la Biblioteca al baño: crea "Universidad Demo" y "Biblioteca". En el mapa, crea "Entrada principal" (Entrada), "Baño mujeres" (Baño) y un Pasillo cada 7 m entre ellos. Agrega fotos, verifícalos y conéctalos en orden. "Baño mujeres" ya se puede elegir.</p>
 <p><a id="points-map"></a></p>
-<h3 id="el-mapa-de-puntos">El mapa de puntos</h3>
-<p><strong>Mapa</strong> muestra los mismos puntos filtrados: verde verificado, gris pendiente, rojo rechazado. Las líneas son sus conexiones.</p>
-<p><a href="../images/es/points-map.webp" target="_blank" rel="noopener"><img alt="Mapa de puntos" src="../images/es/points-map.webp" width="1280" height="1000" loading="lazy"></a></p>
+<h2 id="4-el-mapa">4. El mapa</h2>
+<p>El mapa muestra primero las universidades, sus edificios al acercarte, y los puntos y conexiones más cerca todavía.</p>
+<p><a href="../images/es/map-home.webp" target="_blank" rel="noopener"><img alt="El mapa, al inicio" src="../images/es/map-home.webp" width="412" height="800" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>Qué hace</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Buscar</strong></td>
+<td>Encuentra universidades, edificios y puntos, y lleva el mapa allí, en el piso correcto.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Todas</strong> › universidad › edificio</td>
+<td>Dónde estás. Toca un nivel, o usa atrás, para subir. ⓘ abre sus detalles.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Nuevo punto de referencia</strong></td>
+<td>Abre <a href="#point-form">el formulario</a>, con el edificio donde estás.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Toca una universidad para ver sus edificios, y un edificio para ver sus puntos.</p>
+<p><a href="../images/es/points-map.webp" target="_blank" rel="noopener"><img alt="Los puntos de un edificio" src="../images/es/points-map.webp" width="412" height="800" loading="lazy"></a></p>
 <div class="scroll"><table>
 <thead>
 <tr>
@@ -886,7 +290,7 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 <tr>
 <td>3</td>
 <td><strong>Solo este piso</strong></td>
-<td>Oculta los pisos vecinos. Ver <a href="#floors">Pisos</a>.</td>
+<td>Oculta los pisos vecinos.</td>
 </tr>
 <tr>
 <td>4</td>
@@ -895,8 +299,48 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 </tr>
 </tbody>
 </table></div>
-<p>Toca un punto para ver sus datos y sus acciones:</p>
-<p><a href="../images/es/point-sheet.webp" target="_blank" rel="noopener"><img alt="Datos y acciones de un punto en el mapa" src="../images/es/point-sheet.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Marca</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Punto verde / gris claro</td>
+<td>Punto verificado / pendiente</td>
+</tr>
+<tr>
+<td>✕ naranja</td>
+<td>Punto rechazado</td>
+</tr>
+<tr>
+<td>▲ azul / ▼ morado</td>
+<td>Un punto en el piso de arriba / abajo</td>
+</tr>
+<tr>
+<td>Anillo negro</td>
+<td>El punto seleccionado o que se está moviendo</td>
+</tr>
+<tr>
+<td>Línea azul</td>
+<td>Una conexión, punteada si cambia de piso</td>
+</tr>
+<tr>
+<td>Bandera morada / edificio naranja</td>
+<td>Una universidad / un edificio, con cuántos edificios o puntos tiene</td>
+</tr>
+</tbody>
+</table></div>
+<p>Los colores se distinguen también para administradores daltónicos, y la forma siempre ayuda. <strong>Filtros</strong> (abajo a la izquierda) acota los puntos por estado, tipo, piso, interior o exterior, iluminación, fotos y conexiones; su número es cuántos hay puestos. La lista de <a href="#anchor-points">Puntos de referencia</a> usa los mismos.</p>
+<p><a href="../images/es/points-filters.webp" target="_blank" rel="noopener"><img alt="Filtros de puntos" src="../images/es/points-filters.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p><a id="floors"></a></p>
+<p><strong>Pisos.</strong> Se ve un piso a la vez. Los puntos del piso de arriba se ven como ▲ y los de abajo como ▼, y las líneas solo si tocan el piso actual.</p>
+<p><a href="../images/es/points-map-floor2.webp" target="_blank" rel="noopener"><img alt="Piso 2, con los pisos vecinos" src="../images/es/points-map-floor2.webp" width="412" height="800" loading="lazy"></a></p>
+<h3 id="los-detalles-de-un-punto">Los detalles de un punto</h3>
+<p>Toca un punto: sus datos y acciones se abren al lado del mapa, o desde abajo en un teléfono.</p>
+<p><a href="../images/es/point-sheet.webp" target="_blank" rel="noopener"><img alt="Los detalles de un punto" src="../images/es/point-sheet.webp" width="412" height="800" loading="lazy"></a></p>
 <div class="scroll"><table>
 <thead>
 <tr>
@@ -909,17 +353,17 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 <tr>
 <td>1</td>
 <td><strong>Conectar</strong></td>
-<td>Abre <a href="#connect-on-map">Conectar en el mapa</a> con este punto seleccionado.</td>
+<td>Empieza el <a href="#connect-on-map">modo Conectar</a> desde aquí.</td>
 </tr>
 <tr>
 <td>2</td>
 <td><strong>Mover</strong></td>
-<td>Cambia su posición (abajo).</td>
+<td>Toca el lugar nuevo (la punta del pin) y luego <strong>Guardar nueva posición</strong>. Se rechaza si una conexión pasaría de 30 m.</td>
 </tr>
 <tr>
 <td>3</td>
 <td><strong>Verificar</strong> / <strong>Quitar verificación</strong></td>
-<td>Cambia su estado.</td>
+<td>Ver <a href="#verify">Verificar</a>.</td>
 </tr>
 <tr>
 <td>4</td>
@@ -929,86 +373,14 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 <tr>
 <td>5</td>
 <td><strong>Editar</strong></td>
-<td>Abre <a href="#point-edit">su edición</a>.</td>
+<td>Los campos <a href="#point-form">del formulario</a>, más su estado.</td>
 </tr>
 </tbody>
 </table></div>
-<p><strong>Mover un punto.</strong> Toca <strong>Mover</strong> y luego la nueva posición: la punta del pin marca dónde queda. <strong>Guardar nueva posición</strong> la guarda, y <strong>Cancelar</strong> la descarta. La aplicación actualiza también la búsqueda por fotos y las distancias de sus conexiones. No deja mover un punto si eso estira una de sus conexiones a más de 30 m.</p>
-<p><a href="../images/es/point-moving.webp" target="_blank" rel="noopener"><img alt="Moviendo un punto" src="../images/es/point-moving.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p><a id="floors"></a></p>
-<h3 id="pisos-en-los-mapas">Pisos en los mapas</h3>
-<p>Los mapas muestran un piso a la vez. Se cambia como en un ascensor, y el recuadro indica en qué piso estás. Este control aparece en todos los mapas que muestran puntos, y solo si hay más de un piso.</p>
-<ul>
-<li>Los puntos del <strong>piso actual</strong> se ven normales.</li>
-<li>Los del <strong>piso de arriba</strong> son ▲ morados, y los del <strong>piso de abajo</strong>, ▼ naranjas. Los pisos más lejanos no se ven.</li>
-<li>Las líneas solo se dibujan si tocan el piso actual, y son punteadas si cambian de piso.</li>
-</ul>
-<p><a href="../images/es/points-map-floor2.webp" target="_blank" rel="noopener"><img alt="Piso 2, con el de abajo en naranja" src="../images/es/points-map-floor2.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p><strong>Solo este piso</strong> oculta los ▲ y ▼. La aplicación recuerda esta opción en este navegador.</p>
-<p><a href="../images/es/points-map-only-floor.webp" target="_blank" rel="noopener"><img alt="Solo este piso activado" src="../images/es/points-map-only-floor.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p><a id="connections"></a></p>
-<h2 id="6-conexiones">6. Conexiones</h2>
-<p>Una conexión dice que <strong>una persona puede caminar directamente entre dos puntos</strong>. Las rutas solo pasan por conexiones, y la guía hace caminar en línea recta entre dos puntos conectados.</p>
-<p><a href="../images/es/connections.webp" target="_blank" rel="noopener"><img alt="Lista de conexiones" src="../images/es/connections.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Control</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Buscar conexiones</strong></td>
-<td>Busca por el nombre de sus puntos.</td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Agregar conexión (formulario)</strong></td>
-<td>Abre <a href="#connection-form">el formulario</a>.</td>
-</tr>
-<tr>
-<td>3</td>
-<td>Fila de la conexión</td>
-<td>Muestra sus dos puntos, sus edificios y su distancia. <strong>Tocarla</strong> abre su aviso para usuarios (abajo). ⚠ indica que tiene uno.</td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>Eliminar</strong> (basura)</td>
-<td>Elimina la conexión, después de confirmar. Los puntos no se tocan.</td>
-</tr>
-<tr>
-<td>5</td>
-<td><strong>Conectar en el mapa</strong></td>
-<td>Abre <a href="#connect-on-map">el mapa</a>.</td>
-</tr>
-</tbody>
-</table></div>
-<h3 id="reglas">Reglas</h3>
-<p>La aplicación y el servidor aplican estas reglas:
-- <strong>Máximo 30 m en línea recta.</strong> Una conexión de 50 m entre edificios atraviesa lo que haya en medio. Captura puntos cada 6 a 8 m y conéctalos en cadena. Por encima de 15 m, la aplicación avisa.
-- <strong>Solo se cambia de piso</strong> por un punto de escaleras, ascensor o rampa.
-- Una distancia escrita a mano no puede ser menor que la línea recta.</p>
-<p>Las conexiones viejas que rompen estas reglas no se usan en las rutas: un viaje que las necesitaba dice que no hay ruta hasta rehacerlas. El menú las lista (<a href="#notices">Avisos del menú</a>).</p>
-<p><a id="connection-warning"></a></p>
-<h3 id="avisos-para-usuarios">Avisos para usuarios</h3>
-<p>La aplicación <strong>no ve obstáculos</strong>: solo sabe lo que alguien anotó. Para un escalón, una caneca o una puerta angosta, toca la conexión y escribe un aviso corto. Se le dice al usuario cuando empieza ese tramo: "Atención: tres escalones hacia abajo".</p>
-<p><a href="../images/es/connection-warning.webp" target="_blank" rel="noopener"><img alt="Aviso para usuarios de una conexión" src="../images/es/connection-warning.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p>Las escaleras, ascensores y rampas se anuncian solos unos 8 m antes, si el punto tiene ese tipo.</p>
 <p><a id="connect-on-map"></a></p>
-<h3 id="conectar-en-el-mapa">Conectar en el mapa</h3>
-<p>Es la forma más rápida de conectar un pasillo entero.</p>
-<p><a href="../images/es/connect-map.webp" target="_blank" rel="noopener"><img alt="Conectar en el mapa" src="../images/es/connect-map.webp" width="1280" height="1000" loading="lazy"></a></p>
-<ol>
-<li>Elige la <strong>universidad</strong> y, si quieres acotar, el <strong>edificio</strong>.</li>
-<li>Toca un punto para seleccionarlo. Basta un toque cerca, y se ve en azul.</li>
-<li>Toca el siguiente: se crea la conexión, y <strong>ese punto queda seleccionado</strong>, así que puedes seguir tocando a lo largo del pasillo.</li>
-<li>Toca el punto seleccionado para deseleccionarlo.</li>
-</ol>
-<p>Las conexiones son líneas verdes. Una nueva se ve gris punteada mientras se guarda, y puedes seguir tocando. Para <strong>eliminar</strong> una, toca la línea lejos de los puntos y confirma.</p>
-<p><a href="../images/es/connect-selected.webp" target="_blank" rel="noopener"><img alt="Conectar con un punto seleccionado" src="../images/es/connect-selected.webp" width="1280" height="1000" loading="lazy"></a></p>
+<h3 id="modo-conectar">Modo Conectar</h3>
+<p>Una conexión significa que <strong>una persona puede caminar en línea recta entre dos puntos</strong>; las rutas solo siguen conexiones. Enciende <strong>Conectar</strong> y toca los puntos en orden por un camino. Cada toque conecta con el anterior, y así la cadena sigue por el pasillo.</p>
+<p><a href="../images/es/connect-selected.webp" target="_blank" rel="noopener"><img alt="Modo Conectar, con un punto seleccionado" src="../images/es/connect-selected.webp" width="412" height="800" loading="lazy"></a></p>
 <div class="scroll"><table>
 <thead>
 <tr>
@@ -1020,41 +392,106 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 <tbody>
 <tr>
 <td>1</td>
-<td><strong>Universidad</strong></td>
-<td>Qué campus muestra el mapa.</td>
+<td><strong>Conectar</strong></td>
+<td>Enciende y apaga el modo.</td>
 </tr>
 <tr>
 <td>2</td>
-<td><strong>Edificio</strong></td>
-<td>Acota los puntos a un edificio.</td>
+<td><strong>Listo</strong></td>
+<td>Sale del modo. Atrás también, después de soltar el punto.</td>
 </tr>
 <tr>
 <td>3</td>
-<td><strong>Subir un piso</strong></td>
-<td>Muestra el piso de arriba.</td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>Bajar un piso</strong></td>
-<td>Muestra el piso de abajo.</td>
-</tr>
-<tr>
-<td>5</td>
-<td><strong>Solo este piso</strong></td>
-<td>Oculta los pisos vecinos. Para conectar entre pisos debe estar apagado.</td>
-</tr>
-<tr>
-<td>6</td>
 <td><strong>Ayuda de esta página</strong></td>
 <td>Abre esta sección.</td>
 </tr>
 </tbody>
 </table></div>
-<p><strong>Conectar dos pisos.</strong> Crea un punto de escaleras, ascensor o rampa <strong>en cada piso</strong>, uno sobre el otro. Toca el del piso actual, y luego el ▲ o ▼ del otro piso. La línea se ve punteada, y el mapa pasa a ese piso para seguir encadenando. <strong>Conecta el ascensor si existe</strong>: las rutas lo prefieren.</p>
-<p><a id="connection-form"></a></p>
-<h3 id="conectar-con-el-formulario">Conectar con el formulario</h3>
-<p>Úsalo cuando necesites escribir la distancia real o un aviso desde el principio.</p>
-<p><a href="../images/es/connection-form.webp" target="_blank" rel="noopener"><img alt="Formulario de conexión" src="../images/es/connection-form.webp" width="1280" height="1000" loading="lazy"></a></p>
+<ul>
+<li>Toca otra vez el punto seleccionado para soltarlo. Una línea nueva se ve gris punteada mientras se guarda.</li>
+<li>Como mucho <strong>30 m</strong> en línea recta (aviso desde 15 m), y los pisos solo cambian por una escalera, un elevador o una rampa. Un toque rechazado no pierde tu lugar en la cadena.</li>
+<li><strong>Entre pisos:</strong> con <strong>Solo este piso</strong> apagado, selecciona la escalera de este piso y luego su ▲ o ▼ en el otro; el mapa lo sigue. Conecta también el elevador: las rutas lo prefieren.</li>
+</ul>
+<h3 id="los-detalles-de-una-conexion">Los detalles de una conexión</h3>
+<p>Toca una línea, en cualquiera de los dos modos.</p>
+<p><a href="../images/es/map-connection.webp" target="_blank" rel="noopener"><img alt="Los detalles de una conexión" src="../images/es/map-connection.webp" width="412" height="800" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Botón</th>
+<th>Qué hace</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Editar aviso</strong></td>
+<td>Lo que oyen los usuarios al empezar ese tramo: "Atención: tres escalones hacia abajo". La aplicación no ve obstáculos.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Eliminar</strong></td>
+<td>La elimina, después de confirmar. Las rutas que pasaban por ella se recalculan.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Las escaleras, los elevadores y las rampas se anuncian solos cuando el punto tiene ese tipo.</p>
+<p><a id="universities"></a></p>
+<h2 id="5-universidades-y-edificios">5. Universidades y edificios</h2>
+<p>Una universidad es un campus; todo pertenece a una. La fila de una universidad abre sus edificios, y la de un edificio sus puntos.</p>
+<p><a href="../images/es/university-form.webp" target="_blank" rel="noopener"><img alt="Formulario de universidad" src="../images/es/university-form.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Campo</th>
+<th>Qué significa</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Código</strong></td>
+<td>Corto y único, como <code>ICESI</code>. No se puede cambiar después.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Nombre</strong></td>
+<td>El que se muestra en toda la aplicación.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Dirección (opcional)</strong></td>
+<td>Solo de referencia.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Latitud</strong></td>
+<td>El centro aproximado del campus.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Longitud</strong></td>
+<td>Igual.</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Elegir en el mapa</strong></td>
+<td>Llena los dos tocando un mapa.</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Guardar universidad</strong></td>
+<td>La crea.</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<p><strong>En la web, escribe primero unas coordenadas aproximadas:</strong> sin ellas, el mapa se abre en el océano, en 0,0.</p>
+</blockquote>
+<p><a id="buildings"></a></p>
+<p><a href="../images/es/building-form.webp" target="_blank" rel="noopener"><img alt="Formulario de edificio" src="../images/es/building-form.webp" width="1280" height="1000" loading="lazy"></a></p>
 <div class="scroll"><table>
 <thead>
 <tr>
@@ -1067,348 +504,336 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 <tr>
 <td>1</td>
 <td><strong>Universidad</strong></td>
-<td>Filtra las listas de puntos.</td>
+<td>A cuál pertenece.</td>
 </tr>
 <tr>
 <td>2</td>
-<td><strong>Edificio (filtro opcional)</strong></td>
-<td>Acota más las listas.</td>
+<td><strong>Código</strong></td>
+<td>Corto y único. No se puede cambiar después.</td>
 </tr>
 <tr>
 <td>3</td>
-<td><strong>Punto de referencia A</strong></td>
-<td>Un extremo.</td>
+<td><strong>Nombre</strong></td>
+<td>El que usa la gente ("Edificio C"); los usuarios lo pueden decir.</td>
 </tr>
 <tr>
 <td>4</td>
-<td><strong>Punto de referencia B</strong></td>
-<td>El otro extremo.</td>
+<td><strong>Dirección (opcional)</strong></td>
+<td>Solo de referencia.</td>
 </tr>
 <tr>
 <td>5</td>
-<td><strong>Distancia en metros (opcional)</strong></td>
-<td>Cuánto se camina de verdad. En blanco, se usa la línea recta. Complétala si el camino da una vuelta.</td>
+<td><strong>Latitud</strong></td>
+<td>Su posición. Se rechazan puntos a más de 300 m.</td>
 </tr>
 <tr>
 <td>6</td>
-<td><strong>Aviso para usuarios</strong></td>
-<td>Lo que se le dice al usuario al empezar este tramo. Ver <a href="#connection-warning">Avisos para usuarios</a>.</td>
+<td><strong>Longitud</strong></td>
+<td>Igual.</td>
 </tr>
 <tr>
 <td>7</td>
-<td><strong>Guardar conexión</strong></td>
-<td>Crea la conexión.</td>
+<td><strong>Elegir en el mapa</strong></td>
+<td>Llena los dos, empezando en la universidad.</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>Pisos</strong></td>
+<td>Cuántos tiene; son las opciones de piso de sus puntos.</td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>Tiene ascensor</strong></td>
+<td>Información de accesibilidad.</td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>Tiene escaleras</strong></td>
+<td>Información de accesibilidad.</td>
+</tr>
+<tr>
+<td>11</td>
+<td><strong>Guardar edificio</strong></td>
+<td>Lo crea.</td>
 </tr>
 </tbody>
 </table></div>
-<p>Lo único que se puede cambiar de una conexión después es su aviso. Para cambiar otra cosa, elimínala y créala de nuevo. Las rutas guardadas que pasaban por una conexión eliminada se recalculan solas.</p>
-<p><a id="users-see"></a></p>
-<h2 id="7-lo-que-ven-los-usuarios">7. Lo que ven los usuarios</h2>
-<p>Esto explica la mayoría de los "no me aparece" y "no hay ruta":</p>
-<ul>
-<li><strong>Solo ven puntos verificados con al menos una conexión.</strong> Los demás no existen para ellos.</li>
-<li><strong>Solo pueden elegir destinos</strong>, es decir, puntos de un tipo marcado con ★ en la <a href="#reference">Referencia rápida</a>, y con nombre.</li>
-<li><strong>El punto de partida</strong> es el punto conectado más cercano a su GPS. Si hay puntos de varios pisos a menos de 15 m, la aplicación les pregunta en qué piso están.</li>
-<li><strong>Pueden decir un edificio</strong> ("Edificio C"). La ruta termina en su entrada más cercana caminando, así que <strong>marca cada puerta con el tipo Entrada</strong> y conéctala. Sin entradas marcadas, termina en el punto conectado más cercano de su piso más bajo.</li>
-<li><strong>Los nombres no repiten el edificio.</strong> "Entrada sur bloque 20" se guarda como "Entrada sur". El usuario puede decir "entrada sur bloque 20" igual, y si hay varias "Entrada sur" se le ofrecen las más cercanas.</li>
-<li><strong>Al cambiar de piso</strong> la aplicación le dice a dónde ir ("Toma el ascensor hasta el piso 3") y espera a que el barómetro del teléfono detecte el cambio.</li>
-</ul>
+<p>Al editar cualquiera de los dos aparece un interruptor para <strong>desactivarlo</strong>: deja de ofrecerse a los usuarios, y no se borra nada.</p>
+<p><a id="anchor-points"></a></p>
+<h2 id="6-puntos-de-referencia">6. Puntos de referencia</h2>
+<p>Un punto de referencia es un lugar físico (una puerta, una intersección, el vestíbulo de un elevador) que la aplicación reconoce por sus fotos, y una parada de las rutas. Su <strong>tipo de lugar</strong> lo hace un <strong>destino</strong> (★: los usuarios lo eligen, así que necesita nombre) o un <strong>punto intermedio</strong> (solo une caminos).</p>
+<p><a href="../images/es/points-list.webp" target="_blank" rel="noopener"><img alt="Lista de puntos de referencia" src="../images/es/points-list.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>Qué hace</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Universidad</strong></td>
+<td>Acota la lista.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Edificio</strong></td>
+<td>La acota a un edificio.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Buscar puntos de referencia</strong></td>
+<td>Por nombre.</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Fila del punto</td>
+<td><strong>Tocarla abre el mapa en modo Conectar</strong> desde este punto.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Verificar</strong></td>
+<td>Lo verifica, o devuelve uno verificado a pendiente.</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Editar</strong> (lápiz)</td>
+<td>Su página de edición.</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Más acciones</strong> (⋮)</td>
+<td><strong>Agregar foto</strong> y <strong>Eliminar</strong>.</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>Filtros</strong></td>
+<td>Como en <a href="#points-map">el mapa</a>.</td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>Nuevo punto de referencia</strong></td>
+<td>Abre <a href="#point-form">el formulario</a>.</td>
+</tr>
+</tbody>
+</table></div>
+<p><a id="point-form"></a></p>
+<h3 id="crear-un-punto">Crear un punto</h3>
+<p><a href="../images/es/point-form.webp" target="_blank" rel="noopener"><img alt="Formulario de punto nuevo" src="../images/es/point-form.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Campo</th>
+<th>Qué significa</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Universidad</strong></td>
+<td>Acota los edificios.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Edificio</strong></td>
+<td>A cuál pertenece.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Piso</strong></td>
+<td>"Piso 1" es la planta baja.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Tipo de lugar</strong></td>
+<td>Por categoría, con buscador.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Descripción</strong></td>
+<td>El nombre que los usuarios eligen y oyen; obligatorio en los destinos. "Entrada sur", no "Punto 1", y <strong>sin el edificio</strong>, que se quita.</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Interior</strong></td>
+<td>Bajo techo. Elige una de las dos cada vez.</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Exterior</strong></td>
+<td>Al aire libre.</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>Iluminación</strong></td>
+<td>Opcional. Explica las fotos oscuras.</td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>Superficie (opcional)</strong></td>
+<td>Baldosa, concreto…</td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>Elegir en el mapa</strong></td>
+<td>Lo más preciso: apunta con la punta del pin.</td>
+</tr>
+<tr>
+<td>11</td>
+<td><strong>Usar mi ubicación</strong></td>
+<td>El GPS del teléfono, parado en el punto, con ±8 m o mejor.</td>
+</tr>
+<tr>
+<td>12</td>
+<td><strong>Crear y agregar fotos</strong></td>
+<td>Lo guarda y abre sus fotos. Necesita la posición.</td>
+</tr>
+</tbody>
+</table></div>
+<p>El formulario recuerda la universidad, el edificio, el tipo, el piso, la iluminación y la superficie de tu último punto. Pregunta antes de guardar a menos de 3 m de otro punto, o un nombre en un tipo intermedio.</p>
+<p><a id="photos"></a></p>
+<h3 id="fotos">Fotos</h3>
+<p>La gente llega a un lugar por cualquier lado, así que toma <strong>de 4 a 8 fotos parado en el punto</strong>, una hacia cada lado. En el teléfono, <strong>Tomar foto</strong> guarda la orientación de la brújula. En la web, las subes:</p>
+<p><a href="../images/es/point-photos.webp" target="_blank" rel="noopener"><img alt="Las fotos de un punto en la web" src="../images/es/point-photos.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>Qué hace</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Las fotos miran hacia</strong></td>
+<td>Hacia dónde miran las próximas que subas; <strong>No sé</strong> si no estás seguro.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Subir fotos (N)</strong></td>
+<td>N es cuántas tiene el punto.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Listo</strong> (✓)</td>
+<td>Vuelve.</td>
+</tr>
+</tbody>
+</table></div>
+<p><a id="verify"></a></p>
+<h3 id="verificar">Verificar</h3>
+<p>Los puntos <strong>Pendientes</strong> no existen para los usuarios y no se reconocen. Los <strong>Verificados</strong> entran a la búsqueda de fotos y a las rutas. Los <strong>Rechazados</strong> quedan a un lado sin borrarlos. Revisa antes que las fotos sean claras y muestren el lugar correcto. Un punto sin fotos no se puede verificar; uno sin conexiones sí, pero no sirve hasta <a href="#pitfall-unconnected">conectarlo</a>.</p>
+<p><a id="connections"></a></p>
+<h2 id="7-conexiones">7. Conexiones</h2>
+<p>Se conecta en el <a href="#connect-on-map">modo Conectar</a>; esta lista es para revisarlas.</p>
+<p><a href="../images/es/connections.webp" target="_blank" rel="noopener"><img alt="Lista de conexiones" src="../images/es/connections.webp" width="1280" height="1000" loading="lazy"></a></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Control</th>
+<th>Qué hace</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Universidad</strong></td>
+<td>Conexiones con un punto allí.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Edificio</strong></td>
+<td>Igual, para un edificio.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Buscar conexiones</strong></td>
+<td>Por el nombre de sus puntos.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Agregar conexión (formulario)</strong></td>
+<td>Los puntos A y B, una distancia escrita (si el camino se curva) y un aviso.</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Fila de la conexión</td>
+<td>⚠ si tiene aviso. Tócala para editar el aviso; el botón del mapa la muestra.</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Eliminar</strong> (basura)</td>
+<td>La elimina, después de confirmar.</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Filtros</strong></td>
+<td>Más de 15 m, con aviso, o que cambian de piso.</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>Conectar en el mapa</strong></td>
+<td>El mapa en modo Conectar.</td>
+</tr>
+</tbody>
+</table></div>
+<p>De una conexión solo se puede cambiar el aviso; para lo demás, elimínala y vuelve a conectar.</p>
 <p><a id="notices"></a></p>
-<h2 id="8-avisos-del-menu">8. Avisos del menú</h2>
-<p>Los avisos naranjas muestran errores de mapa que afectan a los usuarios. Se calculan con los datos cargados, y desaparecen cuando todo está bien.</p>
+<h2 id="8-revisar-tu-trabajo">8. Revisar tu trabajo</h2>
+<p><strong>Avisos.</strong> Desaparecen cuando todo está bien. Cada uno abre una lista: un elemento se abre en el mapa, y <strong>Cómo arreglarlo</strong> abre su sección de esta guía.</p>
+<p><a href="../images/es/notice-review.webp" target="_blank" rel="noopener"><img alt="La lista de un aviso" src="../images/es/notice-review.webp" width="1280" height="1000" loading="lazy"></a></p>
 <div class="scroll"><table>
 <thead>
 <tr>
 <th>Aviso</th>
-<th>Qué significa</th>
-<th>Qué hacer</th>
+<th>Ver</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><strong>N puntos verificados sin conexión</strong></td>
-<td>Nadie puede llegar a ellos ni salir de ellos.</td>
-<td>Abre la lista filtrada; conéctalos.</td>
+<td><a href="#pitfall-unconnected">Sin conexiones</a></td>
 </tr>
 <tr>
 <td><strong>N puntos con nombre que los usuarios no pueden elegir</strong></td>
-<td>Tienen nombre, pero su tipo es intermedio.</td>
-<td>Toca uno y cambia su tipo si los usuarios van allí. Algunos pueden ser a propósito ("Pasillo hacia salas 202").</td>
+<td><a href="#pitfall-type">Tipo intermedio</a></td>
 </tr>
 <tr>
 <td><strong>N conexiones de más de 30 m</strong></td>
-<td>Las rutas no las usan.</td>
-<td>Toca una para borrarla, y vuelve a conectar ese camino con puntos intermedios.</td>
+<td><a href="#pitfall-gap">Huecos de más de 30 m</a></td>
 </tr>
 <tr>
 <td><strong>N conexiones que cambian de piso sin escaleras</strong></td>
-<td>Las rutas no las usan.</td>
-<td>Toca una para borrarla, y conecta los pisos por un punto de escaleras, ascensor o rampa en cada piso.</td>
+<td><a href="#pitfall-floor">Cambio de piso</a></td>
 </tr>
 </tbody>
 </table></div>
-<p><a href="../images/es/health-long-connections.webp" target="_blank" rel="noopener"><img alt="Lista de conexiones de más de 30 m" src="../images/es/health-long-connections.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p><a href="../images/es/health-floor-change.webp" target="_blank" rel="noopener"><img alt="Lista de conexiones que cambian de piso sin escaleras" src="../images/es/health-floor-change.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p><a href="../images/es/health-hidden-names.webp" target="_blank" rel="noopener"><img alt="Lista de puntos con nombre que los usuarios no pueden elegir" src="../images/es/health-hidden-names.webp" width="1280" height="1000" loading="lazy"></a></p>
 <p><a id="reindex"></a></p>
-<h3 id="reindexar-puntos-verificados">Reindexar puntos verificados</h3>
-<p>Si las fotos de un punto verificado no llegaron a la búsqueda (por un problema del servidor), la aplicación todavía no puede reconocerlo, y el menú lo indica en rojo: "N fotos no se pueden buscar". Cuando el servidor esté bien, toca <strong>Reindexar puntos verificados</strong>. Quita de la búsqueda lo que ya no debería estar, envía los puntos que faltan, reintenta los fallos y termina con este resumen, que lista los que aun así fallaron:</p>
-<p><a href="../images/es/reindex.webp" target="_blank" rel="noopener"><img alt="Resultado de reindexar" src="../images/es/reindex.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p><a id="users"></a></p>
-<h2 id="9-usuarios">9. Usuarios</h2>
-<p><a href="../images/es/users.webp" target="_blank" rel="noopener"><img alt="Lista de usuarios" src="../images/es/users.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Control</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>Fila del usuario</td>
-<td>Su nombre y su rol. "Desactivada" en rojo si está bloqueada.</td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Promover a administrador</strong> (escudo)</td>
-<td>Le da permisos de administrador, después de confirmar. En un administrador, este botón se los quita.</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Desactivar cuenta</strong></td>
-<td>Bloquea la cuenta sin eliminarla: no puede usar la aplicación ni la web.</td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>Activar cuenta</strong></td>
-<td>Desbloquea una cuenta desactivada.</td>
-</tr>
-</tbody>
-</table></div>
-<p>En tu propia fila estos botones están desactivados.</p>
-<ul>
-<li><strong>Cuentas sin perfil:</strong> si un registro no terminó, la cuenta aparece en una tarjeta resaltada arriba, y su botón crea el perfil que falta.</li>
-<li><strong>El primer administrador</strong> de una instalación se asigna a mano en la base de datos, como dice la nota de arriba de la lista.</li>
-</ul>
-<p><strong>Versiones de la aplicación.</strong> Funcionan la versión más nueva y la anterior. Quien tenga la anterior ve "Nueva versión disponible" al abrirla. Las más viejas solo muestran "Actualización necesaria" hasta que se instale el APK nuevo, que está en la página de versiones del proyecto en GitHub.</p>
-<p><a id="sessions"></a></p>
-<h2 id="10-sesiones">10. Sesiones</h2>
-<p>Una sesión es un viaje hecho con la aplicación. <strong>Sesiones</strong> lista a las personas, con cuántas sesiones tienen y cuántas están activas.</p>
-<p><a href="../images/es/sessions.webp" target="_blank" rel="noopener"><img alt="Sesiones por usuario" src="../images/es/sessions.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Control</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1, 2</td>
-<td>Fila del usuario</td>
-<td>Abre sus sesiones (abajo).</td>
-</tr>
-</tbody>
-</table></div>
-<p>La flecha de arriba a la derecha (<strong>Actualizar</strong>) las vuelve a cargar.</p>
-<p><a href="../images/es/user-sessions.webp" target="_blank" rel="noopener"><img alt="Sesiones de un usuario" src="../images/es/user-sessions.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Control</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Ver</strong></td>
-<td>Abre el mapa de la sesión (abajo). Se actualiza solo si sigue activa, para seguir un viaje en vivo.</td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Ver comentario</strong></td>
-<td>Muestra lo que escribió el usuario al terminar, si escribió algo.</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Eliminar</strong> (basura)</td>
-<td>Elimina la sesión y sus registros.</td>
-</tr>
-</tbody>
-</table></div>
-<h3 id="el-mapa-de-una-sesion">El mapa de una sesión</h3>
-<p><a href="../images/es/session-tracking.webp" target="_blank" rel="noopener"><img alt="Mapa de una sesión" src="../images/es/session-tracking.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p>La tarjeta de arriba resume qué tan lejos de la ruta estuvieron el GPS sin corregir y la posición corregida. La leyenda de abajo indica qué es cada cosa:
-- <strong>Línea gris azulada:</strong> la ruta planeada. Si cambia de piso, los tramos de otros pisos se ven tenues, y aparecen los botones de piso.
-- <strong>Línea naranja punteada:</strong> el GPS sin corregir.
-- <strong>Línea verde:</strong> la posición corregida.
-- <strong>Puntos morados:</strong> coincidencias de foto, con una línea delgada al punto reconocido. Una línea larga muestra de dónde se jaló la posición.
-- <strong>✗ roja:</strong> una instrucción marcada como incorrecta durante una prueba.</p>
-<p>Toca cualquiera para ver lo que se registró ahí: la posición, lo que dijo la aplicación, el rumbo y más.</p>
-<p><a id="feedback"></a></p>
-<h2 id="11-comentarios">11. Comentarios</h2>
-<p>Lo que escriben los usuarios al terminar un viaje, con su nombre, la fecha y cómo terminó el viaje. Solo se puede leer.</p>
-<p><a href="../images/es/feedback.webp" target="_blank" rel="noopener"><img alt="Comentarios de los usuarios" src="../images/es/feedback.webp" width="1280" height="1000" loading="lazy"></a></p>
-<p><a id="settings"></a></p>
-<h2 id="12-configuracion">12. Configuración</h2>
-<p>Son tus preferencias; las de cada usuario son independientes.</p>
-<p><a href="../images/es/settings.webp" target="_blank" rel="noopener"><img alt="Configuración" src="../images/es/settings.webp" width="1280" height="1000" loading="lazy"></a></p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>Control</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>Nivel de detalle</strong></td>
-<td>Cuánto detalle se muestra: bajo, medio o alto.</td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>Alto contraste</strong></td>
-<td>Colores de mayor contraste, para baja visión.</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>Idioma</strong></td>
-<td>Automático (el del dispositivo), English o Español.</td>
-</tr>
-<tr>
-<td>4</td>
-<td><strong>Guardar</strong></td>
-<td>Guarda los cambios.</td>
-</tr>
-</tbody>
-</table></div>
-<p>También están <strong>Tamaño de texto</strong> (pequeño a muy grande) y <strong>Guía de voz</strong>, los anuncios hablados durante un viaje.</p>
+<p><strong>Reindexar puntos verificados.</strong> Cuando el menú diga "N fotos no se pueden buscar" en rojo, tócalo cuando el servidor esté bien. Envía lo que falta y lista lo que siga fallando.</p>
 <p><a id="phone-only"></a></p>
-<h2 id="13-solo-en-el-telefono">13. Solo en el teléfono</h2>
-<p>En una ventana angosta o en la aplicación del teléfono, el menú se abre con ☰. Todo lo demás de esta guía funciona igual.</p>
-<p><a href="../images/es/phone-home.webp" target="_blank" rel="noopener"><img alt="La aplicación en una ventana angosta" src="../images/es/phone-home.webp" width="412" height="800" loading="lazy"></a></p>
-<p><a href="../images/es/phone-menu.webp" target="_blank" rel="noopener"><img alt="El menú en una ventana angosta" src="../images/es/phone-menu.webp" width="412" height="800" loading="lazy"></a></p>
-<p>Dos cosas necesitan el teléfono, porque usan la cámara y los sensores. Esta guía no tiene imágenes de ellas.</p>
-<h3 id="tomar-fotos-con-la-camara">Tomar fotos con la cámara</h3>
-<ol>
-<li>Abre <strong>Agregar foto</strong> de un punto, o <strong>Crear y agregar fotos</strong> al crearlo.</li>
-<li>Párate en el punto. La insignia <strong>Orientación: N°</strong> muestra hacia dónde apunta el teléfono, y se guarda con cada foto.</li>
-<li>Toca <strong>Tomar foto</strong> en cada dirección. Cada foto se sube sola, y aparece debajo con su rumbo.</li>
-<li>Toca el ícono de basura de una foto para eliminarla, y <strong>Listo</strong> (✓) al terminar.</li>
-</ol>
-<h3 id="probar-como-usuario">Probar como usuario</h3>
-<p><strong>Probar como usuario</strong> (en el menú del teléfono) te deja hacer un viaje real con tu cuenta. Ves el mapa y las coordenadas, que un usuario normal no ve: él solo tiene <strong>Repetir instrucción</strong> y <strong>Terminar navegación</strong>.</p>
-<ul>
-<li><strong>✗ Instrucción incorrecta:</strong> tócalo cada vez que la aplicación diga algo mal. Guarda lo que acababa de decir y dónde estabas.</li>
-<li><strong>Estoy en…:</strong> para medir la precisión, recorre la ruta planeada exactamente y tócalo parado en cada punto que nombra (el inicio, cada esquina, el destino). Una pulsación larga deshace el último.</li>
-<li>Luego revisa el viaje en <a href="#sessions">Sesiones</a>.</li>
-</ul>
-<p><strong>Cómo sostener el teléfono.</strong> Vertical frente al pecho, con la cámara trasera hacia adelante. Explícaselo así a quien pruebe; el tutorial de la aplicación también lo dice.</p>
+<p><strong>Probar como usuario</strong> (solo en el teléfono) es un viaje real con tu cuenta. Toca <strong>✗ Instrucción incorrecta</strong> cada vez que la aplicación diga algo mal, y <strong>Estoy en…</strong> parado en cada punto que nombra la ruta, para medir la precisión. Sostén el teléfono derecho frente al pecho, con la cámara de atrás hacia adelante, como se les explica a los usuarios.</p>
+<p><a id="sessions"></a></p>
+<p><strong>Sesiones</strong> lista los viajes por usuario. <strong>Ver</strong> abre el mapa de un viaje, en vivo mientras dura.</p>
+<p><a href="../images/es/session-tracking.webp" target="_blank" rel="noopener"><img alt="El mapa de una sesión" src="../images/es/session-tracking.webp" width="1280" height="1000" loading="lazy"></a></p>
+<p>La tarjeta dice qué tan lejos de la ruta estuvieron la posición sin corregir y la corregida. La leyenda nombra cada línea y marca: ruta planeada, GPS sin corregir, posición corregida, coincidencias de fotos e instrucciones incorrectas. Toca cualquiera para ver lo registrado allí. <strong>Comentarios</strong> muestra lo que escribieron los usuarios después de un viaje.</p>
+<p><a id="users"></a></p>
+<h2 id="9-usuarios-configuracion-y-borrado">9. Usuarios, configuración y borrado</h2>
+<p><strong>Usuarios.</strong> <strong>Promover a administrador</strong> (o quitarlo) y <strong>Desactivar cuenta</strong>, que la bloquea sin borrarla; no en tu propia fila. Un registro sin terminar aparece en una tarjeta arriba con un botón para repararlo. El primer administrador se pone en la base de datos.</p>
+<p><strong>Versiones de la aplicación.</strong> Funcionan la más nueva y la anterior; las más viejas muestran "Actualización necesaria" hasta instalar el APK nuevo, de la página de versiones del proyecto en GitHub.</p>
+<p><strong>Configuración</strong> es tuya: idioma, tamaño de letra, letra en negrita, alto contraste y guía por voz.</p>
 <p><a id="deleting"></a></p>
-<h2 id="14-eliminar-datos">14. Eliminar datos</h2>
-<p>Antes de eliminar, la aplicación dice cuánto más se elimina. Léelo con atención: <strong>no se puede deshacer</strong>.</p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>Eliminar</th>
-<th>También elimina</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>Una universidad</strong></td>
-<td>Sus edificios, sus puntos, las fotos y las conexiones de esos puntos.</td>
-</tr>
-<tr>
-<td><strong>Un edificio</strong></td>
-<td>Sus puntos, sus fotos y sus conexiones.</td>
-</tr>
-<tr>
-<td><strong>Un punto</strong></td>
-<td>Sus fotos y sus conexiones.</td>
-</tr>
-<tr>
-<td><strong>Una conexión</strong></td>
-<td>Nada más.</td>
-</tr>
-</tbody>
-</table></div>
-<p>Las rutas guardadas que pasan por un punto eliminado se eliminan con él, y el historial de viajes se conserva. Para dejar de usar algo sin perder sus datos, <strong>desactiva</strong> la universidad o el edificio, o pon el punto en <strong>Rechazado</strong>.</p>
-<p><a id="problems"></a></p>
-<h2 id="15-problemas-frecuentes">15. Problemas frecuentes</h2>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>Problema</th>
-<th>Causa probable</th>
-<th>Qué hacer</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Un lugar no aparece como destino</td>
-<td>No está verificado, no tiene conexiones, o su tipo es intermedio.</td>
-<td>Revisa los tres, y los <a href="#notices">avisos del menú</a>.</td>
-</tr>
-<tr>
-<td>"No hay ruta"</td>
-<td>Falta una conexión en el camino, o usa una de más de 30 m.</td>
-<td>Conecta el tramo que falta con <strong>Conectar en el mapa</strong>.</td>
-</tr>
-<tr>
-<td>"Tu punto de partida no está conectado"</td>
-<td>Cerca del usuario solo hay puntos sueltos.</td>
-<td>Conecta los puntos de esa zona.</td>
-</tr>
-<tr>
-<td>"Edificio C" no da ruta</td>
-<td>El edificio no tiene puntos verificados y conectados.</td>
-<td>Verifica y conecta sus puntos, y marca sus puertas como <strong>Entrada</strong>.</td>
-</tr>
-<tr>
-<td>No puedo conectar dos puntos</td>
-<td>Están a más de 30 m, o en pisos distintos sin escaleras, ascensor o rampa.</td>
-<td>Agrega puntos intermedios, o conecta por un punto de ese tipo.</td>
-</tr>
-<tr>
-<td>No veo un punto en el mapa</td>
-<td>Está en otro piso, o hay un filtro activo.</td>
-<td>Usa ▲ ▼, apaga <strong>Solo este piso</strong> y quita los filtros.</td>
-</tr>
-<tr>
-<td><strong>Crear y agregar fotos</strong> está desactivado</td>
-<td>Falta la posición, o elegir interior o exterior.</td>
-<td>Usa <strong>Elegir en el mapa</strong> y elige uno de los dos.</td>
-</tr>
-<tr>
-<td>El mapa se abre en el océano</td>
-<td>La web no tiene GPS y es una universidad nueva.</td>
-<td>Escribe unas coordenadas aproximadas primero.</td>
-</tr>
-<tr>
-<td>La aplicación no reconoce un lugar</td>
-<td>Sus fotos no están en la búsqueda.</td>
-<td>Usa <a href="#reindex">Reindexar</a>.</td>
-</tr>
-<tr>
-<td>"Actualización necesaria"</td>
-<td>La aplicación es demasiado vieja.</td>
-<td>Instala el APK más nuevo.</td>
-</tr>
-</tbody>
-</table></div>
+<p><strong>Borrar</strong> no se puede deshacer; la aplicación dice antes qué se va con ello. Una universidad se lleva sus edificios, un edificio sus puntos, y un punto sus fotos, conexiones y rutas guardadas; el historial de viajes se conserva. Para dejar de usar algo sin perderlo, <strong>desactiva</strong> la universidad o el edificio, o pon el punto en <strong>Rechazado</strong>.</p>
+<p><strong>En una ventana angosta</strong> el menú se abre con ☰; lo demás funciona igual.</p>
+<p><a href="../images/es/phone-menu.webp" target="_blank" rel="noopener"><img alt="El menú en una ventana angosta" src="../images/es/phone-menu.webp" width="412" height="800" loading="lazy"></a></p>
 <p><a id="reference"></a></p>
-<h2 id="16-referencia-rapida">16. Referencia rápida</h2>
+<h2 id="10-referencia-rapida">10. Referencia rápida</h2>
 <h3 id="tipos-de-lugar">Tipos de lugar</h3>
-<p>Los tipos con ★ son <strong>destinos</strong>: necesitan nombre, y los usuarios los pueden elegir. Los demás son puntos intermedios.</p>
+<p>★ marca los <strong>destinos</strong>: necesitan nombre, y los usuarios los pueden elegir.</p>
 <div class="scroll"><table>
 <thead>
 <tr>
@@ -1443,30 +868,36 @@ code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size
 </tr>
 </tbody>
 </table></div>
-<h3 id="iluminacion">Iluminación</h3>
+<p><strong>Iluminación:</strong> brillante (luz del día), moderada (luz normal de interior), tenue (una escalera interior).</p>
+<p><a id="problems"></a></p>
+<h3 id="otros-problemas">Otros problemas</h3>
 <div class="scroll"><table>
 <thead>
 <tr>
-<th>Opción</th>
-<th>Significado</th>
+<th>Problema</th>
+<th>Qué hacer</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Sin definir</td>
-<td>Sin información.</td>
+<td>Un punto no aparece en el mapa</td>
+<td>Otro piso o un filtro: usa ▲ ▼, apaga <strong>Solo este piso</strong>, quita los filtros.</td>
 </tr>
 <tr>
-<td>Brillante</td>
-<td>Bien iluminado, por ejemplo con luz natural.</td>
+<td><strong>Crear y agregar fotos</strong> está desactivado</td>
+<td>Pon la posición y elige interior o exterior.</td>
 </tr>
 <tr>
-<td>Moderada</td>
-<td>Iluminación interior normal.</td>
+<td>El mapa se abre en el océano</td>
+<td>Escribe coordenadas aproximadas para la universidad.</td>
 </tr>
 <tr>
-<td>Tenue</td>
-<td>Poco iluminado, por ejemplo una escalera interior.</td>
+<td>"Tu punto de partida no está conectado"</td>
+<td>Conecta los puntos alrededor del usuario.</td>
+</tr>
+<tr>
+<td>"Actualización necesaria"</td>
+<td>Instala el APK más nuevo.</td>
 </tr>
 </tbody>
 </table></div>

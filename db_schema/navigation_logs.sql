@@ -20,3 +20,5 @@ CREATE TABLE navigation_logs (
 -- Indexes
 CREATE INDEX idx_navigation_logs_session ON navigation_logs (session_id);
 CREATE INDEX idx_navigation_logs_timestamp ON navigation_logs (timestamp DESC);
+-- Deleting a point clears its logs' anchor_match_id: without this, every log is read.
+CREATE INDEX idx_navigation_logs_anchor_match ON navigation_logs (anchor_match_id);

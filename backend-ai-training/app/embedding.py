@@ -1,5 +1,6 @@
 import hashlib
 import os
+import threading
 from pathlib import Path
 
 import cv2
@@ -45,7 +46,12 @@ _EIGENPLACES_SHA256 = "98e8e21e9364a7e0990a9d7e1de5853b6d830f7f73d6bd9ee4f397575
 # The short side photos are scaled to, keeping their aspect ratio.
 _EIGENPLACES_SHORT_SIDE = 384
 
+# Threads per photo. Several photos run at once (see app/model_gate.py), and each
+# using every CPU only makes them fight.
+torch.set_num_threads(int(os.environ.get("MODEL_THREADS", "1")))
+
 _model: torch.nn.Module | None = None
+_model_lock = threading.Lock()
 
 
 class _GeM(nn.Module):
@@ -109,15 +115,20 @@ def _get_model() -> torch.nn.Module:
     # effnet, ~90 MB for EigenPlaces), unlike constructing a Supabase/Qdrant
     # client. Importing this module (e.g. from a test) must not trigger
     # that download.
+    #
+    # Locked: after a restart, every waiting photo would otherwise load its own
+    # copy at once, and could hit the container's memory limit again.
     global _model
     if _model is None:
-        if MODEL_NAME == "effnet":
-            model = efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
-        else:
-            model = EigenPlacesNet()
-            model.load_state_dict(_eigenplaces_weights())
-        model.eval()
-        _model = model
+        with _model_lock:
+            if _model is None:
+                if MODEL_NAME == "effnet":
+                    model = efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
+                else:
+                    model = EigenPlacesNet()
+                    model.load_state_dict(_eigenplaces_weights())
+                model.eval()
+                _model = model
     return _model
 
 
@@ -174,6 +185,11 @@ def extract_embedding(image_bytes: bytes) -> list[float]:
         else:
             embedding = model(tensor)
     return embedding.squeeze(0).tolist()
+
+
+def load_model() -> None:
+    """Loads the model ahead of the first photo. Called at startup."""
+    _get_model()
 
 
 def download_image(url: str) -> bytes:

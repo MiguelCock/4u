@@ -94,7 +94,7 @@ async def root():
 
 
 @app.post("/sessions")
-async def create_session(
+def create_session(
     session: NavigationSessionCreate, caller_id: str = Depends(get_caller_id)
 ):
     # user_id is an identity field - force it to the verified caller rather
@@ -105,7 +105,7 @@ async def create_session(
 
 
 @app.get("/sessions")
-async def list_sessions(
+def list_sessions(
     caller_id: str = Depends(get_caller_id),
 ) -> list[NavigationSessionResponse]:
     if not db.is_admin(caller_id):
@@ -117,7 +117,7 @@ async def list_sessions(
 
 # Declared above /sessions/{id} so "active" isn't captured as an id.
 @app.get("/sessions/active")
-async def list_my_active_sessions(
+def list_my_active_sessions(
     caller_id: str = Depends(get_caller_id),
 ) -> list[NavigationSessionResponse]:
     """The caller's own sessions still marked active, newest first - a
@@ -136,7 +136,7 @@ async def list_my_active_sessions(
 
 
 @app.get("/sessions/{id}")
-async def get_session(
+def get_session(
     id: str, caller_id: str = Depends(get_caller_id)
 ) -> NavigationSessionResponse:
     result = db.client.table("navigation_sessions").select("*").eq("id", id).execute()
@@ -149,7 +149,7 @@ async def get_session(
 
 
 @app.patch("/sessions/{id}")
-async def update_session(
+def update_session(
     id: str, session: NavigationSessionUpdate, caller_id: str = Depends(get_caller_id)
 ):
     existing = (
@@ -171,7 +171,7 @@ async def update_session(
 
 
 @app.delete("/sessions/{id}")
-async def delete_session(id: str, caller_id: str = Depends(get_caller_id)):
+def delete_session(id: str, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
     # user_feedback.session_id has no ON DELETE action (db_schema/user_feedback.sql),
@@ -205,7 +205,7 @@ async def delete_session(id: str, caller_id: str = Depends(get_caller_id)):
 
 
 @app.post("/logs")
-async def create_log(log: NavigationLogCreate, caller_id: str = Depends(get_caller_id)):
+def create_log(log: NavigationLogCreate, caller_id: str = Depends(get_caller_id)):
     session = _session_row(log.session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -225,7 +225,7 @@ async def create_log(log: NavigationLogCreate, caller_id: str = Depends(get_call
 
 
 @app.get("/logs")
-async def list_logs(
+def list_logs(
     session_id: str | None = None,
     caller_id: str = Depends(get_caller_id),
 ) -> list[NavigationLogResponse]:
@@ -255,9 +255,7 @@ async def list_logs(
 
 
 @app.get("/logs/{id}")
-async def get_log(
-    id: str, caller_id: str = Depends(get_caller_id)
-) -> NavigationLogResponse:
+def get_log(id: str, caller_id: str = Depends(get_caller_id)) -> NavigationLogResponse:
     result = db.client.table("navigation_logs").select("*").eq("id", id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Log not found")
@@ -269,7 +267,7 @@ async def get_log(
 
 
 @app.post("/feedback")
-async def create_feedback(
+def create_feedback(
     feedback: UserFeedbackCreate, caller_id: str = Depends(get_caller_id)
 ):
     if feedback.session_id is not None:
@@ -284,7 +282,7 @@ async def create_feedback(
 
 
 @app.get("/feedback")
-async def list_feedback(
+def list_feedback(
     caller_id: str = Depends(get_caller_id),
 ) -> list[UserFeedbackResponse]:
     if not db.is_admin(caller_id):
@@ -293,7 +291,7 @@ async def list_feedback(
 
 
 @app.get("/feedback/{id}")
-async def get_feedback(
+def get_feedback(
     id: str, caller_id: str = Depends(get_caller_id)
 ) -> UserFeedbackResponse:
     result = db.client.table("user_feedback").select("*").eq("id", id).execute()
@@ -306,7 +304,7 @@ async def get_feedback(
 
 
 @app.post("/guidance-reports")
-async def create_guidance_report(
+def create_guidance_report(
     report: GuidanceReportCreate, caller_id: str = Depends(get_caller_id)
 ):
     """Marks the instruction the app just gave as wrong (admin test flow).
@@ -322,7 +320,7 @@ async def create_guidance_report(
 
 
 @app.get("/guidance-reports")
-async def list_guidance_reports(
+def list_guidance_reports(
     session_id: str, caller_id: str = Depends(get_caller_id)
 ) -> list[GuidanceReportResponse]:
     """One session's reports in time order, for its owner or an admin -

@@ -21,7 +21,13 @@ node take_screenshots.mjs                 # or: --lang es, --only points-map
 uv run --no-project --with markdown==3.11.2 python build_site.py
 ```
 
-CI runs `build_site.py --check`, which fails if step 3 was forgotten.
+CI runs `build_site.py --check`. It fails if step 3 was forgotten, and also if:
+- a link points to a missing anchor;
+- a picture is missing, or one in `images/` isn't used;
+- an anchor the app opens is gone: the six "?" sections and the four pitfalls the menu notices link to;
+- Spanish and English have different anchors.
+
+`take_screenshots.mjs` takes only the pictures the two guides use. To drop a picture, remove it from both guides and delete its file. To add one, use it in both guides and give it a `r.shot(...)` in the walk.
 
 Flutter's build cache doesn't notice new files in `web/`: after adding a picture, delete `application/.dart_tool/flutter_build` before a local `flutter build web`. CI and the release always build clean.
 

@@ -17,3 +17,4 @@ CREATE TABLE navigation_sessions (
 CREATE INDEX idx_navigation_sessions_user ON navigation_sessions (user_id);
 CREATE INDEX idx_navigation_sessions_building ON navigation_sessions (building_id);
 CREATE INDEX idx_navigation_sessions_status ON navigation_sessions (status);
+CREATE INDEX idx_navigation_sessions_route ON navigation_sessions (route_id);

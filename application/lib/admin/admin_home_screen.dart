@@ -1,22 +1,28 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/map_scope.dart';
+import '../services/map_sync.dart';
+import '../widgets/admin_map/admin_map.dart';
+import '../widgets/map_conflict.dart';
 import 'add_building_screen.dart';
 import 'add_connection_screen.dart';
 import 'add_place_screen.dart';
-import 'anchor_points_map.dart';
 import 'capture_photo_screen.dart';
 import 'capture_screen.dart';
-import 'connect_anchor_points_screen.dart';
 import 'edit_anchor_point_screen.dart'
     show EditAnchorPointScreen, anchorStatusLabel;
 import 'edit_building_screen.dart';
 import 'edit_place_screen.dart';
 import 'feedback_screen.dart';
+import 'map_home.dart';
 import 'sessions_screen.dart';
 import '../user/settings_screen.dart';
 import '../user/user_home_screen.dart';
@@ -25,11 +31,18 @@ import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
 import '../widgets/admin_guide.dart';
 import '../services/capture_checks.dart';
+import '../services/connect_chain.dart';
+import '../services/connection_filters.dart';
 import '../services/exit_guard.dart';
 import '../services/location_types.dart';
-import '../services/map_tap.dart';
+import '../services/floor_view.dart';
 import '../widgets/guardrail_dialogs.dart';
+import '../widgets/connection_warning_dialog.dart';
+import '../widgets/fab_row.dart';
+import '../widgets/review_list.dart';
+import '../widgets/scope_dropdowns.dart';
 import '../widgets/scrollable_message.dart';
+import '../theme/admin_palette.dart';
 
 /// `admin`-role home screen: four tabs (places / buildings / anchor points /
 /// connections), each searchable, with edit and delete (cascade-impact
@@ -69,10 +82,22 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   String _buildingQuery = '';
   String _anchorQuery = '';
   String _connectionQuery = '';
-  String? _anchorStatusFilter;
   AnchorFilters _anchorFilters = AnchorFilters.none;
   String? _buildingsPlaceFilterId;
   String? _anchorPointsBuildingFilterId;
+  String? _anchorPointsPlaceFilterId;
+  ConnectionFilters _connectionFilters = ConnectionFilters.none;
+
+  /// The sections, in drawer order. The map is first and opens the app (C2).
+  static const _kMap = 0;
+  static const _kUniversities = 1;
+  static const _kBuildings = 2;
+  static const _kPoints = 3;
+  static const _kConnections = 4;
+  static const _kUsers = 5;
+
+  /// Where the Map section is: everything, a university or a building.
+  MapScope _mapScope = MapScope.all;
 
   /// Tabs visited before the current one, so system back walks back
   /// through them instead of closing the app.
@@ -86,24 +111,53 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// Verified photos missing from the photo index (null: unknown).
   int? _unsearchablePhotos;
 
-  /// Anchor points tab: map instead of list, and the point being moved on it.
-  bool _anchorMapView = false;
+  /// What changed since, for GET /changes (A5): set from the server's own
+  /// clock after a full load. Null when the server can't answer it yet, and
+  /// then every refresh is a full one.
+  String? _since;
+  Timer? _syncTimer;
+  Future<void>? _syncing;
+  bool _wasCovered = false;
+
+  /// The point being moved on the map.
   Map<String, dynamic>? _movingPoint;
+
+  /// Connect mode on the map (C3): the first point of the next connection,
+  /// and the pairs (see [connectionPairKey]) still being saved.
+  bool _connecting = false;
+  String? _connectFromId;
+  final Set<String> _pendingPairs = {};
+
+  /// The last "show this on the map" request (MapHome acts on each new one).
+  MapFocus? _mapFocus;
+
+  /// Connections tab: the university and building it's narrowed to.
+  String? _connectionsPlaceId;
+  String? _connectionsBuildingId;
   LatLng? _moveTarget;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this)
+    _tabController = TabController(length: 6, vsync: this)
       ..addListener(() {
         final index = _tabController.index;
         if (index != _lastTabIndex) {
           if (!_navigatingBack) _tabHistory.add(_lastTabIndex);
           _lastTabIndex = index;
           _navigatingBack = false;
+          // A move belongs to the map it started on, and so does connecting.
+          _movingPoint = null;
+          _moveTarget = null;
+          if (index != _kMap) {
+            _connecting = false;
+            _connectFromId = null;
+            // Done with; a map built again later mustn't act on it again.
+            _mapFocus = null;
+          }
         }
         setState(() {});
-        if (index == 4 && !_usersLoaded) _loadUsers();
+        if (index == _kUsers && !_usersLoaded) _loadUsers();
       });
     _placeSearchController.addListener(
       () => setState(
@@ -129,11 +183,17 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             .toLowerCase(),
       ),
     );
-    _loadData();
+    _loadAll();
+    // Other admins' changes appear within about 30 s.
+    _syncTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _onSyncTick(),
+    );
   }
 
   @override
   void dispose() {
+    _syncTimer?.cancel();
     _tabController.dispose();
     _placeSearchController.dispose();
     _buildingSearchController.dispose();
@@ -142,7 +202,132 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     super.dispose();
   }
 
-  Future<void> _loadData() async {
+  void _onSyncTick() {
+    if (!mounted) return;
+    final covered = !(ModalRoute.of(context)?.isCurrent ?? true);
+    switch (syncTickAction(covered: covered, wasCovered: _wasCovered)) {
+      case SyncTick.skip:
+        _wasCovered = true;
+      case SyncTick.silent:
+        _wasCovered = false;
+        _sync(announce: false);
+      case SyncTick.announce:
+        _sync(announce: true);
+    }
+  }
+
+  /// After an edit, or anything that changed the map: only what changed since
+  /// the last look, not all five lists (A5).
+  Future<void> _loadData() => _sync(announce: false);
+
+  /// Fetches and merges `/changes`, one at a time. With [announce] (the
+  /// 30 s timer), says how many changes came from other admins: this admin's
+  /// own edits were already merged right after saving, so they don't count.
+  Future<void> _sync({required bool announce}) async {
+    while (_syncing != null) {
+      await _syncing;
+    }
+    final since = _since;
+    if (since == null) {
+      // The server can't answer /changes (yet): reload as before, but not
+      // every 30 s.
+      if (!announce) await _loadAll();
+      return;
+    }
+    final done = Completer<void>();
+    _syncing = done.future;
+    try {
+      final changes = await _mapApi.get(
+        '/changes?since=${Uri.encodeQueryComponent(since)}',
+      );
+      if (!mounted || changes is! Map<String, dynamic>) return;
+      if (changes['full'] == true) {
+        await _loadAll();
+        return;
+      }
+      final merged = applyChanges(
+        MapLists(
+          places: _places,
+          buildings: _buildings,
+          anchorPoints: _anchorPoints,
+          photos: _photos,
+          connections: _connections,
+        ),
+        changes,
+      );
+      setState(() {
+        _places = merged.lists.places;
+        _buildings = merged.lists.buildings;
+        _anchorPoints = merged.lists.anchorPoints;
+        _photos = merged.lists.photos;
+        _connections = merged.lists.connections;
+        _since = changes['next_since'] as String?;
+        _dropStaleScopes();
+      });
+      if (announce && merged.newChanges > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(
+                context,
+              )!.mapUpdatedByOthers(merged.newChanges),
+            ),
+          ),
+        );
+      }
+      if (!announce) _refreshIndexStatus();
+    } on ApiException {
+      // Something is off: fall back to what always worked.
+      if (!announce && mounted) await _loadAll();
+    } finally {
+      _syncing = null;
+      done.complete();
+    }
+  }
+
+  /// The server's clock, to ask /changes from: a phone's clock can be off.
+  /// Null when /changes isn't there, as before the migration.
+  Future<String?> _serverSince() async {
+    try {
+      final since = DateTime.now().toUtc().subtract(const Duration(minutes: 5));
+      final changes = await _mapApi.get(
+        '/changes?since=${Uri.encodeQueryComponent(since.toIso8601String())}',
+      );
+      return changes is Map ? changes['next_since'] as String? : null;
+    } on ApiException {
+      return null;
+    }
+  }
+
+  /// A filter scoped to a university or building that's gone is dropped.
+  void _dropStaleScopes() {
+    if (_buildingsPlaceFilterId != null &&
+        !_places.any((p) => p['id'] == _buildingsPlaceFilterId)) {
+      _buildingsPlaceFilterId = null;
+    }
+    if (_anchorPointsBuildingFilterId != null &&
+        !_buildings.any((b) => b['id'] == _anchorPointsBuildingFilterId)) {
+      _anchorPointsBuildingFilterId = null;
+    }
+    if (!_places.any((p) => p['id'] == _anchorPointsPlaceFilterId)) {
+      _anchorPointsPlaceFilterId = null;
+    }
+    if (!_places.any((p) => p['id'] == _connectionsPlaceId)) {
+      _connectionsPlaceId = null;
+    }
+    if (!_buildings.any((b) => b['id'] == _connectionsBuildingId)) {
+      _connectionsBuildingId = null;
+    }
+    _mapScope = _mapScope.existingIn(
+      placeIds: {for (final p in _places) p['id'] as String},
+      buildingIds: {for (final b in _buildings) b['id'] as String},
+    );
+  }
+
+  /// All five lists: on opening, on pull-to-refresh, and as a fallback.
+  Future<void> _loadAll() async {
+    // Asked before the lists, so nothing changed between them is missed.
+    final since = _serverSince();
     try {
       final results = await Future.wait([
         _mapApi.get('/places'),
@@ -159,17 +344,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             .cast<Map<String, dynamic>>();
         _photos = (results[3] as List? ?? []).cast<Map<String, dynamic>>();
         _connections = (results[4] as List? ?? []).cast<Map<String, dynamic>>();
-        if (_buildingsPlaceFilterId != null &&
-            !_places.any((p) => p['id'] == _buildingsPlaceFilterId)) {
-          _buildingsPlaceFilterId = null;
-        }
-        if (_anchorPointsBuildingFilterId != null &&
-            !_buildings.any((b) => b['id'] == _anchorPointsBuildingFilterId)) {
-          _anchorPointsBuildingFilterId = null;
-        }
+        _dropStaleScopes();
         _loading = false;
         _error = null;
       });
+      _since = await since;
       _refreshIndexStatus();
     } catch (e) {
       // Not only ApiException: a malformed response must end the spinner too.
@@ -212,34 +391,63 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// Pull-to-refresh: reloads the map data, plus the users list once it
   /// has been opened.
   Future<void> _refresh() async {
-    await Future.wait([_loadData(), if (_usersLoaded) _loadUsers()]);
+    await Future.wait([_loadAll(), if (_usersLoaded) _loadUsers()]);
   }
 
-  /// System back: leave the current tab (dropping the filter a drill-down
-  /// set on it) for the previous one, then clear a remaining filter, then
-  /// go to the first tab, and only then ask to press again to exit.
+  /// System back: on the map, cancel a move, then go up a level. Elsewhere,
+  /// leave the current tab (dropping the filter a drill-down set on it) for
+  /// the previous one, then clear a remaining filter, then go to the map,
+  /// and only then ask to press again to exit.
   void _handleBack() {
     final index = _tabController.index;
+    if (index == _kMap && _movingPoint != null) {
+      setState(() {
+        _movingPoint = null;
+        _moveTarget = null;
+      });
+      return;
+    }
+    if (index == _kMap && _connectFromId != null) {
+      setState(() => _connectFromId = null);
+      return;
+    }
+    if (index == _kMap && _connecting) {
+      setState(() => _connecting = false);
+      return;
+    }
+    if (index == _kMap && !_anchorFilters.isEmpty) {
+      setState(() => _anchorFilters = AnchorFilters.none);
+      return;
+    }
+    if (index == _kMap && !_mapScope.isAll) {
+      setState(() => _mapScope = _mapScope.up);
+      return;
+    }
     // Metadata filters on the Anchor points tab are cleared first.
-    if (index == 2 && !_anchorFilters.isEmpty) {
+    if (index == _kPoints && !_anchorFilters.isEmpty) {
       setState(() => _anchorFilters = AnchorFilters.none);
       return;
     }
     void clearFilterOf(int tab) {
-      if (tab == 1) _buildingsPlaceFilterId = null;
-      if (tab == 2) _anchorPointsBuildingFilterId = null;
+      if (tab == _kBuildings) _buildingsPlaceFilterId = null;
+      if (tab == _kPoints) {
+        _anchorPointsBuildingFilterId = null;
+        _anchorPointsPlaceFilterId = null;
+      }
     }
 
     if (_tabHistory.isNotEmpty) {
       setState(() => clearFilterOf(index));
       _navigatingBack = true;
       _tabController.animateTo(_tabHistory.removeLast());
-    } else if ((index == 1 && _buildingsPlaceFilterId != null) ||
-        (index == 2 && _anchorPointsBuildingFilterId != null)) {
+    } else if ((index == _kBuildings && _buildingsPlaceFilterId != null) ||
+        (index == _kPoints &&
+            (_anchorPointsBuildingFilterId != null ||
+                _anchorPointsPlaceFilterId != null))) {
       setState(() => clearFilterOf(index));
-    } else if (index != 0) {
+    } else if (index != _kMap) {
       _navigatingBack = true;
-      _tabController.animateTo(0);
+      _tabController.animateTo(_kMap);
     } else {
       _exitGuard.onBack(context);
     }
@@ -767,34 +975,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// they start walking it. Testers asked to be told about obstacles.
   Future<void> _editConnectionWarning(Map<String, dynamic> connection) async {
     final l10n = AppLocalizations.of(context)!;
-    final controller = TextEditingController(
-      text: connection['notes'] as String? ?? '',
+    final notes = await showConnectionWarningDialog(
+      context,
+      connection['notes'] as String? ?? '',
     );
-    final notes = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.connectionWarningLabel),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 3,
-          decoration: InputDecoration(helperText: l10n.connectionWarningHint),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: Text(
-              MaterialLocalizations.of(dialogContext).saveButtonLabel,
-            ),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
     if (notes == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -862,24 +1046,231 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// Opens the map connection builder already scoped to this point's
   /// university/building, zoomed in on it, and with it pre-selected as the
   /// first point of the pair.
-  Future<void> _connectFromAnchorPoint(Map<String, dynamic> point) async {
-    final buildingId = point['building_id'] as String?;
-    final placeId =
-        _buildings.firstWhere(
-              (b) => b['id'] == buildingId,
-              orElse: () => const {},
-            )['place_id']
-            as String?;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ConnectAnchorPointsScreen(
-          initialPlaceId: placeId,
-          initialBuildingId: buildingId,
-          initialAnchorPointId: point['id'] as String?,
-        ),
-      ),
+  /// Connect mode on the map, with [point] as the first of the pair: the
+  /// next point tapped connects to it (a point row's tap, the sheet's
+  /// Connect).
+  void _connectFromAnchorPoint(Map<String, dynamic> point) {
+    if (_tabController.index != _kMap) _tabController.animateTo(_kMap);
+    setState(() {
+      _movingPoint = null;
+      _moveTarget = null;
+      _connecting = true;
+      _connectFromId = point['id'] as String?;
+      _mapFocus = MapFocus(PointHit(point), open: false);
+    });
+  }
+
+  /// Shows [item] on the map: a notice's point or connection, a row's
+  /// "Show on map".
+  void _showOnMap(AdminMapHit item) {
+    if (_tabController.index != _kMap) _tabController.animateTo(_kMap);
+    setState(() => _mapFocus = MapFocus(item));
+  }
+
+  String _describePoint(String id) {
+    final l10n = AppLocalizations.of(context)!;
+    final point = _anchorPoints.firstWhere(
+      (p) => p['id'] == id,
+      orElse: () => {'id': id},
     );
-    _loadData();
+    return anchorLabel(
+      l10n,
+      point,
+      _buildingName(point['building_id'] as String?),
+    );
+  }
+
+  void _snack(String text, {int seconds = 4}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: Duration(seconds: seconds),
+          content: Text(text),
+        ),
+      );
+  }
+
+  /// A point tapped in connect mode (see [connectTap]). Connecting is
+  /// optimistic: the line shows (dotted grey) and the selection moves on at
+  /// once, so the next tap works while this one saves; only the same pair
+  /// waits.
+  Future<void> _onConnectTap(Map<String, dynamic> point) async {
+    final l10n = AppLocalizations.of(context)!;
+    HapticFeedback.selectionClick();
+    final step = connectTap(
+      selectedId: _connectFromId,
+      tapped: point,
+      connections: _connections,
+      pointsById: {for (final p in _anchorPoints) p['id'] as String: p},
+    );
+    switch (step) {
+      case ConnectSelect(:final id):
+        setState(() => _connectFromId = id);
+      case ConnectDeselect():
+        setState(() => _connectFromId = null);
+      case ConnectMoveOn(:final id):
+        setState(() => _connectFromId = id);
+        _snack(l10n.connectErrorAlreadyConnected, seconds: 2);
+      case ConnectRefused(
+        :final fromId,
+        :final toId,
+        :final problem,
+        :final distance,
+      ):
+        HapticFeedback.heavyImpact();
+        _snack(
+          problem == ConnectionProblem.tooLong
+              ? l10n.connectErrorTooFar(
+                  _describePoint(fromId),
+                  _describePoint(toId),
+                  distance!.toStringAsFixed(0),
+                )
+              : l10n.connectErrorFloorChange(
+                  _describePoint(fromId),
+                  _describePoint(toId),
+                ),
+          seconds: 6,
+        );
+      case ConnectPair():
+        await _saveConnection(step);
+    }
+  }
+
+  Future<void> _saveConnection(ConnectPair pair) async {
+    final l10n = AppLocalizations.of(context)!;
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      _snack(l10n.commonNotSignedIn);
+      return;
+    }
+    final key = connectionPairKey(pair.fromId, pair.toId);
+    if (_pendingPairs.contains(key)) return;
+    final pending = <String, dynamic>{
+      'id': 'pending-$key',
+      'anchor_point_a_id': pair.fromId,
+      'anchor_point_b_id': pair.toId,
+      'pending': true,
+    };
+    setState(() {
+      _pendingPairs.add(key);
+      _connections = [..._connections, pending];
+      _connectFromId = pair.toId;
+    });
+    try {
+      final result = await _mapApi.post('/anchor-point-connections', {
+        'anchor_point_a_id': pair.fromId,
+        'anchor_point_b_id': pair.toId,
+        'created_by': userId,
+      });
+      if (!mounted) return;
+      final created = result is List && result.isNotEmpty
+          ? (result.first as Map).cast<String, dynamic>()
+          : null;
+      setState(() {
+        _connections = [
+          for (final c in _connections)
+            // The sync may have brought the saved row already.
+            if (!identical(c, pending) &&
+                (created == null || c['id'] != created['id']))
+              c,
+          created ?? {...pending, 'pending': false},
+        ];
+      });
+      final distance = pair.distance;
+      pair.long ? HapticFeedback.mediumImpact() : HapticFeedback.lightImpact();
+      _snack(
+        pair.long
+            ? l10n.connectSnackbarConnectedLong(distance!.toStringAsFixed(0))
+            : l10n.connectSnackbarConnected(
+                _describePoint(pair.fromId),
+                _describePoint(pair.toId),
+              ),
+        seconds: pair.long ? 4 : 2,
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _connections = [
+          for (final c in _connections)
+            if (!identical(c, pending)) c,
+        ];
+      });
+      _snack(
+        // Only a real duplicate; a 500 used to read as "already connected"
+        // too, hiding outages.
+        e.statusCode == 409
+            ? l10n.connectErrorAlreadyConnected
+            : l10n.connectErrorConnectFailed(
+                friendlyApiErrorMessage(context, e),
+              ),
+      );
+    } finally {
+      if (mounted) setState(() => _pendingPairs.remove(key));
+    }
+  }
+
+  /// A connection's data and actions on the map.
+  Widget _connectionDetails(Map<String, dynamic> c, VoidCallback close) {
+    final l10n = AppLocalizations.of(context)!;
+    final aId = c['anchor_point_a_id'] as String? ?? '';
+    final bId = c['anchor_point_b_id'] as String? ?? '';
+    Map<String, dynamic>? point(String id) {
+      for (final p in _anchorPoints) {
+        if (p['id'] == id) return p;
+      }
+      return null;
+    }
+
+    final a = point(aId);
+    final b = point(bId);
+    final meters = (c['distance_meters'] as num?)?.toStringAsFixed(1);
+    final notes = (c['notes'] as String? ?? '').trim();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.timeline, color: kAdminPalette.connectionActive),
+          title: Text('${_describePoint(aId)} ↔ ${_describePoint(bId)}'),
+          subtitle: Text(
+            [
+              if (meters != null)
+                c['distance_manual'] == true
+                    ? l10n.adminConnectionDistanceTyped(meters)
+                    : l10n.adminConnectionDistance(meters),
+              if (a != null && b != null && pointFloor(a) != pointFloor(b))
+                l10n.adminConnectionChangesFloor,
+              notes.isEmpty
+                  ? l10n.adminConnectionNoWarning
+                  : l10n.adminConnectionWarning(notes),
+            ].join('\n'),
+          ),
+        ),
+        Wrap(
+          spacing: 4,
+          children: [
+            TextButton.icon(
+              icon: const Icon(Icons.warning_amber_outlined),
+              label: Text(l10n.adminConnectionEditWarning),
+              onPressed: () {
+                close();
+                _editConnectionWarning(c);
+              },
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.delete_outline),
+              label: Text(l10n.commonDelete),
+              onPressed: () {
+                close();
+                _deleteConnection(c);
+              },
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   Widget _searchField(TextEditingController controller, String hint) {
@@ -923,7 +1314,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   physics: const AlwaysScrollableScrollPhysics(),
                   // Clears the FAB, which otherwise covers the last row's
                   // trailing buttons.
-                  padding: const EdgeInsets.only(bottom: 88),
+                  padding: EdgeInsets.only(bottom: _fabClearance),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final place = filtered[index];
@@ -935,9 +1326,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         setState(
                           () => _buildingsPlaceFilterId = place['id'] as String,
                         );
-                        _tabController.animateTo(1);
+                        _tabController.animateTo(_kBuildings);
                       },
-                      leading: const Icon(Icons.flag, color: Colors.purple),
+                      leading: Icon(
+                        Icons.flag,
+                        color: kAdminPalette.university,
+                      ),
                       title: Text(
                         place['name'] as String? ?? place['id'] as String,
                       ),
@@ -995,21 +1389,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
     return Column(
       children: [
-        if (scopedPlace != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: InputChip(
-                label: Text(
-                  l10n.adminBuildingsInPlaceChip(
-                    scopedPlace['name'] as String? ?? scopedPlace['id'],
-                  ),
-                ),
-                onDeleted: () => setState(() => _buildingsPlaceFilterId = null),
-              ),
-            ),
-          ),
+        ScopeDropdowns(
+          places: _places,
+          buildings: _buildings,
+          placeId: _buildingsPlaceFilterId,
+          buildingId: null,
+          showBuilding: false,
+          onChanged: (placeId, _) =>
+              setState(() => _buildingsPlaceFilterId = placeId),
+        ),
         _searchField(_buildingSearchController, l10n.adminSearchBuildingsHint),
         Expanded(
           child: filtered.isEmpty
@@ -1024,7 +1412,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   physics: const AlwaysScrollableScrollPhysics(),
                   // Clears the FAB, which otherwise covers the last row's
                   // trailing buttons.
-                  padding: const EdgeInsets.only(bottom: 88),
+                  padding: EdgeInsets.only(bottom: _fabClearance),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final building = filtered[index];
@@ -1034,15 +1422,17 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                     ).length;
                     return ListTile(
                       onTap: () {
-                        setState(
-                          () => _anchorPointsBuildingFilterId =
-                              building['id'] as String,
-                        );
-                        _tabController.animateTo(2);
+                        setState(() {
+                          _anchorPointsBuildingFilterId =
+                              building['id'] as String;
+                          _anchorPointsPlaceFilterId =
+                              building['place_id'] as String?;
+                        });
+                        _tabController.animateTo(_kPoints);
                       },
-                      leading: const Icon(
+                      leading: Icon(
                         Icons.apartment,
-                        color: Colors.orange,
+                        color: kAdminPalette.building,
                       ),
                       title: Text(
                         building['name'] as String? ?? building['id'] as String,
@@ -1080,44 +1470,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// is currently selected, not every building's anchor points, or an
   /// admin drilled into one building sees a global "Verified (47)" count
   /// that doesn't match anything on screen.
-  Widget _statusFilterChips(List<Map<String, dynamic>> scopedAnchorPoints) {
-    final l10n = AppLocalizations.of(context)!;
-    const statuses = ['pending', 'verified', 'rejected'];
-    final counts = {
-      for (final s in statuses)
-        s: scopedAnchorPoints.where((p) => p['status'] == s).length,
-    };
-
-    Widget chip(String? value, String label) {
-      final count = value == null
-          ? scopedAnchorPoints.length
-          : counts[value] ?? 0;
-      return Padding(
-        padding: const EdgeInsets.only(right: 6),
-        child: ChoiceChip(
-          label: Text(l10n.adminStatusChipLabel(label, count)),
-          selected: _anchorStatusFilter == value,
-          onSelected: (_) => setState(() => _anchorStatusFilter = value),
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            chip(null, l10n.commonStatusAll),
-            chip('pending', l10n.commonStatusPending),
-            chip('verified', l10n.commonStatusVerified),
-            chip('rejected', l10n.commonStatusRejected),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// Verify or unverify straight from the list or the map. Verifying needs
   /// at least one photo (the backend enforces it too) and adds the point to
   /// photo search; unverifying puts it back to pending and removes it.
@@ -1143,8 +1495,23 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         !await confirmVerifyUnconnected(context, name: name)) {
       return;
     }
+    if (!mounted) return;
     try {
-      await _mapApi.patch('/anchor-points/$id', {'status': status});
+      // A second admin verifying the same point finds out here, instead of
+      // both seeming to succeed.
+      final saved = await saveAnchorPoint(
+        context,
+        _mapApi,
+        id: point['id'] as String,
+        original: point,
+        changes: {'status': status},
+        name: name,
+      );
+      if (!saved) {
+        show(l10n.mapConflictKeptTheirs(name));
+        await _loadData();
+        return;
+      }
     } on ApiException catch (e) {
       if (mounted) {
         show(
@@ -1183,7 +1550,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     return IconButton(
       icon: Icon(
         verified ? Icons.remove_done : Icons.verified_outlined,
-        color: verified ? null : Colors.green,
+        color: verified ? null : kAdminPalette.verified,
       ),
       tooltip: verified
           ? l10n.adminAnchorUnverifyTooltip
@@ -1194,7 +1561,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   /// Details and actions for a point tapped on the Anchor points map.
-  Future<void> _showAnchorSheet(Map<String, dynamic> point) async {
+  /// A point's data and actions: the map's sheet, or the map's side panel.
+  /// [close] hides it before an action runs.
+  Widget _pointDetails(Map<String, dynamic> point, VoidCallback close) {
     final l10n = AppLocalizations.of(context)!;
     final photos = _photosOf(point['id'] as String);
     final building = _buildings.firstWhere(
@@ -1212,106 +1581,261 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         icon: Icon(icon),
         label: Text(label),
         onPressed: () {
-          Navigator.of(context).pop();
+          close();
           onTap();
         },
       );
     }
 
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            if (thumbUrl != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.network(
+                    thumbUrl,
+                    width: 64,
+                    height: 64,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (thumbUrl != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.network(
-                          thumbUrl,
-                          width: 64,
-                          height: 64,
-                          fit: BoxFit.cover,
+                  Text(
+                    anchorDisplayName(l10n, point),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  Text(
+                    [
+                      if (type != null) locationTypeLabel(l10n, type),
+                      building['name'] as String? ?? l10n.commonUnknownBuilding,
+                      l10n.adminStatusLabel(
+                        anchorStatusLabel(
+                          l10n,
+                          point['status'] as String? ?? 'unknown',
                         ),
                       ),
-                    ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          anchorDisplayName(l10n, point),
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        Text(
-                          [
-                            if (type != null) locationTypeLabel(l10n, type),
-                            building['name'] as String? ??
-                                l10n.commonUnknownBuilding,
-                            l10n.adminStatusLabel(
-                              anchorStatusLabel(
-                                l10n,
-                                point['status'] as String? ?? 'unknown',
-                              ),
-                            ),
-                            l10n.adminPhotoCountLabel(photos.length),
-                          ].join(' · '),
-                        ),
-                      ],
-                    ),
+                      l10n.adminPhotoCountLabel(photos.length),
+                    ].join(' · '),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 4,
-                children: [
-                  action(
-                    Icons.edit_outlined,
-                    l10n.commonEdit,
-                    () => _editAnchorPoint(point),
-                  ),
-                  action(
-                    Icons.open_with,
-                    l10n.adminAnchorMoveAction,
-                    () => setState(() {
-                      _movingPoint = point;
-                      _moveTarget = null;
-                    }),
-                  ),
-                  action(
-                    verified ? Icons.remove_done : Icons.verified_outlined,
-                    verified
-                        ? l10n.adminAnchorUnverifyTooltip
-                        : l10n.adminAnchorVerifyTooltip,
-                    () => _setAnchorStatus(
-                      point,
-                      verified ? 'pending' : 'verified',
-                    ),
-                  ),
-                  action(
-                    Icons.timeline,
-                    l10n.adminAnchorConnectAction,
-                    () => _connectFromAnchorPoint(point),
-                  ),
-                  action(
-                    Icons.add_a_photo_outlined,
-                    l10n.adminAddPhotoTooltip,
-                    () => _addPhoto(point),
-                  ),
-                ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 4,
+          children: [
+            action(
+              Icons.edit_outlined,
+              l10n.commonEdit,
+              () => _editAnchorPoint(point),
+            ),
+            action(
+              Icons.open_with,
+              l10n.adminAnchorMoveAction,
+              () => setState(() {
+                _movingPoint = point;
+                _moveTarget = null;
+              }),
+            ),
+            action(
+              verified ? Icons.remove_done : Icons.verified_outlined,
+              verified
+                  ? l10n.adminAnchorUnverifyTooltip
+                  : l10n.adminAnchorVerifyTooltip,
+              () => _setAnchorStatus(point, verified ? 'pending' : 'verified'),
+            ),
+            action(
+              Icons.timeline,
+              l10n.adminAnchorConnectAction,
+              () => _connectFromAnchorPoint(point),
+            ),
+            action(
+              Icons.add_a_photo_outlined,
+              l10n.adminAddPhotoTooltip,
+              () => _addPhoto(point),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// A university's data and actions on the map.
+  Widget _placeDetails(Map<String, dynamic> place, VoidCallback close) {
+    final l10n = AppLocalizations.of(context)!;
+    final active = place['is_active'] as bool? ?? true;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(
+            Icons.flag,
+            color: active ? kAdminPalette.university : kAdminPalette.inactive,
+          ),
+          title: Text(place['name'] as String? ?? ''),
+          subtitle: Text(
+            [
+              if (place['code'] case final String code) code,
+              l10n.adminBuildingCountLabel(
+                _buildingsOf(place['id'] as String).length,
               ),
-            ],
+              if (!active) l10n.adminMapInactive,
+            ].join(' · '),
           ),
         ),
+        Wrap(
+          spacing: 4,
+          children: [
+            TextButton.icon(
+              icon: const Icon(Icons.edit_outlined),
+              label: Text(l10n.commonEdit),
+              onPressed: () {
+                close();
+                _editPlace(place);
+              },
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.list),
+              label: Text(l10n.adminMapOpenBuildingsList),
+              onPressed: () {
+                close();
+                setState(() => _buildingsPlaceFilterId = place['id'] as String);
+                _tabController.animateTo(_kBuildings);
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// A building's data and actions on the map.
+  Widget _buildingDetails(Map<String, dynamic> building, VoidCallback close) {
+    final l10n = AppLocalizations.of(context)!;
+    final active = building['is_active'] as bool? ?? true;
+    final place = _places.firstWhere(
+      (p) => p['id'] == building['place_id'],
+      orElse: () => const {},
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(
+            Icons.apartment,
+            color: active ? kAdminPalette.building : kAdminPalette.inactive,
+          ),
+          title: Text(building['name'] as String? ?? ''),
+          subtitle: Text(
+            [
+              place['name'] as String? ?? l10n.commonUnknownUniversity,
+              if (building['floors'] case final int floors)
+                l10n.adminMapFloorsLabel(floors),
+              l10n.adminAnchorCountLabel(
+                _anchorPointsOf(building['id'] as String).length,
+              ),
+              if (!active) l10n.adminMapInactive,
+            ].join(' · '),
+          ),
+        ),
+        Wrap(
+          spacing: 4,
+          children: [
+            TextButton.icon(
+              icon: const Icon(Icons.edit_outlined),
+              label: Text(l10n.commonEdit),
+              onPressed: () {
+                close();
+                _editBuilding(building);
+              },
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.list),
+              label: Text(l10n.adminMapOpenPointsList),
+              onPressed: () {
+                close();
+                setState(() {
+                  _anchorPointsBuildingFilterId = building['id'] as String;
+                  _anchorPointsPlaceFilterId = building['place_id'] as String?;
+                });
+                _tabController.animateTo(_kPoints);
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// The status chips and filters: one test for the list and the map.
+  bool Function(Map<String, dynamic>) _pointFilter() {
+    final withPhotos = {
+      for (final photo in _photos) photo['anchor_point_id'] as String?,
+    }.whereType<String>().toSet();
+    final connected = {
+      for (final c in _connections) ...[
+        c['anchor_point_a_id'] as String?,
+        c['anchor_point_b_id'] as String?,
+      ],
+    }.whereType<String>().toSet();
+    return (p) =>
+        _anchorFilters.matches(p, withPhotos: withPhotos, connected: connected);
+  }
+
+  /// The Map section (C2): universities, then buildings, then points.
+  Widget _mapTab() {
+    final l10n = AppLocalizations.of(context)!;
+    return _withMoveControls(
+      MapHome(
+        places: _places,
+        buildings: _buildings,
+        points: _anchorPoints,
+        connections: _connections,
+        scope: _mapScope,
+        onScopeChanged: (scope) => setState(() => _mapScope = scope),
+        movingPointId: _movingPoint?['id'] as String?,
+        moveTarget: _moveTarget,
+        onMoveTargetTapped: (target) => setState(() => _moveTarget = target),
+        // Below the move or connect banner.
+        controlsTop: _movingPoint == null && !_connecting ? 8 : 72,
+        connecting: _connecting,
+        onConnectingChanged: (on) => setState(() {
+          _connecting = on;
+          _connectFromId = null;
+          _movingPoint = null;
+          _moveTarget = null;
+        }),
+        selectedPointId: _connectFromId,
+        onConnectTap: _onConnectTap,
+        pointFilter: _pointFilter(),
+        focus: _mapFocus,
+        sidePanel: _permanentDrawer,
+        pointName: (point) => _pointLabel(l10n, point),
+        details: (context, item, close) => switch (item) {
+          PlaceHit(:final place) => _placeDetails(place, close),
+          BuildingHit(:final building) => _buildingDetails(building, close),
+          PointHit(:final point) => _pointDetails(point, close),
+          ConnectionHit(:final connection) => _connectionDetails(
+            connection,
+            close,
+          ),
+        },
       ),
     );
   }
@@ -1327,12 +1851,31 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final messenger = ScaffoldMessenger.of(context);
     final name = _pointLabel(l10n, point);
     try {
-      await _mapApi.patch('/anchor-points/${point['id']}', {
-        'latitude': target.latitude,
-        'longitude': target.longitude,
-        // The phone's GPS altitude was for where it was first captured.
-        'altitude': null,
-      });
+      final saved = await saveAnchorPoint(
+        context,
+        _mapApi,
+        id: point['id'] as String,
+        original: point,
+        changes: {
+          'latitude': target.latitude,
+          'longitude': target.longitude,
+          // The phone's GPS altitude was for where it was first captured.
+          'altitude': null,
+        },
+        name: name,
+      );
+      if (!saved) {
+        messenger.showSnackBar(
+          SnackBar(content: Text(l10n.mapConflictKeptTheirs(name))),
+        );
+        if (!mounted) return;
+        setState(() {
+          _movingPoint = null;
+          _moveTarget = null;
+        });
+        await _loadData();
+        return;
+      }
       if (point['status'] == 'verified') {
         final photos = _photosOf(point['id'] as String);
         if (photos.isNotEmpty) {
@@ -1367,24 +1910,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     await _loadData();
   }
 
-  Widget _buildAnchorMap(List<Map<String, dynamic>> points) {
+  /// [map] with the move banner and its Save button over it, while a point
+  /// is being moved.
+  Widget _withMoveControls(Widget map) {
     final l10n = AppLocalizations.of(context)!;
     final moving = _movingPoint;
-    if (!points.any((p) => anchorPosition(p) != null)) {
-      return ScrollableMessage(l10n.adminAnchorMapEmpty);
-    }
     return Stack(
       children: [
-        AnchorPointsMap(
-          // A new scope (building filter) fits the camera again.
-          key: ValueKey(_anchorPointsBuildingFilterId),
-          points: points,
-          connections: _connections,
-          movingPointId: moving?['id'] as String?,
-          moveTarget: _moveTarget,
-          onPointTapped: _showAnchorSheet,
-          onMoveTargetTapped: (target) => setState(() => _moveTarget = target),
-        ),
+        map,
         if (moving != null)
           Positioned(
             left: 8,
@@ -1435,10 +1968,18 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   /// The metadata filters sheet for the Anchor points tab. Changes apply
   /// right away to the list and map behind it.
-  Future<void> _showAnchorFilters() async {
+  /// [scoped]: the points the list or map shows before these filters, for
+  /// the status counts; [buildingId] for the floors offered.
+  Future<void> _showAnchorFilters(
+    List<Map<String, dynamic>> scoped,
+    String? buildingId,
+  ) async {
     final l10n = AppLocalizations.of(context)!;
+    int count(String? status) => status == null
+        ? scoped.length
+        : scoped.where((p) => p['status'] == status).length;
     final scopedBuilding = _buildings.firstWhere(
-      (b) => b['id'] == _anchorPointsBuildingFilterId,
+      (b) => b['id'] == buildingId,
       orElse: () => const {},
     );
     final maxFloors = scopedBuilding.isNotEmpty
@@ -1514,6 +2055,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         ),
                     ],
                   ),
+                  section(l10n.adminFilterStatus, [
+                    for (final (value, label) in [
+                      (null, l10n.commonStatusAll),
+                      ('pending', l10n.commonStatusPending),
+                      ('verified', l10n.commonStatusVerified),
+                      ('rejected', l10n.commonStatusRejected),
+                    ])
+                      choice<String>(
+                        l10n.adminStatusChipLabel(label, count(value)),
+                        value,
+                        f.status,
+                        (v) => update(f.copyWith(status: v)),
+                      ),
+                  ]),
                   section(l10n.adminFilterCategory, [
                     choice<LocationCategory>(
                       l10n.adminFilterAny,
@@ -1627,6 +2182,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  /// The Anchor points list's university and building scope.
+  List<Map<String, dynamic>> get _anchorPointsScoped => pointsInScope(
+    MapScope(
+      placeId: _anchorPointsPlaceFilterId,
+      buildingId: _anchorPointsBuildingFilterId,
+    ),
+    buildings: _buildings,
+    points: _anchorPoints,
+  );
+
   Widget _anchorPointsTab() {
     final l10n = AppLocalizations.of(context)!;
     final withPhotos = {
@@ -1642,19 +2207,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final scopedBuilding = _anchorPointsBuildingFilterId != null
         ? buildingsById[_anchorPointsBuildingFilterId]
         : null;
-    final buildingScoped = _anchorPoints
-        .where(
-          (p) =>
-              _anchorPointsBuildingFilterId == null ||
-              p['building_id'] == _anchorPointsBuildingFilterId,
-        )
-        .toList();
+    final buildingScoped = _anchorPointsScoped;
     final filtered =
         buildingScoped
             .where(
               (p) =>
-                  (_anchorStatusFilter == null ||
-                      p['status'] == _anchorStatusFilter) &&
                   _anchorFilters.matches(
                     p,
                     withPhotos: withPhotos,
@@ -1675,77 +2232,19 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
     return Column(
       children: [
-        if (scopedBuilding != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: InputChip(
-                label: Text(
-                  l10n.adminAnchorsInBuildingChip(
-                    scopedBuilding['name'] as String? ?? scopedBuilding['id'],
-                  ),
-                ),
-                onDeleted: () =>
-                    setState(() => _anchorPointsBuildingFilterId = null),
-              ),
-            ),
-          ),
-        _statusFilterChips(buildingScoped),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-          child: Row(
-            children: [
-              ActionChip(
-                avatar: const Icon(Icons.filter_list, size: 18),
-                label: Text(
-                  _anchorFilters.isEmpty
-                      ? l10n.adminFiltersButton
-                      : l10n.adminFiltersButtonCount(
-                          _anchorFilters.activeCount,
-                        ),
-                ),
-                onPressed: _showAnchorFilters,
-              ),
-              if (!_anchorFilters.isEmpty) ...[
-                const SizedBox(width: 6),
-                InputChip(
-                  label: Text(l10n.adminFiltersClear),
-                  onDeleted: () =>
-                      setState(() => _anchorFilters = AnchorFilters.none),
-                ),
-              ],
-            ],
-          ),
+        ScopeDropdowns(
+          places: _places,
+          buildings: _buildings,
+          placeId: _anchorPointsPlaceFilterId,
+          buildingId: _anchorPointsBuildingFilterId,
+          onChanged: (placeId, buildingId) => setState(() {
+            _anchorPointsPlaceFilterId = placeId;
+            _anchorPointsBuildingFilterId = buildingId;
+          }),
         ),
         _searchField(_anchorSearchController, l10n.adminSearchAnchorPointsHint),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-          child: SegmentedButton<bool>(
-            segments: [
-              ButtonSegment(
-                value: false,
-                icon: const Icon(Icons.list),
-                label: Text(l10n.adminAnchorViewList),
-              ),
-              ButtonSegment(
-                value: true,
-                icon: const Icon(Icons.map_outlined),
-                label: Text(l10n.adminAnchorViewMap),
-              ),
-            ],
-            selected: {_anchorMapView},
-            onSelectionChanged: (selection) => setState(() {
-              _anchorMapView = selection.first;
-              _movingPoint = null;
-              _moveTarget = null;
-            }),
-          ),
-        ),
         Expanded(
-          child: _anchorMapView
-              ? _buildAnchorMap(filtered)
-              : filtered.isEmpty
+          child: filtered.isEmpty
               ? ScrollableMessage(
                   scopedBuilding != null
                       ? l10n.adminAnchorsEmptyIn(
@@ -1758,7 +2257,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   physics: const AlwaysScrollableScrollPhysics(),
                   // Clears the FAB, which otherwise covers the last row's
                   // trailing buttons.
-                  padding: const EdgeInsets.only(bottom: 88),
+                  padding: EdgeInsets.only(bottom: _fabClearance),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final point = filtered[index];
@@ -1779,7 +2278,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                                 fit: BoxFit.cover,
                               ),
                             )
-                          : const Icon(Icons.location_pin, color: Colors.green),
+                          : Icon(
+                              Icons.location_pin,
+                              color: kAdminPalette.verified,
+                            ),
                       title: Text(anchorDisplayName(l10n, point)),
                       subtitle: Text(
                         '${building?['name'] as String? ?? l10n.commonUnknownBuilding} · '
@@ -1843,15 +2345,43 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           : anchorDisplayName(l10n, point);
     }
 
+    // Narrowed to a university or building: either end inside counts.
+    final placeBuildings = {
+      for (final b in _buildings)
+        if (b['place_id'] == _connectionsPlaceId) b['id'],
+    };
+    bool inside(String? anchorPointId) {
+      final buildingId = anchorPointsById[anchorPointId]?['building_id'];
+      if (_connectionsBuildingId != null) {
+        return buildingId == _connectionsBuildingId;
+      }
+      return _connectionsPlaceId == null || placeBuildings.contains(buildingId);
+    }
+
     final filtered = _connections.where((c) {
-      final aDesc = describe(c['anchor_point_a_id'] as String?).toLowerCase();
-      final bDesc = describe(c['anchor_point_b_id'] as String?).toLowerCase();
+      if (c['pending'] == true) return false;
+      final a = c['anchor_point_a_id'] as String?;
+      final b = c['anchor_point_b_id'] as String?;
+      if (!inside(a) && !inside(b)) return false;
+      if (!_connectionFilters.matches(c, anchorPointsById)) return false;
+      final aDesc = describe(a).toLowerCase();
+      final bDesc = describe(b).toLowerCase();
       return aDesc.contains(_connectionQuery) ||
           bDesc.contains(_connectionQuery);
     }).toList();
 
     return Column(
       children: [
+        ScopeDropdowns(
+          places: _places,
+          buildings: _buildings,
+          placeId: _connectionsPlaceId,
+          buildingId: _connectionsBuildingId,
+          onChanged: (placeId, buildingId) => setState(() {
+            _connectionsPlaceId = placeId;
+            _connectionsBuildingId = buildingId;
+          }),
+        ),
         _searchField(
           _connectionSearchController,
           l10n.adminSearchConnectionsHint,
@@ -1863,7 +2393,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   physics: const AlwaysScrollableScrollPhysics(),
                   // Clears the FAB, which otherwise covers the last row's
                   // trailing buttons.
-                  padding: const EdgeInsets.only(bottom: 88),
+                  padding: EdgeInsets.only(bottom: _fabClearance),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final connection = filtered[index];
@@ -1876,7 +2406,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                     final distance = (connection['distance_meters'] as num?)
                         ?.toStringAsFixed(1);
                     return ListTile(
-                      leading: const Icon(Icons.timeline, color: Colors.teal),
+                      leading: Icon(
+                        Icons.timeline,
+                        color: kAdminPalette.connectionActive,
+                      ),
                       title: Text(
                         '${describe(connection['anchor_point_a_id'] as String?)} '
                         '↔ ${describe(connection['anchor_point_b_id'] as String?)}',
@@ -1888,10 +2421,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         '${(connection['notes'] as String? ?? '').isEmpty ? '' : '\n⚠ ${connection['notes']}'}',
                       ),
                       onTap: () => _editConnectionWarning(connection),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: l10n.commonDelete,
-                        onPressed: () => _deleteConnection(connection),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.map_outlined),
+                            tooltip: l10n.adminMapShowOnMap,
+                            onPressed: () =>
+                                _showOnMap(ConnectionHit(connection)),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            tooltip: l10n.commonDelete,
+                            onPressed: () => _deleteConnection(connection),
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -1901,11 +2445,175 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  double get _fabClearance => fabClearance(context);
+
+  Future<void> _showConnectionFilters() async {
+    final l10n = AppLocalizations.of(context)!;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final f = _connectionFilters;
+          void update(ConnectionFilters next) {
+            setState(() => _connectionFilters = next);
+            setSheetState(() {});
+          }
+
+          Widget section(
+            String title,
+            bool? current,
+            void Function(bool?) set,
+          ) {
+            Widget choice(String label, bool? value) => ChoiceChip(
+              label: Text(label),
+              selected: value == current,
+              onSelected: (_) => set(value),
+            );
+            return Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 6,
+                    children: [
+                      choice(l10n.adminFilterAny, null),
+                      choice(l10n.adminFilterYes, true),
+                      choice(l10n.adminFilterNo, false),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          l10n.adminConnectionFiltersTitle,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      if (!f.isEmpty)
+                        TextButton(
+                          onPressed: () => update(ConnectionFilters.none),
+                          child: Text(l10n.adminFiltersClear),
+                        ),
+                    ],
+                  ),
+                  section(
+                    l10n.adminConnectionFilterLong,
+                    f.long,
+                    (v) => update(f.copyWith(long: v)),
+                  ),
+                  section(
+                    l10n.adminConnectionFilterWarning,
+                    f.hasWarning,
+                    (v) => update(f.copyWith(hasWarning: v)),
+                  ),
+                  section(
+                    l10n.adminConnectionChangesFloor,
+                    f.changesFloor,
+                    (v) => update(f.copyWith(changesFloor: v)),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// The Filters button, bottom left, with how many are on: the Map, the
+  /// Anchor points list and the Connections tab.
+  Widget? _filtersFab() {
+    final l10n = AppLocalizations.of(context)!;
+    final (int count, VoidCallback open) = switch (_tabController.index) {
+      _kMap => (
+        _anchorFilters.activeCount,
+        () => _showAnchorFilters(
+          pointsInScope(
+            _mapScope,
+            buildings: _buildings,
+            points: _anchorPoints,
+          ),
+          _mapScope.buildingId,
+        ),
+      ),
+      _kPoints => (
+        _anchorFilters.activeCount,
+        () => _showAnchorFilters(
+          _anchorPointsScoped,
+          _anchorPointsBuildingFilterId,
+        ),
+      ),
+      _kConnections => (_connectionFilters.activeCount, _showConnectionFilters),
+      _ => (0, () {}),
+    };
+    if (_tabController.index != _kMap &&
+        _tabController.index != _kPoints &&
+        _tabController.index != _kConnections) {
+      return null;
+    }
+    return FloatingActionButton(
+      heroTag: 'filters-fab',
+      tooltip: count == 0
+          ? l10n.adminFiltersButton
+          : l10n.adminFiltersButtonCount(count),
+      onPressed: open,
+      child: Badge(
+        isLabelVisible: count > 0,
+        label: Text('$count'),
+        child: const Icon(Icons.filter_list),
+      ),
+    );
+  }
+
+  /// Filters bottom left, the add button bottom right.
+  Widget? _fabs() {
+    final filters = _filtersFab();
+    final add = _fab();
+    if (filters == null && add == null) return null;
+    return FabRow(left: filters, right: add);
+  }
+
   Widget? _fab() {
     final l10n = AppLocalizations.of(context)!;
     switch (_tabController.index) {
-      case 0:
+      case _kMap:
+        // A new point where the admin is looking, in the field.
         return FloatingActionButton(
+          heroTag: 'add-fab',
+          tooltip: l10n.adminFabNewAnchorPoint,
+          onPressed: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => CaptureScreen(
+                  initialPlaceId: _mapScope.placeId,
+                  initialBuildingId: _mapScope.buildingId,
+                ),
+              ),
+            );
+            _loadData();
+          },
+          child: const Icon(Icons.add_a_photo),
+        );
+      case _kUniversities:
+        return FloatingActionButton(
+          heroTag: 'add-fab',
           tooltip: l10n.adminFabAddUniversity,
           onPressed: () async {
             await Navigator.of(
@@ -1915,8 +2623,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           },
           child: const Icon(Icons.add),
         );
-      case 1:
+      case _kBuildings:
         return FloatingActionButton(
+          heroTag: 'add-fab',
           tooltip: l10n.adminFabAddBuilding,
           onPressed: () async {
             await Navigator.of(context).push(
@@ -1929,8 +2638,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           },
           child: const Icon(Icons.add),
         );
-      case 2:
+      case _kPoints:
         return FloatingActionButton(
+          heroTag: 'add-fab',
           tooltip: l10n.adminFabNewAnchorPoint,
           onPressed: () async {
             final buildingId = _anchorPointsBuildingFilterId;
@@ -1953,21 +2663,32 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           },
           child: const Icon(Icons.add_a_photo),
         );
-      case 3:
+      case _kConnections:
         return FloatingActionButton(
+          heroTag: 'add-fab',
           tooltip: l10n.adminFabConnectOnMap,
-          onPressed: () async {
-            await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const ConnectAnchorPointsScreen(),
-              ),
-            );
-            _loadData();
+          onPressed: () {
+            _tabController.animateTo(_kMap);
+            setState(() {
+              // Where the tab is narrowed to; otherwise the map stays where
+              // the admin left it.
+              final building = _buildings.firstWhere(
+                (b) => b['id'] == _connectionsBuildingId,
+                orElse: () => const {},
+              );
+              if (building.isNotEmpty) {
+                _mapScope = MapScope.building(building);
+              } else if (_connectionsPlaceId != null) {
+                _mapScope = MapScope(placeId: _connectionsPlaceId);
+              }
+              _connecting = true;
+              _connectFromId = null;
+            });
           },
           child: const Icon(Icons.timeline),
         );
       default:
-        // Users tab (index 4) - no "add" action, accounts are created via
+        // Users tab - no "add" action, accounts are created via
         // signup, not an admin-initiated flow.
         return null;
     }
@@ -1976,6 +2697,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   List<String> get _sectionTitles {
     final l10n = AppLocalizations.of(context)!;
     return [
+      l10n.adminSectionMap,
       l10n.adminSectionUniversities,
       l10n.adminSectionBuildings,
       l10n.adminSectionAnchorPoints,
@@ -1986,6 +2708,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   /// The tutorial's section for each tab (anchors in `docs/admin-guide/`).
   static const _kGuideSections = [
+    'points-map',
     'universities',
     'buildings',
     'anchor-points',
@@ -2012,8 +2735,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final long = longConnections(_anchorPoints, _connections);
     final floorChange = floorChangeConnections(_anchorPoints, _connections);
     Widget tile(String text, IconData icon, VoidCallback onTap) => ListTile(
-      leading: Icon(icon, color: Colors.orange),
-      title: Text(text, style: const TextStyle(color: Colors.deepOrange)),
+      leading: Icon(icon, color: kAdminPalette.notice),
+      title: Text(text, style: TextStyle(color: kAdminPalette.notice)),
       onTap: () {
         _closeDrawer();
         onTap();
@@ -2032,6 +2755,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           Icons.visibility_off_outlined,
           () => _showReviewList(
             title: l10n.adminHealthHiddenNamed(hidden.length),
+            guideSection: 'pitfall-type',
             hint: l10n.adminHealthHiddenNamedHint,
             items: [
               for (final point in hidden)
@@ -2044,7 +2768,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                     ),
                     _buildingName(point['building_id'] as String?),
                   ].join(' · '),
-                  onTap: () => _editAnchorPoint(point),
+                  onTap: () => _showOnMap(PointHit(point)),
                 ),
             ],
           ),
@@ -2057,6 +2781,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             final byId = {for (final p in _anchorPoints) p['id']: p};
             _showReviewList(
               title: l10n.adminHealthLongConnections(long.length),
+              guideSection: 'pitfall-gap',
               hint: l10n.adminHealthLongConnectionsHint,
               items: [
                 for (final c in long)
@@ -2071,7 +2796,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         byId[c['anchor_point_b_id']]!,
                       )!.toStringAsFixed(0),
                     ),
-                    onTap: () => _deleteConnection(c),
+                    onTap: () => _showOnMap(ConnectionHit(c)),
                   ),
               ],
             );
@@ -2082,6 +2807,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           final byId = {for (final p in _anchorPoints) p['id']: p};
           _showReviewList(
             title: l10n.adminHealthFloorChange(floorChange.length),
+            guideSection: 'pitfall-floor',
             hint: l10n.adminHealthFloorChangeHint,
             items: [
               for (final c in floorChange)
@@ -2098,7 +2824,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                             0)
                         .toStringAsFixed(0),
                   ),
-                  onTap: () => _deleteConnection(c),
+                  onTap: () => _showOnMap(ConnectionHit(c)),
                 ),
             ],
           );
@@ -2124,21 +2850,30 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           as String? ??
       '';
 
-  /// The Anchor points tab showing only verified points with no connection.
+  /// Verified points with no connection, each opening on the map to fix.
   void _showUnconnectedVerified() {
-    setState(() {
-      _anchorPointsBuildingFilterId = null;
-      _anchorSearchController.clear();
-      _anchorStatusFilter = 'verified';
-      _anchorFilters = const AnchorFilters(hasConnections: false);
-    });
-    _tabController.animateTo(2);
+    final l10n = AppLocalizations.of(context)!;
+    final points = verifiedUnconnectedPoints(_anchorPoints, _connections);
+    _showReviewList(
+      title: l10n.adminHealthUnconnected(points.length),
+      guideSection: 'pitfall-unconnected',
+      hint: l10n.adminHealthUnconnectedHint,
+      items: [
+        for (final point in points)
+          (
+            title: anchorDisplayName(l10n, point),
+            subtitle: _buildingName(point['building_id'] as String?),
+            onTap: () => _showOnMap(PointHit(point)),
+          ),
+      ],
+    );
   }
 
   Future<void> _showReviewList({
     required String title,
     required String hint,
-    required List<({String title, String subtitle, VoidCallback onTap})> items,
+    required List<ReviewItem> items,
+    String? guideSection,
   }) => showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -2146,24 +2881,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     builder: (context) => DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.6,
-      builder: (context, controller) => ListView(
+      builder: (context, controller) => ReviewList(
         controller: controller,
-        children: [
-          ListTile(
-            title: Text(title, style: Theme.of(context).textTheme.titleMedium),
-            subtitle: Text(hint),
-          ),
-          const Divider(),
-          for (final item in items)
-            ListTile(
-              title: Text(item.title),
-              subtitle: Text(item.subtitle),
-              onTap: () {
-                Navigator.of(context).pop();
-                item.onTap();
-              },
-            ),
-        ],
+        title: title,
+        hint: hint,
+        items: items,
+        guideSection: guideSection,
       ),
     ),
   );
@@ -2189,24 +2912,31 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          DrawerHeader(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.adminUsersRoleAdmin,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                Text(
-                  Supabase.instance.client.auth.currentUser?.email ?? '',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+          // A compact header: DrawerHeader's fixed height left a band of
+          // empty space under the email.
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.adminUsersRoleAdmin,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
-                ),
-              ],
+                  Text(
+                    Supabase.instance.client.auth.currentUser?.email ?? '',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
+          const Divider(height: 1),
           // The tutorial is a page next to the web app, for reading beside it.
           if (kIsWeb)
             ListTile(
@@ -2217,16 +2947,32 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 openAdminGuide(context);
               },
             ),
-          item(0, Icons.flag, Colors.purple, l10n.adminSectionUniversities),
-          item(1, Icons.apartment, Colors.orange, l10n.adminSectionBuildings),
+          item(_kMap, Icons.map_outlined, Colors.blue, l10n.adminSectionMap),
           item(
-            2,
+            _kUniversities,
+            Icons.flag,
+            kAdminPalette.university,
+            l10n.adminSectionUniversities,
+          ),
+          item(
+            _kBuildings,
+            Icons.apartment,
+            kAdminPalette.building,
+            l10n.adminSectionBuildings,
+          ),
+          item(
+            _kPoints,
             Icons.location_pin,
-            Colors.green,
+            kAdminPalette.verified,
             l10n.adminSectionAnchorPoints,
           ),
-          item(3, Icons.timeline, Colors.teal, l10n.adminSectionConnections),
-          item(4, Icons.people, Colors.indigo, l10n.adminUsersTabLabel),
+          item(
+            _kConnections,
+            Icons.timeline,
+            kAdminPalette.connectionActive,
+            l10n.adminSectionConnections,
+          ),
+          item(_kUsers, Icons.people, Colors.indigo, l10n.adminUsersTabLabel),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.my_location, color: Colors.teal),
@@ -2330,7 +3076,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 section: _kGuideSections[_tabController.index],
               ),
             ),
-          if (_tabController.index == 3)
+          if (_tabController.index == _kConnections)
             IconButton(
               icon: const Icon(Icons.list_alt),
               tooltip: l10n.adminAddConnectionFormTooltip,
@@ -2365,7 +3111,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           ),
         ],
       ),
-      floatingActionButton: _fab(),
+      floatingActionButton: _fabs(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -2381,6 +3128,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       controller: _tabController,
                       physics: const NeverScrollableScrollPhysics(),
                       children: [
+                        _mapTab(),
                         _placesTab(),
                         _buildingsTab(),
                         _anchorPointsTab(),

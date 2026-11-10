@@ -23,6 +23,7 @@ from packages.db_errors import install_db_error_handlers
 from packages.supabase import SupaBase
 
 from .matching import MatchConfig
+from .model_machines import ModelMachines, parse_urls
 from .models import CorrectPositionResponse
 from .session_store import SessionStore
 
@@ -61,6 +62,9 @@ def _body_read(request: Request) -> float:
 # service DNS name - the call to backend-ai-training stays on the internal
 # network, no gateway hop needed for this service-to-service call.
 AI_TRAINING_URL = os.environ.get("AI_TRAINING_URL", "http://ai-training:80")
+# Extra machines running only the photo model, tried before this machine's own
+# (A3, see CLAUDE.md). Unset, there's only AI_TRAINING_URL.
+_machines = ModelMachines(parse_urls(os.environ.get("AI_TRAINING_URLS")))
 
 _store = SessionStore()
 
@@ -68,15 +72,16 @@ _store = SessionStore()
 # override them (see app/matching.py), read once at startup.
 _config = MatchConfig.from_env()
 
-# Short per-attempt timeout + a couple of quick retries - a blip in the
-# visual-matching service must not break navigation. backend-ai-training's
-# model load does a real network download on its first call after any
-# restart (fixed in this same change via its Dockerfile - see that diff),
-# so a single bare timeout isn't enough of a safety net on its own.
+# A visual-matching problem must not break navigation: the answer falls back to
+# GPS. A timeout or a "busy" isn't retried, because sending the same photo again
+# only adds to the overload (docs/loadtest/baseline.md). A failed connection gets
+# one quick retry, for a blip or a restart.
 _SEARCH_TIMEOUT_SECONDS = 2.0
-_SEARCH_RETRIES = 2
-
-_RETRYABLE_ERRORS = (httpx.HTTPError, httpx.TimeoutException)
+_CONNECTION_RETRIES = 1
+# Across every machine tried for one photo, to keep answers under 3 s.
+_SEARCH_TOTAL_SECONDS = 2.5
+# Same network, so a machine that's off shows quickly.
+_MACHINE_CONNECT_SECONDS = 0.3
 
 # Admin test walks keep their camera frames (store_frame below), linked to
 # each tick through navigation_logs.raw_image_url, so photo-matching models
@@ -125,30 +130,71 @@ async def _search_similar(
     `_config.search_limit` candidates (empty if the service is unreachable,
     slow, or finds nothing) - callers degrade to a GPS-only correction
     rather than failing the whole request over a visual-matching blip.
+    Sets `timing["busy"]` when the photo went unsearched for lack of capacity.
     Several candidates, not just the top one, so a far or wrong-direction
     top match doesn't hide a good second one."""
+    if timing is None:
+        timing = {}
+    give_up_at = time.monotonic() + _SEARCH_TOTAL_SECONDS
+
+    def attempt(client: httpx.AsyncClient, url: str, connect: float | None):
+        left = give_up_at - time.monotonic()
+        limit = min(_SEARCH_TIMEOUT_SECONDS, left)
+        return client.post(
+            f"{url}/search_similar",
+            files={"file": (filename, photo_bytes, "image/jpeg")},
+            data={
+                "limit": str(_config.search_limit),
+                "latitude": str(latitude),
+                "longitude": str(longitude),
+                "radius_meters": str(_config.search_radius_m),
+            },
+            timeout=httpx.Timeout(limit, connect=connect or limit),
+        )
+
+    def matches_of(response: httpx.Response) -> list[dict]:
+        body = response.json()
+        if body.get("timing_ms"):
+            timing.update(body["timing_ms"])
+        return body.get("matches", [])
+
     async with httpx.AsyncClient(timeout=_SEARCH_TIMEOUT_SECONDS) as client:
-        for attempt in range(_SEARCH_RETRIES + 1):
+        for url in _machines.order():
+            if give_up_at - time.monotonic() <= 0:
+                break
             try:
-                response = await client.post(
-                    f"{AI_TRAINING_URL}/search_similar",
-                    files={"file": (filename, photo_bytes, "image/jpeg")},
-                    data={
-                        "limit": str(_config.search_limit),
-                        "latitude": str(latitude),
-                        "longitude": str(longitude),
-                        "radius_meters": str(_config.search_radius_m),
-                    },
-                )
+                response = await attempt(client, url, _MACHINE_CONNECT_SECONDS)
+                if response.status_code == 503:
+                    continue
                 response.raise_for_status()
-                body = response.json()
-                if timing is not None and body.get("timing_ms"):
-                    timing.update(body["timing_ms"])
-                return body.get("matches", [])
-            except _RETRYABLE_ERRORS:
-                if attempt == _SEARCH_RETRIES:
-                    return []
-                await asyncio.sleep(0.2 * (attempt + 1))
+                return matches_of(response)
+            except httpx.ConnectTimeout as e:
+                _machines.skip(url, repr(e))
+            except httpx.TimeoutException:
+                timing["busy"] = True
+                return []
+            except httpx.HTTPError as e:
+                _machines.skip(url, repr(e))
+
+        # This machine's own model: all there is when the others are off, and
+        # the overflow when they're busy.
+        for try_number in range(_CONNECTION_RETRIES + 1):
+            if give_up_at - time.monotonic() <= 0:
+                break
+            try:
+                response = await attempt(client, AI_TRAINING_URL, None)
+                if response.status_code == 503:
+                    break
+                response.raise_for_status()
+                return matches_of(response)
+            except httpx.TimeoutException:
+                break
+            except httpx.TransportError:
+                if try_number < _CONNECTION_RETRIES:
+                    await asyncio.sleep(0.2)
+            except httpx.HTTPError:
+                return []
+    timing["busy"] = True
     return []
 
 
@@ -221,6 +267,8 @@ async def correct_position(
             gps_time=gps_time,
             config=_config,
         )
+    server_busy = search_timing.pop("busy", False)
+    result.debug["server_busy"] = server_busy
     result.debug["search_ms"] = search_ms
     if search_timing:
         result.debug["search_timing"] = search_timing
@@ -231,10 +279,12 @@ async def correct_position(
     if arrived is not None:
         result.debug["upload_ms"] = round(1000 * (body_read - arrived))
     result.debug["auth_ms"] = round(1000 * (started - body_read))
-    return _response(result, raw_image_url=frame_url)
+    return _response(result, raw_image_url=frame_url, server_busy=server_busy)
 
 
-def _response(result, raw_image_url: str | None = None) -> CorrectPositionResponse:
+def _response(
+    result, raw_image_url: str | None = None, server_busy: bool = False
+) -> CorrectPositionResponse:
     return CorrectPositionResponse(
         corrected_lat=result.corrected_lat,
         corrected_long=result.corrected_long,
@@ -242,6 +292,7 @@ def _response(result, raw_image_url: str | None = None) -> CorrectPositionRespon
         anchor_match_id=result.anchor_match_id,
         confidence_score=result.confidence_score,
         raw_image_url=raw_image_url,
+        server_busy=server_busy,
         debug=result.debug,
     )
 
@@ -260,8 +311,13 @@ async def correct_position_once(
     gates as /correct_position, through a throwaway filter that's dropped
     right after; a weak or missing match just returns the GPS fix."""
     photo_bytes = await photo.read()
+    search_timing: dict = {}
     candidates = await _search_similar(
-        photo_bytes, photo.filename or "frame.jpg", latitude, longitude
+        photo_bytes,
+        photo.filename or "frame.jpg",
+        latitude,
+        longitude,
+        timing=search_timing,
     )
     result = await SessionStore().correct(
         session_id="once",
@@ -272,4 +328,4 @@ async def correct_position_once(
         compass_heading=heading,
         config=_config,
     )
-    return _response(result)
+    return _response(result, server_busy=search_timing.get("busy", False))

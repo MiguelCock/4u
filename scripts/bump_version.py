@@ -11,6 +11,8 @@ names it:
   usable but deprecated, and anything older is refused (426).
 
     python3 scripts/bump_version.py 0.5.2
+    python3 scripts/bump_version.py 0.6.0-pre   # a pre-release: build N - 1,
+                                                # so the final 0.6.0 installs over it
 """
 
 import datetime
@@ -27,10 +29,10 @@ REPO = "https://github.com/MiguelCock/4u"
 
 
 def parse(version: str) -> tuple[int, int, int]:
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.]+)?", version)
     if not match:
-        raise SystemExit(f"expected X.Y.Z, got {version!r}")
-    return tuple(int(part) for part in match.groups())
+        raise SystemExit(f"expected X.Y.Z or X.Y.Z-pre, got {version!r}")
+    return tuple(int(part) for part in match.groups()[:3])
 
 
 def main() -> None:
@@ -46,6 +48,9 @@ def main() -> None:
 
     pubspec = PUBSPEC.read_text()
     build = major * 10000 + minor * 100 + patch
+    if "-" in new:
+        # One below the final X.Y.Z's, so it still installs over this.
+        build -= 1
     pubspec, n = re.subn(
         r"^version:.*$", f"version: {new}+{build}", pubspec, count=1, flags=re.M
     )

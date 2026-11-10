@@ -30,6 +30,9 @@ import '../services/heading_tracker.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import '../services/speech_voice.dart';
+import '../services/buzz.dart';
+import '../services/device_details.dart';
+import '../services/route_points.dart';
 import '../services/test_walk.dart';
 import '../services/turn_guidance.dart';
 import '../services/api_error_messages.dart';
@@ -273,6 +276,8 @@ class _NavigationScreenState extends State<NavigationScreen>
   final _pathLoaded = Completer<void>();
   bool _guiding = false;
   bool _arrived = false;
+  // Set when the server answers server_busy (see photoPaused).
+  DateTime? _photosPausedUntil;
   DateTime? _correctedAt;
   DateTime? _lastSpokenAt;
   bool _stopped = false;
@@ -491,10 +496,10 @@ class _NavigationScreenState extends State<NavigationScreen>
     }
     _lastSpokenAt = DateTime.now();
     if (_kInstructionCues.contains(cueType)) {
-      HapticFeedback.mediumImpact();
+      buzz(Buzz.short);
     } else if (cueType == 'start_walking') {
       // The "I'll vibrate when you face the right way" of SlowTurnCue.
-      HapticFeedback.heavyImpact();
+      buzz(Buzz.long);
     }
     _pendingCues.add({
       'at': DateTime.now().toUtc().toIso8601String(),
@@ -533,33 +538,12 @@ class _NavigationScreenState extends State<NavigationScreen>
           .cast<String>(),
       widget.route['end_anchor_id'] as String,
     ];
-    // All at once: one request after another took ~90 s on campus mobile
-    // data in a test walk, and guidance can't start without the path.
-    final anchors = await Future.wait(
-      anchorIds.map((id) async {
-        try {
-          return await MapManagementApi().get('/anchor-points/$id')
-              as Map<String, dynamic>;
-        } on ApiException {
-          // The guidance line/checkpoints are a nice-to-have overlay - a
-          // missing/deleted anchor shouldn't block navigation, it just
-          // means no line/announcement for that point.
-          return null;
-        }
-      }),
-    );
-    // The admins' warnings on each connection along the route, best effort.
-    final connections = await Future.wait(
-      anchorIds.take(anchorIds.length - 1).map((id) async {
-        try {
-          return (await MapManagementApi().get('/anchor-points/$id/connections')
-                  as List)
-              .cast<Map<String, dynamic>>();
-        } on ApiException {
-          return const <Map<String, dynamic>>[];
-        }
-      }),
-    );
+    // One request when the server has it (E2), else all at once: one request
+    // after another took ~90 s on campus mobile data in a test walk, and
+    // guidance can't start without the path.
+    final route = await fetchRoutePoints(MapManagementApi(), anchorIds);
+    final anchors = route.anchors;
+    final connections = route.connections;
     String? noteBetween(int i) {
       final a = anchorIds[i];
       final b = anchorIds[i + 1];
@@ -1166,7 +1150,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     _floorDetector.stop();
     _currentFloor = change.floor;
     final l10n = AppLocalizations.of(context)!;
-    HapticFeedback.heavyImpact();
+    buzz(Buzz.long);
     _speak(
       detected
           ? l10n.navFloorReached(change.floor + 1)
@@ -1361,7 +1345,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   void _markCheckpoint() {
     final index = _checkpoints.mark();
     if (index == null) return;
-    HapticFeedback.heavyImpact();
+    buzz(Buzz.short);
     final raw = _rawPosition;
     final corrected = _liveCorrected();
     final correctedAt = _correctedAt;
@@ -1533,7 +1517,8 @@ class _NavigationScreenState extends State<NavigationScreen>
                   'latitude': startPosition.latitude,
                   'longitude': startPosition.longitude,
                 },
-              'device_info': {'platform': defaultTargetPlatform.name},
+              // The phone, for the trip report (B2).
+              'device_info': await deviceDetails(),
             });
       // backend-navigation-management's POST /sessions returns Supabase's
       // insert result as-is, which is always a list (even for one row).
@@ -1589,8 +1574,13 @@ class _NavigationScreenState extends State<NavigationScreen>
     final started = DateTime.now();
     final sessionId = _sessionId;
     final position = _locationService.lastPosition;
+    final paused = photoPaused(started, _photosPausedUntil);
     try {
       if (sessionId == null || position == null) return;
+      if (paused) {
+        await _logRawTick(sessionId, position, failure: 'server_busy');
+        return;
+      }
       final controller = _cameraController;
       if (controller == null || !controller.value.isInitialized) {
         await _logRawTick(sessionId, position);
@@ -1600,7 +1590,10 @@ class _NavigationScreenState extends State<NavigationScreen>
     } finally {
       if (!_stopped) {
         _pendingTickTimer = Timer(
-          nextTickDelay(DateTime.now().difference(started)),
+          nextTickDelay(
+            DateTime.now().difference(started),
+            period: paused ? pausedTickPeriod : const Duration(seconds: 1),
+          ),
           _runTick,
         );
       }
@@ -1769,6 +1762,10 @@ class _NavigationScreenState extends State<NavigationScreen>
           .difference(correctStarted)
           .inMilliseconds;
 
+      if (result['server_busy'] == true) {
+        _photosPausedUntil = DateTime.now().add(photoPauseWhenBusy);
+      }
+
       if (mounted) {
         setState(() {
           _correctedLat = (result['corrected_lat'] as num).toDouble();
@@ -1834,7 +1831,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     if (sessionId == null) return;
     final l10n = AppLocalizations.of(context)!;
     final messenger = ScaffoldMessenger.of(context);
-    HapticFeedback.heavyImpact();
+    buzz(Buzz.short);
     final position = _locationService.lastPosition;
     final instruction = _lastAnnouncement;
     try {
@@ -2053,6 +2050,10 @@ class _NavigationScreenState extends State<NavigationScreen>
                               style: const TextStyle(color: Colors.green),
                             ),
                           ),
+                      ],
+                      // Users with low vision can turn the map on (D2); the
+                      // coordinates above stay for admins.
+                      if (widget.adminPreview || showMapNotifier.value) ...[
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                           child: ExcludeSemantics(

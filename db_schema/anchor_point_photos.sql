@@ -4,8 +4,14 @@ CREATE TABLE anchor_point_photos (
     image_url TEXT NOT NULL,
     heading FLOAT4,
     captured_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
-    captured_at TIMESTAMPTZ DEFAULT NOW()
+    captured_at TIMESTAMPTZ DEFAULT NOW(),
+    -- For GET /changes (A5). Deletions go to map_deletions.
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Indexes
 CREATE INDEX idx_anchor_point_photos_anchor_point ON anchor_point_photos (anchor_point_id);
+CREATE INDEX idx_anchor_point_photos_updated_at ON anchor_point_photos (updated_at);
+
+CREATE TRIGGER anchor_point_photos_set_updated_at BEFORE UPDATE ON anchor_point_photos
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();

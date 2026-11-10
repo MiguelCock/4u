@@ -13,6 +13,7 @@ import '../services/map_tap.dart';
 import '../services/map_tile_config.dart';
 import '../services/route_error.dart';
 import '../widgets/floor_selector.dart';
+import '../theme/admin_palette.dart';
 
 /// Admin: one navigation session on a map, for checking how the GPS
 /// correction and guidance behaved. Draws the planned route, the raw GPS
@@ -182,12 +183,8 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
     });
   }
 
-  static Color _confidenceColor(num? score) {
-    final s = (score ?? 0).toDouble();
-    if (s >= 0.9) return Colors.purple.shade700;
-    if (s >= 0.8) return Colors.purple.shade400;
-    return Colors.purple.shade200;
-  }
+  static Color _confidenceColor(num? score) =>
+      kAdminPalette.matchFor((score ?? 0).toDouble());
 
   void _onTap(LatLng tapped) {
     final camera = _mapController.camera;
@@ -392,20 +389,20 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            row(line(Colors.blueGrey), l10n.trackingLegendPlanned),
-            row(line(Colors.orange), l10n.trackingLegendRaw),
-            row(line(Colors.green), l10n.trackingLegendCorrected),
+            row(line(kAdminPalette.planned), l10n.trackingLegendPlanned),
+            row(line(kAdminPalette.raw), l10n.trackingLegendRaw),
+            row(line(kAdminPalette.corrected), l10n.trackingLegendCorrected),
             row(
-              Icon(Icons.circle, size: 10, color: Colors.purple.shade400),
+              Icon(Icons.circle, size: 10, color: kAdminPalette.match),
               l10n.trackingLegendMatch,
             ),
             row(
-              const Icon(Icons.close, size: 16, color: Colors.red),
+              Icon(Icons.close, size: 16, color: kAdminPalette.report),
               l10n.trackingLegendReport,
             ),
             if (checkpointEvents(_logs).isNotEmpty)
               row(
-                const Icon(Icons.flag, size: 16, color: Colors.blue),
+                Icon(Icons.flag, size: 16, color: kAdminPalette.checkpoint),
                 l10n.trackingLegendCheckpoint,
               ),
           ],
@@ -467,21 +464,21 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
                             color:
                                 _plannedFloors[i] == _floor ||
                                     _plannedFloors[i + 1] == _floor
-                                ? Colors.blueGrey
-                                : Colors.blueGrey.withValues(alpha: 0.3),
+                                ? kAdminPalette.planned
+                                : kAdminPalette.planned.withValues(alpha: 0.3),
                           ),
                         if (raw.length > 1)
                           Polyline(
                             points: raw,
                             strokeWidth: 3,
-                            color: Colors.orange,
+                            color: kAdminPalette.raw,
                             pattern: StrokePattern.dashed(segments: [8, 6]),
                           ),
                         if (corrected.length > 1)
                           Polyline(
                             points: corrected,
                             strokeWidth: 4,
-                            color: Colors.green,
+                            color: kAdminPalette.corrected,
                           ),
                         // Where each photo match pulled the position from.
                         for (final log in matches)
@@ -497,7 +494,7 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
                                 )!,
                               ],
                               strokeWidth: 1,
-                              color: Colors.purple.withValues(alpha: 0.5),
+                              color: kAdminPalette.match.withValues(alpha: 0.5),
                             ),
                       ],
                     ),
@@ -522,9 +519,9 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
                             width: 28,
                             height: 28,
                             alignment: Alignment.topCenter,
-                            child: const Icon(
+                            child: Icon(
                               Icons.flag,
-                              color: Colors.blue,
+                              color: kAdminPalette.checkpoint,
                               size: 24,
                             ),
                           ),
@@ -534,9 +531,9 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
                               point: _reportPosition(report)!,
                               width: 32,
                               height: 32,
-                              child: const Icon(
+                              child: Icon(
                                 Icons.close,
-                                color: Colors.red,
+                                color: kAdminPalette.report,
                                 size: 28,
                               ),
                             ),
@@ -547,9 +544,9 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
                                 : raw.last,
                             width: 40,
                             height: 40,
-                            child: const Icon(
+                            child: Icon(
                               Icons.my_location,
-                              color: Colors.green,
+                              color: kAdminPalette.corrected,
                               size: 26,
                             ),
                           ),

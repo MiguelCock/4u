@@ -1,3 +1,4 @@
+import inspect
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -814,3 +815,18 @@ def test_logs_accept_a_debug_payload():
         "compass": 91.5,
         "source": "corrected",
     }
+
+
+def test_endpoints_that_block_dont_hold_up_the_others():
+    """A blocking Supabase call in an async endpoint stops the event loop, so
+    requests queued one at a time: 3.8 s for a simple read during a trip."""
+    from fastapi.routing import APIRoute
+
+    slow = [
+        route.path
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        and inspect.iscoroutinefunction(route.endpoint)
+        and route.path != "/"
+    ]
+    assert slow == []

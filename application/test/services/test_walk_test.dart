@@ -38,4 +38,31 @@ void main() {
       expect(nextTickDelay(const Duration(seconds: 3)), Duration.zero);
     });
   });
+
+  group('photoPaused', () {
+    final now = DateTime(2026, 11, 6, 12);
+
+    test('photos go out when the server was never busy', () {
+      expect(photoPaused(now, null), isFalse);
+    });
+
+    test('no photo during the pause', () {
+      expect(photoPaused(now, now.add(photoPauseWhenBusy)), isTrue);
+    });
+
+    test('photos resume when the pause ends', () {
+      expect(photoPaused(now, now), isFalse);
+      expect(
+        photoPaused(now, now.subtract(const Duration(seconds: 1))),
+        isFalse,
+      );
+    });
+
+    test('the pause stays well inside a correction\'s 20 s freshness', () {
+      expect(
+        photoPauseWhenBusy + pausedTickPeriod,
+        lessThan(const Duration(seconds: 20)),
+      );
+    });
+  });
 }

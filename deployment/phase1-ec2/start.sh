@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Resumes a stopped Phase 1 EC2 instance (see stop.sh). Does not create
 # anything new - if no stopped instance is found, run provision.sh instead.
+#
+# --with-model-machines also starts the photo model's extra machines. They stay
+# off otherwise, because they cost money while running (see
+# ../model-machines/README.md).
 set -euo pipefail
 
 : "${AWS_REGION:=us-east-1}"
@@ -38,3 +42,7 @@ it a minute. If something didn't come back for any reason, the fallback
 is still \`ssh ... "cd ~/4u && sudo docker compose up -d"\` (no rebuild
 needed) - see README.md.
 EOF
+
+if [[ "${1:-}" == "--with-model-machines" ]]; then
+  "$(dirname "${BASH_SOURCE[0]}")/../model-machines/start.sh"
+fi

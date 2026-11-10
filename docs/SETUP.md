@@ -43,7 +43,7 @@ In Supabase Storage, create two **public** buckets — neither service creates i
 - `Photo` (used by `backend-data-collection`)
 - `anchor-points` (used by `backend-map-management`)
 
-Also create a Qdrant instance ([Qdrant Cloud](https://qdrant.tech) or self-hosted) and note its URL/API key — used by `backend-ai-training`.
+Photo search needs a Qdrant. `docker compose up` starts one next to the services (E2): copy `qdrant/.env.example` to `qdrant/.env`, choose an API key, and give `backend-ai-training`'s `.env` `QDRANT_URL=http://qdrant:6333` and the same key as `QDRANT_KEY`. Its port is published only on `QDRANT_BIND` (default `127.0.0.1`; production sets its private address, for the model machines). A [Qdrant Cloud](https://qdrant.tech) cluster still works: put its URL and key there instead.
 
 ## 4. Run the backend services
 
@@ -122,6 +122,8 @@ rsync -az --include 'admin-web/assets/.env' --exclude '.venv' --exclude '.env' \
 curl -s -o /dev/null -w "%{http_code}\n" https://<domain>/admin/assets/.env   # expect 200
 ```
 
+**No offline cache.** The admin web app doesn't use Flutter's service worker: an old one kept serving the previous app after a deploy. `application/web/flutter_bootstrap.js` loads the app without registering one, the gateway sends `/admin/` with `Cache-Control: no-cache`, and it answers `/admin/flutter_service_worker.js` with a script that removes a leftover worker (`gateway/nginx.conf`). A new build shows on the next load.
+
 The build also carries the admin tutorial, `application/web/guide/`, to `/admin/guide/`; it's public, and generated from `docs/admin-guide/` (see `docs/admin-guide/tools/README.md`). Every release also attaches `admin-web.zip` with the same build; unzip it into `gateway/admin-web/` instead of building. The build reads the same `application/.env` as the phone app, which holds only client-safe values.
 
 ## 6. Run every automated test suite
@@ -152,3 +154,7 @@ If **Confirm email** is on (Authentication → Sign In / Providers → Email), t
 7. Confirm `navigation_logs` rows accumulate in Supabase roughly every second while the navigation screen stays open (a self-rescheduling loop, not a fixed timer). With a working camera and the verified, indexed anchor points nearby, `corrected_lat`/`corrected_long`/`anchor_match_id`/`confidence_score` populate too; otherwise (no camera on an emulator, no nearby match, `backend-positioning` unreachable) those columns stay `NULL` and only raw GPS is logged for that tick — this is the designed degradation, not a bug.
 8. Tap **End navigation** and leave a feedback comment — confirm the session's `status` becomes `completed` and a `user_feedback` row appears.
 9. **As the admin**, open the drawer's **Sessions**, pick the user from step 5/6, and open that session — confirm the planned route and the logged trail both draw on the map, and a comment badge appears if feedback was left. Open the drawer's **Feedback** screen and confirm the same comment shows there too.
+
+## Behavior test suite (E3)
+
+`scripts/e2e.sh` runs the whole system on this computer: Supabase's local stack, a local Qdrant, and every service, then `e2e/`. It needs Docker, `uv` and the Supabase CLI, and never uses your `.env` files or production. See `e2e/README.md`.

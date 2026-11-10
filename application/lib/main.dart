@@ -83,11 +83,17 @@ class MainApp extends StatelessWidget {
                           ),
                   ),
                   builder: (context, child) {
-                    return MediaQuery(
-                      data: MediaQuery.of(
-                        context,
-                      ).copyWith(textScaler: TextScaler.linear(textScale)),
-                      child: child!,
+                    final media = MediaQuery.of(context);
+                    // Bold text: every Text honours MediaQuery.boldText.
+                    return ValueListenableBuilder<bool?>(
+                      valueListenable: boldTextNotifier,
+                      builder: (context, bold, _) => MediaQuery(
+                        data: media.copyWith(
+                          textScaler: TextScaler.linear(textScale),
+                          boldText: bold ?? media.boldText,
+                        ),
+                        child: child!,
+                      ),
                     );
                   },
                   // A version the backend no longer serves shows only
