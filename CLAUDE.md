@@ -86,6 +86,22 @@ Every component is expected to carry its own test suite: the Flutter app is test
 - **Sync check:** `packages/tests/test_app_versions.py` fails if `latest` and the pubspec version disagree.
 - **Compatibility rule for every backend change:** the previous release's app must keep working. API changes are additive. A field or endpoint the previous app still uses is removed only in a release after `min_supported` has moved past every version that uses it.
 
+**Release checklist** (with the flow above):
+- Every issue in the release's milestone meets the definition of done below, and `gh issue list --milestone <version>` shows what isn't in.
+- `python3 scripts/bump_version.py X.Y.Z`. `min_supported` moves to the previous release, so anything older gets "Update required": phones need the new APK first.
+- Database changes are run by hand in Supabase before deploying (`db_schema/migrations/`).
+- After tagging, deploy every service and the gateway (`deployment/deploy.sh`), and check the services and the web guide.
+
+## Definition of done
+
+Work is tracked in GitHub issues, grouped by milestone. Every issue, on top of its own "done when":
+- **Older apps keep working:** backend changes are additive (see Releases).
+- **Tests** for what changed, and CI green.
+- **Strings** in English and Spanish.
+- **`CHANGELOG.md`** updated, and the docs of whatever changed, including the relevant `CLAUDE.md`.
+- **Screenshots retaken** when an admin screen changes (`docs/admin-guide/tools/`), with the numbered tables still matching.
+- **No personal or health details** from tests in the repo or issues. Test notes stay in the local `test_users_comments/`.
+
 ## CI
 
 `.github/workflows/ci.yml` uses `dorny/paths-filter` to detect which of `application/`, `packages/`, `backend-data-collection/`, `backend-map-management/`, `backend-route-management/`, `backend-user-management/`, `backend-navigation-management/`, `backend-ai-training/`, `backend-positioning/` changed, then runs only the matching test job (`flutter test` or `uv run pytest`) for each. New Python components must be added to both the `filters` and `components` arrays in that workflow to get CI coverage. Every backend's filter also includes `packages/**`, so a change to the shared library re-runs all seven services' tests, where a break would show up. The `e2e` job runs `e2e/` for any change to a backend, `packages`, the gateway, `db_schema` or the suite itself. It isn't in the matrix, because it needs the whole stack. CI's Python is 3.14, the same as every `requires-python`, the Dockerfiles' `python:3.14-slim` base and their pinned `uv` (0.12.3); the images used to start from 3.12 while uv silently downloaded 3.14 at build time.
