@@ -37,13 +37,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _error;
 
   String _verbosity = 'medium';
-  bool _highContrast = false;
+  bool _highContrast = kDefaultHighContrast;
   String? _language; // null = auto (device)
-  double _fontScale = 1.0;
+  double _fontScale = kDefaultTextScale;
   bool _voiceGuidance = true;
   bool _showMap = false;
   bool _showChoices = false;
-  bool _boldText = false;
+  bool _boldText = kDefaultBoldText;
 
   @override
   void initState() {
@@ -66,19 +66,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final prefs = profile['preferences'] as Map<String, dynamic>? ?? {};
       setState(() {
         _verbosity = prefs['verbosity'] as String? ?? 'medium';
-        _highContrast =
-            prefs['high_contrast'] as bool? ??
-            MediaQuery.of(context).highContrast;
-        _language = prefs['language'] as String?;
+        // Never chosen: the accessible defaults (D10), not the phone's.
+        _highContrast = prefs['high_contrast'] as bool? ?? kDefaultHighContrast;
+        _language = switch (prefs['language'] as String?) {
+          kLanguageAuto => null,
+          null => kDefaultLocale.languageCode,
+          final saved => saved,
+        };
         _fontScale = _nearestFontScale(
-          (prefs['font_scale'] as num?)?.toDouble() ??
-              MediaQuery.of(context).textScaler.scale(1.0),
+          (prefs['font_scale'] as num?)?.toDouble() ?? kDefaultTextScale,
         );
         _voiceGuidance = prefs['voice_guidance'] as bool? ?? true;
         _showMap = prefs['show_map'] as bool? ?? false;
         _showChoices = prefs['show_choices'] as bool? ?? false;
-        _boldText =
-            prefs['bold_text'] as bool? ?? MediaQuery.of(context).boldText;
+        _boldText = prefs['bold_text'] as bool? ?? kDefaultBoldText;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -104,7 +105,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'preferences': {
           'verbosity': _verbosity,
           'high_contrast': _highContrast,
-          if (_language != null) 'language': _language,
+          // "Automatic" saved as such: nothing saved now means Spanish.
+          'language': _language ?? kLanguageAuto,
           'font_scale': _fontScale,
           'voice_guidance': _voiceGuidance,
           'show_map': _showMap,
@@ -112,20 +114,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'bold_text': _boldText,
         },
       });
-      applyPreferences(
-        {
-          'verbosity': _verbosity,
-          'high_contrast': _highContrast,
-          'language': _language,
-          'font_scale': _fontScale,
-          'voice_guidance': _voiceGuidance,
-          'show_map': _showMap,
-          'show_choices': _showChoices,
-          'bold_text': _boldText,
-        },
-        defaultHighContrast: _highContrast,
-        defaultTextScale: _fontScale,
-      );
+      applyPreferences({
+        'verbosity': _verbosity,
+        'high_contrast': _highContrast,
+        'language': _language ?? kLanguageAuto,
+        'font_scale': _fontScale,
+        'voice_guidance': _voiceGuidance,
+        'show_map': _showMap,
+        'show_choices': _showChoices,
+        'bold_text': _boldText,
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
