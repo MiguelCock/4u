@@ -10,6 +10,11 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 - **iPhone (for testers):** each release now has an `Eyes4U-unsigned.ipa`, installed with your own Apple ID through Sideloadly or AltStore. It has to be installed again every 7 days. See [docs/ios-sideload.md](docs/ios-sideload.md).
 
+### Changed
+
+- **Admin: type first, then the name.** When creating a point, the place type comes first and the name field appears once it's chosen. What was called "Description" is now "Name" everywhere.
+- **Admin: simpler university and building forms.** Universities have an "Abbreviation" (suggested from the name, such as UPB) instead of a code. Buildings need no code at all, and neither form asks for an address.
+
 ## [0.6.0-pre] - 2026-11-10
 
 ### Added

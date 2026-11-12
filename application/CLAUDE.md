@@ -306,6 +306,16 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
   - `configureTts` shares one audio session with the microphone on iOS.
 - **Not yet checked on a real iPhone:** the voice, speech recognition, compass, gyroscope, barometer, VoiceOver and the email link.
 
+## Forms after the admin tests (C9, C10)
+
+- **The point form (C9):**
+  - It starts with no type (unless the last point's type is remembered), and the **Name** field appears only once a type is chosen; saving without one says so (`captureErrorSelectType`).
+  - The edit screen orders floor, type, then name.
+  - "Description" reads **Name** / **Nombre** to admins; the API field and the column stay `location_description`.
+- **Universities (C10):** the code is entered as an **Abbreviation**, filled in from the name's initials (`abbreviationFor`, `lib/services/abbreviation.dart`) until the admin edits it.
+- **Buildings (C10):** no code field; the server fills it in.
+- **Address:** neither form shows it, and the edit forms no longer send it, so a stored address isn't erased.
+
 ## Many admins at once (A5)
 
 - **Saving a point** goes through `saveAnchorPoint` (`lib/widgets/map_conflict.dart`): the edit screen, verify/unverify, moving on the map, and the photo screen's back-to-pending. It sends `expected`, each changed field's value as this admin saw it (`expectedFor`, `lib/services/map_sync.dart`). The edit screen sends only the fields that differ (`changedFields`), with metadata normalised to the same keys and order, and the point's real altitude as expected when it moves. A 409 from the backend (`MapConflict.of`) opens a dialog showing theirs against yours: **Keep theirs** saves nothing, **Save mine anyway** sends it again without `expected`.

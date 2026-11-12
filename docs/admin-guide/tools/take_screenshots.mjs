@@ -329,9 +329,8 @@ async function allShots(r) {
   ]);
   await r.click(t('adminFabAddUniversity'));
   await r.shot('university-form', [
-    t('commonCode'),
     t('commonName'),
-    t('commonAddress'),
+    t('addPlaceAbbreviationLabel'),
     t('commonLatitude'),
     t('commonLongitude'),
     t('commonPickOnMap'),
@@ -352,9 +351,7 @@ async function allShots(r) {
   await r.click(t('adminFabAddBuilding'));
   await r.shot('building-form', [
     t('commonUniversityLabel'),
-    t('commonCode'),
     t('commonName'),
-    t('commonAddress'),
     t('commonLatitude'),
     t('commonLongitude'),
     t('commonPickOnMap'),
@@ -400,8 +397,17 @@ async function allShots(r) {
   await r.click(t('commonCancel'));
   await r.search(t('adminSearchAnchorPointsHint'), '');
 
-  // New point form.
+  // New point form: the name appears once a type is chosen (C9).
   await r.click(t('adminFabNewAnchorPoint'));
+  await r.click(t('commonLocationTypeLabel'), 0, 1200);
+  await r.click(t('locationTypeEntrance'), 0, 1200);
+  // The name field moved everything below it; a scroll makes Flutter report
+  // the new positions to the marks.
+  await r.page.mouse.move(640, 500);
+  await r.page.mouse.wheel(0, 300);
+  await r.wait(600);
+  await r.page.mouse.wheel(0, -300);
+  await r.wait(900);
   await r.shot('point-form', [
     t('commonUniversityLabel'),
     t('commonBuildingLabel'),

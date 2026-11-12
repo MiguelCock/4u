@@ -21,7 +21,6 @@ class EditPlaceScreen extends StatefulWidget {
 class _EditPlaceScreenState extends State<EditPlaceScreen> {
   final _mapApi = MapManagementApi();
   late final TextEditingController _nameController;
-  late final TextEditingController _addressController;
   late final TextEditingController _latController;
   late final TextEditingController _lngController;
   late bool _isActive;
@@ -33,9 +32,6 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
     super.initState();
     _nameController = TextEditingController(
       text: widget.place['name'] as String? ?? '',
-    );
-    _addressController = TextEditingController(
-      text: widget.place['address'] as String? ?? '',
     );
     _latController = TextEditingController(
       text: (widget.place['latitude'] as num?)?.toString() ?? '',
@@ -89,9 +85,6 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
         'name': name,
         'latitude': lat,
         'longitude': lng,
-        'address': _addressController.text.trim().isEmpty
-            ? null
-            : _addressController.text.trim(),
         'is_active': _isActive,
       });
       if (mounted) Navigator.of(context).pop(true);
@@ -110,7 +103,6 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _addressController.dispose();
     _latController.dispose();
     _lngController.dispose();
     super.dispose();
@@ -130,11 +122,6 @@ class _EditPlaceScreenState extends State<EditPlaceScreen> {
               TextField(
                 controller: _nameController,
                 decoration: InputDecoration(labelText: l10n.commonName),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _addressController,
-                decoration: InputDecoration(labelText: l10n.commonAddress),
               ),
               const SizedBox(height: 12),
               TextField(

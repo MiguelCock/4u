@@ -129,7 +129,8 @@ class BuildingResponse(BaseModel):
 
 class BuildingCreate(BaseModel):
     place_id: str
-    code: str
+    # Optional (C10): admins no longer type one. Older apps still send it.
+    code: str | None = None
     name: str
     latitude: float = Latitude
     longitude: float = Longitude
