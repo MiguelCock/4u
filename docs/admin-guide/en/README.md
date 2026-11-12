@@ -390,7 +390,7 @@ The card says how far from the route the raw and corrected positions were. The l
 | Academic | Classroom ★, Laboratory ★, Library ★, Computer room ★, Study area ★, Auditorium ★, Office ★ |
 | Food, shops and services | Cafeteria ★, Stationery shop ★, Copy / print center ★, Store ★, ATM / bank ★, Restroom ★, Drinking fountain ★ |
 | Wellbeing and sports | Infirmary / medical service ★, Gym / sports area ★, Chapel ★ |
-| Other | Other |
+| Other places | Other |
 
 **Lighting:** bright (daylight), moderate (normal indoor), dim (an indoor stairwell).
 

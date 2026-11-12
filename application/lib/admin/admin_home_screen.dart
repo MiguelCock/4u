@@ -38,6 +38,7 @@ import '../services/location_types.dart';
 import '../services/floor_view.dart';
 import '../widgets/guardrail_dialogs.dart';
 import '../widgets/connection_warning_dialog.dart';
+import '../widgets/drawer_list.dart';
 import '../widgets/fab_row.dart';
 import '../widgets/review_list.dart';
 import '../widgets/scope_dropdowns.dart';
@@ -2909,8 +2910,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       // Part of the page on a wide screen (see _scaffold).
       elevation: _permanentDrawer ? 0 : null,
       shape: _permanentDrawer ? const RoundedRectangleBorder() : null,
-      child: ListView(
-        padding: EdgeInsets.zero,
+      child: DrawerList(
         children: [
           // A compact header: DrawerHeader's fixed height left a band of
           // empty space under the email.

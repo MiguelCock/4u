@@ -390,7 +390,7 @@ La tarjeta dice qué tan lejos de la ruta estuvieron la posición sin corregir y
 | Académico | Aula ★, Laboratorio ★, Biblioteca ★, Sala de cómputo ★, Zona de estudio ★, Auditorio ★, Oficina ★ |
 | Comida, tiendas y servicios | Cafetería ★, Papelería ★, Centro de copias ★, Tienda ★, Cajero / banco ★, Baño ★, Bebedero ★ |
 | Bienestar y deporte | Enfermería / servicio médico ★, Gimnasio / zona deportiva ★, Capilla ★ |
-| Otro | Otro |
+| Otros lugares | Otro |
 
 **Iluminación:** brillante (luz del día), moderada (luz normal de interior), tenue (una escalera interior).
 
