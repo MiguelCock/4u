@@ -10,6 +10,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 - **iPhone (for testers):** each release now has an `Eyes4U-unsigned.ipa`, installed with your own Apple ID through Sideloadly or AltStore. It has to be installed again every 7 days. See [docs/ios-sideload.md](docs/ios-sideload.md).
 
+### Changed
+
+- **Accessible from the start.** New accounts open in Spanish, with high contrast, bold text and the largest text size. Anyone can change them in Settings, and saved choices are kept. "Automatic" language is now saved as such.
+
 ## [0.6.0-pre] - 2026-11-10
 
 ### Added

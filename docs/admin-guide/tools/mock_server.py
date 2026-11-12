@@ -541,7 +541,14 @@ class Handler(BaseHTTPRequestHandler):
                 found.update(body)
             profile = copy.deepcopy(found)
             if id_ == ADMIN_ID:
-                profile["preferences"] = {"language": State.language}
+                # Today's look saved explicitly, so the pictures don't take
+                # the app's accessible defaults (D10).
+                profile["preferences"] = {
+                    "language": State.language,
+                    "high_contrast": False,
+                    "bold_text": False,
+                    "font_scale": 1.0,
+                }
             self._json(profile)
         else:
             self._json({})
