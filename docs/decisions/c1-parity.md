@@ -1,6 +1,6 @@
 # C1: Admin parity list, checked (#183)
 
-The [parity list](../roadmap/0.6-stories.md#admin-parity-list) as rows to tick. The rule for C2 to C4 is that **admins can do everything they can today**, though not necessarily in the same place. A PR that moves a capability updates its row: where it lives now, and how it was checked.
+The admin parity list (everything admins could do before the overhaul) as rows to tick. The rule for C2 to C4 is that **admins can do everything they can today**, though not necessarily in the same place. A PR that moves a capability updates its row: where it lives now, and how it was checked.
 
 **Check** says how the row is proved today:
 - `shot:<name>` is a picture from `docs/admin-guide/tools/take_screenshots.mjs`, compared before and after.
