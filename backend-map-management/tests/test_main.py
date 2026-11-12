@@ -217,7 +217,8 @@ def test_create_anchor_point_requires_description_for_destination_type():
     with patch("app.main.db.client", mock_client):
         response = client.post("/anchor-points", json=payload)
     assert response.status_code == 400
-    assert "description" in response.json()["detail"]
+    # A point's description is its name to admins (C9).
+    assert "name" in response.json()["detail"]
     mock_client.table.return_value.insert.assert_not_called()
 
 
@@ -832,6 +833,74 @@ def test_create_building_returns_created_row():
         response = client.post("/buildings", json=payload)
     assert response.status_code == 200
     assert response.json() == [{**payload, "id": "2"}]
+
+
+def _building_client(taken_codes):
+    """A client whose buildings table has [taken_codes] in the university
+    and records what's inserted."""
+    client_mock = MagicMock()
+    table = client_mock.table.return_value
+    table.select.return_value.eq.return_value.execute.return_value.data = [
+        {"code": code} for code in taken_codes
+    ]
+    table.insert.return_value.execute.return_value.data = [{"id": "2"}]
+    return client_mock
+
+
+def _admin():
+    """The caller is an admin, without the profile lookup sharing the mock."""
+    return patch("app.main.db.is_admin", return_value=True)
+
+
+def _inserted(client_mock) -> dict:
+    return client_mock.table.return_value.insert.call_args.args[0]
+
+
+def test_create_building_without_a_code_uses_its_name():
+    _as_caller("admin1")
+    payload = {
+        "place_id": "p1",
+        "name": "Bloque  20",
+        "latitude": 6.24,
+        "longitude": -75.58,
+    }
+    mock_client = _building_client([])
+    with patch("app.main.db.client", mock_client), _admin():
+        response = client.post("/buildings", json=payload)
+    assert response.status_code == 200
+    assert _inserted(mock_client)["code"] == "BLOQUE 20"
+
+
+def test_create_building_code_from_name_skips_a_taken_one():
+    _as_caller("admin1")
+    payload = {
+        "place_id": "p1",
+        "name": "Biblioteca",
+        "latitude": 6.24,
+        "longitude": -75.58,
+    }
+    mock_client = _building_client(["BIBLIOTECA", "BIBLIOTECA 2"])
+    with patch("app.main.db.client", mock_client), _admin():
+        client.post("/buildings", json=payload)
+    assert _inserted(mock_client)["code"] == "BIBLIOTECA 3"
+
+
+def test_create_building_keeps_a_code_an_older_app_sends():
+    _as_caller("admin1")
+    payload = {
+        "place_id": "p1",
+        "code": "B2",
+        "name": "Annex",
+        "address": "Calle 1",
+        "latitude": 6.24,
+        "longitude": -75.58,
+    }
+    mock_client = _building_client(["B1"])
+    with patch("app.main.db.client", mock_client), _admin():
+        response = client.post("/buildings", json=payload)
+    assert response.status_code == 200
+    assert _inserted(mock_client)["code"] == "B2"
+    assert _inserted(mock_client)["address"] == "Calle 1"
 
 
 def test_update_building_returns_updated_row():

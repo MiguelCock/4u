@@ -212,13 +212,12 @@ Una universidad es un campus; todo pertenece a una. La fila de una universidad a
 
 | # | Campo | Qué significa |
 |---|---|---|
-| 1 | **Código** | Corto y único, como `ICESI`. No se puede cambiar después. |
-| 2 | **Nombre** | El que se muestra en toda la aplicación. |
-| 3 | **Dirección (opcional)** | Solo de referencia. |
-| 4 | **Latitud** | El centro aproximado del campus. |
-| 5 | **Longitud** | Igual. |
-| 6 | **Elegir en el mapa** | Llena los dos tocando un mapa. |
-| 7 | **Guardar universidad** | La crea. |
+| 1 | **Nombre** | El que se muestra en toda la aplicación. |
+| 2 | **Abreviatura** | Un nombre corto, como `UPB`. Se llena con las iniciales del nombre; puedes cambiarla. No se puede cambiar después. |
+| 3 | **Latitud** | El centro aproximado del campus. |
+| 4 | **Longitud** | Igual. |
+| 5 | **Elegir en el mapa** | Llena los dos tocando un mapa. |
+| 6 | **Guardar universidad** | La crea. |
 
 > **En la web, escribe primero unas coordenadas aproximadas:** sin ellas, el mapa se abre en el océano, en 0,0.
 
@@ -229,16 +228,14 @@ Una universidad es un campus; todo pertenece a una. La fila de una universidad a
 | # | Campo | Qué significa |
 |---|---|---|
 | 1 | **Universidad** | A cuál pertenece. |
-| 2 | **Código** | Corto y único. No se puede cambiar después. |
-| 3 | **Nombre** | El que usa la gente ("Edificio C"); los usuarios lo pueden decir. |
-| 4 | **Dirección (opcional)** | Solo de referencia. |
-| 5 | **Latitud** | Su posición. Se rechazan puntos a más de 300 m. |
-| 6 | **Longitud** | Igual. |
-| 7 | **Elegir en el mapa** | Llena los dos, empezando en la universidad. |
-| 8 | **Pisos** | Cuántos tiene; son las opciones de piso de sus puntos. |
-| 9 | **Tiene ascensor** | Información de accesibilidad. |
-| 10 | **Tiene escaleras** | Información de accesibilidad. |
-| 11 | **Guardar edificio** | Lo crea. |
+| 2 | **Nombre** | El que usa la gente ("Edificio C", "Bloque 20"); los usuarios lo pueden decir, así que escríbelo como lo dicen. |
+| 3 | **Latitud** | Su posición. Se rechazan puntos a más de 300 m. |
+| 4 | **Longitud** | Igual. |
+| 5 | **Elegir en el mapa** | Llena los dos, empezando en la universidad. |
+| 6 | **Pisos** | Cuántos tiene; son las opciones de piso de sus puntos. |
+| 7 | **Tiene ascensor** | Información de accesibilidad. |
+| 8 | **Tiene escaleras** | Información de accesibilidad. |
+| 9 | **Guardar edificio** | Lo crea. |
 
 Al editar cualquiera de los dos aparece un interruptor para **desactivarlo**: deja de ofrecerse a los usuarios, y no se borra nada.
 
@@ -273,8 +270,8 @@ Un punto de referencia es un lugar físico (una puerta, una intersección, el ve
 | 1 | **Universidad** | Acota los edificios. |
 | 2 | **Edificio** | A cuál pertenece. |
 | 3 | **Piso** | "Piso 1" es la planta baja. |
-| 4 | **Tipo de lugar** | Por categoría, con buscador. |
-| 5 | **Descripción** | El nombre que los usuarios eligen y oyen; obligatorio en los destinos. "Entrada sur", no "Punto 1", y **sin el edificio**, que se quita. |
+| 4 | **Tipo de lugar** | Se elige primero, por categoría, con buscador. Decide si el punto necesita nombre. |
+| 5 | **Nombre** | Aparece al elegir el tipo. Lo que los usuarios eligen y oyen; obligatorio en los destinos. "Entrada sur", no "Punto 1", y **sin el edificio**, que se quita. |
 | 6 | **Interior** | Bajo techo. Elige una de las dos cada vez. |
 | 7 | **Exterior** | Al aire libre. |
 | 8 | **Iluminación** | Opcional. Explica las fotos oscuras. |

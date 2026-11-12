@@ -388,17 +388,6 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
                     title: Text(l10n.editAnchorChangedMeanwhile),
                   ),
                 ),
-              TextField(
-                controller: _descriptionController,
-                decoration: InputDecoration(
-                  labelText: l10n.commonDescriptionLabel,
-                  helperText: descriptionRequiredFor(_locationTypeId)
-                      ? l10n.commonDescriptionHelper
-                      : l10n.commonDescriptionHelperOptional,
-                  helperMaxLines: 3,
-                ),
-              ),
-              const SizedBox(height: 12),
               FloorField(
                 value: _floor,
                 buildingFloors: _buildingFloors,
@@ -408,6 +397,18 @@ class _EditAnchorPointScreenState extends State<EditAnchorPointScreen> {
               LocationTypeField(
                 value: _locationTypeId,
                 onChanged: (value) => setState(() => _locationTypeId = value),
+              ),
+              const SizedBox(height: 12),
+              // The name after the type, as when creating it (C9).
+              TextField(
+                controller: _descriptionController,
+                decoration: InputDecoration(
+                  labelText: l10n.commonDescriptionLabel,
+                  helperText: descriptionRequiredFor(_locationTypeId)
+                      ? l10n.commonDescriptionHelper
+                      : l10n.commonDescriptionHelperOptional,
+                  helperMaxLines: 3,
+                ),
               ),
               const SizedBox(height: 12),
               SwitchListTile(
