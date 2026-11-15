@@ -273,10 +273,11 @@ class FakeAiTrainingApi extends AiTrainingApi with RecordsWrites {
   @override
   Future<dynamic> get(String path) async {
     final ids = indexedPhotoIds;
-    if (path == '/index_status' && ids != null)
+    if (path == '/index_status' && ids != null) {
       return {
         'photo_ids': [...ids],
       };
+    }
     throw ApiException(404, path);
   }
 }
