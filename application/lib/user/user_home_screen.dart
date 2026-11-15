@@ -45,18 +45,39 @@ class UserHomeScreen extends StatefulWidget {
   /// here (this screen, NavigationScreen, the feedback dialog) checks role.
   final bool adminPreview;
 
-  const UserHomeScreen({super.key, this.adminPreview = false});
+  /// What the screen talks to, for tests (#268). Every real caller uses the
+  /// defaults: the gateway's APIs, the app's one recognizer, location and
+  /// voice.
+  final MapManagementApi? mapApi;
+  final RouteManagementApi? routeApi;
+  final PositioningApi? positioningApi;
+  final NavigationManagementApi? navigationApi;
+  final LocationService? locationService;
+  final SpeechToText? speech;
+  final AppVoice? voice;
+
+  const UserHomeScreen({
+    super.key,
+    this.adminPreview = false,
+    this.mapApi,
+    this.routeApi,
+    this.positioningApi,
+    this.navigationApi,
+    this.locationService,
+    this.speech,
+    this.voice,
+  });
 
   @override
   State<UserHomeScreen> createState() => _UserHomeScreenState();
 }
 
 class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
-  final _mapApi = MapManagementApi();
-  final _routeApi = RouteManagementApi();
-  final _positioningApi = PositioningApi();
-  final _navigationApi = NavigationManagementApi();
-  final _locationService = LocationService();
+  late final _mapApi = widget.mapApi ?? MapManagementApi();
+  late final _routeApi = widget.routeApi ?? RouteManagementApi();
+  late final _positioningApi = widget.positioningApi ?? PositioningApi();
+  late final _navigationApi = widget.navigationApi ?? NavigationManagementApi();
+  late final _locationService = widget.locationService ?? LocationService();
   StreamSubscription<Position>? _positionSub;
 
   List<Map<String, dynamic>> _verifiedAnchors = [];
@@ -80,12 +101,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
 
   // Saying the destination out loud (speech_to_text) instead of drilling
   // down University -> Building -> place.
-  final _speech = SpeechToText();
+  late final _speech = widget.speech ?? SpeechToText();
+  late final AppVoice _appVoice = widget.voice ?? AppVoice.instance;
 
   /// This screen's right to speak (the app's one voice, #258). Given up
   /// while another page covers it, such as a trip: its last sentence and
   /// its listening used to go on under the trip's own voice.
-  VoiceOwner _voice = AppVoice.instance.claim();
+  late VoiceOwner _voice;
   bool _covered = false;
   bool _routeSubscribed = false;
   bool _listening = false;
@@ -99,6 +121,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   @override
   void initState() {
     super.initState();
+    _voice = _appVoice.claim();
     _positionSub = _locationService.positionStream.listen(_recomputeStart);
     _loadAnchors();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -112,7 +135,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    AppVoice.instance.setLanguage(Localizations.localeOf(context).languageCode);
+    _appVoice.setLanguage(Localizations.localeOf(context).languageCode);
     final route = ModalRoute.of(context);
     if (!_routeSubscribed && route is PageRoute) {
       _routeSubscribed = true;
@@ -132,7 +155,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   @override
   void didPopNext() {
     _covered = false;
-    _voice = AppVoice.instance.claim();
+    _voice = _appVoice.claim();
   }
 
   @override
