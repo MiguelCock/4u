@@ -230,7 +230,7 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 
 ## Voice destinations
 
-`_handleSpoken` tries, in order: a place whose whole name (alone or with its building's) is the phrase (`exactPlaces`); a building the phrase names and only names (`matchBuildings`, by `name`, then `code`), sent as `end_building_id` so the server picks the door; then `matchDestinations`, where "edificio"/"bloque" alone no longer count as naming a place. A word after one of those, last in the phrase, is read as a letter (`_spokenTokens`: "se" is C, "de" is D; B and V are one). Buildings and places are limited to the start's campus, and same-named places are offered nearest first (`nearestFirst`). `NavigationScreen.destinationName` is what's said aloud; a resumed trip falls back to the end point's own name.
+`resolveSpokenDestination` (`lib/services/spoken_destination.dart`, pure, out of `_handleSpoken` in #268, with `campusBuildings`, `destinationCandidates`, `wholeBuilding` and `destinationLabel`) tries, in order: a place whose whole name (alone or with its building's) is the phrase (`exactPlaces`); a building the phrase names and only names (`matchBuildings`, by `name`, then `code`), sent as `end_building_id` so the server picks the door; then `matchDestinations`, where "edificio"/"bloque" alone no longer count as naming a place. A word after one of those, last in the phrase, is read as a letter (`_spokenTokens`: "se" is C, "de" is D; B and V are one). Buildings and places are limited to the start's campus, and same-named places are offered nearest first (`nearestFirst`). `NavigationScreen.destinationName` is what's said aloud; a resumed trip falls back to the end point's own name.
 
 ## Floors
 
