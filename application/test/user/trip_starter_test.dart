@@ -1,4 +1,7 @@
+import 'package:eyes4u/l10n/app_localizations.dart';
+import 'package:eyes4u/services/api_service.dart';
 import 'package:eyes4u/services/location_service.dart';
+import 'package:flutter/widgets.dart';
 import 'package:eyes4u/user/trip_starter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -58,7 +61,7 @@ class _Setup {
 
   final FakeMapApi map;
   final route = FakeRouteApi(answer: {'id': 'r1'});
-  final location = LocationService.forTesting(NoLocation());
+  var location = LocationService.forTesting(NoLocation());
   var now = DateTime(2026, 11, 15, 10);
   late final trip = TripStarter(
     mapApi: map,
@@ -216,5 +219,129 @@ void main() {
     );
     expect(noPathEnd('No walkable path found'), NoPathEnd.unknown);
     expect(noPathEnd(null), NoPathEnd.unknown);
+  });
+
+  group('planTrip', () {
+    _Setup at(double lat) {
+      final s = _Setup();
+      s.location = LocationService.forTesting(FixedLocation(fix(lat, -75.58)));
+      return s;
+    }
+
+    Future<TripOutcome> plan(
+      _Setup s,
+      Map<String, dynamic> end, {
+      int? floor,
+      List<List<int>>? asked,
+      List<String>? located,
+    }) => s.trip.planTrip(
+      end,
+      locate: () async {
+        located?.add('check');
+        return (await s.trip.locateStart()).start;
+      },
+      askFloor: (floors, here) async {
+        asked?.add(floors);
+        return floor;
+      },
+    );
+
+    test('no GPS: says why', () async {
+      final s = _Setup();
+      final outcome = await plan(s, _anchors[1]);
+      expect(outcome, isA<TripNoGps>());
+      expect((outcome as TripNoGps).error, LocationError.serviceDisabled);
+    });
+
+    test('checks the start, then finds the route', () async {
+      final s = at(6.2009);
+      final located = <String>[];
+      final outcome = await plan(s, _anchors.first, located: located);
+      expect(outcome, isA<TripFound>());
+      expect((outcome as TripFound).route, {'id': 'r1'});
+      expect(located, ['check']);
+      expect(s.route.posts.single, {
+        'start_anchor_id': 'a2',
+        'end_anchor_id': 'a1',
+      });
+
+      // A second try right after reuses the check.
+      await plan(s, _anchors.first, located: located);
+      expect(located, ['check']);
+    });
+
+    test('several floors near: asks, and starts on the one said', () async {
+      final s = at(6.2000);
+      final asked = <List<int>>[];
+      final outcome = await plan(s, _anchors[1], floor: 1, asked: asked);
+      expect(asked, [
+        [0, 1],
+      ]);
+      expect(outcome, isA<TripFound>());
+      expect(s.route.posts.single['start_anchor_id'], 'a3');
+    });
+
+    test('backing out of the floor question cancels', () async {
+      final s = at(6.2000);
+      expect(await plan(s, _anchors[1]), isA<TripCancelled>());
+      expect(s.route.posts, isEmpty);
+    });
+
+    test('already at the destination', () async {
+      final s = at(6.2009);
+      expect(await plan(s, _anchors[1]), isA<TripAlreadyThere>());
+    });
+
+    test('no walkable path: which end, from the server', () async {
+      final s = at(6.2009)..route.answer = null;
+      final outcome = await plan(s, _anchors.first);
+      expect(outcome, isA<TripNoPath>());
+      expect((outcome as TripNoPath).end, NoPathEnd.unknown);
+    });
+  });
+
+  group('tripOutcomeMessage', () {
+    final l10n = lookupAppLocalizations(const Locale('es'));
+    String? say(TripOutcome outcome) => tripOutcomeMessage(
+      l10n,
+      outcome,
+      destination: const {'id': 'a1', 'location_description': 'Biblioteca'},
+      apiError: (_) => 'sin conexión',
+    );
+
+    test('nothing to say for a found route or a cancel', () {
+      expect(say(const TripFound({})), isNull);
+      expect(say(const TripCancelled()), isNull);
+    });
+
+    test('why there is no GPS', () {
+      expect(
+        say(const TripNoGps(LocationError.serviceDisabled)),
+        l10n.locationServiceDisabledError,
+      );
+      expect(
+        say(const TripNoGps(LocationError.permissionDenied)),
+        l10n.locationPermissionDeniedError,
+      );
+      expect(say(const TripNoGps(null)), l10n.homeErrorNoGpsFix);
+    });
+
+    test('the rest', () {
+      expect(say(const TripNoStart()), l10n.homeErrorNoVerifiedAnchors);
+      expect(
+        say(const TripAlreadyThere()),
+        l10n.homeErrorAlreadyAtDestination('Biblioteca'),
+      );
+      expect(say(const TripNoPath(NoPathEnd.start)), l10n.homeErrorNoPathStart);
+      expect(
+        say(const TripNoPath(NoPathEnd.destination)),
+        l10n.homeErrorNoPathDestination,
+      );
+      expect(say(const TripNoPath(NoPathEnd.unknown)), l10n.homeErrorNoPath);
+      expect(
+        say(TripFailed(ApiException(503, ''))),
+        l10n.homeErrorFailedToFindRoute('sin conexión'),
+      );
+    });
   });
 }

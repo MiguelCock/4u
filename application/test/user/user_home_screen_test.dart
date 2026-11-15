@@ -163,6 +163,21 @@ void main() {
     await h.close(tester);
   });
 
+  testWidgets('"sí" with location off: says why, and shows it', (tester) async {
+    final h = _Harness();
+    await h.pump(tester);
+    await h.run(tester);
+    h.speech.hear('biblioteca');
+    await h.run(tester);
+
+    h.speech.hear('sí');
+    await h.run(tester);
+    expect(h.voice.said, contains(h.l10n.homeSearchingLocation));
+    expect(h.voice.said.last, h.l10n.locationServiceDisabledError);
+    expect(find.text(h.l10n.locationServiceDisabledError), findsOneWidget);
+    await h.close(tester);
+  });
+
   testWidgets('silence is retried twice, then it gives up', (tester) async {
     final h = _Harness();
     await h.pump(tester);

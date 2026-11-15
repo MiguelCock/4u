@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/camera_helper.dart';
 import '../services/destinations.dart';
@@ -52,6 +53,75 @@ bool alreadyAt(Map<String, dynamic> start, Map<String, dynamic> end) =>
     start['id'] == end['id'] ||
     (end['whole_building'] == true &&
         start['building_id'] == end['building_id']);
+
+/// How [TripStarter.planTrip] ended. The screen says each in its own words.
+sealed class TripOutcome {
+  const TripOutcome();
+}
+
+/// The route was found: start the trip.
+class TripFound extends TripOutcome {
+  const TripFound(this.route);
+  final Map<String, dynamic> route;
+}
+
+/// No GPS fix: location is off ([LocationError.serviceDisabled]), not
+/// allowed (another [error]), or simply no fix yet (null).
+class TripNoGps extends TripOutcome {
+  const TripNoGps(this.error);
+  final LocationError? error;
+}
+
+/// No verified point near enough to start from.
+class TripNoStart extends TripOutcome {
+  const TripNoStart();
+}
+
+/// The user is already at the destination.
+class TripAlreadyThere extends TripOutcome {
+  const TripAlreadyThere();
+}
+
+/// No walkable path between the start and the destination (a 404).
+class TripNoPath extends TripOutcome {
+  const TripNoPath(this.end);
+  final NoPathEnd end;
+}
+
+/// The server couldn't be reached, or refused.
+class TripFailed extends TripOutcome {
+  const TripFailed(this.error);
+  final ApiException error;
+}
+
+/// The user backed out (of the floor question), or the screen closed.
+class TripCancelled extends TripOutcome {
+  const TripCancelled();
+}
+
+/// What the screen says for [outcome], or null for a found route or a
+/// cancel (nothing to say). [apiError] words a server failure.
+String? tripOutcomeMessage(
+  AppLocalizations l10n,
+  TripOutcome outcome, {
+  required Map<String, dynamic> destination,
+  required String Function(ApiException error) apiError,
+}) => switch (outcome) {
+  TripFound() || TripCancelled() => null,
+  TripNoGps(error: LocationError.serviceDisabled) =>
+    l10n.locationServiceDisabledError,
+  TripNoGps(error: null) => l10n.homeErrorNoGpsFix,
+  TripNoGps() => l10n.locationPermissionDeniedError,
+  TripNoStart() => l10n.homeErrorNoVerifiedAnchors,
+  TripAlreadyThere() => l10n.homeErrorAlreadyAtDestination(
+    destination['location_description'] as String? ??
+        destination['id'] as String,
+  ),
+  TripNoPath(end: NoPathEnd.start) => l10n.homeErrorNoPathStart,
+  TripNoPath(end: NoPathEnd.destination) => l10n.homeErrorNoPathDestination,
+  TripNoPath() => l10n.homeErrorNoPath,
+  TripFailed(:final error) => l10n.homeErrorFailedToFindRoute(apiError(error)),
+};
 
 /// Where a trip starts, and the route to its destination (#268). It holds
 /// the map the home screen offers (verified, connected points in active
@@ -347,6 +417,43 @@ class TripStarter extends ChangeNotifier {
     );
     _changed();
     return _start;
+  }
+
+  /// From here to [end]: waits for a GPS fix, checks the start ([locate],
+  /// the screen's camera check, unless a fresh one is at hand), asks which
+  /// floor when several are near ([askFloor]: null backs out), and asks the
+  /// server for the route. Everyone gets the camera check of the start.
+  Future<TripOutcome> planTrip(
+    Map<String, dynamic> end, {
+    required Future<Map<String, dynamic>?> Function() locate,
+    required Future<int?> Function(List<int> floors, LatLng here) askFloor,
+  }) async {
+    // Waits for a fix (and re-checks location) instead of giving up on the
+    // first try: in battery saver that said "GPS off" while it was on.
+    final position = await location.ensureReady();
+    if (_disposed) return const TripCancelled();
+    if (position == null) return TripNoGps(location.lastError);
+    try {
+      final here = position.latLng;
+      var from = checkIsFresh ? _start : await locate();
+      if (_disposed) return const TripCancelled();
+      // GPS can't tell floors apart: the nearest point may be overhead.
+      final floors = floorsNear(anchors, here);
+      if (from != null && floors.length > 1) {
+        final floor = await askFloor(floors, here);
+        if (_disposed || floor == null) return const TripCancelled();
+        from = startOnFloor(floor, here);
+      }
+      if (from == null) return const TripNoStart();
+      if (alreadyAt(from, end)) return const TripAlreadyThere();
+      final route = await findRoute(from, end);
+      if (_disposed) return const TripCancelled();
+      return TripFound(route);
+    } on ApiException catch (e) {
+      return e.statusCode == 404
+          ? TripNoPath(noPathEnd(e.detail))
+          : TripFailed(e);
+    }
   }
 
   /// The route from [start] to [end] (`find_or_create`): the same pair gets

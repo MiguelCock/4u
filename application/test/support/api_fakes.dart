@@ -90,6 +90,29 @@ class NoLocation extends LocationPlatform {
   Future<bool> isServiceEnabled() async => false;
   @override
   Stream<Position> positions() => const Stream.empty();
+  @override
+  Stream<ServiceStatus> serviceStatus() => const Stream.empty();
+}
+
+/// Location that's on, standing still at [here].
+class FixedLocation extends LocationPlatform {
+  FixedLocation(this.here);
+
+  Position here;
+
+  @override
+  Future<bool> isServiceEnabled() async => true;
+  @override
+  Future<LocationPermission> checkPermission() async =>
+      LocationPermission.whileInUse;
+  @override
+  Future<Position?> lastKnown() async => here;
+  @override
+  Future<Position> current(Duration timeLimit) async => here;
+  @override
+  Stream<Position> positions() => const Stream.empty();
+  @override
+  Stream<ServiceStatus> serviceStatus() => const Stream.empty();
 }
 
 Position fix(double latitude, double longitude) => Position(
