@@ -124,7 +124,28 @@ class FakeRouteApi extends RouteManagementApi {
   }
 }
 
-class FakePositioningApi extends PositioningApi {}
+class FakePositioningApi extends PositioningApi {
+  FakePositioningApi({this.answer});
+
+  /// What `/correct_position` answers; null for a 503.
+  Map<String, dynamic>? answer;
+
+  /// Each photo sent: its fields.
+  final sent = <Map<String, String>>[];
+
+  @override
+  Future<dynamic> postMultipart(
+    String path, {
+    required String fieldName,
+    required List<int> bytes,
+    required String filename,
+    Map<String, String>? fields,
+    Duration? timeout,
+  }) async {
+    sent.add({'path': path, 'field': fieldName, ...?fields});
+    return answer ?? (throw ApiException(503, ''));
+  }
+}
 
 /// Location that's off: no fixes unless a test sets `lastPosition`.
 class NoLocation extends LocationPlatform {

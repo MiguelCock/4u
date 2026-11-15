@@ -25,6 +25,7 @@ import '../services/location_service.dart';
 import '../voice/app_voice.dart';
 import '../voice/notices.dart';
 import '../services/buzz.dart';
+import '../services/correction_request.dart';
 import '../services/route_points.dart';
 import '../services/test_walk.dart';
 import '../services/turn_guidance.dart';
@@ -1522,29 +1523,20 @@ class _NavigationScreenState extends State<NavigationScreen>
       _blockedAnnounced = false;
 
       final correctStarted = clock.now();
-      final result =
-          await _positioningApi.postMultipart(
-                '/correct_position',
-                timeout: _kTickRequestTimeout,
-                fieldName: 'photo',
-                bytes: bytes,
-                filename: path.basename(image.path),
-                fields: {
-                  'session_id': sessionId,
-                  'latitude': position.latitude.toString(),
-                  'longitude': position.longitude.toString(),
-                  'accuracy': position.accuracy.toString(),
-                  // The direction the camera faces, so a match can be
-                  // checked against it (see _sentHeading).
-                  'heading': ?sentHeading?.toString(),
-                  // Lets the backend skip re-fusing the same fix.
-                  'gps_time': position.timestamp.toUtc().toIso8601String(),
-                  // Test walks keep their frames, to compare photo models
-                  // on real queries (backend-positioning's store_frame).
-                  if (widget.adminPreview) 'store_frame': 'true',
-                },
-              )
-              as Map<String, dynamic>;
+      final result = await postCorrection(
+        _positioningApi,
+        bytes: bytes,
+        filename: path.basename(image.path),
+        sessionId: sessionId,
+        fix: position,
+        // The direction the camera faces, so a match can be checked
+        // against it (see _sentHeading).
+        heading: sentHeading,
+        // Test walks keep their frames, to compare photo models on real
+        // queries (backend-positioning's store_frame).
+        storeFrame: widget.adminPreview,
+        timeout: _kTickRequestTimeout,
+      );
       final correctMs = clock.now().difference(correctStarted).inMilliseconds;
 
       if (result['server_busy'] == true) {

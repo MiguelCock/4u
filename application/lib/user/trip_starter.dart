@@ -9,6 +9,7 @@ import 'package:path/path.dart' as path;
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/camera_helper.dart';
+import '../services/correction_request.dart';
 import '../services/destinations.dart';
 import '../services/geo_utils.dart';
 import '../services/image_utils.dart';
@@ -343,28 +344,16 @@ class TripStarter extends ChangeNotifier {
               final image = await controller.takePicture();
               final bytes = await image.readAsBytes();
               if (!isFrameBlocked(bytes)) {
-                final result =
-                    await _positioningApi
-                            .postMultipart(
-                              '/correct_position',
-                              fieldName: 'photo',
-                              bytes: bytes,
-                              filename: path.basename(image.path),
-                              fields: {
-                                'session_id': key,
-                                'latitude': position.latitude.toString(),
-                                'longitude': position.longitude.toString(),
-                                'accuracy': position.accuracy.toString(),
-                                // No compass here, and the GPS course is
-                                // meaningless while turning on the spot, so
-                                // no heading: the backend skips that gate.
-                                'gps_time': position.timestamp
-                                    .toUtc()
-                                    .toIso8601String(),
-                              },
-                            )
-                            .timeout(const Duration(seconds: 10))
-                        as Map<String, dynamic>;
+                // No compass here, and the GPS course is meaningless while
+                // turning on the spot, so no heading: the backend skips
+                // that gate.
+                final result = await postCorrection(
+                  _positioningApi,
+                  bytes: bytes,
+                  filename: path.basename(image.path),
+                  sessionId: key,
+                  fix: position,
+                ).timeout(const Duration(seconds: 10));
                 fused = LatLng(
                   (result['corrected_lat'] as num).toDouble(),
                   (result['corrected_long'] as num).toDouble(),
