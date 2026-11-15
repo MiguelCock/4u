@@ -344,6 +344,9 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
   - a stale fix.
 
   Fakes: `test/support/sensor_fakes.dart`, `FixedLocation.moveTo`, and `fix()`, stamped with the test clock.
+- **Pure pieces it uses:**
+  - `buildTripPlan` and `resumeWaypointIndex` (`lib/services/trip_plan.dart`): the route's stops (corners, named places, hazards, both ends of a floor change) and where a resumed trip picks up;
+  - `turnWords`, `legWords`, `hazardLabel` and `floorChangeAction` (`lib/services/trip_words.dart`): a turn, a leg, a hazard and a floor change in words. There were two copies of each turn switch.
 
 ## Shared helpers (one copy each)
 

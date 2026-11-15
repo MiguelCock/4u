@@ -16,11 +16,8 @@ import '../location.dart';
 import '../map.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
-import '../services/capture_checks.dart' show kVerticalLocationTypes;
-import '../services/destinations.dart';
 import '../services/floor_detector.dart';
 import '../services/floor_steps.dart';
-import '../services/floor_view.dart';
 import '../services/geo_utils.dart';
 import '../services/heading_tracker.dart';
 import '../services/image_utils.dart';
@@ -31,37 +28,10 @@ import '../services/buzz.dart';
 import '../services/route_points.dart';
 import '../services/test_walk.dart';
 import '../services/turn_guidance.dart';
+import '../services/trip_plan.dart';
+import '../services/trip_words.dart';
 import 'trip_sensors.dart';
 import '../services/api_error_messages.dart';
-
-/// A resolved checkpoint along the planned route: an anchor point's
-/// coordinates, plus its name only when it's a named destination-type
-/// point. Unnamed in-between points (hallways...) are never spoken, so
-/// guidance is just directions: "turn left about 45 degrees, then walk 12
-/// meters".
-class _Waypoint {
-  final LatLng point;
-  final String? name;
-
-  /// 0-based, like `anchor_points.floor`.
-  final int floor;
-
-  /// Stairwell, elevator or ramp (kVerticalLocationTypes): warned about
-  /// before reaching it.
-  final int? hazardType;
-
-  /// The admins' warnings ("three steps down") on the connections of the
-  /// leg that ends here, spoken when that leg starts.
-  final List<String> legNotes;
-
-  const _Waypoint({
-    required this.point,
-    this.name,
-    this.floor = 0,
-    this.hazardType,
-    this.legNotes = const [],
-  });
-}
 
 /// Cues that are instructions: a short vibration comes first, so a user
 /// holding the phone in front (not at the ear) knows to listen.
@@ -84,11 +54,8 @@ const Duration _kNoBarometerWaitPerFloor = Duration(seconds: 60);
 /// No barometer reading this long after opening: the phone hasn't got one.
 const Duration _kBarometerProbe = Duration(seconds: 3);
 
-/// Location type of an elevator (kVerticalLocationTypes): which wording a
-/// floor change gets, and it wins when the two ends differ, like the backend's
-/// route cost.
-const int _kElevatorType = 3;
-const int _kRampType = 11;
+/// Location type of a hallway: a trip starting anywhere else gets the
+/// compass direction at once (see _checkStall).
 const int _kHallwayType = 10;
 
 /// This much nearer the next stop counts as progress (see isStalled).
@@ -348,7 +315,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   ({double x, double y})? _correctionOffset;
   double? _correctionError;
   List<LatLng> _plannedPath = [];
-  List<_Waypoint> _waypoints = [];
+  List<Waypoint> _waypoints = [];
   int _nextWaypointIndex = 0;
   String? _lastHapticAnchorId;
   int _consecutiveBlockedTicks = 0;
@@ -553,105 +520,23 @@ class _NavigationScreenState extends State<NavigationScreen>
     // One request when the server has it (E2), else all at once: one request
     // after another took ~90 s on campus mobile data in a test walk, and
     // guidance can't start without the path.
-    final route = await fetchRoutePoints(_mapApi, anchorIds);
-    final anchors = route.anchors;
-    final connections = route.connections;
-    String? noteBetween(int i) {
-      final a = anchorIds[i];
-      final b = anchorIds[i + 1];
-      for (final c in connections[i]) {
-        final ends = {c['anchor_point_a_id'], c['anchor_point_b_id']};
-        if (ends.contains(a) && ends.contains(b)) {
-          final note = (c['notes'] as String? ?? '').trim();
-          return note.isEmpty ? null : note;
-        }
-      }
-      return null;
-    }
-
-    final startType = anchors.first?['location_type_id'] as int?;
-    final points = <LatLng>[];
-    final names = <String?>[];
-    final hazards = <int?>[];
-    final floors = <int>[];
-    // The note of the connection arriving at each resolved point.
-    final notes = <String?>[];
-    String? pendingNote;
-    var resolvedStart = false;
-    for (var i = 0; i < anchors.length; i++) {
-      final anchor = anchors[i];
-      final point = anchor == null ? null : anchorPosition(anchor);
-      if (i > 0) pendingNote ??= noteBetween(i - 1);
-      if (anchor == null || point == null) continue;
-      notes.add(pendingNote);
-      pendingNote = null;
-      final type = anchor['location_type_id'] as int?;
-      hazards.add(kVerticalLocationTypes.contains(type) ? type : null);
-      floors.add(pointFloor(anchor));
-      points.add(point);
-      if (i == 0) {
-        _startPoint = point;
-        resolvedStart = true;
-      }
-      final description = (anchor['location_description'] as String? ?? '')
-          .trim();
-      // The final point is always named when spoken (falling back to
-      // "your destination"); in-between ones only if they're a real
-      // destination-type place.
-      final named =
-          i > 0 &&
-          description.isNotEmpty &&
-          (i == anchorIds.length - 1 || isDestinationAnchor(anchor));
-      names.add(named ? description : null);
-    }
-    // Guidance stops at corners (and named places), not at every anchor
-    // along a straight - see routeCorners.
-    // Checkpoints use the corners alone (not named places), the same rule
-    // backend-positioning/scripts/replay.py applies to score a walk.
-    final checkpoints = CheckpointSequence(routeCorners(points).length);
-    // Stairs, elevators and ramps stay too: they're warned about. So do both
-    // ends of any floor change, wherever guidance has to wait for one.
-    final corners = routeCorners(
-      points,
-      keep: {
-        for (var i = 0; i < names.length; i++)
-          if (names[i] != null ||
-              hazards[i] != null ||
-              (i > 0 && floors[i - 1] != floors[i]) ||
-              (i + 1 < floors.length && floors[i + 1] != floors[i]))
-            i,
-      },
+    final plan = buildTripPlan(
+      anchorIds,
+      await fetchRoutePoints(_mapApi, anchorIds),
     );
-    final waypoints = <_Waypoint>[];
-    for (var k = 0; k < corners.length; k++) {
-      final i = corners[k];
-      if (i == 0 && resolvedStart) continue;
-      final from = k == 0 ? 0 : corners[k - 1] + 1;
-      waypoints.add(
-        _Waypoint(
-          point: points[i],
-          name: names[i],
-          floor: floors[i],
-          hazardType: hazards[i],
-          legNotes: [
-            for (var j = from; j <= i; j++)
-              if (notes[j] != null) notes[j]!,
-          ],
-        ),
-      );
-    }
+    _startPoint = plan.startPoint;
     if (mounted) {
       setState(() {
-        _plannedPath = points;
-        _plannedFloors = floors;
-        if (floors.isNotEmpty) {
-          _startFloor = floors.first;
-          _currentFloor = floors.first;
-          _startHazard = hazards.first;
-          _startTypeId = startType;
+        _plannedPath = plan.points;
+        _plannedFloors = plan.floors;
+        if (plan.floors.isNotEmpty) {
+          _startFloor = plan.startFloor!;
+          _currentFloor = plan.startFloor!;
+          _startHazard = plan.startHazard;
+          _startTypeId = plan.startTypeId;
         }
-        _waypoints = waypoints;
-        _checkpoints = checkpoints;
+        _waypoints = plan.waypoints;
+        _checkpoints = CheckpointSequence(plan.cornerCount);
       });
     }
     if (!_pathLoaded.isCompleted) _pathLoaded.complete();
@@ -663,28 +548,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   void _skipToNearestWaypoint() {
     final here = _currentPosition();
     if (here == null || _waypoints.isEmpty) return;
-    var nearest = 0;
-    var nearestDistance = double.infinity;
-    for (var i = 0; i < _waypoints.length; i++) {
-      final distance = haversineMeters(here, _waypoints[i].point);
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearest = i;
-      }
-    }
-    // Corners can be 40 m apart: if the user is already past the nearest
-    // one along the next straight, aim at the corner after it instead of
-    // sending them back. Never across a floor change.
-    if (nearest + 1 < _waypoints.length &&
-        _waypoints[nearest + 1].floor == _waypoints[nearest].floor &&
-        projectOntoSegment(
-              here,
-              _waypoints[nearest].point,
-              _waypoints[nearest + 1].point,
-            ).along >
-            0) {
-      nearest++;
-    }
+    final nearest = resumeWaypointIndex(here, _waypoints);
     _nextWaypointIndex = nearest;
     // GPS can't tell the floor: trust the waypoint it's nearest to.
     _currentFloor = _waypoints[nearest].floor;
@@ -838,18 +702,8 @@ class _NavigationScreenState extends State<NavigationScreen>
     );
     final l10n = AppLocalizations.of(context)!;
     switch (cue) {
-      case TurnCue(turnAround: true):
-        _speak(l10n.navTurnAround, cueType: 'turn');
-      case TurnCue(kind: TurnKind.slight, :final right):
-        _speak(
-          right ? l10n.navTurnSlightRight : l10n.navTurnSlightLeft,
-          cueType: 'turn',
-        );
-      case TurnCue(:final right):
-        _speak(
-          right ? l10n.navTurnRightShort : l10n.navTurnLeftShort,
-          cueType: 'turn',
-        );
+      case TurnCue():
+        _speak(turnWords(l10n, cue), cueType: 'turn');
       case StartWalkingCue(:final steps):
         _resetProgress(_lastTargetDistance);
         _speak(l10n.navGoStraightSteps(steps), cueType: 'start_walking');
@@ -918,15 +772,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     if (turn.abs() <= TurnGuidance.alignedDegrees) {
       text = l10n.navContinueStraightSteps(steps);
     } else {
-      text = switch (TurnCue.from(turn)) {
-        TurnCue(turnAround: true) => l10n.navLegAround(steps),
-        TurnCue(kind: TurnKind.slight, right: true) => l10n.navLegSlightRight(
-          steps,
-        ),
-        TurnCue(kind: TurnKind.slight) => l10n.navLegSlightLeft(steps),
-        TurnCue(right: true) => l10n.navLegRight(steps),
-        TurnCue() => l10n.navLegLeft(steps),
-      };
+      text = legWords(l10n, TurnCue.from(turn), steps);
     }
     _speak(text, cueType: 'turn');
     return true;
@@ -1107,18 +953,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     };
     final up = floors > 0;
     final floor = change.floor + 1;
-    final String action;
-    if (types.contains(_kElevatorType)) {
-      action = l10n.navFloorElevator(floor);
-    } else if (types.contains(_kRampType)) {
-      action = up ? l10n.navFloorUpRamp(floor) : l10n.navFloorDownRamp(floor);
-    } else if (types.any((t) => t != null)) {
-      action = up
-          ? l10n.navFloorUpStairs(floor)
-          : l10n.navFloorDownStairs(floor);
-    } else {
-      action = up ? l10n.navFloorUp(floor) : l10n.navFloorDown(floor);
-    }
+    final action = floorChangeAction(l10n, types: types, up: up, floor: floor);
     _floorChange = change;
     _floorWaitSince = now;
     _floorDetector.start(floors, now: now);
@@ -1230,7 +1065,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       final l10n = AppLocalizations.of(context)!;
       _speak(
         l10n.navHazardAhead(
-          _hazardLabel(l10n, hazard),
+          hazardLabel(l10n, hazard),
           roundSteps(haversineMeters(here, corner)),
         ),
         cueType: 'hazard',
@@ -1255,15 +1090,9 @@ class _NavigationScreenState extends State<NavigationScreen>
     );
   }
 
-  String _hazardLabel(AppLocalizations l10n, int type) => switch (type) {
-    3 => l10n.navHazardElevator,
-    11 => l10n.navHazardRamp,
-    _ => l10n.navHazardStairs,
-  };
-
   /// "Attention: three steps down" - the admins' warnings on the leg that
   /// ends at [to], said as it starts.
-  void _speakLegNotes(_Waypoint to) {
+  void _speakLegNotes(Waypoint to) {
     final l10n = AppLocalizations.of(context)!;
     for (final note in to.legNotes) {
       _speak(l10n.navLegWarning(note), cueType: 'hazard');
@@ -1285,7 +1114,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// legs), not the phone's heading, which can be far off; the steps are the
   /// leg's length. A user who has already turned (by a trusted heading) just
   /// hears "go straight".
-  void _announceNextLeg(LatLng? previous, _Waypoint from, _Waypoint to) {
+  void _announceNextLeg(LatLng? previous, Waypoint from, Waypoint to) {
     final l10n = AppLocalizations.of(context)!;
     final steps = roundSteps(haversineMeters(from.point, to.point));
     final nextBearing = bearingDegrees(from.point, to.point);
@@ -1300,16 +1129,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     if (routeTurn.abs() <= kCornerTurnDegrees || alreadyTurned) {
       action = l10n.navContinueStraightSteps(steps);
     } else {
-      final cue = TurnCue.from(routeTurn);
-      action = switch (cue) {
-        TurnCue(turnAround: true) => l10n.navLegAround(steps),
-        TurnCue(kind: TurnKind.slight, right: true) => l10n.navLegSlightRight(
-          steps,
-        ),
-        TurnCue(kind: TurnKind.slight) => l10n.navLegSlightLeft(steps),
-        TurnCue(right: true) => l10n.navLegRight(steps),
-        TurnCue() => l10n.navLegLeft(steps),
-      };
+      action = legWords(l10n, TurnCue.from(routeTurn), steps);
     }
     final name = from.name;
     _speak(
@@ -1477,14 +1297,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     );
     if (turn.abs() <= TurnGuidance.alignedDegrees) return;
     final l10n = AppLocalizations.of(context)!;
-    final cue = TurnCue.from(turn);
-    _speak(switch (cue) {
-      TurnCue(turnAround: true) => l10n.navTurnAround,
-      TurnCue(kind: TurnKind.slight, right: true) => l10n.navTurnSlightRight,
-      TurnCue(kind: TurnKind.slight) => l10n.navTurnSlightLeft,
-      TurnCue(right: true) => l10n.navTurnRightShort,
-      TurnCue() => l10n.navTurnLeftShort,
-    }, cueType: 'turn');
+    _speak(turnWords(l10n, TurnCue.from(turn)), cueType: 'turn');
   }
 
   Future<void> _initCamera() async {
