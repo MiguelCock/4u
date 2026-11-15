@@ -1,3 +1,4 @@
+import 'voice/app_voice.dart' show voiceRouteObserver;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -65,6 +66,7 @@ class MainApp extends StatelessWidget {
               builder: (context, textScale, _) {
                 return MaterialApp(
                   title: kIsWeb ? 'Eyes4U Admin' : '4u',
+                  navigatorObservers: [voiceRouteObserver],
                   locale: locale,
                   localizationsDelegates:
                       AppLocalizations.localizationsDelegates,
