@@ -6,6 +6,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+### Changed
+
+- **The tutorial goes on by itself (#259):** each of its three pages moves on once it has been read out, and the last one leads straight to "¿A dónde quieres ir?". Nothing has to be found on the screen. **Atrás**, **Repetir** and **Saltar tutorial** are still there, and **Siguiente** still works.
+
 ### Fixed
 
 - **A trip started without a signed-in account** now says "No has iniciado sesión" instead of showing a blank screen.

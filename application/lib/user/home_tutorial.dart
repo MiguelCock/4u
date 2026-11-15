@@ -24,13 +24,22 @@ Future<bool> firstRunTutorialDue() async {
   }
 }
 
+/// A tutorial page's buttons.
+enum _Step { back, repeat, skip, next }
+
 /// What the app does and how to use it, a page at a time, each shown and
 /// read out by [voice] (not TalkBack: reading it as well spoke over it,
 /// #257). The first user test had to explain every button by hand, and one
 /// long paragraph was too much to take in at Icesi (2026-11-03).
+///
+/// Each page moves on by itself [pause] after its last word (#259): the
+/// Next button was hard to find without sight. The last one ends the
+/// tutorial, and the home screen goes on to ask for a destination. Back,
+/// Repeat and Skip stay, and Next still works for anyone faster.
 Future<void> showHomeTutorial(
   BuildContext context, {
   required HomeVoiceController voice,
+  Duration pause = const Duration(milliseconds: 1500),
 }) async {
   final l10n = AppLocalizations.of(context)!;
   final pages = [
@@ -38,37 +47,82 @@ Future<void> showHomeTutorial(
     l10n.homeTutorialPage2,
     l10n.homeTutorialPage3,
   ];
-  for (var i = 0; i < pages.length && context.mounted; i++) {
-    voice.say(pages[i]);
-    final next = await showDialog<bool>(
+  // Each page shown gets its own number, so a sentence that ends after its
+  // page was left (back, repeat) doesn't move the next one on.
+  var shown = 0;
+  var i = 0;
+  while (i < pages.length) {
+    if (!context.mounted) break;
+    final id = ++shown;
+    // The page this dialog shows, fixed: `i` moves on as it closes.
+    final page = i;
+    BuildContext? dialog;
+    final step = showDialog<_Step>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: SpokenText(
-          child: Text(
-            '${l10n.homeTutorialTitle} '
-            '(${l10n.homeTutorialProgress(i + 1, pages.length)})',
-          ),
-        ),
-        content: SpokenText(
-          child: SingleChildScrollView(
-            child: Text(pages[i], style: const TextStyle(fontSize: 18)),
-          ),
-        ),
-        actions: [
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(160, 56)),
-            autofocus: true,
-            onPressed: () => Navigator.of(dialogContext).pop(true),
+      builder: (dialogContext) {
+        dialog = dialogContext;
+        void choose(_Step step) {
+          voice.stopSpeaking();
+          Navigator.of(dialogContext).pop(step);
+        }
+
+        final last = page == pages.length - 1;
+        return AlertDialog(
+          title: SpokenText(
             child: Text(
-              i == pages.length - 1
-                  ? l10n.homeTutorialDone
-                  : l10n.homeTutorialNext,
+              '${l10n.homeTutorialTitle} '
+              '(${l10n.homeTutorialProgress(page + 1, pages.length)})',
             ),
           ),
-        ],
-      ),
+          content: SpokenText(
+            child: SingleChildScrollView(
+              child: Text(pages[page], style: const TextStyle(fontSize: 18)),
+            ),
+          ),
+          actionsOverflowButtonSpacing: 8,
+          actions: [
+            if (page > 0)
+              TextButton(
+                onPressed: () => choose(_Step.back),
+                child: Text(l10n.homeTutorialBack),
+              ),
+            TextButton(
+              onPressed: () => choose(_Step.repeat),
+              child: Text(l10n.homeTutorialRepeat),
+            ),
+            if (!last)
+              TextButton(
+                onPressed: () => choose(_Step.skip),
+                child: Text(l10n.homeTutorialSkip),
+              ),
+            FilledButton(
+              style: FilledButton.styleFrom(minimumSize: const Size(160, 56)),
+              autofocus: true,
+              onPressed: () => choose(_Step.next),
+              child: Text(last ? l10n.homeTutorialDone : l10n.homeTutorialNext),
+            ),
+          ],
+        );
+      },
     );
-    if (next != true) break;
+    voice.say(pages[page]).then((_) async {
+      await Future<void>.delayed(pause);
+      final open = dialog;
+      if (id == shown && open != null && open.mounted) {
+        Navigator.of(open).pop(_Step.next);
+      }
+    });
+    switch (await step) {
+      case _Step.next:
+        i++;
+      case _Step.back:
+        i--;
+      case _Step.repeat:
+        break;
+      case _Step.skip || null:
+        // Skipped, or closed with system back.
+        i = pages.length;
+    }
   }
   voice.stopSpeaking();
 }
