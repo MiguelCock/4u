@@ -121,6 +121,7 @@ class UsersTab extends StatelessWidget {
         content: l10n.adminUserDeactivateConfirm(
           user['full_name'] as String? ?? user['id'] as String,
         ),
+        confirmLabel: l10n.adminUserDeactivateButton,
       );
       if (!confirmed || !context.mounted) return;
     }
@@ -142,6 +143,7 @@ class UsersTab extends StatelessWidget {
       content: l10n.adminUsersDemoteConfirmContent(
         user['full_name'] as String? ?? user['id'] as String,
       ),
+      confirmLabel: l10n.adminUsersDemoteButton,
     );
     if (!confirmed || !context.mounted) return;
     await _save(context, user, {'role_id': _userRoleId});
