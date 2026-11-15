@@ -29,6 +29,7 @@ import 'map_home.dart';
 import 'sessions_screen.dart';
 import '../user/settings_screen.dart';
 import '../user/user_home_screen.dart';
+import '../services/admin_lists.dart';
 import '../services/anchor_filters.dart';
 import '../services/anchor_indexing.dart';
 import '../services/api_error_messages.dart';
@@ -423,53 +424,52 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// and only then ask to press again to exit.
   void _handleBack() {
     final index = _tabController.index;
-    if (index == _kMap && _movingPoint != null) {
-      setState(_clearMove);
-      return;
-    }
-    if (index == _kMap && _connectFromId != null) {
-      setState(() => _connectFromId = null);
-      return;
-    }
-    if (index == _kMap && _connecting) {
-      setState(() => _connecting = false);
-      return;
-    }
-    if (index == _kMap && !_anchorFilters.isEmpty) {
-      setState(() => _anchorFilters = AnchorFilters.none);
-      return;
-    }
-    if (index == _kMap && !_mapScope.isAll) {
-      setState(() => _mapScope = _mapScope.up);
-      return;
-    }
-    // Metadata filters on the Anchor points tab are cleared first.
-    if (index == _kPoints && !_anchorFilters.isEmpty) {
-      setState(() => _anchorFilters = AnchorFilters.none);
-      return;
-    }
-    void clearFilterOf(int tab) {
-      if (tab == _kBuildings) _buildingsPlaceFilterId = null;
-      if (tab == _kPoints) {
+    final drillDown =
+        (index == _kBuildings && _buildingsPlaceFilterId != null) ||
+        (index == _kPoints &&
+            (_anchorPointsBuildingFilterId != null ||
+                _anchorPointsPlaceFilterId != null));
+    void clearDrillDown() {
+      if (index == _kBuildings) _buildingsPlaceFilterId = null;
+      if (index == _kPoints) {
         _anchorPointsBuildingFilterId = null;
         _anchorPointsPlaceFilterId = null;
       }
     }
 
-    if (_tabHistory.isNotEmpty) {
-      setState(() => clearFilterOf(index));
-      _navigatingBack = true;
-      _tabController.animateTo(_tabHistory.removeLast());
-    } else if ((index == _kBuildings && _buildingsPlaceFilterId != null) ||
-        (index == _kPoints &&
-            (_anchorPointsBuildingFilterId != null ||
-                _anchorPointsPlaceFilterId != null))) {
-      setState(() => clearFilterOf(index));
-    } else if (index != _kMap) {
-      _navigatingBack = true;
-      _tabController.animateTo(_kMap);
-    } else {
-      _exitGuard.onBack(context);
+    switch (adminBack(
+      onMap: index == _kMap,
+      onPoints: index == _kPoints,
+      moving: _movingPoint != null,
+      pointSelected: _connectFromId != null,
+      connecting: _connecting,
+      pointFilters: !_anchorFilters.isEmpty,
+      scoped: !_mapScope.isAll,
+      history: _tabHistory.isNotEmpty,
+      drillDown: drillDown,
+    )) {
+      case AdminBack.cancelMove:
+        setState(_clearMove);
+      case AdminBack.releaseSelection:
+        setState(() => _connectFromId = null);
+      case AdminBack.leaveConnect:
+        setState(() => _connecting = false);
+      case AdminBack.clearPointFilters:
+        setState(() => _anchorFilters = AnchorFilters.none);
+      case AdminBack.levelUp:
+        setState(() => _mapScope = _mapScope.up);
+      case AdminBack.previousTab:
+        // Leaving a tab drops the filter a drill-down set on it.
+        setState(clearDrillDown);
+        _navigatingBack = true;
+        _tabController.animateTo(_tabHistory.removeLast());
+      case AdminBack.clearDrillDown:
+        setState(clearDrillDown);
+      case AdminBack.toMap:
+        _navigatingBack = true;
+        _tabController.animateTo(_kMap);
+      case AdminBack.exitGuard:
+        _exitGuard.onBack(context);
     }
   }
 
@@ -787,23 +787,26 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  /// The five lists, for what's asked of them (lib/services/admin_lists.dart).
+  AdminLists get _lists => AdminLists(
+    places: _places,
+    buildings: _buildings,
+    anchorPoints: _anchorPoints,
+    photos: _photos,
+    connections: _connections,
+  );
+
   List<Map<String, dynamic>> _buildingsOf(String placeId) =>
-      _buildings.where((b) => b['place_id'] == placeId).toList();
+      _lists.buildingsOf(placeId);
 
   List<Map<String, dynamic>> _anchorPointsOf(String buildingId) =>
-      _anchorPoints.where((p) => p['building_id'] == buildingId).toList();
+      _lists.anchorPointsOf(buildingId);
 
   List<Map<String, dynamic>> _photosOf(String anchorPointId) =>
-      _photos.where((p) => p['anchor_point_id'] == anchorPointId).toList();
+      _lists.photosOf(anchorPointId);
 
   List<Map<String, dynamic>> _connectionsOf(String anchorPointId) =>
-      _connections
-          .where(
-            (c) =>
-                c['anchor_point_a_id'] == anchorPointId ||
-                c['anchor_point_b_id'] == anchorPointId,
-          )
-          .toList();
+      _lists.connectionsOf(anchorPointId);
 
   /// Deletes in the database first; [afterSuccess] (removing the points
   /// from photo search) runs only once that worked. The other way round, a
@@ -840,23 +843,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   Future<void> _deletePlace(Map<String, dynamic> place) async {
-    final buildings = _buildingsOf(place['id'] as String);
-    final buildingIds = buildings.map((b) => b['id'] as String).toSet();
-    final anchors = _anchorPoints
-        .where((p) => buildingIds.contains(p['building_id']))
-        .toList();
-    final anchorIds = anchors.map((p) => p['id'] as String).toSet();
-    final photoCount = _photos
-        .where((ph) => anchorIds.contains(ph['anchor_point_id']))
-        .length;
-    final connectionCount = _connections
-        .where(
-          (c) =>
-              anchorIds.contains(c['anchor_point_a_id']) ||
-              anchorIds.contains(c['anchor_point_b_id']),
-        )
-        .length;
-
+    final cascade = _lists.placeCascade(place['id'] as String);
+    final buildings = cascade.buildings;
     final l10n = AppLocalizations.of(context)!;
     final confirmed = await confirmAction(
       context,
@@ -865,9 +853,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           l10n.adminDeletePlaceContent(
             place['name'] as String? ?? place['id'] as String,
             buildings.length,
-            anchors.length,
-            photoCount,
-            connectionCount,
+            cascade.anchors.length,
+            cascade.photos,
+            cascade.connections,
           ) +
           l10n.adminDeleteKeepsHistoryNote,
     );
@@ -883,19 +871,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   Future<void> _deleteBuilding(Map<String, dynamic> building) async {
-    final anchors = _anchorPointsOf(building['id'] as String);
-    final anchorIds = anchors.map((p) => p['id'] as String).toSet();
-    final photoCount = _photos
-        .where((ph) => anchorIds.contains(ph['anchor_point_id']))
-        .length;
-    final connectionCount = _connections
-        .where(
-          (c) =>
-              anchorIds.contains(c['anchor_point_a_id']) ||
-              anchorIds.contains(c['anchor_point_b_id']),
-        )
-        .length;
-
+    final cascade = _lists.buildingCascade(building['id'] as String);
     final l10n = AppLocalizations.of(context)!;
     final confirmed = await confirmAction(
       context,
@@ -903,9 +879,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       content:
           l10n.adminDeleteBuildingContent(
             building['name'] as String? ?? building['id'] as String,
-            anchors.length,
-            photoCount,
-            connectionCount,
+            cascade.anchors.length,
+            cascade.photos,
+            cascade.connections,
           ) +
           l10n.adminDeleteKeepsHistoryNote,
     );
@@ -1261,19 +1237,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   Widget _placesTab() {
     final l10n = AppLocalizations.of(context)!;
-    final filtered =
-        _places
-            .where(
-              (p) => (p['name'] as String? ?? '').toLowerCase().contains(
-                _placeQuery,
-              ),
-            )
-            .toList()
-          ..sort(
-            (a, b) => (a['name'] as String? ?? '').compareTo(
-              b['name'] as String? ?? '',
-            ),
-          );
+    final filtered = rowsByName(_places, _placeQuery);
 
     return Column(
       children: [
@@ -1341,22 +1305,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final scopedPlace = _buildingsPlaceFilterId != null
         ? placesById[_buildingsPlaceFilterId]
         : null;
-    final filtered =
-        _buildings
-            .where(
-              (b) =>
-                  (_buildingsPlaceFilterId == null ||
-                      b['place_id'] == _buildingsPlaceFilterId) &&
-                  (b['name'] as String? ?? '').toLowerCase().contains(
-                    _buildingQuery,
-                  ),
-            )
-            .toList()
-          ..sort(
-            (a, b) => (a['name'] as String? ?? '').compareTo(
-              b['name'] as String? ?? '',
-            ),
-          );
+    final filtered = rowsByName(
+      _buildings,
+      _buildingQuery,
+      placeId: _buildingsPlaceFilterId,
+    );
 
     return Column(
       children: [
@@ -1757,15 +1710,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   /// The status chips and filters: one test for the list and the map.
   bool Function(Map<String, dynamic>) _pointFilter() {
-    final withPhotos = {
-      for (final photo in _photos) photo['anchor_point_id'] as String?,
-    }.whereType<String>().toSet();
-    final connected = {
-      for (final c in _connections) ...[
-        c['anchor_point_a_id'] as String?,
-        c['anchor_point_b_id'] as String?,
-      ],
-    }.whereType<String>().toSet();
+    final withPhotos = _lists.pointsWithPhotos;
+    final connected = _lists.connectedPoints;
     return (p) =>
         _anchorFilters.matches(p, withPhotos: withPhotos, connected: connected);
   }
@@ -1938,18 +1884,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     int count(String? status) => status == null
         ? scoped.length
         : scoped.where((p) => p['status'] == status).length;
-    final scopedBuilding = _buildings.firstWhere(
-      (b) => b['id'] == buildingId,
-      orElse: () => const {},
-    );
-    final maxFloors = scopedBuilding.isNotEmpty
-        ? (scopedBuilding['floors'] as int? ?? 1)
-        : _buildings.fold<int>(
-            1,
-            (most, b) => (b['floors'] as int? ?? 1) > most
-                ? (b['floors'] as int? ?? 1)
-                : most,
-          );
+    final maxFloors = _lists.maxFloors(buildingId);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -2154,15 +2089,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   Widget _anchorPointsTab() {
     final l10n = AppLocalizations.of(context)!;
-    final withPhotos = {
-      for (final photo in _photos) photo['anchor_point_id'] as String?,
-    }.whereType<String>().toSet();
-    final connected = {
-      for (final c in _connections) ...[
-        c['anchor_point_a_id'] as String?,
-        c['anchor_point_b_id'] as String?,
-      ],
-    }.whereType<String>().toSet();
+    final withPhotos = _lists.pointsWithPhotos;
+    final connected = _lists.connectedPoints;
     final buildingsById = {for (final b in _buildings) b['id'] as String: b};
     final scopedBuilding = _anchorPointsBuildingFilterId != null
         ? buildingsById[_anchorPointsBuildingFilterId]
@@ -2309,29 +2237,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     }
 
     // Narrowed to a university or building: either end inside counts.
-    final placeBuildings = {
-      for (final b in _buildings)
-        if (b['place_id'] == _connectionsPlaceId) b['id'],
-    };
-    bool inside(String? anchorPointId) {
-      final buildingId = anchorPointsById[anchorPointId]?['building_id'];
-      if (_connectionsBuildingId != null) {
-        return buildingId == _connectionsBuildingId;
-      }
-      return _connectionsPlaceId == null || placeBuildings.contains(buildingId);
-    }
-
-    final filtered = _connections.where((c) {
-      if (c['pending'] == true) return false;
-      final a = c['anchor_point_a_id'] as String?;
-      final b = c['anchor_point_b_id'] as String?;
-      if (!inside(a) && !inside(b)) return false;
-      if (!_connectionFilters.matches(c, anchorPointsById)) return false;
-      final aDesc = describe(a).toLowerCase();
-      final bDesc = describe(b).toLowerCase();
-      return aDesc.contains(_connectionQuery) ||
-          bDesc.contains(_connectionQuery);
-    }).toList();
+    final filtered = _lists
+        .connectionsInScope(
+          placeId: _connectionsPlaceId,
+          buildingId: _connectionsBuildingId,
+        )
+        .where((c) {
+          final a = c['anchor_point_a_id'] as String?;
+          final b = c['anchor_point_b_id'] as String?;
+          if (!_connectionFilters.matches(c, anchorPointsById)) return false;
+          final aDesc = describe(a).toLowerCase();
+          final bDesc = describe(b).toLowerCase();
+          return aDesc.contains(_connectionQuery) ||
+              bDesc.contains(_connectionQuery);
+        })
+        .toList();
 
     return Column(
       children: [
