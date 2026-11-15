@@ -26,6 +26,9 @@ import 'edit_building_screen.dart';
 import 'edit_place_screen.dart';
 import 'feedback_screen.dart';
 import 'map_home.dart';
+import 'tabs/admin_rows.dart';
+import 'tabs/named_rows_tab.dart';
+import 'tabs/users_tab.dart';
 import 'sessions_screen.dart';
 import '../user/settings_screen.dart';
 import '../user/user_home_screen.dart';
@@ -112,10 +115,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   set _connections(List<Map<String, dynamic>> rows) => _data.connections = rows;
   bool get _loading => _data.loading;
   int? get _unsearchablePhotos => _data.unsearchablePhotos;
-  List<Map<String, dynamic>> _users = [];
-  List<Map<String, dynamic>> _orphanedUsers = [];
-  bool _usersLoaded = false;
-  String? _usersError;
+
+  /// The Users tab's list, loaded the first time it opens.
+  late final _users = UsersController(_userApi);
 
   final _placeSearchController = TextEditingController();
   final _buildingSearchController = TextEditingController();
@@ -191,7 +193,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           }
         }
         setState(() {});
-        if (index == _kUsers && !_usersLoaded) _loadUsers();
+        if (index == _kUsers && !_users.loaded) _users.load();
       });
     // Each search box filters its tab, case-insensitively.
     for (final (controller, setQuery) in [
@@ -216,6 +218,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   void dispose() {
     _syncTimer?.cancel();
     _data.dispose();
+    _users.dispose();
     _tabController.dispose();
     _placeSearchController.dispose();
     _buildingSearchController.dispose();
@@ -299,36 +302,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// All five lists: on opening, on pull-to-refresh, and as a fallback.
   Future<void> _loadAll() => _data.loadAll();
 
-  Future<void> _loadUsers() async {
-    try {
-      final results = await Future.wait([
-        _userApi.get('/profiles'),
-        // Best-effort: a failure here shouldn't hide the real users list.
-        _userApi.get('/profiles/orphaned').catchError((_) => const []),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _users = (results[0] as List? ?? []).cast<Map<String, dynamic>>();
-        _orphanedUsers = (results[1] as List? ?? [])
-            .cast<Map<String, dynamic>>();
-        _usersLoaded = true;
-        _usersError = null;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _usersError = AppLocalizations.of(
-          context,
-        )!.adminUsersErrorLoadFailed(friendlyApiErrorMessage(context, e));
-        _usersLoaded = true;
-      });
-    }
-  }
-
   /// Pull-to-refresh: reloads the map data, plus the users list once it
   /// has been opened.
   Future<void> _refresh() async {
-    await Future.wait([_loadAll(), if (_usersLoaded) _loadUsers()]);
+    await Future.wait([_loadAll(), if (_users.loaded) _users.load()]);
   }
 
   /// System back: on the map, cancel a move, then go up a level. Elsewhere,
@@ -483,210 +460,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   Future<void> _refreshIndexStatus() => _data.refreshIndexStatus();
-
-  Future<void> _setUserRole(Map<String, dynamic> user, int roleId) async {
-    try {
-      await _userApi.patch('/profiles/${user['id']}', {'role_id': roleId});
-      await _loadUsers();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      showApiError(
-        context,
-        e,
-        AppLocalizations.of(context)!.adminUsersErrorUpdateFailed,
-      );
-    }
-  }
-
-  Future<void> _repairProfile(Map<String, dynamic> orphan) async {
-    final l10n = AppLocalizations.of(context)!;
-    final label = orphan['email'] as String? ?? orphan['id'] as String;
-    try {
-      await _userApi.post('/profiles/${orphan['id']}/repair', {});
-      await _loadUsers();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.adminOrphanedRepairedSnackbar(label))),
-      );
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      showApiError(context, e, l10n.adminOrphanedErrorRepairFailed);
-    }
-  }
-
-  /// Deactivated accounts are refused by every service (packages'
-  /// get_caller_id answers 403) until an admin activates them again.
-  Future<void> _setUserActive(Map<String, dynamic> user, bool active) async {
-    final l10n = AppLocalizations.of(context)!;
-    if (!active) {
-      final confirmed = await confirmAction(
-        context,
-        title: l10n.adminUserDeactivateTooltip,
-        content: l10n.adminUserDeactivateConfirm(
-          user['full_name'] as String? ?? user['id'] as String,
-        ),
-      );
-      if (!confirmed) return;
-    }
-    try {
-      await _userApi.patch('/profiles/${user['id']}', {'is_active': active});
-      await _loadUsers();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      showApiError(context, e, l10n.adminUsersErrorUpdateFailed);
-    }
-  }
-
-  Future<void> _promoteOrDemote(Map<String, dynamic> user) async {
-    const adminRoleId = 2;
-    const userRoleId = 1;
-    final isAdmin = user['role_id'] == adminRoleId;
-    if (!isAdmin) {
-      await _setUserRole(user, adminRoleId);
-      return;
-    }
-    final l10n = AppLocalizations.of(context)!;
-    final confirmed = await confirmAction(
-      context,
-      title: l10n.adminUsersDemoteConfirmTitle,
-      content: l10n.adminUsersDemoteConfirmContent(
-        user['full_name'] as String? ?? user['id'] as String,
-      ),
-    );
-    if (!confirmed) return;
-    await _setUserRole(user, userRoleId);
-  }
-
-  Widget _usersTab() {
-    final l10n = AppLocalizations.of(context)!;
-    final currentUserId = _userId();
-    if (!_usersLoaded) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_usersError != null) {
-      return ScrollableMessage(_usersError!);
-    }
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Text(
-            l10n.adminUsersBootstrapNote,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
-        if (_orphanedUsers.isNotEmpty)
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            color: Theme.of(context).colorScheme.errorContainer,
-            child: ExpansionTile(
-              initiallyExpanded: true,
-              leading: Icon(
-                Icons.warning_amber_rounded,
-                color: Theme.of(context).colorScheme.onErrorContainer,
-              ),
-              title: Text(
-                l10n.adminOrphanedSectionTitle(_orphanedUsers.length),
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onErrorContainer,
-                ),
-              ),
-              subtitle: Text(
-                l10n.adminOrphanedSectionHint,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onErrorContainer,
-                ),
-              ),
-              children: [
-                for (final orphan in _orphanedUsers)
-                  ListTile(
-                    title: Text(
-                      orphan['email'] as String? ?? orphan['id'] as String,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onErrorContainer,
-                      ),
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.person_add_alt_1),
-                      color: Theme.of(context).colorScheme.onErrorContainer,
-                      tooltip: l10n.adminOrphanedCreateProfileTooltip,
-                      onPressed: () => _repairProfile(orphan),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        Expanded(
-          child: _users.isEmpty
-              ? ScrollableMessage(l10n.adminUsersEmpty)
-              : ListView.builder(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  itemCount: _users.length,
-                  itemBuilder: (context, index) {
-                    final user = _users[index];
-                    final isAdmin = user['role_id'] == 2;
-                    final isSelf = user['id'] == currentUserId;
-                    final active = user['is_active'] as bool? ?? true;
-                    return ListTile(
-                      leading: Icon(
-                        isAdmin
-                            ? Icons.admin_panel_settings
-                            : Icons.person_outline,
-                        color: isAdmin ? Colors.indigo : Colors.grey,
-                      ),
-                      title: Text(
-                        user['full_name'] as String? ?? user['id'] as String,
-                      ),
-                      subtitle: Text(
-                        [
-                          isAdmin
-                              ? l10n.adminUsersRoleAdmin
-                              : l10n.adminUsersRoleUser,
-                          if (!active) l10n.adminUserInactive,
-                        ].join(' · '),
-                        style: active
-                            ? null
-                            : const TextStyle(color: Colors.red),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: Icon(
-                              isAdmin
-                                  ? Icons.remove_moderator_outlined
-                                  : Icons.admin_panel_settings_outlined,
-                            ),
-                            tooltip: isAdmin
-                                ? l10n.adminUsersDemote
-                                : l10n.adminUsersPromote,
-                            onPressed: isSelf
-                                ? null
-                                : () => _promoteOrDemote(user),
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              active
-                                  ? Icons.person_off_outlined
-                                  : Icons.person_add_alt_outlined,
-                            ),
-                            tooltip: active
-                                ? l10n.adminUserDeactivateTooltip
-                                : l10n.adminUserActivateTooltip,
-                            // Not on your own row: no locking yourself out.
-                            onPressed: isSelf
-                                ? null
-                                : () => _setUserActive(user, !active),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
 
   /// The five lists, for what's asked of them (lib/services/admin_lists.dart).
   AdminLists get _lists => _data.lists;
@@ -1115,82 +888,31 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
-  Widget _searchField(TextEditingController controller, String hint) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          hintText: hint,
-          prefixIcon: const Icon(Icons.search),
-          isDense: true,
-          border: const OutlineInputBorder(),
-        ),
-      ),
-    );
-  }
+  Widget _searchField(TextEditingController controller, String hint) =>
+      AdminSearchField(controller: controller, hint: hint);
 
   Widget _placesTab() {
     final l10n = AppLocalizations.of(context)!;
-    final filtered = rowsByName(_places, _placeQuery);
-
-    return Column(
-      children: [
-        _searchField(_placeSearchController, l10n.adminSearchPlacesHint),
-        Expanded(
-          child: filtered.isEmpty
-              ? ScrollableMessage(l10n.adminPlacesEmpty)
-              : ListView.builder(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  // Clears the FAB, which otherwise covers the last row's
-                  // trailing buttons.
-                  padding: EdgeInsets.only(bottom: _fabClearance),
-                  itemCount: filtered.length,
-                  itemBuilder: (context, index) {
-                    final place = filtered[index];
-                    final buildingCount = _buildingsOf(
-                      place['id'] as String,
-                    ).length;
-                    return ListTile(
-                      onTap: () {
-                        setState(
-                          () => _buildingsPlaceFilterId = place['id'] as String,
-                        );
-                        _tabController.animateTo(_kBuildings);
-                      },
-                      leading: Icon(
-                        Icons.flag,
-                        color: kAdminPalette.university,
-                      ),
-                      title: Text(
-                        place['name'] as String? ?? place['id'] as String,
-                      ),
-                      subtitle: Text(
-                        l10n.adminBuildingCountLabel(buildingCount) +
-                            ((place['is_active'] as bool? ?? true)
-                                ? ''
-                                : l10n.adminInactiveSuffix),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined),
-                            tooltip: l10n.commonEdit,
-                            onPressed: () => _editPlace(place),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            tooltip: l10n.commonDelete,
-                            onPressed: () => _deletePlace(place),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
+    return NamedRowsTab(
+      search: _searchField(_placeSearchController, l10n.adminSearchPlacesHint),
+      rows: rowsByName(_places, _placeQuery),
+      empty: l10n.adminPlacesEmpty,
+      icon: Icons.flag,
+      iconColor: kAdminPalette.university,
+      subtitle: (place) =>
+          l10n.adminBuildingCountLabel(
+            _buildingsOf(place['id'] as String).length,
+          ) +
+          ((place['is_active'] as bool? ?? true)
+              ? ''
+              : l10n.adminInactiveSuffix),
+      onOpen: (place) {
+        setState(() => _buildingsPlaceFilterId = place['id'] as String);
+        _tabController.animateTo(_kBuildings);
+      },
+      onEdit: _editPlace,
+      onDelete: _deletePlace,
+      bottomPadding: _fabClearance,
     );
   }
 
@@ -1200,87 +922,46 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final scopedPlace = _buildingsPlaceFilterId != null
         ? placesById[_buildingsPlaceFilterId]
         : null;
-    final filtered = rowsByName(
-      _buildings,
-      _buildingQuery,
-      placeId: _buildingsPlaceFilterId,
-    );
-
-    return Column(
-      children: [
-        ScopeDropdowns(
-          places: _places,
-          buildings: _buildings,
-          placeId: _buildingsPlaceFilterId,
-          buildingId: null,
-          showBuilding: false,
-          onChanged: (placeId, _) =>
-              setState(() => _buildingsPlaceFilterId = placeId),
-        ),
-        _searchField(_buildingSearchController, l10n.adminSearchBuildingsHint),
-        Expanded(
-          child: filtered.isEmpty
-              ? ScrollableMessage(
-                  scopedPlace != null
-                      ? l10n.adminBuildingsEmptyIn(
-                          scopedPlace['name'] as String? ?? scopedPlace['id'],
-                        )
-                      : l10n.adminBuildingsEmpty,
-                )
-              : ListView.builder(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  // Clears the FAB, which otherwise covers the last row's
-                  // trailing buttons.
-                  padding: EdgeInsets.only(bottom: _fabClearance),
-                  itemCount: filtered.length,
-                  itemBuilder: (context, index) {
-                    final building = filtered[index];
-                    final place = placesById[building['place_id']];
-                    final anchorCount = _anchorPointsOf(
-                      building['id'] as String,
-                    ).length;
-                    return ListTile(
-                      onTap: () {
-                        setState(() {
-                          _anchorPointsBuildingFilterId =
-                              building['id'] as String;
-                          _anchorPointsPlaceFilterId =
-                              building['place_id'] as String?;
-                        });
-                        _tabController.animateTo(_kPoints);
-                      },
-                      leading: Icon(
-                        Icons.apartment,
-                        color: kAdminPalette.building,
-                      ),
-                      title: Text(
-                        building['name'] as String? ?? building['id'] as String,
-                      ),
-                      subtitle: Text(
-                        '${place?['name'] as String? ?? l10n.commonUnknownUniversity} · '
-                        '${l10n.adminAnchorCountLabel(anchorCount)}'
-                        '${(building['is_active'] as bool? ?? true) ? '' : l10n.adminInactiveSuffix}',
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined),
-                            tooltip: l10n.commonEdit,
-                            onPressed: () => _editBuilding(building),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            tooltip: l10n.commonDelete,
-                            onPressed: () => _deleteBuilding(building),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
+    return NamedRowsTab(
+      header: ScopeDropdowns(
+        places: _places,
+        buildings: _buildings,
+        placeId: _buildingsPlaceFilterId,
+        buildingId: null,
+        showBuilding: false,
+        onChanged: (placeId, _) =>
+            setState(() => _buildingsPlaceFilterId = placeId),
+      ),
+      search: _searchField(
+        _buildingSearchController,
+        l10n.adminSearchBuildingsHint,
+      ),
+      rows: rowsByName(
+        _buildings,
+        _buildingQuery,
+        placeId: _buildingsPlaceFilterId,
+      ),
+      empty: scopedPlace != null
+          ? l10n.adminBuildingsEmptyIn(
+              scopedPlace['name'] as String? ?? scopedPlace['id'],
+            )
+          : l10n.adminBuildingsEmpty,
+      icon: Icons.apartment,
+      iconColor: kAdminPalette.building,
+      subtitle: (building) =>
+          '${placesById[building['place_id']]?['name'] as String? ?? l10n.commonUnknownUniversity} · '
+          '${l10n.adminAnchorCountLabel(_anchorPointsOf(building['id'] as String).length)}'
+          '${(building['is_active'] as bool? ?? true) ? '' : l10n.adminInactiveSuffix}',
+      onOpen: (building) {
+        setState(() {
+          _anchorPointsBuildingFilterId = building['id'] as String;
+          _anchorPointsPlaceFilterId = building['place_id'] as String?;
+        });
+        _tabController.animateTo(_kPoints);
+      },
+      onEdit: _editBuilding,
+      onDelete: _deleteBuilding,
+      bottomPadding: _fabClearance,
     );
   }
 
@@ -2013,107 +1694,41 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             ).compareTo(anchorDisplayName(l10n, b)),
           );
 
-    return Column(
-      children: [
-        ScopeDropdowns(
-          places: _places,
-          buildings: _buildings,
-          placeId: _anchorPointsPlaceFilterId,
-          buildingId: _anchorPointsBuildingFilterId,
-          onChanged: (placeId, buildingId) => setState(() {
-            _anchorPointsPlaceFilterId = placeId;
-            _anchorPointsBuildingFilterId = buildingId;
-          }),
-        ),
-        _searchField(_anchorSearchController, l10n.adminSearchAnchorPointsHint),
-        Expanded(
-          child: filtered.isEmpty
-              ? ScrollableMessage(
-                  scopedBuilding != null
-                      ? l10n.adminAnchorsEmptyIn(
-                          scopedBuilding['name'] as String? ??
-                              scopedBuilding['id'],
-                        )
-                      : l10n.adminAnchorsEmpty,
-                )
-              : ListView.builder(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  // Clears the FAB, which otherwise covers the last row's
-                  // trailing buttons.
-                  padding: EdgeInsets.only(bottom: _fabClearance),
-                  itemCount: filtered.length,
-                  itemBuilder: (context, index) {
-                    final point = filtered[index];
-                    final building = buildingsById[point['building_id']];
-                    final photos = _photosOf(point['id'] as String);
-                    final thumbUrl = photos.isNotEmpty
-                        ? photos.first['image_url'] as String?
-                        : null;
-                    return ListTile(
-                      onTap: () => _connectFromAnchorPoint(point),
-                      leading: thumbUrl != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: Image.network(
-                                thumbUrl,
-                                width: 40,
-                                height: 40,
-                                fit: BoxFit.cover,
-                              ),
-                            )
-                          : Icon(
-                              Icons.location_pin,
-                              color: kAdminPalette.verified,
-                            ),
-                      title: CategoryTitle(
-                        anchorDisplayName(l10n, point),
-                        locationTypeId: point['location_type_id'] as int?,
-                      ),
-                      subtitle: Text(
-                        '${building?['name'] as String? ?? l10n.commonUnknownBuilding} · '
-                        '${l10n.adminStatusLabel(anchorStatusLabel(l10n, point['status'] as String? ?? 'unknown'))} · '
-                        '${l10n.adminPhotoCountLabel(photos.length)}',
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _statusToggleButton(point),
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined),
-                            tooltip: l10n.commonEdit,
-                            onPressed: () => _editAnchorPoint(point),
-                          ),
-                          PopupMenuButton<String>(
-                            tooltip: l10n.adminMoreActionsTooltip,
-                            onSelected: (choice) => choice == 'photo'
-                                ? _addPhoto(point)
-                                : _deleteAnchorPoint(point),
-                            itemBuilder: (_) => [
-                              PopupMenuItem(
-                                value: 'photo',
-                                child: ListTile(
-                                  leading: const Icon(
-                                    Icons.add_a_photo_outlined,
-                                  ),
-                                  title: Text(l10n.adminAddPhotoTooltip),
-                                ),
-                              ),
-                              PopupMenuItem(
-                                value: 'delete',
-                                child: ListTile(
-                                  leading: const Icon(Icons.delete_outline),
-                                  title: Text(l10n.commonDelete),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
+    return AdminListTab(
+      header: ScopeDropdowns(
+        places: _places,
+        buildings: _buildings,
+        placeId: _anchorPointsPlaceFilterId,
+        buildingId: _anchorPointsBuildingFilterId,
+        onChanged: (placeId, buildingId) => setState(() {
+          _anchorPointsPlaceFilterId = placeId;
+          _anchorPointsBuildingFilterId = buildingId;
+        }),
+      ),
+      search: _searchField(
+        _anchorSearchController,
+        l10n.adminSearchAnchorPointsHint,
+      ),
+      empty: scopedBuilding != null
+          ? l10n.adminAnchorsEmptyIn(
+              scopedBuilding['name'] as String? ?? scopedBuilding['id'],
+            )
+          : l10n.adminAnchorsEmpty,
+      itemCount: filtered.length,
+      bottomPadding: _fabClearance,
+      itemBuilder: (context, index) {
+        final point = filtered[index];
+        return AnchorPointRow(
+          point: point,
+          building: buildingsById[point['building_id']],
+          photos: _photosOf(point['id'] as String),
+          statusButton: _statusToggleButton(point),
+          onTap: () => _connectFromAnchorPoint(point),
+          onEdit: () => _editAnchorPoint(point),
+          onAddPhoto: () => _addPhoto(point),
+          onDelete: () => _deleteAnchorPoint(point),
+        );
+      },
     );
   }
 
@@ -2148,98 +1763,38 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         })
         .toList();
 
-    return Column(
-      children: [
-        ScopeDropdowns(
-          places: _places,
-          buildings: _buildings,
-          placeId: _connectionsPlaceId,
-          buildingId: _connectionsBuildingId,
-          onChanged: (placeId, buildingId) => setState(() {
-            _connectionsPlaceId = placeId;
-            _connectionsBuildingId = buildingId;
-          }),
-        ),
-        _searchField(
-          _connectionSearchController,
-          l10n.adminSearchConnectionsHint,
-        ),
-        Expanded(
-          child: filtered.isEmpty
-              ? ScrollableMessage(l10n.adminConnectionsEmpty)
-              : ListView.builder(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  // Clears the FAB, which otherwise covers the last row's
-                  // trailing buttons.
-                  padding: EdgeInsets.only(bottom: _fabClearance),
-                  itemCount: filtered.length,
-                  itemBuilder: (context, index) {
-                    final connection = filtered[index];
-                    final aPoint =
-                        anchorPointsById[connection['anchor_point_a_id']];
-                    final bPoint =
-                        anchorPointsById[connection['anchor_point_b_id']];
-                    final aBuilding = buildingsById[aPoint?['building_id']];
-                    final bBuilding = buildingsById[bPoint?['building_id']];
-                    final meters = (connection['distance_meters'] as num?)
-                        ?.toDouble();
-                    final distance = meters?.toStringAsFixed(1);
-                    return ListTile(
-                      leading: Icon(
-                        Icons.timeline,
-                        color: kAdminPalette.connectionActive,
-                      ),
-                      title: Text(
-                        '${describe(connection['anchor_point_a_id'] as String?)} '
-                        '↔ ${describe(connection['anchor_point_b_id'] as String?)}',
-                      ),
-                      // The distance in the map's colour for it (C7).
-                      subtitle: Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text:
-                                  '${aBuilding?['name'] as String? ?? l10n.commonUnknownBuilding} / '
-                                  '${bBuilding?['name'] as String? ?? l10n.commonUnknownBuilding}',
-                            ),
-                            if (distance != null) ...[
-                              const TextSpan(text: ' · '),
-                              TextSpan(
-                                text: '${distance}m',
-                                style: TextStyle(
-                                  color: kAdminPalette.connectionFor(meters!),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                            if ((connection['notes'] as String? ?? '')
-                                .isNotEmpty)
-                              TextSpan(text: '\n⚠ ${connection['notes']}'),
-                          ],
-                        ),
-                      ),
-                      onTap: () => _editConnectionWarning(connection),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.map_outlined),
-                            tooltip: l10n.adminMapShowOnMap,
-                            onPressed: () =>
-                                _showOnMap(ConnectionHit(connection)),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            tooltip: l10n.commonDelete,
-                            onPressed: () => _deleteConnection(connection),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
+    return AdminListTab(
+      header: ScopeDropdowns(
+        places: _places,
+        buildings: _buildings,
+        placeId: _connectionsPlaceId,
+        buildingId: _connectionsBuildingId,
+        onChanged: (placeId, buildingId) => setState(() {
+          _connectionsPlaceId = placeId;
+          _connectionsBuildingId = buildingId;
+        }),
+      ),
+      search: _searchField(
+        _connectionSearchController,
+        l10n.adminSearchConnectionsHint,
+      ),
+      empty: l10n.adminConnectionsEmpty,
+      itemCount: filtered.length,
+      bottomPadding: _fabClearance,
+      itemBuilder: (context, index) {
+        final connection = filtered[index];
+        Map<String, dynamic>? buildingOf(String end) =>
+            buildingsById[anchorPointsById[connection[end]]?['building_id']];
+        return ConnectionRow(
+          connection: connection,
+          nameOf: describe,
+          buildingA: buildingOf('anchor_point_a_id'),
+          buildingB: buildingOf('anchor_point_b_id'),
+          onTap: () => _editConnectionWarning(connection),
+          onShowOnMap: () => _showOnMap(ConnectionHit(connection)),
+          onDelete: () => _deleteConnection(connection),
+        );
+      },
     );
   }
 
@@ -2925,7 +2480,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         _buildingsTab(),
                         _anchorPointsTab(),
                         _connectionsTab(),
-                        _usersTab(),
+                        UsersTab(controller: _users, currentUserId: _userId()),
                       ],
                     ),
             ),
