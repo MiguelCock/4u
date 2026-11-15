@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -16,14 +15,15 @@ import '../services/geo_utils.dart';
 import '../services/location_service.dart';
 import 'anchor_point_picker_screen.dart';
 import 'home_dialogs.dart';
+import 'home_tutorial.dart';
 import 'navigation_screen.dart';
 import 'trip_starter.dart';
+import 'unfinished_trip.dart';
 import 'settings_screen.dart';
 import '../services/api_error_messages.dart';
 import '../services/exit_guard.dart';
 import '../voice/app_voice.dart';
 import '../voice/home_voice_controller.dart';
-import '../voice/notices.dart';
 import '../widgets/speak_circle.dart';
 
 /// The `user`-role home screen IS the trip-planning flow now (not a map,
@@ -68,12 +68,18 @@ class UserHomeScreen extends StatefulWidget {
 
 class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   late final _routeApi = widget.routeApi ?? RouteManagementApi();
-  late final _navigationApi = widget.navigationApi ?? NavigationManagementApi();
   late final _locationService = widget.locationService ?? LocationService();
   StreamSubscription<Position>? _positionSub;
 
   /// The start, the map behind it, and the route (#268).
   late final TripStarter _trip;
+
+  /// A trip left open last time (#268).
+  late final _unfinished = UnfinishedTrips(
+    navigationApi: widget.navigationApi,
+    routeApi: _routeApi,
+    locationService: _locationService,
+  );
   Map<String, dynamic>? _end;
   bool _finding = false;
   Timer? _stillFindingTimer;
@@ -466,166 +472,45 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     }
   }
 
-  /// A trip left open by closing the app mid-route: offer to continue it
-  /// or finish it, instead of it staying "active" forever.
-  // v3: the tutorial for the one-button, voice-first screen (D1).
-  static const _kTutorialSeenKey = 'tutorial_seen_v3';
-
   /// First launch: the spoken tutorial once, on its own.
   Future<void> _showTutorialOnFirstRun() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (prefs.getBool(_kTutorialSeenKey) ?? false) return;
-      await prefs.setBool(_kTutorialSeenKey, true);
-    } catch (_) {
-      return; // No storage: don't nag on every launch.
-    }
-    if (mounted) await _showTutorial();
+    if (await firstRunTutorialDue() && mounted) await _showTutorial();
   }
 
-  /// "How does it work?": what the app does and how to use it, a page at a
-  /// time, each shown and spoken (TalkBack reads the dialog itself). The
-  /// first user test had to explain every button by hand, and one long
-  /// paragraph was too much to take in at Icesi (2026-11-03).
-  Future<void> _showTutorial() async {
-    final l10n = AppLocalizations.of(context)!;
-    final pages = [
-      l10n.homeTutorialPage1,
-      l10n.homeTutorialPage2,
-      l10n.homeTutorialPage3,
-    ];
-    for (var i = 0; i < pages.length && mounted; i++) {
-      _say(pages[i]);
-      final next = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          // The app reads each page; TalkBack reading the dialog as well
-          // spoke over it (#257).
-          title: SpokenText(
-            child: Text(
-              '${l10n.homeTutorialTitle} '
-              '(${l10n.homeTutorialProgress(i + 1, pages.length)})',
-            ),
-          ),
-          content: SpokenText(
-            child: SingleChildScrollView(
-              child: Text(pages[i], style: const TextStyle(fontSize: 18)),
-            ),
-          ),
-          actions: [
-            FilledButton(
-              style: FilledButton.styleFrom(minimumSize: const Size(160, 56)),
-              autofocus: true,
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: Text(
-                i == pages.length - 1
-                    ? l10n.homeTutorialDone
-                    : l10n.homeTutorialNext,
-              ),
-            ),
-          ],
-        ),
-      );
-      if (next != true) break;
-    }
-    _voiceCtl.stopSpeaking();
-  }
+  Future<void> _showTutorial() => showHomeTutorial(context, voice: _voiceCtl);
 
-  /// True when the user went back into an unfinished trip.
+  /// A trip left open by closing the app mid-route ([UnfinishedTrips]):
+  /// continued or finished. True when the user went back into it.
   Future<bool> _checkUnfinishedTrip() async {
-    List<Map<String, dynamic>> sessions;
-    try {
-      sessions = (await _navigationApi.get('/sessions/active') as List)
-          .cast<Map<String, dynamic>>();
-    } on ApiException {
-      return false; // Best effort - never blocks the home screen.
-    }
-    if (sessions.isEmpty || !mounted) return false;
-    final latest = sessions.first;
-    // Only the newest is offered; any older leftovers are just closed.
-    for (final old in sessions.skip(1)) {
-      _finishSession(old);
-    }
-
-    Map<String, dynamic>? route;
-    final routeId = latest['route_id'] as String?;
-    if (routeId != null) {
-      try {
-        route = await _routeApi.get('/routes/$routeId') as Map<String, dynamic>;
-      } on ApiException {
-        route = null;
-      }
-    }
-    if (route == null) {
-      // Nothing to resume onto.
-      await _finishSession(latest);
-      return false;
-    }
+    final trip = await _unfinished.find();
+    if (trip == null || !mounted) return false;
     if (_trip.anchors.isEmpty) await _loadAnchors();
     if (!mounted) return false;
-
-    final l10n = AppLocalizations.of(context)!;
-    final end = _trip.anchors.where((a) => a['id'] == route!['end_anchor_id']);
-    final destination =
-        (end.isEmpty ? null : end.first['location_description'] as String?) ??
-        l10n.navYourDestination;
-    final startedAt = DateTime.tryParse(latest['start_time'] as String? ?? '');
-    final time = startedAt == null
-        ? '?'
-        : TimeOfDay.fromDateTime(startedAt.toLocal()).format(context);
-
-    final resume = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.homeUnfinishedTripTitle),
-        content: Text(l10n.homeUnfinishedTripContent(destination, time)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(l10n.homeUnfinishedTripFinish),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(l10n.homeUnfinishedTripResume),
-          ),
-        ],
-      ),
+    final end = _trip.anchors.where(
+      (a) => a['id'] == trip.route['end_anchor_id'],
+    );
+    final resume = await askResumeTrip(
+      context,
+      trip: trip,
+      destination: end.isEmpty
+          ? null
+          : end.first['location_description'] as String?,
     );
     if (!mounted) return false;
-    if (resume == true) {
+    if (resume) {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => NavigationScreen(
-            route: route!,
-            resumeSessionId: latest['id'] as String,
+            route: trip.route,
+            resumeSessionId: trip.session['id'] as String,
             adminPreview: widget.adminPreview,
           ),
         ),
       );
       return true;
     }
-    await _finishSession(latest);
+    await _unfinished.abandon(trip.session);
     return false;
-  }
-
-  /// Closes a session the user didn't finish as `abandoned` (not
-  /// `completed` - they never arrived), so admins can tell them apart.
-  Future<void> _finishSession(Map<String, dynamic> session) async {
-    final position = _locationService.lastPosition;
-    try {
-      await _navigationApi.patch('/sessions/${session['id']}', {
-        'status': 'abandoned',
-        'end_time': DateTime.now().toUtc().toIso8601String(),
-        if (position != null)
-          'end_position': {
-            'latitude': position.latitude,
-            'longitude': position.longitude,
-          },
-      });
-    } on ApiException {
-      // Best effort; it will be offered again next launch.
-    }
   }
 
   /// Which of [floors] the user is on: their earlier answer until they've
