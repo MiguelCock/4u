@@ -6,6 +6,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+### Fixed
+
+- **A trip started without a signed-in account** now says "No has iniciado sesión" instead of showing a blank screen.
+
 ## [0.6.0] - 2026-11-15
 
 ### Added

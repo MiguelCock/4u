@@ -1503,9 +1503,14 @@ class _NavigationScreenState extends State<NavigationScreen>
   Future<void> _startSession() async {
     final userId = _userId;
     if (userId == null) {
-      setState(() {
-        _error = AppLocalizations.of(context)!.commonNotSignedIn;
-        _starting = false;
+      // Called from initState, where the strings can't be read yet: it
+      // threw, and "not signed in" never showed.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _error = AppLocalizations.of(context)!.commonNotSignedIn;
+          _starting = false;
+        });
       });
       return;
     }
