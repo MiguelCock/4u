@@ -20,17 +20,16 @@ import '../services/floor_detector.dart';
 import '../services/floor_steps.dart';
 import '../services/geo_utils.dart';
 import '../services/heading_tracker.dart';
-import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import '../voice/app_voice.dart';
 import '../voice/notices.dart';
 import '../services/buzz.dart';
-import '../services/correction_request.dart';
 import '../services/route_points.dart';
 import '../services/test_walk.dart';
 import '../services/turn_guidance.dart';
 import '../services/trip_plan.dart';
 import '../services/trip_words.dart';
+import 'correction_loop.dart';
 import 'trip_log.dart';
 import 'trip_sensors.dart';
 import '../services/api_error_messages.dart';
@@ -145,12 +144,6 @@ const Duration _kQuietBeforePeriodic = Duration(seconds: 10);
 /// frequent to be useful signal rather than noise).
 const Duration _kPeriodicAnnouncementInterval = Duration(seconds: 25);
 
-/// How many consecutive ticks must read as blocked (see
-/// `services/image_utils.dart`'s `isFrameBlocked`) before the camera is
-/// treated as actually covered - debounced so one dim hallway or a brief
-/// motion blur doesn't trigger a false alarm.
-const int _kCameraBlockedDebounceTicks = 3;
-
 class NavigationScreen extends StatefulWidget {
   final Map<String, dynamic> route;
 
@@ -218,14 +211,6 @@ class _NavigationScreenState extends State<NavigationScreen>
   String? _sessionId;
   CameraController? _cameraController;
 
-  // Self-rescheduling loop, not Timer.periodic: each tick schedules the
-  // next one 1s after it *finishes*, not 1s after it started - a
-  // POST /correct_position round-trip (camera shutter + CNN embedding +
-  // Qdrant search, ~600ms-1s per #122's benchmark) can exceed 1s, and a
-  // blind periodic timer would let ticks for the same session_id overlap
-  // and queue up behind backend-positioning's per-session lock instead of
-  // just running slightly slower.
-  Timer? _pendingTickTimer;
   Timer? _periodicAnnouncementTimer;
   Timer? _guidanceTimer;
   Timer? _loadingTimer;
@@ -271,8 +256,6 @@ class _NavigationScreenState extends State<NavigationScreen>
   final _pathLoaded = Completer<void>();
   bool _guiding = false;
   bool _arrived = false;
-  // Set when the server answers server_busy (see photoPaused).
-  DateTime? _photosPausedUntil;
   DateTime? _correctedAt;
   DateTime? _lastSpokenAt;
   bool _stopped = false;
@@ -319,9 +302,6 @@ class _NavigationScreenState extends State<NavigationScreen>
   List<LatLng> _plannedPath = [];
   List<Waypoint> _waypoints = [];
   int _nextWaypointIndex = 0;
-  String? _lastHapticAnchorId;
-  int _consecutiveBlockedTicks = 0;
-  bool _blockedAnnounced = false;
   String? _lastAnnouncement;
 
   /// What kind of cue [_lastAnnouncement] was (turn, start_walking, leg,
@@ -333,6 +313,25 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// tick's `debug` so the session view can show what was said where.
   /// The cues and events for the next tick's log.
   late final _log = TripLog(_navigationApi, timeout: _kTickRequestTimeout);
+
+  /// The photo-and-correction tick, once a second.
+  late final _loop = CorrectionLoop(
+    api: _positioningApi,
+    log: _log,
+    sessionId: () => _sessionId,
+    position: () => _locationService.lastPosition,
+    camera: () {
+      final controller = _cameraController;
+      return controller == null ? null : _Lens(controller);
+    },
+    debug: _debugSnapshot,
+    heading: _sentHeading,
+    onCorrected: _applyCorrection,
+    onCameraBlocked: _sayCameraBlocked,
+    onNewMatch: HapticFeedback.selectionClick,
+    storeFrame: widget.adminPreview,
+    timeout: _kTickRequestTimeout,
+  );
 
   /// Latest guidance inputs, kept for the per-tick diagnostics.
   double? _lastRawCompass;
@@ -1363,7 +1362,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       _guidance.reset(now: clock.now());
       _needsStartCue = true;
       _guiding = true;
-      _runTick();
+      _loop.start();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1372,37 +1371,6 @@ class _NavigationScreenState extends State<NavigationScreen>
         )!.navFailedToStartSession(friendlyApiErrorMessage(context, e));
         _starting = false;
       });
-    }
-  }
-
-  Future<void> _runTick() async {
-    if (_stopped) return;
-    final started = clock.now();
-    final sessionId = _sessionId;
-    final position = _locationService.lastPosition;
-    final paused = photoPaused(started, _photosPausedUntil);
-    try {
-      if (sessionId == null || position == null) return;
-      if (paused) {
-        await _logRawTick(sessionId, position, failure: 'server_busy');
-        return;
-      }
-      final controller = _cameraController;
-      if (controller == null || !controller.value.isInitialized) {
-        await _logRawTick(sessionId, position);
-        return;
-      }
-      await _correctionTick(sessionId, position, controller);
-    } finally {
-      if (!_stopped) {
-        _pendingTickTimer = Timer(
-          nextTickDelay(
-            clock.now().difference(started),
-            period: paused ? pausedTickPeriod : const Duration(seconds: 1),
-          ),
-          _runTick,
-        );
-      }
     }
   }
 
@@ -1459,24 +1427,6 @@ class _NavigationScreenState extends State<NavigationScreen>
     return snapshot;
   }
 
-  Future<void> _logRawTick(
-    String sessionId,
-    Position position, {
-    String? failure,
-  }) async {
-    await _postLog({
-      'session_id': sessionId,
-      'gps_lat': position.latitude,
-      'gps_long': position.longitude,
-      'gps_accuracy': position.accuracy,
-      'heading': position.heading,
-      'debug': _debugSnapshot(position, failure: failure),
-    });
-  }
-
-  /// Best effort ([TripLog.post]): what a dropped tick carried goes back.
-  Future<void> _postLog(Map<String, dynamic> body) => _log.post(body);
-
   /// The heading sent with a photo: the tracked heading back in magnetic
   /// degrees, like the anchor photos' own (the compass alone, when there's
   /// no tracker heading yet), so the heading gate compares like with like.
@@ -1486,119 +1436,28 @@ class _NavigationScreenState extends State<NavigationScreen>
     return tracked == null ? null : trueHeading(tracked, -_declination);
   }
 
-  Future<void> _correctionTick(
-    String sessionId,
-    Position position,
-    CameraController controller,
-  ) async {
-    try {
-      final captureStarted = clock.now();
-      // The direction the camera faces as the photo is taken (see
-      // _sentHeading), not when the answer comes back.
-      final sentHeading = _sentHeading();
-      final image = await controller.takePicture();
-      final bytes = await image.readAsBytes();
-      final captureMs = clock.now().difference(captureStarted).inMilliseconds;
-
-      if (isFrameBlocked(bytes)) {
-        _consecutiveBlockedTicks++;
-        if (_consecutiveBlockedTicks >= _kCameraBlockedDebounceTicks &&
-            !_blockedAnnounced) {
-          _blockedAnnounced = true;
-          if (mounted) {
-            _speak(
-              AppLocalizations.of(context)!.navAnnouncementCameraBlocked,
-              assertive: true,
-            );
-            showSpokenNotice(
-              context,
-              AppLocalizations.of(context)!.navAnnouncementCameraBlocked,
-            );
-          }
-        }
-        await _logRawTick(sessionId, position, failure: 'camera_blocked');
-        return;
-      }
-      _consecutiveBlockedTicks = 0;
-      _blockedAnnounced = false;
-
-      final correctStarted = clock.now();
-      final result = await postCorrection(
-        _positioningApi,
-        bytes: bytes,
-        filename: path.basename(image.path),
-        sessionId: sessionId,
-        fix: position,
-        // The direction the camera faces, so a match can be checked
-        // against it (see _sentHeading).
-        heading: sentHeading,
-        // Test walks keep their frames, to compare photo models on real
-        // queries (backend-positioning's store_frame).
-        storeFrame: widget.adminPreview,
-        timeout: _kTickRequestTimeout,
+  /// A correction came back for [fix]: the green marker and guidance use
+  /// it, through the offset from that fix (see _liveCorrected).
+  void _applyCorrection(Map<String, dynamic> result, Position fix) {
+    if (!mounted) return;
+    setState(() {
+      _correctedLat = (result['corrected_lat'] as num).toDouble();
+      _correctedLong = (result['corrected_long'] as num).toDouble();
+      _correctionError = (result['correction_error'] as num).toDouble();
+      _correctedAt = clock.now();
+      _correctionOffset = offsetMeters(
+        fix.latLng,
+        LatLng(_correctedLat!, _correctedLong!),
       );
-      final correctMs = clock.now().difference(correctStarted).inMilliseconds;
+    });
+  }
 
-      if (result['server_busy'] == true) {
-        _photosPausedUntil = clock.now().add(photoPauseWhenBusy);
-      }
-
-      if (mounted) {
-        setState(() {
-          _correctedLat = (result['corrected_lat'] as num).toDouble();
-          _correctedLong = (result['corrected_long'] as num).toDouble();
-          _correctionError = (result['correction_error'] as num).toDouble();
-          _correctedAt = clock.now();
-          _correctionOffset = offsetMeters(
-            position.latLng,
-            LatLng(_correctedLat!, _correctedLong!),
-          );
-        });
-      }
-
-      // A short haptic pulse once per *newly* matched anchor point, not
-      // every tick re-confirming the same match (every ~1s - that would be
-      // constant buzzing, noise rather than a signal) (#83).
-      final anchorMatchId = result['anchor_match_id'] as String?;
-      if (anchorMatchId != null && anchorMatchId != _lastHapticAnchorId) {
-        _lastHapticAnchorId = anchorMatchId;
-        HapticFeedback.selectionClick();
-      }
-
-      // Not awaited: the next photo shouldn't wait on the log upload.
-      unawaited(
-        _postLog({
-          'session_id': sessionId,
-          'gps_lat': position.latitude,
-          'gps_long': position.longitude,
-          'gps_accuracy': position.accuracy,
-          'heading': position.heading,
-          'corrected_lat': result['corrected_lat'],
-          'corrected_long': result['corrected_long'],
-          'correction_error': result['correction_error'],
-          'anchor_match_id': result['anchor_match_id'],
-          'confidence_score': result['confidence_score'],
-          'raw_image_url': result['raw_image_url'],
-          'debug': _debugSnapshot(
-            position,
-            correction: (result['debug'] as Map?)?.cast<String, dynamic>(),
-            timing: {'capture': captureMs, 'correct': correctMs},
-            photoAt: captureStarted,
-          ),
-        }),
-      );
-    } catch (e) {
-      // Camera capture or /correct_position failed (unreachable, slow,
-      // unauthenticated, etc.) - degrade to a raw-GPS-only tick rather than
-      // dropping this tick entirely.
-      await _logRawTick(
-        sessionId,
-        position,
-        failure: e is ApiException
-            ? 'api_${e.statusCode}'
-            : e.runtimeType.toString(),
-      );
-    }
+  /// The lens looks covered: said (assertive) and shown, once per streak.
+  void _sayCameraBlocked() {
+    if (!mounted) return;
+    final text = AppLocalizations.of(context)!.navAnnouncementCameraBlocked;
+    _speak(text, assertive: true);
+    showSpokenNotice(context, text);
   }
 
   /// Admin test flow: records the last instruction as wrong, with where it
@@ -1663,7 +1522,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     final sessionId = _sessionId;
     _stopped = true;
     _guiding = false;
-    _pendingTickTimer?.cancel();
+    _loop.stop();
     _guidanceTimer?.cancel();
     _loadingTimer?.cancel();
     _barometerProbeTimer?.cancel();
@@ -1683,7 +1542,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     // since the previous one - the arrival above all. It used to be lost
     // whenever the camera loop's own tick was still in flight.
     if (position != null && _log.hasPending) {
-      await _logRawTick(sessionId, position);
+      await _loop.logRaw(sessionId, position);
     }
     try {
       await _navigationApi.patch('/sessions/$sessionId', {
@@ -1753,7 +1612,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     _stopped = true;
     WidgetsBinding.instance.removeObserver(this);
     widget.sensors.keepAwake(false);
-    _pendingTickTimer?.cancel();
+    _loop.stop();
     _periodicAnnouncementTimer?.cancel();
     _guidanceTimer?.cancel();
     _loadingTimer?.cancel();
@@ -1961,6 +1820,25 @@ class _NavigationScreenState extends State<NavigationScreen>
                 ],
               ),
       ),
+    );
+  }
+}
+
+/// The trip's camera, for [CorrectionLoop].
+class _Lens implements TripCamera {
+  _Lens(this._controller);
+
+  final CameraController _controller;
+
+  @override
+  bool get ready => _controller.value.isInitialized;
+
+  @override
+  Future<TripPhoto> take() async {
+    final image = await _controller.takePicture();
+    return (
+      bytes: await image.readAsBytes(),
+      filename: path.basename(image.path),
     );
   }
 }
