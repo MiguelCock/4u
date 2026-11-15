@@ -9,8 +9,8 @@ import 'package:eyes4u/admin/location_picker_screen.dart';
 import 'package:eyes4u/admin/map_home.dart';
 import 'package:eyes4u/l10n/app_localizations.dart';
 import 'package:eyes4u/services/map_scope.dart';
-import 'package:eyes4u/services/map_tap.dart';
 import 'package:eyes4u/widgets/admin_map/admin_map.dart';
+import 'package:eyes4u/services/geo_utils.dart';
 
 const _bib = MapScope(placeId: 'eafit', buildingId: 'bib');
 

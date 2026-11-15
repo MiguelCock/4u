@@ -35,6 +35,14 @@ RoutePoints routePointsFromBatch(List<String> ids, Map<String, dynamic> body) {
   );
 }
 
+/// A route's points in order: its start, waypoints and end
+/// (`find_or_create`'s and `GET /routes/{id}`'s shape).
+List<String> routeAnchorIds(Map<String, dynamic> route) => [
+  route['start_anchor_id'] as String,
+  ...(route['waypoint_anchor_ids'] as List? ?? const []).cast<String>(),
+  route['end_anchor_id'] as String,
+];
+
 /// One request when the server has `by-ids`. Otherwise, as before: one per
 /// point and one per point's connections (about 40 for a route), which an
 /// older server still answers.

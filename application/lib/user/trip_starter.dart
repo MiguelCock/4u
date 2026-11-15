@@ -35,10 +35,9 @@ Map<String, dynamic>? nearestAnchor(
   Map<String, dynamic>? nearest;
   double? nearestDistance;
   for (final anchor in anchors) {
-    final lat = (anchor['latitude'] as num?)?.toDouble();
-    final lng = (anchor['longitude'] as num?)?.toDouble();
-    if (lat == null || lng == null) continue;
-    final distance = haversineMeters(from, LatLng(lat, lng));
+    final position = anchorPosition(anchor);
+    if (position == null) continue;
+    final distance = haversineMeters(from, position);
     if (nearestDistance == null || distance < nearestDistance) {
       nearestDistance = distance;
       nearest = anchor;
@@ -189,7 +188,7 @@ class TripStarter extends ChangeNotifier {
   /// checked start is still where the user is.
   void onPosition(Position position, {bool busy = false}) {
     if (_disposed || anchors.isEmpty || busy || _locating) return;
-    final here = LatLng(position.latitude, position.longitude);
+    final here = position.latLng;
     final checkedFrom = _checkedFrom;
     if (checkedFrom != null &&
         haversineMeters(checkedFrom, here) < keepWithinMeters) {
@@ -212,8 +211,7 @@ class TripStarter extends ChangeNotifier {
     if (_start == null || checkedAt == null || from == null) return false;
     if (_now().difference(checkedAt) > checkFreshFor) return false;
     return position == null ||
-        haversineMeters(from, LatLng(position.latitude, position.longitude)) <
-            keepWithinMeters;
+        haversineMeters(from, position.latLng) < keepWithinMeters;
   }
 
   /// Runs the camera check and makes the anchor nearest its result the
@@ -317,11 +315,7 @@ class TripStarter extends ChangeNotifier {
       await controller?.dispose();
     }
     final raw = location.lastPosition;
-    return (
-      position:
-          fused ?? (raw == null ? null : LatLng(raw.latitude, raw.longitude)),
-      matched: matched,
-    );
+    return (position: fused ?? raw?.latLng, matched: matched);
   }
 
   /// The floor the user said they're on, if it's one of [floors] and they

@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/location_service.dart';
 import 'location_picker_screen.dart';
 import '../services/api_error_messages.dart';
+import '../services/geo_utils.dart';
 
 /// Admin form to create a `buildings` row under an existing place - the
 /// building dropdown in `capture_screen.dart` is populated from these.
@@ -80,9 +81,7 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
   LatLng? get _selectedPlacePosition {
     for (final place in _places) {
       if (place['id'] != _selectedPlaceId) continue;
-      final lat = (place['latitude'] as num?)?.toDouble();
-      final lng = (place['longitude'] as num?)?.toDouble();
-      return lat == null || lng == null ? null : LatLng(lat, lng);
+      return anchorPosition(place);
     }
     return null;
   }

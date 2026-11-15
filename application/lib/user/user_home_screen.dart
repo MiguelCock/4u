@@ -200,13 +200,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   /// Meters from the user, for the nearest-first order of same-named places.
   double _distanceFromUser(Map<String, dynamic> anchor) {
     final position = _locationService.lastPosition;
-    final lat = (anchor['latitude'] as num?)?.toDouble();
-    final lng = (anchor['longitude'] as num?)?.toDouble();
-    if (position == null || lat == null || lng == null) return double.infinity;
-    return haversineMeters(
-      LatLng(position.latitude, position.longitude),
-      LatLng(lat, lng),
-    );
+    final there = anchorPosition(anchor);
+    if (position == null || there == null) return double.infinity;
+    return haversineMeters(position.latLng, there);
   }
 
   String _destinationLabel(Map<String, dynamic> anchor) => destinationLabel(
@@ -399,15 +395,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       return l10n.homeStartNearestSubtitle(_destinationLabel(start));
     }
     final position = _locationService.lastPosition;
-    final lat = (start['latitude'] as num?)?.toDouble();
-    final lng = (start['longitude'] as num?)?.toDouble();
-    if (position == null || lat == null || lng == null) {
-      return l10n.homeStartSubtitle;
-    }
-    final meters = haversineMeters(
-      LatLng(position.latitude, position.longitude),
-      LatLng(lat, lng),
-    ).round();
+    final there = anchorPosition(start);
+    if (position == null || there == null) return l10n.homeStartSubtitle;
+    final meters = haversineMeters(position.latLng, there).round();
     return l10n.homeStartUnnamedSubtitle(meters);
   }
 
@@ -598,7 +588,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       // phone up and turn slowly). The first user test found it confusing
       // when its instruction wasn't heard: it was spoken over the open
       // microphone, which `_say` no longer does.
-      final here = LatLng(position.latitude, position.longitude);
+      final here = position.latLng;
       var start = _trip.checkIsFresh ? _trip.start : await _locateStart();
       if (!mounted) return;
       // GPS can't tell floors apart: the nearest point may be overhead.

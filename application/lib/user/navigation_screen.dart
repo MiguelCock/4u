@@ -421,10 +421,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     // A screen that turns off stops the camera, GPS and timers without a word.
     WakelockPlus.enable().catchError((_) {});
     _positionSub = _locationService.positionStream.listen((position) {
-      _recentFixes.add(
-        LatLng(position.latitude, position.longitude),
-        position.timestamp,
-      );
+      _recentFixes.add(position.latLng, position.timestamp);
       _tracker.gpsCourse(
         position.heading,
         position.speed,
@@ -533,12 +530,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// proximity announcements - same per-id anchor lookup
   /// SessionTrackingScreen's admin-side route overlay already does.
   Future<void> _loadPlannedPath() async {
-    final anchorIds = [
-      widget.route['start_anchor_id'] as String,
-      ...(widget.route['waypoint_anchor_ids'] as List? ?? const [])
-          .cast<String>(),
-      widget.route['end_anchor_id'] as String,
-    ];
+    final anchorIds = routeAnchorIds(widget.route);
     // One request when the server has it (E2), else all at once: one request
     // after another took ~90 s on campus mobile data in a test walk, and
     // guidance can't start without the path.
@@ -569,16 +561,14 @@ class _NavigationScreenState extends State<NavigationScreen>
     var resolvedStart = false;
     for (var i = 0; i < anchors.length; i++) {
       final anchor = anchors[i];
-      final lat = (anchor?['latitude'] as num?)?.toDouble();
-      final lng = (anchor?['longitude'] as num?)?.toDouble();
+      final point = anchor == null ? null : anchorPosition(anchor);
       if (i > 0) pendingNote ??= noteBetween(i - 1);
-      if (anchor == null || lat == null || lng == null) continue;
+      if (anchor == null || point == null) continue;
       notes.add(pendingNote);
       pendingNote = null;
       final type = anchor['location_type_id'] as int?;
       hazards.add(kVerticalLocationTypes.contains(type) ? type : null);
       floors.add(pointFloor(anchor));
-      final point = LatLng(lat, lng);
       points.add(point);
       if (i == 0) {
         _startPoint = point;
@@ -700,7 +690,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     _lastUsedCorrected = false;
     final position = _locationService.lastPosition;
     if (position == null) return null;
-    final raw = LatLng(position.latitude, position.longitude);
+    final raw = position.latLng;
     // Blend from the last corrected position to raw GPS instead of jumping
     // the tens of metres that can separate them.
     final staleFrom = _staleFrom;
@@ -738,9 +728,7 @@ class _NavigationScreenState extends State<NavigationScreen>
 
   LatLng? get _rawPosition {
     final position = _locationService.lastPosition;
-    return position == null
-        ? null
-        : LatLng(position.latitude, position.longitude);
+    return position?.latLng;
   }
 
   /// Where the segment being walked starts: the previous waypoint, or the
@@ -1773,7 +1761,7 @@ class _NavigationScreenState extends State<NavigationScreen>
           _correctionError = (result['correction_error'] as num).toDouble();
           _correctedAt = DateTime.now();
           _correctionOffset = offsetMeters(
-            LatLng(position.latitude, position.longitude),
+            position.latLng,
             LatLng(_correctedLat!, _correctedLong!),
           );
         });

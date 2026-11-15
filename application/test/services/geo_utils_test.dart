@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'package:eyes4u/services/geo_utils.dart';
@@ -211,5 +212,30 @@ void main() {
       t0.add(const Duration(seconds: 9)),
     );
     expect(fixes.movedMeters, 0);
+  });
+
+  test('anchorPosition reads a row\'s position, or null without one', () {
+    expect(
+      anchorPosition({'latitude': 6.2, 'longitude': -75}),
+      const LatLng(6.2, -75),
+    );
+    expect(anchorPosition({'latitude': 6.2}), isNull);
+    expect(anchorPosition({'latitude': null, 'longitude': -75}), isNull);
+  });
+
+  test('a GPS fix as a map position', () {
+    final fix = Position(
+      latitude: 6.2,
+      longitude: -75.58,
+      timestamp: DateTime(2026, 11, 15),
+      accuracy: 5,
+      altitude: 0,
+      altitudeAccuracy: 0,
+      heading: 0,
+      headingAccuracy: 0,
+      speed: 0,
+      speedAccuracy: 0,
+    );
+    expect(fix.latLng, const LatLng(6.2, -75.58));
   });
 }

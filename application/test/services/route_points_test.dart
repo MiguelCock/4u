@@ -75,4 +75,19 @@ void main() {
     expect(route.anchors.map((p) => p?['id']), ids);
     expect(paths.where((p) => p.endsWith('/connections')), hasLength(2));
   });
+
+  test('routeAnchorIds: start, waypoints, end', () {
+    expect(
+      routeAnchorIds({
+        'start_anchor_id': 'a',
+        'waypoint_anchor_ids': ['b', 'c'],
+        'end_anchor_id': 'd',
+      }),
+      ['a', 'b', 'c', 'd'],
+    );
+    expect(routeAnchorIds({'start_anchor_id': 'a', 'end_anchor_id': 'b'}), [
+      'a',
+      'b',
+    ]);
+  });
 }
