@@ -30,6 +30,7 @@ import '../services/test_walk.dart';
 import '../services/turn_guidance.dart';
 import '../services/trip_plan.dart';
 import '../services/trip_words.dart';
+import 'trip_log.dart';
 import 'trip_sensors.dart';
 import '../services/api_error_messages.dart';
 
@@ -329,8 +330,8 @@ class _NavigationScreenState extends State<NavigationScreen>
 
   /// Cues spoken and guidance events since the last log, sent with the next
   /// tick's `debug` so the session view can show what was said where.
-  final List<Map<String, dynamic>> _pendingCues = [];
-  final List<Map<String, dynamic>> _pendingEvents = [];
+  /// The cues and events for the next tick's log.
+  late final _log = TripLog(_navigationApi, timeout: _kTickRequestTimeout);
 
   /// Latest guidance inputs, kept for the per-tick diagnostics.
   double? _lastRawCompass;
@@ -426,10 +427,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     }, onError: _sensorError);
     _barometerProbeTimer = Timer(_kBarometerProbe, () {
       if (_barometerSeen) return;
-      _pendingEvents.add({
-        'at': clock.now().toUtc().toIso8601String(),
-        'type': 'barometer_missing',
-      });
+      _log.event('barometer_missing');
     });
   }
 
@@ -451,11 +449,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// A sensor stream failed: logged with the next tick, so a phone whose
   /// gyroscope doesn't work shows up in the session data.
   void _sensorError(Object error) {
-    _pendingEvents.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': 'sensor_error',
-      'error': error.toString(),
-    });
+    _log.event('sensor_error', fields: {'error': error.toString()});
   }
 
   /// Speaks [text] if the user has voice guidance on (#39/#40/#85) -
@@ -489,11 +483,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       // The "I'll vibrate when you face the right way" of SlowTurnCue.
       buzz(Buzz.long);
     }
-    _pendingCues.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': cueType,
-      'text': text,
-    });
+    _log.cue(cueType, text);
     if (!voiceGuidanceNotifier.value) return;
     await _voice.say(text, interrupt: assertive);
   }
@@ -761,13 +751,10 @@ class _NavigationScreenState extends State<NavigationScreen>
     final turn = signedTurn(trueHeading(compass, _declination), bearing);
     final steps = roundSteps(haversineMeters(here, target));
     final l10n = AppLocalizations.of(context)!;
-    _pendingEvents.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': 'stall',
-      'compass': compass,
-      'bearing': bearing,
-      'turn': turn,
-    });
+    _log.event(
+      'stall',
+      fields: {'compass': compass, 'bearing': bearing, 'turn': turn},
+    );
     final String text;
     if (turn.abs() <= TurnGuidance.alignedDegrees) {
       text = l10n.navContinueStraightSteps(steps);
@@ -809,11 +796,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   void _sayGpsStale(Duration age) {
     if (_gpsStaleAnnounced || age < _kStaleFixAnnounce) return;
     _gpsStaleAnnounced = true;
-    _pendingEvents.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': 'gps_stale',
-      'age_s': age.inSeconds,
-    });
+    _log.event('gps_stale', fields: {'age_s': age.inSeconds});
     _speak(
       AppLocalizations.of(context)!.homeSearchingLocation,
       repeatable: false,
@@ -826,19 +809,16 @@ class _NavigationScreenState extends State<NavigationScreen>
     final now = clock.now();
     if (state == AppLifecycleState.paused) {
       _pausedAt = now;
-      _pendingEvents.add({
-        'at': now.toUtc().toIso8601String(),
-        'type': 'app_paused',
-      });
+      _log.event('app_paused', at: now);
     } else if (state == AppLifecycleState.resumed) {
       final pausedAt = _pausedAt;
       if (pausedAt == null) return;
       _pausedAt = null;
-      _pendingEvents.add({
-        'at': now.toUtc().toIso8601String(),
-        'type': 'app_resumed',
-        'gap_s': now.difference(pausedAt).inSeconds,
-      });
+      _log.event(
+        'app_resumed',
+        at: now,
+        fields: {'gap_s': now.difference(pausedAt).inSeconds},
+      );
       if (mounted && !_stopped) _repeatLastAnnouncement();
     }
   }
@@ -905,12 +885,10 @@ class _NavigationScreenState extends State<NavigationScreen>
       _arrivalStreak = 0;
     }
     if (reached == -1) return false;
-    _pendingEvents.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': reached == _waypoints.length - 1 ? 'arrival' : 'waypoint',
-      'index': reached,
-      'skipped': reached - _nextWaypointIndex,
-    });
+    _log.event(
+      reached == _waypoints.length - 1 ? 'arrival' : 'waypoint',
+      fields: {'index': reached, 'skipped': reached - _nextWaypointIndex},
+    );
     if (reached == _waypoints.length - 1) {
       _arrive();
       return true;
@@ -957,14 +935,16 @@ class _NavigationScreenState extends State<NavigationScreen>
     _floorChange = change;
     _floorWaitSince = now;
     _floorDetector.start(floors, now: now);
-    _pendingEvents.add({
-      'at': now.toUtc().toIso8601String(),
-      'type': 'floor_wait',
-      'from': _currentFloor,
-      'to': change.floor,
-      'pressure_hpa': _floorDetector.pressure,
-      'barometer': _barometerSeen,
-    });
+    _log.event(
+      'floor_wait',
+      at: now,
+      fields: {
+        'from': _currentFloor,
+        'to': change.floor,
+        'pressure_hpa': _floorDetector.pressure,
+        'barometer': _barometerSeen,
+      },
+    );
     _speak(
       '$action ${_barometerSeen ? l10n.navFloorWillTell : l10n.navFloorNoSensor}',
       cueType: 'floor',
@@ -982,13 +962,15 @@ class _NavigationScreenState extends State<NavigationScreen>
         ? _kFloorWaitLimit
         : _kNoBarometerWaitPerFloor * (change.floor - _currentFloor).abs();
     if (!detected && waited < limit) return;
-    _pendingEvents.add({
-      'at': now.toUtc().toIso8601String(),
-      'type': detected ? 'floor_detected' : 'floor_timeout',
-      'to': change.floor,
-      'seconds': waited.inSeconds,
-      'delta_hpa': _floorDetector.delta,
-    });
+    _log.event(
+      detected ? 'floor_detected' : 'floor_timeout',
+      at: now,
+      fields: {
+        'to': change.floor,
+        'seconds': waited.inSeconds,
+        'delta_hpa': _floorDetector.delta,
+      },
+    );
     _floorChange = null;
     _floorDetector.stop();
     _currentFloor = change.floor;
@@ -1177,19 +1159,20 @@ class _NavigationScreenState extends State<NavigationScreen>
     final raw = _rawPosition;
     final corrected = _liveCorrected();
     final correctedAt = _correctedAt;
-    _pendingEvents.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': 'checkpoint',
-      'index': index,
-      'of': _checkpoints.count,
-      'raw': ?(raw == null ? null : [raw.latitude, raw.longitude]),
-      'corrected': ?(corrected == null
-          ? null
-          : [corrected.latitude, corrected.longitude]),
-      'correction_age_s': ?(correctedAt == null
-          ? null
-          : clock.now().difference(correctedAt).inMilliseconds / 1000),
-    });
+    _log.event(
+      'checkpoint',
+      fields: {
+        'index': index,
+        'of': _checkpoints.count,
+        'raw': ?(raw == null ? null : [raw.latitude, raw.longitude]),
+        'corrected': ?(corrected == null
+            ? null
+            : [corrected.latitude, corrected.longitude]),
+        'correction_age_s': ?(correctedAt == null
+            ? null
+            : clock.now().difference(correctedAt).inMilliseconds / 1000),
+      },
+    );
     final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -1207,11 +1190,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   void _undoCheckpoint() {
     final index = _checkpoints.undo();
     if (index == null) return;
-    _pendingEvents.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': 'checkpoint_undo',
-      'index': index,
-    });
+    _log.event('checkpoint_undo', fields: {'index': index});
     final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -1470,15 +1449,12 @@ class _NavigationScreenState extends State<NavigationScreen>
       'target_bearing': _lastTargetBearing,
       'turn': _lastTurn,
       'guidance': _guidance.walking ? 'walking' : 'orienting',
-      if (_pendingCues.isNotEmpty) 'cues': List.of(_pendingCues),
-      if (_pendingEvents.isNotEmpty) 'events': List.of(_pendingEvents),
+      ..._log.drain(),
       'correction': ?correction,
       'failure': ?failure,
       'timing_ms': ?timing,
       'photo_at': ?photoAt?.toUtc().toIso8601String(),
     };
-    _pendingCues.clear();
-    _pendingEvents.clear();
     return snapshot;
   }
 
@@ -1497,20 +1473,8 @@ class _NavigationScreenState extends State<NavigationScreen>
     });
   }
 
-  /// Best-effort - a dropped tick shouldn't interrupt navigation. What it
-  /// carried that happens only once (cues, events, checkpoints) goes back
-  /// into the queue for the next tick.
-  Future<void> _postLog(Map<String, dynamic> body) async {
-    try {
-      await _navigationApi.post('/logs', body, timeout: _kTickRequestTimeout);
-    } on ApiException catch (_) {
-      final debug = body['debug'] as Map<String, dynamic>?;
-      final cues = debug?['cues'] as List?;
-      final events = debug?['events'] as List?;
-      if (cues != null) _pendingCues.insertAll(0, cues.cast());
-      if (events != null) _pendingEvents.insertAll(0, events.cast());
-    }
-  }
+  /// Best effort ([TripLog.post]): what a dropped tick carried goes back.
+  Future<void> _postLog(Map<String, dynamic> body) => _log.post(body);
 
   /// The heading sent with a photo: the tracked heading back in magnetic
   /// degrees, like the anchor photos' own (the compass alone, when there's
@@ -1726,8 +1690,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     // One last tick before the session is closed, carrying what happened
     // since the previous one - the arrival above all. It used to be lost
     // whenever the camera loop's own tick was still in flight.
-    if (position != null &&
-        (_pendingEvents.isNotEmpty || _pendingCues.isNotEmpty)) {
+    if (position != null && _log.hasPending) {
       await _logRawTick(sessionId, position);
     }
     try {
