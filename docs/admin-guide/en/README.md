@@ -137,14 +137,17 @@ Tap a university to see its buildings, and a building to see its points.
 | 2 | **Go down a floor** | Shows the floor below. |
 | 3 | **Only this floor** | Hides the neighbouring floors. |
 | 4 | **New anchor point** | Opens [the form](#point-form). |
+| 5 | **Map legend** | What each colour and mark means. |
 
 | Mark | Meaning |
 |---|---|
-| Green / light grey dot | Verified / pending point |
+| Green / light grey dot | Verified / pending point, without a name |
+| Coloured square with an icon | A named place: the colour is its category, the icon its type, the dot on its corner its status |
 | Orange ✕ | Rejected point |
 | Blue ▲ / purple ▼ | A point on the floor above / below |
 | Black ring | The point selected or being moved |
-| Blue line | A connection, dashed if it changes floor |
+| Green → orange → red line | A connection's length: up to 5 m, about 15 m (thicker from here), about 30 m. Dashed if it changes floor |
+| Black line | A connection over 30 m: too long, split it with a point in between |
 | Purple flag / orange building | A university / building, with how many buildings or points it has |
 
 The colours stay distinct for colour-blind admins, and shape always helps. **Filters** (bottom left) narrows the points by status, type, floor, indoors or outdoors, lighting, photos and connections; its number is how many are on. The [Anchor points](#anchor-points) list shares them.

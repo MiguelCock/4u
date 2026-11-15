@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import '../l10n/app_localizations.dart';
 import 'destination_matcher.dart' show normalizeForMatch;
 
@@ -112,6 +114,41 @@ String locationTypeLabel(AppLocalizations l10n, String type) {
     'drinking_fountain' => l10n.locationTypeDrinkingFountain,
     'other' => l10n.locationTypeOther,
     _ => type,
+  };
+}
+
+/// The icon a type's marker shows on the admin map (C8), so a kind of place
+/// is told apart by shape as well as by its category's colour.
+IconData locationTypeIcon(String? key) {
+  return switch (key) {
+    'entrance' => Icons.login,
+    'exit' => Icons.logout,
+    'lobby' => Icons.meeting_room,
+    'parking' => Icons.local_parking,
+    'bike_parking' => Icons.pedal_bike,
+    'bus_stop' => Icons.directions_bus,
+    'waiting_area' => Icons.event_seat,
+    'classroom' => Icons.school,
+    'laboratory' => Icons.science,
+    'library' => Icons.local_library,
+    'computer_room' => Icons.computer,
+    'study_area' => Icons.menu_book,
+    'auditorium' => Icons.theater_comedy,
+    'office' => Icons.work,
+    'cafeteria' => Icons.restaurant,
+    'stationery_shop' => Icons.edit,
+    'copy_center' => Icons.print,
+    'store' => Icons.storefront,
+    'atm' => Icons.local_atm,
+    'restroom' => Icons.wc,
+    'drinking_fountain' => Icons.water_drop,
+    'infirmary' => Icons.local_hospital,
+    'sports_area' => Icons.sports_soccer,
+    'chapel' => Icons.church,
+    'stairwell' => Icons.stairs,
+    'elevator' => Icons.elevator,
+    'ramp' => Icons.accessible,
+    _ => Icons.place,
   };
 }
 

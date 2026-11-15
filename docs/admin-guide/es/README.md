@@ -137,14 +137,17 @@ Toca una universidad para ver sus edificios, y un edificio para ver sus puntos.
 | 2 | **Bajar un piso** | Muestra el piso de abajo. |
 | 3 | **Solo este piso** | Oculta los pisos vecinos. |
 | 4 | **Nuevo punto de referencia** | Abre [el formulario](#point-form). |
+| 5 | **Leyenda del mapa** | Qué significa cada color y marca. |
 
 | Marca | Significado |
 |---|---|
-| Punto verde / gris claro | Punto verificado / pendiente |
+| Punto verde / gris claro | Punto verificado / pendiente, sin nombre |
+| Cuadro de color con un icono | Un lugar con nombre: el color es su categoría, el icono su tipo y el punto en la esquina su estado |
 | ✕ naranja | Punto rechazado |
 | ▲ azul / ▼ morado | Un punto en el piso de arriba / abajo |
 | Anillo negro | El punto seleccionado o que se está moviendo |
-| Línea azul | Una conexión, punteada si cambia de piso |
+| Línea verde → naranja → roja | La longitud de una conexión: hasta 5 m, unos 15 m (más gruesa desde aquí), unos 30 m. Discontinua si cambia de piso |
+| Línea negra | Una conexión de más de 30 m: demasiado larga, divídela con un punto en medio |
 | Bandera morada / edificio naranja | Una universidad / un edificio, con cuántos edificios o puntos tiene |
 
 Los colores se distinguen también para administradores daltónicos, y la forma siempre ayuda. **Filtros** (abajo a la izquierda) acota los puntos por estado, tipo, piso, interior o exterior, iluminación, fotos y conexiones; su número es cuántos hay puestos. La lista de [Puntos de referencia](#anchor-points) usa los mismos.

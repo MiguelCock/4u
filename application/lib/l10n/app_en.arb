@@ -818,5 +818,15 @@
   "addPlaceAbbreviationLabel": "Abbreviation",
   "addPlaceAbbreviationHelper": "A short name, such as UPB. Filled in from the name; you can change it.",
   "addPlaceErrorRequired": "Name, abbreviation, latitude and longitude are required.",
-  "addBuildingErrorRequired": "Name, latitude and longitude are required."
+  "addBuildingErrorRequired": "Name, latitude and longitude are required.",
+  "adminMapLegend": "Map legend",
+  "adminLegendConnections": "Connections, by length",
+  "adminLegendShort": "Up to 5 m",
+  "adminLegendMid": "About 15 m (thicker from here)",
+  "adminLegendLong": "About 30 m",
+  "adminLegendTooLong": "Over 30 m: too long",
+  "adminLegendFloorChange": "Dashed: changes floor",
+  "adminLegendPlaces": "Named places, by category",
+  "adminLegendPlacesHint": "The dot on the corner is the review status. Points without a name stay plain dots.",
+  "adminLegendStatus": "Review status"
 }

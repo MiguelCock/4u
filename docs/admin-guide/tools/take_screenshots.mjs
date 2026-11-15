@@ -466,6 +466,7 @@ async function allShots(r) {
     t('mapFloorDown'),
     t('mapOnlyThisFloor'),
     t('adminFabNewAnchorPoint'),
+    t('adminMapLegend'),
   ]);
   await r.shot('map-filters', [t('adminFiltersButton'), t('adminMapConnectChip')]);
   await r.click(t('mapFloorUp'), 0, 1500);
@@ -627,6 +628,7 @@ async function allShots(r) {
     t('mapFloorDown'),
     t('mapOnlyThisFloor'),
     t('adminFabNewAnchorPoint'),
+    t('adminMapLegend'),
   ]);
   await r.click(t('mapFloorUp'), 0, 1500);
   await r.shot('points-map-floor2');
