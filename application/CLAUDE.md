@@ -399,6 +399,7 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 
 - **The home screen** is one circle button (`_speakCircle`, theme colours, about 220 px). Help, settings and log out sit at the bottom. Nothing else is on screen: no status line and no heard words. Everything is spoken with the app's own voice (`_say`), TalkBack on or not; a status line read as if still true, and TalkBack reading it would be heard by the recognizer.
 - **The Start and destination rows** show only with `show_choices` (Settings), or when the phone has no recognizer at all (`homeShowsChoices`). They don't come back after failed tries.
+- **The tutorial** (`showHomeTutorial`, `lib/user/home_tutorial.dart`, #259): each page moves on by itself 1.5 s after the voice finishes it, and the last ends it. Back, Repeat, Skip and Next stay. A sentence that ends after its page was left never moves the next one on (each page shown has its own number). Tests: `test/user/home_tutorial_test.dart`.
 - **Asking:** after `_checkUnfinishedTrip` (`Future<bool>`, true when resumed) and the first-run tutorial (`tutorial_seen_v3`; `lib/user/home_tutorial.dart`), `_askForDestination` says `homeAskDestination` and listens. With TalkBack it waits 2 s first, for TalkBack to read the screen.
   - It listens up to 30 s, and stops after 5 s of silence.
   - Misses go through `_missed` (counted by `HomeVoiceController.missed`): two retries, then `homeVoiceGiveUp`, then it stops.
