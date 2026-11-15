@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
@@ -16,6 +15,7 @@ import '../widgets/admin_map/admin_map.dart';
 import '../widgets/map_conflict.dart';
 import '../widgets/category_mark.dart';
 import 'add_building_screen.dart';
+import 'admin_map_data.dart';
 import 'add_connection_screen.dart';
 import 'add_place_screen.dart';
 import 'capture_photo_screen.dart';
@@ -100,15 +100,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       : Supabase.instance.client.auth.signOut();
   late final TabController _tabController;
 
-  List<Map<String, dynamic>> _places = [];
-  List<Map<String, dynamic>> _buildings = [];
-  List<Map<String, dynamic>> _anchorPoints = [];
-  List<Map<String, dynamic>> _photos = [];
-  List<Map<String, dynamic>> _connections = [];
+  /// The five lists, kept fresh from /changes (AdminMapData).
+  late final _data = AdminMapData(
+    mapApi: _mapApi,
+    aiTrainingApi: _aiTrainingApi,
+  )..addListener(_onDataChanged);
+  List<Map<String, dynamic>> get _places => _data.places;
+  List<Map<String, dynamic>> get _buildings => _data.buildings;
+  List<Map<String, dynamic>> get _anchorPoints => _data.anchorPoints;
+  List<Map<String, dynamic>> get _connections => _data.connections;
+  set _connections(List<Map<String, dynamic>> rows) => _data.connections = rows;
+  bool get _loading => _data.loading;
+  int? get _unsearchablePhotos => _data.unsearchablePhotos;
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _orphanedUsers = [];
-  bool _loading = true;
-  String? _error;
   bool _usersLoaded = false;
   String? _usersError;
 
@@ -146,15 +151,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   final _refreshKey = GlobalKey<RefreshIndicatorState>();
   bool _reindexing = false;
 
-  /// Verified photos missing from the photo index (null: unknown).
-  int? _unsearchablePhotos;
-
-  /// What changed since, for GET /changes (A5): set from the server's own
-  /// clock after a full load. Null when the server can't answer it yet, and
-  /// then every refresh is a full one.
-  String? _since;
   Timer? _syncTimer;
-  Future<void>? _syncing;
   bool _wasCovered = false;
 
   /// The point being moved on the map.
@@ -218,6 +215,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   @override
   void dispose() {
     _syncTimer?.cancel();
+    _data.dispose();
     _tabController.dispose();
     _placeSearchController.dispose();
     _buildingSearchController.dispose();
@@ -244,83 +242,33 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// the last look, not all five lists (A5).
   Future<void> _loadData() => _sync(announce: false);
 
-  /// Fetches and merges `/changes`, one at a time. With [announce] (the
-  /// 30 s timer), says how many changes came from other admins: this admin's
-  /// own edits were already merged right after saving, so they don't count.
+  /// Fetches and merges `/changes` (AdminMapData.sync). With [announce]
+  /// (the 30 s timer), says how many changes came from other admins: this
+  /// admin's own edits were already merged right after saving, so they
+  /// don't count.
   Future<void> _sync({required bool announce}) async {
-    while (_syncing != null) {
-      await _syncing;
-    }
-    final since = _since;
-    if (since == null) {
-      // The server can't answer /changes (yet): reload as before, but not
-      // every 30 s.
-      if (!announce) await _loadAll();
-      return;
-    }
-    final done = Completer<void>();
-    _syncing = done.future;
-    try {
-      final changes = await _mapApi.get(
-        '/changes?since=${Uri.encodeQueryComponent(since)}',
-      );
-      if (!mounted || changes is! Map<String, dynamic>) return;
-      if (changes['full'] == true) {
-        await _loadAll();
-        return;
-      }
-      final merged = applyChanges(
-        MapLists(
-          places: _places,
-          buildings: _buildings,
-          anchorPoints: _anchorPoints,
-          photos: _photos,
-          connections: _connections,
-        ),
-        changes,
-      );
-      setState(() {
-        _places = merged.lists.places;
-        _buildings = merged.lists.buildings;
-        _anchorPoints = merged.lists.anchorPoints;
-        _photos = merged.lists.photos;
-        _connections = merged.lists.connections;
-        _since = changes['next_since'] as String?;
-        _dropStaleScopes();
-      });
-      if (announce && merged.newChanges > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              AppLocalizations.of(
-                context,
-              )!.mapUpdatedByOthers(merged.newChanges),
-            ),
-          ),
-        );
-      }
-      if (!announce) _refreshIndexStatus();
-    } on ApiException {
-      // Something is off: fall back to what always worked.
-      if (!announce && mounted) await _loadAll();
-    } finally {
-      _syncing = null;
-      done.complete();
-    }
+    final count = await _data.sync(announce: announce);
+    if (!announce || count == 0 || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AppLocalizations.of(context)!.mapUpdatedByOthers(count)),
+      ),
+    );
   }
 
-  /// The server's clock, to ask /changes from: a phone's clock can be off.
-  /// Null when /changes isn't there, as before the migration.
-  Future<String?> _serverSince() async {
-    try {
-      final since = clock.now().toUtc().subtract(const Duration(minutes: 5));
-      final changes = await _mapApi.get(
-        '/changes?since=${Uri.encodeQueryComponent(since.toIso8601String())}',
-      );
-      return changes is Map ? changes['next_since'] as String? : null;
-    } on ApiException {
-      return null;
-    }
+  /// The lists changed: scopes on something now gone are dropped.
+  void _onDataChanged() {
+    if (mounted) setState(_dropStaleScopes);
+  }
+
+  /// Why the lists couldn't be loaded, in words, or null.
+  String? get _error {
+    final e = _data.loadError;
+    return e == null
+        ? null
+        : AppLocalizations.of(
+            context,
+          )!.commonErrorLoadDataFailed(friendlyApiErrorMessage(context, e));
   }
 
   /// A filter scoped to a university or building that's gone is dropped.
@@ -349,42 +297,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   /// All five lists: on opening, on pull-to-refresh, and as a fallback.
-  Future<void> _loadAll() async {
-    // Asked before the lists, so nothing changed between them is missed.
-    final since = _serverSince();
-    try {
-      final results = await Future.wait([
-        _mapApi.get('/places'),
-        _mapApi.get('/buildings'),
-        _mapApi.get('/anchor-points'),
-        _mapApi.get('/anchor-point-photos'),
-        _mapApi.get('/anchor-point-connections'),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _places = (results[0] as List? ?? []).cast<Map<String, dynamic>>();
-        _buildings = (results[1] as List? ?? []).cast<Map<String, dynamic>>();
-        _anchorPoints = (results[2] as List? ?? [])
-            .cast<Map<String, dynamic>>();
-        _photos = (results[3] as List? ?? []).cast<Map<String, dynamic>>();
-        _connections = (results[4] as List? ?? []).cast<Map<String, dynamic>>();
-        _dropStaleScopes();
-        _loading = false;
-        _error = null;
-      });
-      _since = await since;
-      _refreshIndexStatus();
-    } catch (e) {
-      // Not only ApiException: a malformed response must end the spinner too.
-      if (!mounted) return;
-      setState(() {
-        _error = AppLocalizations.of(
-          context,
-        )!.commonErrorLoadDataFailed(friendlyApiErrorMessage(context, e));
-        _loading = false;
-      });
-    }
-  }
+  Future<void> _loadAll() => _data.loadAll();
 
   Future<void> _loadUsers() async {
     try {
@@ -502,7 +415,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           ),
         ),
       );
-      setState(() => _unsearchablePhotos = 0);
+      _data.unsearchablePhotos = 0;
       return;
     }
     setState(() => _reindexing = true);
@@ -569,19 +482,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
-  /// How many verified photos aren't searchable, for the drawer warning.
-  /// Best effort: unknown leaves the warning off.
-  Future<void> _refreshIndexStatus() async {
-    final indexed = await fetchIndexedPhotoIds(_aiTrainingApi);
-    if (!mounted || indexed == null) return;
-    setState(
-      () => _unsearchablePhotos = unsearchablePhotoCount(
-        _anchorPoints,
-        _photosOf,
-        indexed,
-      ),
-    );
-  }
+  Future<void> _refreshIndexStatus() => _data.refreshIndexStatus();
 
   Future<void> _setUserRole(Map<String, dynamic> user, int roleId) async {
     try {
@@ -788,13 +689,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   /// The five lists, for what's asked of them (lib/services/admin_lists.dart).
-  AdminLists get _lists => AdminLists(
-    places: _places,
-    buildings: _buildings,
-    anchorPoints: _anchorPoints,
-    photos: _photos,
-    connections: _connections,
-  );
+  AdminLists get _lists => _data.lists;
 
   List<Map<String, dynamic>> _buildingsOf(String placeId) =>
       _lists.buildingsOf(placeId);
