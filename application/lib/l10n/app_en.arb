@@ -490,7 +490,7 @@
   "locationCategoryAcademic": "Academic",
   "locationCategoryServices": "Food, shops and services",
   "locationCategoryWellbeing": "Wellbeing and sports",
-  "locationCategoryOther": "Other",
+  "locationCategoryOther": "Other places",
   "locationTypeSearchHint": "Search types, e.g. library",
   "locationTypeNoMatches": "No type matches \"{query}\".",
   "@locationTypeNoMatches": {"placeholders": {"query": {"type": "String"}}},
