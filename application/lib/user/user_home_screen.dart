@@ -453,12 +453,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       await _locateStart();
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = AppLocalizations.of(
+      _fail(
+        AppLocalizations.of(
           context,
-        )!.commonErrorLoadDataFailed(friendlyApiErrorMessage(context, e));
-      });
-      _say(_error!);
+        )!.commonErrorLoadDataFailed(friendlyApiErrorMessage(context, e)),
+      );
     }
   }
 
@@ -520,9 +519,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     return floor;
   }
 
-  /// backend-route-management's 404 detail says which end isn't connected.
-  String _noPathMessage(AppLocalizations l10n, String? detail) =>
-      switch (noPathEnd(detail)) {
+  /// Which end of the route isn't connected, in words.
+  String _noPathMessage(AppLocalizations l10n, NoPathEnd which) =>
+      switch (which) {
         NoPathEnd.start => l10n.homeErrorNoPathStart,
         NoPathEnd.destination => l10n.homeErrorNoPathDestination,
         NoPathEnd.unknown => l10n.homeErrorNoPath,
@@ -566,87 +565,58 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
 
   Future<void> _findRouteFrom(AppLocalizations l10n) async {
     final end = _end!;
-    // Waits for a fix (and re-checks location) instead of giving up on the
-    // first try: in battery saver that said "GPS off" while it was on.
-    final position = await _locationService.ensureReady();
+    final outcome = await _trip.planTrip(
+      end,
+      locate: _locateStart,
+      askFloor: _startFloor,
+    );
     if (!mounted) return;
-    if (position == null) {
-      setState(() {
-        _error = _locationService.lastError == LocationError.serviceDisabled
-            ? l10n.locationServiceDisabledError
-            : _locationService.lastError != null
-            ? l10n.locationPermissionDeniedError
-            : l10n.homeErrorNoGpsFix;
-        _finding = false;
-      });
-      _say(_error!);
-      return;
-    }
-
-    try {
-      // Everyone gets the camera check of the start (it says to hold the
-      // phone up and turn slowly). The first user test found it confusing
-      // when its instruction wasn't heard: it was spoken over the open
-      // microphone, which `_say` no longer does.
-      final here = position.latLng;
-      var start = _trip.checkIsFresh ? _trip.start : await _locateStart();
-      if (!mounted) return;
-      // GPS can't tell floors apart: the nearest point may be overhead.
-      final floors = floorsNear(_trip.anchors, here);
-      if (start != null && floors.length > 1) {
-        final floor = await _startFloor(floors, here);
-        if (!mounted) return;
-        if (floor == null) {
-          setState(() {
-            _finding = false;
-          });
-          return;
-        }
-        start = _trip.startOnFloor(floor, here);
-      }
-      if (start == null) {
-        setState(() {
-          _error = AppLocalizations.of(context)!.homeErrorNoVerifiedAnchors;
-          _finding = false;
-        });
-        _say(_error!);
-        return;
-      }
-      if (alreadyAt(start, end)) {
-        setState(() {
-          _error = AppLocalizations.of(context)!.homeErrorAlreadyAtDestination(
-            end['location_description'] as String? ?? end['id'] as String,
-          );
-          _finding = false;
-        });
-        _say(_error!);
-        return;
-      }
-
-      final route = await _trip.findRoute(start, end);
-      if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => NavigationScreen(
-            route: route,
-            destinationName: _spokenLabel(end),
-            adminPreview: widget.adminPreview,
+    switch (outcome) {
+      case TripFound(:final route):
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => NavigationScreen(
+              route: route,
+              destinationName: _spokenLabel(end),
+              adminPreview: widget.adminPreview,
+            ),
           ),
-        ),
-      );
-      setState(() => _finding = false);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.statusCode == 404
-            ? _noPathMessage(AppLocalizations.of(context)!, e.detail)
-            : AppLocalizations.of(context)!.homeErrorFailedToFindRoute(
-                friendlyApiErrorMessage(context, e),
-              );
-        _finding = false;
-      });
-      _say(_error!);
+        );
+        setState(() => _finding = false);
+      case TripCancelled():
+        setState(() => _finding = false);
+      case TripNoGps(:final error):
+        _fail(switch (error) {
+          LocationError.serviceDisabled => l10n.locationServiceDisabledError,
+          null => l10n.homeErrorNoGpsFix,
+          _ => l10n.locationPermissionDeniedError,
+        });
+      case TripNoStart():
+        _fail(l10n.homeErrorNoVerifiedAnchors);
+      case TripAlreadyThere():
+        _fail(
+          l10n.homeErrorAlreadyAtDestination(
+            end['location_description'] as String? ?? end['id'] as String,
+          ),
+        );
+      case TripNoPath(end: final which):
+        _fail(_noPathMessage(l10n, which));
+      case TripFailed(:final error):
+        _fail(
+          l10n.homeErrorFailedToFindRoute(
+            friendlyApiErrorMessage(context, error),
+          ),
+        );
     }
+  }
+
+  /// Something stopped the trip from starting: shown, and said once.
+  void _fail(String message) {
+    setState(() {
+      _error = message;
+      _finding = false;
+    });
+    _say(message);
   }
 
   @override
