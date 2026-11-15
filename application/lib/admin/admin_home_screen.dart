@@ -15,6 +15,7 @@ import '../widgets/admin_map/admin_map.dart';
 import '../widgets/map_conflict.dart';
 import '../widgets/category_mark.dart';
 import 'add_building_screen.dart';
+import 'admin_drawer.dart';
 import 'admin_map_data.dart';
 import 'add_connection_screen.dart';
 import 'add_place_screen.dart';
@@ -24,14 +25,11 @@ import 'edit_anchor_point_screen.dart'
     show EditAnchorPointScreen, anchorStatusLabel;
 import 'edit_building_screen.dart';
 import 'edit_place_screen.dart';
-import 'feedback_screen.dart';
 import 'map_home.dart';
 import 'tabs/admin_rows.dart';
 import 'tabs/named_rows_tab.dart';
 import 'tabs/users_tab.dart';
-import 'sessions_screen.dart';
 import '../user/settings_screen.dart';
-import '../user/user_home_screen.dart';
 import '../services/admin_lists.dart';
 import '../services/anchor_filters.dart';
 import '../services/anchor_indexing.dart';
@@ -45,9 +43,7 @@ import '../services/location_types.dart';
 import '../services/floor_view.dart';
 import '../widgets/guardrail_dialogs.dart';
 import '../widgets/connection_warning_dialog.dart';
-import '../widgets/drawer_list.dart';
 import '../widgets/fab_row.dart';
-import '../widgets/review_list.dart';
 import '../widgets/scope_dropdowns.dart';
 import '../widgets/scrollable_message.dart';
 import '../theme/admin_palette.dart';
@@ -134,12 +130,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   ConnectionFilters _connectionFilters = ConnectionFilters.none;
 
   /// The sections, in drawer order. The map is first and opens the app (C2).
-  static const _kMap = 0;
-  static const _kUniversities = 1;
-  static const _kBuildings = 2;
-  static const _kPoints = 3;
-  static const _kConnections = 4;
-  static const _kUsers = 5;
+  static const _kMap = AdminSection.map;
+  static const _kUniversities = AdminSection.universities;
+  static const _kBuildings = AdminSection.buildings;
+  static const _kPoints = AdminSection.points;
+  static const _kConnections = AdminSection.connections;
+  static const _kUsers = AdminSection.users;
 
   /// Where the Map section is: everything, a university or a building.
   MapScope _mapScope = MapScope.all;
@@ -2078,113 +2074,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     if (!_permanentDrawer) Navigator.of(context).pop();
   }
 
-  /// Mapping mistakes that break navigation, from the loaded lists (see
-  /// `capture_checks.dart`). Each opens what needs fixing; nothing shows
-  /// when the data is clean.
-  List<Widget> _dataHealthTiles(AppLocalizations l10n) {
-    if (_loading) return const [];
-    final unconnected = verifiedUnconnectedPoints(_anchorPoints, _connections);
-    final hidden = namedHiddenPoints(_anchorPoints);
-    final long = longConnections(_anchorPoints, _connections);
-    final floorChange = floorChangeConnections(_anchorPoints, _connections);
-    Widget tile(String text, IconData icon, VoidCallback onTap) => ListTile(
-      leading: Icon(icon, color: kAdminPalette.notice),
-      title: Text(text, style: TextStyle(color: kAdminPalette.notice)),
-      onTap: () {
-        _closeDrawer();
-        onTap();
-      },
-    );
-    return [
-      if (unconnected.isNotEmpty)
-        tile(
-          l10n.adminHealthUnconnected(unconnected.length),
-          Icons.link_off,
-          _showUnconnectedVerified,
-        ),
-      if (hidden.isNotEmpty)
-        tile(
-          l10n.adminHealthHiddenNamed(hidden.length),
-          Icons.visibility_off_outlined,
-          () => _showReviewList(
-            title: l10n.adminHealthHiddenNamed(hidden.length),
-            guideSection: 'pitfall-type',
-            hint: l10n.adminHealthHiddenNamedHint,
-            items: [
-              for (final point in hidden)
-                (
-                  title: anchorDisplayName(l10n, point),
-                  subtitle: [
-                    locationTypeLabel(
-                      l10n,
-                      kLocationTypes[point['location_type_id']] ?? 'other',
-                    ),
-                    _buildingName(point['building_id'] as String?),
-                  ].join(' · '),
-                  onTap: () => _showOnMap(PointHit(point)),
-                ),
-            ],
-          ),
-        ),
-      if (long.isNotEmpty)
-        tile(
-          l10n.adminHealthLongConnections(long.length),
-          Icons.straighten,
-          () {
-            final byId = {for (final p in _anchorPoints) p['id']: p};
-            _showReviewList(
-              title: l10n.adminHealthLongConnections(long.length),
-              guideSection: 'pitfall-gap',
-              hint: l10n.adminHealthLongConnectionsHint,
-              items: [
-                for (final c in long)
-                  (
-                    title:
-                        '${_pointLabel(l10n, byId[c['anchor_point_a_id']])}'
-                        ' ↔ '
-                        '${_pointLabel(l10n, byId[c['anchor_point_b_id']])}',
-                    subtitle: l10n.adminHealthConnectionSubtitle(
-                      anchorDistance(
-                        byId[c['anchor_point_a_id']]!,
-                        byId[c['anchor_point_b_id']]!,
-                      )!.toStringAsFixed(0),
-                    ),
-                    onTap: () => _showOnMap(ConnectionHit(c)),
-                  ),
-              ],
-            );
-          },
-        ),
-      if (floorChange.isNotEmpty)
-        tile(l10n.adminHealthFloorChange(floorChange.length), Icons.stairs, () {
-          final byId = {for (final p in _anchorPoints) p['id']: p};
-          _showReviewList(
-            title: l10n.adminHealthFloorChange(floorChange.length),
-            guideSection: 'pitfall-floor',
-            hint: l10n.adminHealthFloorChangeHint,
-            items: [
-              for (final c in floorChange)
-                (
-                  title:
-                      '${_pointLabel(l10n, byId[c['anchor_point_a_id']])}'
-                      ' ↔ '
-                      '${_pointLabel(l10n, byId[c['anchor_point_b_id']])}',
-                  subtitle: l10n.adminHealthConnectionSubtitle(
-                    (anchorDistance(
-                              byId[c['anchor_point_a_id']]!,
-                              byId[c['anchor_point_b_id']]!,
-                            ) ??
-                            0)
-                        .toStringAsFixed(0),
-                  ),
-                  onTap: () => _showOnMap(ConnectionHit(c)),
-                ),
-            ],
-          );
-        }),
-    ];
-  }
-
   /// A point as admins see it everywhere: its name, then its building
   /// (names don't repeat it).
   String _pointLabel(AppLocalizations l10n, Map<String, dynamic>? point) =>
@@ -2198,186 +2087,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           as String? ??
       '';
 
-  /// Verified points with no connection, each opening on the map to fix.
-  void _showUnconnectedVerified() {
-    final l10n = AppLocalizations.of(context)!;
-    final points = verifiedUnconnectedPoints(_anchorPoints, _connections);
-    _showReviewList(
-      title: l10n.adminHealthUnconnected(points.length),
-      guideSection: 'pitfall-unconnected',
-      hint: l10n.adminHealthUnconnectedHint,
-      items: [
-        for (final point in points)
-          (
-            title: anchorDisplayName(l10n, point),
-            subtitle: _buildingName(point['building_id'] as String?),
-            onTap: () => _showOnMap(PointHit(point)),
-          ),
-      ],
-    );
-  }
-
-  Future<void> _showReviewList({
-    required String title,
-    required String hint,
-    required List<ReviewItem> items,
-    String? guideSection,
-  }) => showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (context) => DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.6,
-      builder: (context, controller) => ReviewList(
-        controller: controller,
-        title: title,
-        hint: hint,
-        items: items,
-        guideSection: guideSection,
-      ),
-    ),
+  Widget _drawer() => AdminDrawer(
+    permanent: _permanentDrawer,
+    selected: _tabController.index,
+    email: _userEmail(),
+    lists: _lists,
+    loading: _loading,
+    reindexing: _reindexing,
+    unsearchablePhotos: _unsearchablePhotos,
+    pointLabel: (point) => _pointLabel(AppLocalizations.of(context)!, point),
+    buildingName: _buildingName,
+    onSection: _tabController.animateTo,
+    onClose: _closeDrawer,
+    onReindex: _reindexVerified,
+    onShowOnMap: _showOnMap,
   );
-
-  Widget _drawer() {
-    final l10n = AppLocalizations.of(context)!;
-    Widget item(int index, IconData icon, Color color, String label) {
-      return ListTile(
-        leading: Icon(icon, color: color),
-        title: Text(label),
-        selected: _tabController.index == index,
-        onTap: () {
-          _tabController.animateTo(index);
-          _closeDrawer();
-        },
-      );
-    }
-
-    return Drawer(
-      // Part of the page on a wide screen (see _scaffold).
-      elevation: _permanentDrawer ? 0 : null,
-      shape: _permanentDrawer ? const RoundedRectangleBorder() : null,
-      child: DrawerList(
-        children: [
-          // A compact header: DrawerHeader's fixed height left a band of
-          // empty space under the email.
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    l10n.adminUsersRoleAdmin,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  Text(
-                    _userEmail() ?? '',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const Divider(height: 1),
-          // The tutorial is a page next to the web app, for reading beside it.
-          if (kIsWeb)
-            ListTile(
-              leading: const Icon(Icons.menu_book, color: Colors.blue),
-              title: Text(l10n.adminGuide),
-              onTap: () {
-                _closeDrawer();
-                openAdminGuide(context);
-              },
-            ),
-          item(_kMap, Icons.map_outlined, Colors.blue, l10n.adminSectionMap),
-          item(
-            _kUniversities,
-            Icons.flag,
-            kAdminPalette.university,
-            l10n.adminSectionUniversities,
-          ),
-          item(
-            _kBuildings,
-            Icons.apartment,
-            kAdminPalette.building,
-            l10n.adminSectionBuildings,
-          ),
-          item(
-            _kPoints,
-            Icons.location_pin,
-            kAdminPalette.verified,
-            l10n.adminSectionAnchorPoints,
-          ),
-          item(
-            _kConnections,
-            Icons.timeline,
-            kAdminPalette.connectionActive,
-            l10n.adminSectionConnections,
-          ),
-          item(_kUsers, Icons.people, Colors.indigo, l10n.adminUsersTabLabel),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.my_location, color: Colors.teal),
-            title: Text(l10n.adminSessions),
-            onTap: () {
-              _closeDrawer();
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const SessionsScreen()));
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.comment_outlined, color: Colors.teal),
-            title: Text(l10n.feedbackScreenTitle),
-            onTap: () {
-              _closeDrawer();
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const FeedbackScreen()));
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.manage_search, color: Colors.teal),
-            title: Text(l10n.adminReindexMenu),
-            subtitle: (_unsearchablePhotos ?? 0) > 0
-                ? Text(
-                    l10n.adminReindexUnsearchable(_unsearchablePhotos!),
-                    style: const TextStyle(color: Colors.red),
-                  )
-                : null,
-            enabled: !_reindexing && !_loading,
-            onTap: () {
-              _closeDrawer();
-              _reindexVerified();
-            },
-          ),
-          ..._dataHealthTiles(l10n),
-          // Trips need the phone's camera and sensors.
-          if (!kIsWeb)
-            ListTile(
-              leading: const Icon(
-                Icons.visibility_outlined,
-                color: Colors.teal,
-              ),
-              title: Text(l10n.adminTestAsUser),
-              onTap: () {
-                _closeDrawer();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const UserHomeScreen(adminPreview: true),
-                  ),
-                );
-              },
-            ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
