@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:clock/clock.dart';
 import 'package:eyes4u/services/api_service.dart';
 import 'package:eyes4u/services/location_service.dart';
 import 'package:geolocator/geolocator.dart';
@@ -28,8 +31,28 @@ class FakeMapApi extends MapManagementApi {
     '/buildings' => buildings,
     '/anchor-points' => anchors,
     '/anchor-point-connections' when !failConnections => connections,
-    _ => throw ApiException(404, 'not faked: $path'),
+    _ => _onePoint(path),
   };
+
+  /// `/anchor-points/{id}` and `/anchor-points/{id}/connections`, as an
+  /// older server answers a route's points (no `by-ids`).
+  Object _onePoint(String path) {
+    final match = RegExp(
+      r'^/anchor-points/([^/?]+)(/connections)?$',
+    ).firstMatch(path);
+    final id = match?.group(1);
+    if (id == null || id == 'by-ids') throw ApiException(404, path);
+    if (match!.group(2) != null) {
+      return [
+        for (final c in connections)
+          if (c['anchor_point_a_id'] == id || c['anchor_point_b_id'] == id) c,
+      ];
+    }
+    for (final a in anchors) {
+      if (a['id'] == id) return a;
+    }
+    throw ApiException(404, path);
+  }
 }
 
 class FakeNavigationApi extends NavigationManagementApi {
@@ -46,6 +69,25 @@ class FakeNavigationApi extends NavigationManagementApi {
   Future<dynamic> patch(String path, Map<String, dynamic> body) async {
     patches[path] = body;
     return body;
+  }
+
+  /// Every POST, in order, as (path, body).
+  final posts = <(String, Map<String, dynamic>)>[];
+
+  @override
+  Future<dynamic> post(
+    String path,
+    Map<String, dynamic> body, {
+    Duration? timeout,
+    bool retry = false,
+  }) async {
+    posts.add((path, body));
+    // Supabase's insert result, as the backend returns it: a list.
+    return path == '/sessions'
+        ? [
+            {'id': 's1', ...body},
+          ]
+        : body;
   }
 }
 
@@ -94,11 +136,17 @@ class NoLocation extends LocationPlatform {
   Stream<ServiceStatus> serviceStatus() => const Stream.empty();
 }
 
-/// Location that's on, standing still at [here].
+/// Location that's on, at [here]; [moveTo] walks the user somewhere else.
 class FixedLocation extends LocationPlatform {
   FixedLocation(this.here);
 
   Position here;
+  final _fixes = StreamController<Position>.broadcast();
+
+  void moveTo(Position next) {
+    here = next;
+    _fixes.add(next);
+  }
 
   @override
   Future<bool> isServiceEnabled() async => true;
@@ -110,15 +158,16 @@ class FixedLocation extends LocationPlatform {
   @override
   Future<Position> current(Duration timeLimit) async => here;
   @override
-  Stream<Position> positions() => const Stream.empty();
+  Stream<Position> positions() => _fixes.stream;
   @override
   Stream<ServiceStatus> serviceStatus() => const Stream.empty();
 }
 
+/// A GPS fix taken now (the test's clock, so it's never stale).
 Position fix(double latitude, double longitude) => Position(
   latitude: latitude,
   longitude: longitude,
-  timestamp: DateTime(2026, 11, 15),
+  timestamp: clock.now(),
   accuracy: 5,
   altitude: 0,
   altitudeAccuracy: 0,

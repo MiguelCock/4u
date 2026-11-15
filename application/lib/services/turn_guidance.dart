@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:clock/clock.dart';
+
 import 'geo_utils.dart';
 
 /// Something the navigation screen should say. Produced by [TurnGuidance]
@@ -282,7 +284,7 @@ class HeadingSmoother {
   }
 
   double add(double degrees, {DateTime? at}) {
-    final now = at ?? DateTime.now();
+    final now = at ?? clock.now();
     final radians = degrees * pi / 180;
     final x = cos(radians);
     final y = sin(radians);

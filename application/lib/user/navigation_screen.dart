@@ -1,24 +1,21 @@
 import 'dart:async';
 
 import 'package:camera/camera.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
-import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
-import 'package:sensors_plus/sensors_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../l10n/app_localizations.dart';
 import '../location.dart';
 import '../map.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
-import '../services/camera_helper.dart';
 import '../services/capture_checks.dart' show kVerticalLocationTypes;
 import '../services/destinations.dart';
 import '../services/floor_detector.dart';
@@ -31,10 +28,10 @@ import '../services/location_service.dart';
 import '../voice/app_voice.dart';
 import '../voice/notices.dart';
 import '../services/buzz.dart';
-import '../services/device_details.dart';
 import '../services/route_points.dart';
 import '../services/test_walk.dart';
 import '../services/turn_guidance.dart';
+import 'trip_sensors.dart';
 import '../services/api_error_messages.dart';
 
 /// A resolved checkpoint along the planned route: an anchor point's
@@ -202,12 +199,32 @@ class NavigationScreen extends StatefulWidget {
   /// that records the last cue for tuning (backend guidance_reports).
   final bool adminPreview;
 
+  /// What the trip talks to, for tests. Every real caller uses the
+  /// defaults: the gateway's APIs, the phone's location, sensors and voice,
+  /// and the signed-in user.
+  final NavigationManagementApi? navigationApi;
+  final PositioningApi? positioningApi;
+  final MapManagementApi? mapApi;
+  final LocationService? locationService;
+  final AppVoice? voice;
+  final TripSensors sensors;
+
+  /// The signed-in user's id; null when nobody is.
+  final String? Function()? userId;
+
   const NavigationScreen({
     super.key,
     required this.route,
     this.resumeSessionId,
     this.destinationName,
     this.adminPreview = false,
+    this.navigationApi,
+    this.positioningApi,
+    this.mapApi,
+    this.locationService,
+    this.voice,
+    this.sensors = const TripSensors(),
+    this.userId,
   });
 
   @override
@@ -216,9 +233,15 @@ class NavigationScreen extends StatefulWidget {
 
 class _NavigationScreenState extends State<NavigationScreen>
     with WidgetsBindingObserver {
-  final _navigationApi = NavigationManagementApi();
-  final _positioningApi = PositioningApi();
-  final _locationService = LocationService();
+  late final _navigationApi = widget.navigationApi ?? NavigationManagementApi();
+  late final _positioningApi = widget.positioningApi ?? PositioningApi();
+  late final _mapApi = widget.mapApi ?? MapManagementApi();
+  late final _locationService = widget.locationService ?? LocationService();
+  late final AppVoice _appVoice = widget.voice ?? AppVoice.instance;
+
+  String? get _userId => widget.userId != null
+      ? widget.userId!()
+      : Supabase.instance.client.auth.currentUser?.id;
 
   /// The trip's right to speak: claimed as the trip starts, so whatever the
   /// home screen was still saying is dropped (#258).
@@ -238,7 +261,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   Timer? _guidanceTimer;
   Timer? _loadingTimer;
   Timer? _barometerProbeTimer;
-  StreamSubscription<BarometerEvent>? _barometerSub;
+  StreamSubscription<double>? _barometerSub;
   final _floorDetector = FloorChangeDetector();
   bool _barometerSeen = false;
 
@@ -269,11 +292,11 @@ class _NavigationScreenState extends State<NavigationScreen>
 
   /// A route starting at the foot of stairs was checked for that.
   bool _startFloorChecked = false;
-  StreamSubscription<CompassEvent>? _compassSub;
+  StreamSubscription<CompassReading>? _compassSub;
   final _heading = HeadingSmoother();
   final _tracker = HeadingTracker();
-  StreamSubscription<GyroscopeEvent>? _gyroSub;
-  StreamSubscription<AccelerometerEvent>? _accelSub;
+  StreamSubscription<AxisReading>? _gyroSub;
+  StreamSubscription<AxisReading>? _accelSub;
   StreamSubscription<Position>? _positionSub;
   final _guidance = TurnGuidance();
   final _pathLoaded = Completer<void>();
@@ -364,7 +387,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     final language = Localizations.localeOf(context).languageCode;
     if (language != _ttsLanguage) {
       _ttsLanguage = language;
-      AppVoice.instance.setLanguage(language).then(_onTtsConfigured);
+      _appVoice.setLanguage(language).then(_onTtsConfigured);
     }
   }
 
@@ -382,7 +405,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   @override
   void initState() {
     super.initState();
-    _voice = AppVoice.instance.claim();
+    _voice = _appVoice.claim();
     _startSession();
     _initCamera();
     _loadPlannedPath();
@@ -390,7 +413,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       _kPeriodicAnnouncementInterval,
       (_) => _announcePeriodicDistance(),
     );
-    _compassSub = FlutterCompass.events?.listen((event) {
+    _compassSub = widget.sensors.compass()?.listen((event) {
       // Android only fills `heading` (see capture_photo_screen.dart).
       final heading = event.heading;
       _lastCompassAccuracy = event.accuracy;
@@ -399,27 +422,23 @@ class _NavigationScreenState extends State<NavigationScreen>
         _heading.add(heading);
         _tracker.compass(
           trueHeading(_heading.value!, _declination),
-          DateTime.now(),
+          clock.now(),
         );
       }
     });
     // Turns come from the gyroscope, direction from walking: the compass
     // under-counted every turn in a field test (see HeadingTracker).
-    _accelSub =
-        accelerometerEventStream(
-          samplingPeriod: SensorInterval.gameInterval,
-        ).listen(
-          (e) => _tracker.accelerometer(e.x, e.y, e.z),
-          onError: _sensorError,
-        );
-    _gyroSub = gyroscopeEventStream(samplingPeriod: SensorInterval.gameInterval)
-        .listen(
-          (e) => _tracker.gyro(e.x, e.y, e.z, DateTime.now()),
-          onError: _sensorError,
-        );
+    _accelSub = widget.sensors.accelerometer().listen(
+      (e) => _tracker.accelerometer(e.x, e.y, e.z),
+      onError: _sensorError,
+    );
+    _gyroSub = widget.sensors.gyroscope().listen(
+      (e) => _tracker.gyro(e.x, e.y, e.z, clock.now()),
+      onError: _sensorError,
+    );
     WidgetsBinding.instance.addObserver(this);
     // A screen that turns off stops the camera, GPS and timers without a word.
-    WakelockPlus.enable().catchError((_) {});
+    widget.sensors.keepAwake(true);
     _positionSub = _locationService.positionStream.listen((position) {
       _recentFixes.add(position.latLng, position.timestamp);
       _tracker.gpsCourse(
@@ -434,14 +453,14 @@ class _NavigationScreenState extends State<NavigationScreen>
     });
     _guidanceTimer = Timer.periodic(_kGuidanceInterval, (_) => _guide());
     _loadingTimer = Timer(_kLoadingNotice, _sayStillLoading);
-    _barometerSub = barometerEventStream().listen((event) {
+    _barometerSub = widget.sensors.pressure().listen((pressure) {
       _barometerSeen = true;
-      _floorDetector.add(event.pressure, DateTime.now());
+      _floorDetector.add(pressure, clock.now());
     }, onError: _sensorError);
     _barometerProbeTimer = Timer(_kBarometerProbe, () {
       if (_barometerSeen) return;
       _pendingEvents.add({
-        'at': DateTime.now().toUtc().toIso8601String(),
+        'at': clock.now().toUtc().toIso8601String(),
         'type': 'barometer_missing',
       });
     });
@@ -466,7 +485,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// gyroscope doesn't work shows up in the session data.
   void _sensorError(Object error) {
     _pendingEvents.add({
-      'at': DateTime.now().toUtc().toIso8601String(),
+      'at': clock.now().toUtc().toIso8601String(),
       'type': 'sensor_error',
       'error': error.toString(),
     });
@@ -496,7 +515,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       _lastAnnouncement = text;
       _lastCueType = cueType;
     }
-    _lastSpokenAt = DateTime.now();
+    _lastSpokenAt = clock.now();
     if (_kInstructionCues.contains(cueType)) {
       buzz(Buzz.short);
     } else if (cueType == 'start_walking') {
@@ -504,7 +523,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       buzz(Buzz.long);
     }
     _pendingCues.add({
-      'at': DateTime.now().toUtc().toIso8601String(),
+      'at': clock.now().toUtc().toIso8601String(),
       'type': cueType,
       'text': text,
     });
@@ -534,7 +553,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     // One request when the server has it (E2), else all at once: one request
     // after another took ~90 s on campus mobile data in a test walk, and
     // guidance can't start without the path.
-    final route = await fetchRoutePoints(MapManagementApi(), anchorIds);
+    final route = await fetchRoutePoints(_mapApi, anchorIds);
     final anchors = route.anchors;
     final connections = route.connections;
     String? noteBetween(int i) {
@@ -695,10 +714,10 @@ class _NavigationScreenState extends State<NavigationScreen>
     // the tens of metres that can separate them.
     final staleFrom = _staleFrom;
     if (staleFrom != null) {
-      _staleSince ??= DateTime.now();
+      _staleSince ??= clock.now();
       final from = staleFrom;
       final f =
-          (DateTime.now().difference(_staleSince!).inMilliseconds /
+          (clock.now().difference(_staleSince!).inMilliseconds /
                   _kSourceBlend.inMilliseconds)
               .clamp(0.0, 1.0);
       if (f < 1) {
@@ -720,7 +739,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     if (offset == null ||
         correctedAt == null ||
         raw == null ||
-        DateTime.now().difference(correctedAt) >= _kCorrectionFreshness) {
+        clock.now().difference(correctedAt) >= _kCorrectionFreshness) {
       return null;
     }
     return applyOffset(raw, offset.x, offset.y);
@@ -786,7 +805,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     final fix = _locationService.lastPosition;
     final fixAge = fix == null
         ? Duration.zero
-        : DateTime.now().difference(fix.timestamp);
+        : clock.now().difference(fix.timestamp);
     if (fixAge >= _kStaleFix) {
       // The position is old news: nothing can be reached on its strength.
       _sayGpsStale(fixAge);
@@ -810,7 +829,7 @@ class _NavigationScreenState extends State<NavigationScreen>
         : guidanceBearing(here, segmentStart, target);
     _lastTargetDistance = haversineMeters(here, target);
     _lastTurn = signedTurn(heading, _lastTargetBearing!);
-    final now = DateTime.now();
+    final now = clock.now();
     final cue = _guidance.update(
       turn: _lastTurn!,
       metersToTarget: _lastTargetDistance!,
@@ -843,7 +862,7 @@ class _NavigationScreenState extends State<NavigationScreen>
 
   /// The heading, only when it can be trusted (see HeadingTracker.reliable).
   double? _reliableHeading() =>
-      _tracker.reliable(DateTime.now()) ? _tracker.value : null;
+      _tracker.reliable(clock.now()) ? _tracker.value : null;
 
   /// The first instruction, once the route is loaded. With a heading that
   /// can be trusted it's face-then-walk (TurnGuidance); without one there's
@@ -854,13 +873,13 @@ class _NavigationScreenState extends State<NavigationScreen>
     _speakLegNotes(_waypoints[_nextWaypointIndex]);
     _resetProgress(haversineMeters(here, _waypoints[_nextWaypointIndex].point));
     if (_reliableHeading() != null) {
-      _guidance.reset(now: DateTime.now());
+      _guidance.reset(now: clock.now());
       return;
     }
     // A hallway leads the way; a plaza doesn't, and "walk forward" there left
     // people standing at the start (Icesi, 2026-11-05).
     if (_startTypeId != _kHallwayType && _speakCompassDirection(here)) {
-      _guidance.reset(now: DateTime.now(), walking: true);
+      _guidance.reset(now: clock.now(), walking: true);
       return;
     }
     _speak(
@@ -869,7 +888,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       ),
       cueType: 'start_walking',
     );
-    _guidance.reset(now: DateTime.now(), walking: true);
+    _guidance.reset(now: clock.now(), walking: true);
   }
 
   /// "Turn left and walk about N steps", from the compass to this stretch's
@@ -889,7 +908,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     final steps = roundSteps(haversineMeters(here, target));
     final l10n = AppLocalizations.of(context)!;
     _pendingEvents.add({
-      'at': DateTime.now().toUtc().toIso8601String(),
+      'at': clock.now().toUtc().toIso8601String(),
       'type': 'stall',
       'compass': compass,
       'bearing': bearing,
@@ -917,7 +936,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// trusted heading, nothing else would speak: says which way to go by the
   /// compass, or else to keep walking.
   void _checkStall(LatLng here) {
-    final now = DateTime.now();
+    final now = clock.now();
     final meters = haversineMeters(here, _waypoints[_nextWaypointIndex].point);
     final best = _bestMeters;
     if (best == null || meters <= best - _kStallProgressMeters) {
@@ -945,7 +964,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     if (_gpsStaleAnnounced || age < _kStaleFixAnnounce) return;
     _gpsStaleAnnounced = true;
     _pendingEvents.add({
-      'at': DateTime.now().toUtc().toIso8601String(),
+      'at': clock.now().toUtc().toIso8601String(),
       'type': 'gps_stale',
       'age_s': age.inSeconds,
     });
@@ -958,7 +977,7 @@ class _NavigationScreenState extends State<NavigationScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final now = DateTime.now();
+    final now = clock.now();
     if (state == AppLifecycleState.paused) {
       _pausedAt = now;
       _pendingEvents.add({
@@ -1041,7 +1060,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     }
     if (reached == -1) return false;
     _pendingEvents.add({
-      'at': DateTime.now().toUtc().toIso8601String(),
+      'at': clock.now().toUtc().toIso8601String(),
       'type': reached == _waypoints.length - 1 ? 'arrival' : 'waypoint',
       'index': reached,
       'skipped': reached - _nextWaypointIndex,
@@ -1080,7 +1099,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// way to go, then guidance waits for the barometer ([_checkFloorChange]).
   void _beginFloorChange(int from, FloorChange change) {
     final l10n = AppLocalizations.of(context)!;
-    final now = DateTime.now();
+    final now = clock.now();
     final floors = change.floor - _currentFloor;
     final types = {
       from < 0 ? _startHazard : _waypoints[from].hazardType,
@@ -1121,7 +1140,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// wait run out? Then guidance picks up from the far end.
   void _checkFloorChange() {
     final change = _floorChange!;
-    final now = DateTime.now();
+    final now = clock.now();
     final waited = now.difference(_floorWaitSince!);
     final detected = _floorDetector.reached;
     final limit = _barometerSeen
@@ -1301,7 +1320,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     _resetProgress(haversineMeters(from.point, to.point));
     // Walking: the user turns as told, and is corrected (once) only if a
     // trusted heading shows them going the wrong way.
-    _guidance.reset(now: DateTime.now(), walking: true);
+    _guidance.reset(now: clock.now(), walking: true);
   }
 
   /// Within range of the destination: say so and finish the trip on its
@@ -1339,7 +1358,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     final corrected = _liveCorrected();
     final correctedAt = _correctedAt;
     _pendingEvents.add({
-      'at': DateTime.now().toUtc().toIso8601String(),
+      'at': clock.now().toUtc().toIso8601String(),
       'type': 'checkpoint',
       'index': index,
       'of': _checkpoints.count,
@@ -1349,7 +1368,7 @@ class _NavigationScreenState extends State<NavigationScreen>
           : [corrected.latitude, corrected.longitude]),
       'correction_age_s': ?(correctedAt == null
           ? null
-          : DateTime.now().difference(correctedAt).inMilliseconds / 1000),
+          : clock.now().difference(correctedAt).inMilliseconds / 1000),
     });
     final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context)
@@ -1369,7 +1388,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     final index = _checkpoints.undo();
     if (index == null) return;
     _pendingEvents.add({
-      'at': DateTime.now().toUtc().toIso8601String(),
+      'at': clock.now().toUtc().toIso8601String(),
       'type': 'checkpoint_undo',
       'index': index,
     });
@@ -1402,7 +1421,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     if (_floorChange != null) return;
     final lastSpoken = _lastSpokenAt;
     if (lastSpoken != null &&
-        DateTime.now().difference(lastSpoken) < _kQuietBeforePeriodic) {
+        clock.now().difference(lastSpoken) < _kQuietBeforePeriodic) {
       return;
     }
     final here = _currentPosition();
@@ -1419,7 +1438,7 @@ class _NavigationScreenState extends State<NavigationScreen>
         // help, but neither did the silence (Icesi, 2026-11-05).
         final spoken = _lastSpokenAt;
         if (spoken == null ||
-            DateTime.now().difference(spoken) >= _kQuietBeforeKeepWalking) {
+            clock.now().difference(spoken) >= _kQuietBeforeKeepWalking) {
           _sayKeepWalking(distance);
         }
         return;
@@ -1440,7 +1459,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// takes over (TurnGuidance orients again); otherwise, while walking,
   /// the GPS direction of travel says which way to turn.
   void _turnBackTowardTarget(LatLng here) {
-    final now = DateTime.now();
+    final now = clock.now();
     if (_reliableHeading() != null) {
       _guidance.reset(now: now);
       return;
@@ -1471,7 +1490,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   Future<void> _initCamera() async {
     // Null when unavailable (no hardware, permission denied, etc.) -
     // correction ticks below then fall back to raw-GPS-only logging.
-    final controller = await initCamera();
+    final controller = await widget.sensors.camera();
     if (controller == null) return;
     if (_stopped) {
       await controller.dispose();
@@ -1482,7 +1501,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   }
 
   Future<void> _startSession() async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final userId = _userId;
     if (userId == null) {
       setState(() {
         _error = AppLocalizations.of(context)!.commonNotSignedIn;
@@ -1507,7 +1526,7 @@ class _NavigationScreenState extends State<NavigationScreen>
                   'longitude': startPosition.longitude,
                 },
               // The phone, for the trip report (B2).
-              'device_info': await deviceDetails(),
+              'device_info': await widget.sensors.device(),
             });
       // backend-navigation-management's POST /sessions returns Supabase's
       // insert result as-is, which is always a list (even for one row).
@@ -1543,7 +1562,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       }
       // The first instruction comes from _guide once the route is loaded
       // (_speakStartCue).
-      _guidance.reset(now: DateTime.now());
+      _guidance.reset(now: clock.now());
       _needsStartCue = true;
       _guiding = true;
       _runTick();
@@ -1560,7 +1579,7 @@ class _NavigationScreenState extends State<NavigationScreen>
 
   Future<void> _runTick() async {
     if (_stopped) return;
-    final started = DateTime.now();
+    final started = clock.now();
     final sessionId = _sessionId;
     final position = _locationService.lastPosition;
     final paused = photoPaused(started, _photosPausedUntil);
@@ -1580,7 +1599,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       if (!_stopped) {
         _pendingTickTimer = Timer(
           nextTickDelay(
-            DateTime.now().difference(started),
+            clock.now().difference(started),
             period: paused ? pausedTickPeriod : const Duration(seconds: 1),
           ),
           _runTick,
@@ -1606,7 +1625,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       'compass_accuracy': _lastCompassAccuracy,
       'heading': _tracker.value,
       'heading_source': _tracker.source,
-      'heading_reliable': _tracker.reliable(DateTime.now()),
+      'heading_reliable': _tracker.reliable(clock.now()),
       // Which mode the trip ran in, for reading the logs (#257).
       'talkback': _screenReader,
       'pressure_hpa': _floorDetector.pressure,
@@ -1627,7 +1646,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       'position_source': _lastUsedCorrected ? 'corrected' : 'raw',
       'correction_age_s': correctedAt == null
           ? null
-          : DateTime.now().difference(correctedAt).inMilliseconds / 1000,
+          : clock.now().difference(correctedAt).inMilliseconds / 1000,
       'target_index': _nextWaypointIndex,
       'target_distance_m': _lastTargetDistance,
       'target_bearing': _lastTargetBearing,
@@ -1690,15 +1709,13 @@ class _NavigationScreenState extends State<NavigationScreen>
     CameraController controller,
   ) async {
     try {
-      final captureStarted = DateTime.now();
+      final captureStarted = clock.now();
       // The direction the camera faces as the photo is taken (see
       // _sentHeading), not when the answer comes back.
       final sentHeading = _sentHeading();
       final image = await controller.takePicture();
       final bytes = await image.readAsBytes();
-      final captureMs = DateTime.now()
-          .difference(captureStarted)
-          .inMilliseconds;
+      final captureMs = clock.now().difference(captureStarted).inMilliseconds;
 
       if (isFrameBlocked(bytes)) {
         _consecutiveBlockedTicks++;
@@ -1722,7 +1739,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       _consecutiveBlockedTicks = 0;
       _blockedAnnounced = false;
 
-      final correctStarted = DateTime.now();
+      final correctStarted = clock.now();
       final result =
           await _positioningApi.postMultipart(
                 '/correct_position',
@@ -1746,12 +1763,10 @@ class _NavigationScreenState extends State<NavigationScreen>
                 },
               )
               as Map<String, dynamic>;
-      final correctMs = DateTime.now()
-          .difference(correctStarted)
-          .inMilliseconds;
+      final correctMs = clock.now().difference(correctStarted).inMilliseconds;
 
       if (result['server_busy'] == true) {
-        _photosPausedUntil = DateTime.now().add(photoPauseWhenBusy);
+        _photosPausedUntil = clock.now().add(photoPauseWhenBusy);
       }
 
       if (mounted) {
@@ -1759,7 +1774,7 @@ class _NavigationScreenState extends State<NavigationScreen>
           _correctedLat = (result['corrected_lat'] as num).toDouble();
           _correctedLong = (result['corrected_long'] as num).toDouble();
           _correctionError = (result['correction_error'] as num).toDouble();
-          _correctedAt = DateTime.now();
+          _correctedAt = clock.now();
           _correctionOffset = offsetMeters(
             position.latLng,
             LatLng(_correctedLat!, _correctedLong!),
@@ -1900,7 +1915,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     try {
       await _navigationApi.patch('/sessions/$sessionId', {
         'status': 'completed',
-        'end_time': DateTime.now().toUtc().toIso8601String(),
+        'end_time': clock.now().toUtc().toIso8601String(),
         if (position != null)
           'end_position': {
             'latitude': position.latitude,
@@ -1939,7 +1954,7 @@ class _NavigationScreenState extends State<NavigationScreen>
           TextButton(
             onPressed: () async {
               final comment = controller.text.trim();
-              final userId = Supabase.instance.client.auth.currentUser?.id;
+              final userId = _userId;
               if (comment.isNotEmpty && userId != null) {
                 try {
                   await _navigationApi.post('/feedback', {
@@ -1964,7 +1979,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   void dispose() {
     _stopped = true;
     WidgetsBinding.instance.removeObserver(this);
-    WakelockPlus.disable().catchError((_) {});
+    widget.sensors.keepAwake(false);
     _pendingTickTimer?.cancel();
     _periodicAnnouncementTimer?.cancel();
     _guidanceTimer?.cancel();
