@@ -16,6 +16,7 @@ import '../services/location_service.dart';
 import 'anchor_point_picker_screen.dart';
 import 'home_dialogs.dart';
 import 'home_tutorial.dart';
+import 'home_widgets.dart';
 import 'navigation_screen.dart';
 import 'trip_starter.dart';
 import 'unfinished_trip.dart';
@@ -670,102 +671,32 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     // Without the choices the screen is one big Speak button (D1/D2): the
     // simplest it can be. They appear when voice can't be used.
     final choices = _showsChoices;
+    final end = _end;
     return Column(
       children: [
-        if (widget.adminPreview)
-          Container(
-            width: double.infinity,
-            color: Colors.amber.shade100,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              l10n.adminPreviewBanner,
-              // Explicit dark color - this background is a fixed light
-              // amber regardless of theme, and in dark mode the ambient
-              // text color defaults to near-white (same issue fixed for
-              // LocationInfo's GPS row).
-              style: const TextStyle(
-                color: Colors.black87,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+        if (widget.adminPreview) const AdminPreviewBanner(),
         if (choices) ...[
-          ListTile(
-            leading: const Icon(Icons.radio_button_checked, color: Colors.blue),
-            title: Text(l10n.homeStartLabel),
-            // Not a live region: it changes on every GPS fix, and the
-            // start check's result is spoken (#257).
-            subtitle: Semantics(
-              child: Text(
-                _trip.locating
-                    ? (_trip.progress > 0
-                          ? l10n.homeCheckingStartProgress(
-                              _trip.progress,
-                              TripStarter.checkPhotos,
-                            )
-                          : l10n.homeLocatingStart)
-                    : _trip.start != null
-                    ? _startLabel(l10n, _trip.start!)
-                    : l10n.homeStartSubtitle,
-              ),
-            ),
-            trailing: _trip.locating
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : widget.adminPreview
-                ? Icon(
-                    Icons.my_location,
-                    semanticLabel: l10n.homeCheckStartTooltip,
-                  )
-                : null,
-            onTap: !widget.adminPreview || _trip.locating || _finding
+          StartRow(
+            subtitle: _startSubtitle(l10n),
+            locating: _trip.locating,
+            canCheck: widget.adminPreview,
+            onCheck: !widget.adminPreview || _trip.locating || _finding
                 ? null
                 : _relocateStart,
           ),
           const Divider(height: 1),
-          ListTile(
-            leading: Icon(
-              _end == null ? Icons.radio_button_unchecked : Icons.location_on,
-              color: _end == null ? Colors.grey : Colors.blue,
-            ),
-            // "¿A dónde vas? Biblioteca" read as a question about the place
-            // already chosen: no tester knew it was where to change it.
-            title: Text(
-              _end == null
-                  ? l10n.homeChooseDestination
-                  : l10n.homeDestinationLabel(
-                      _end!['location_description'] as String? ??
-                          _end!['id'] as String,
-                    ),
-            ),
-            subtitle: Text(
-              _end == null
-                  ? l10n.homeTapToChooseDestination
-                  : l10n.homeTapToChangeDestination,
-            ),
-            trailing: const Icon(Icons.chevron_right),
+          DestinationRow(
+            name: end == null
+                ? null
+                : end['location_description'] as String? ?? end['id'] as String,
             onTap: _pickEnd,
           ),
-        ],
-        if (!choices) Expanded(child: Center(child: _speakCircle(l10n))),
-        if (choices)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(56),
-              ),
-              onPressed: _finding ? null : _listenForDestination,
-              icon: Icon(_listening ? Icons.stop_circle_outlined : Icons.mic),
-              label: Text(
-                _listening ? l10n.homeListening : l10n.homeSayDestinationButton,
-                textAlign: TextAlign.center,
-              ),
-            ),
+          SayDestinationButton(
+            listening: _listening,
+            onPressed: _finding ? null : _listenForDestination,
           ),
+        ] else
+          Expanded(child: Center(child: _speakCircle(l10n))),
         if (_error != null)
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -782,56 +713,47 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
           ),
         if (choices) ...[
           const Spacer(),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(64),
-                textStyle: Theme.of(context).textTheme.titleLarge,
-              ),
-              onPressed: (_end != null && !_finding) ? _findRoute : null,
-              child: _finding
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        semanticsLabel: l10n.homeFindingRoute,
-                      ),
-                    )
-                  : Text(l10n.homeFindRouteButton),
-            ),
+          FindRouteButton(
+            finding: _finding,
+            onPressed: (end != null && !_finding) ? _findRoute : null,
           ),
         ],
-        const Divider(height: 1),
-        ListTile(
-          leading: const Icon(Icons.help_outline),
-          title: Text(l10n.homeTutorialButton),
-          onTap: () async {
-            await _say(l10n.homeOpeningHelp);
-            if (mounted) _showTutorial();
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.settings_outlined),
-          title: Text(l10n.homeSettingsTooltip),
-          onTap: () async {
-            await _say(l10n.homeOpeningSettings);
-            if (!mounted) return;
-            await Navigator.of(
+        HomeFooter(
+          onHelp: () => _then(l10n.homeOpeningHelp, _showTutorial),
+          onSettings: () => _then(
+            l10n.homeOpeningSettings,
+            () => Navigator.of(
               context,
-            ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.logout),
-          title: Text(l10n.commonLogOut),
-          onTap: () async {
+            ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+          ),
+          onLogOut: () async {
             await _say(l10n.homeLoggingOut, interrupt: true);
             await Supabase.instance.client.auth.signOut();
           },
         ),
       ],
     );
+  }
+
+  /// Every action says what it does first (D1), then does it if the screen
+  /// is still there.
+  Future<void> _then(String saying, Future<void> Function() action) async {
+    await _say(saying);
+    if (mounted) await action();
+  }
+
+  /// The Start row's text: the check's progress, the start, or "your
+  /// current location" until one is known.
+  String _startSubtitle(AppLocalizations l10n) {
+    final start = _trip.start;
+    if (_trip.locating) {
+      return _trip.progress > 0
+          ? l10n.homeCheckingStartProgress(
+              _trip.progress,
+              TripStarter.checkPhotos,
+            )
+          : l10n.homeLocatingStart;
+    }
+    return start != null ? _startLabel(l10n, start) : l10n.homeStartSubtitle;
   }
 }
