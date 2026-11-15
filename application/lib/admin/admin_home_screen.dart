@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
@@ -51,7 +52,28 @@ import '../theme/admin_palette.dart';
 /// warning first) actions, plus entry points into the add/edit/capture/
 /// connect screens.
 class AdminHomeScreen extends StatefulWidget {
-  const AdminHomeScreen({super.key});
+  const AdminHomeScreen({
+    super.key,
+    this.mapApi,
+    this.aiTrainingApi,
+    this.userApi,
+    this.userId,
+    this.userEmail,
+    this.signOut,
+    this.showTiles = true,
+  });
+
+  /// For tests; every real caller keeps the defaults (the real APIs, and
+  /// the signed-in Supabase account).
+  final MapManagementApi? mapApi;
+  final AiTrainingApi? aiTrainingApi;
+  final UserManagementApi? userApi;
+  final String? Function()? userId;
+  final String? Function()? userEmail;
+  final Future<void> Function()? signOut;
+
+  /// The map's tiles; tests turn them off (no network).
+  final bool showTiles;
 
   @override
   State<AdminHomeScreen> createState() => _AdminHomeScreenState();
@@ -59,9 +81,21 @@ class AdminHomeScreen extends StatefulWidget {
 
 class _AdminHomeScreenState extends State<AdminHomeScreen>
     with SingleTickerProviderStateMixin {
-  final _mapApi = MapManagementApi();
-  final _aiTrainingApi = AiTrainingApi();
-  final _userApi = UserManagementApi();
+  late final _mapApi = widget.mapApi ?? MapManagementApi();
+  late final _aiTrainingApi = widget.aiTrainingApi ?? AiTrainingApi();
+  late final _userApi = widget.userApi ?? UserManagementApi();
+
+  String? _userId() => widget.userId != null
+      ? widget.userId!()
+      : Supabase.instance.client.auth.currentUser?.id;
+
+  String? _userEmail() => widget.userEmail != null
+      ? widget.userEmail!()
+      : Supabase.instance.client.auth.currentUser?.email;
+
+  Future<void> _signOut() => widget.signOut != null
+      ? widget.signOut!()
+      : Supabase.instance.client.auth.signOut();
   late final TabController _tabController;
 
   List<Map<String, dynamic>> _places = [];
@@ -291,7 +325,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// Null when /changes isn't there, as before the migration.
   Future<String?> _serverSince() async {
     try {
-      final since = DateTime.now().toUtc().subtract(const Duration(minutes: 5));
+      final since = clock.now().toUtc().subtract(const Duration(minutes: 5));
       final changes = await _mapApi.get(
         '/changes?since=${Uri.encodeQueryComponent(since.toIso8601String())}',
       );
@@ -658,7 +692,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   Widget _usersTab() {
     final l10n = AppLocalizations.of(context)!;
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final currentUserId = _userId();
     if (!_usersLoaded) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1141,7 +1175,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   Future<void> _saveConnection(ConnectPair pair) async {
     final l10n = AppLocalizations.of(context)!;
-    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final userId = _userId();
     if (userId == null) {
       _snack(l10n.commonNotSignedIn);
       return;
@@ -1806,6 +1840,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final l10n = AppLocalizations.of(context)!;
     return _withMoveControls(
       MapHome(
+        showTiles: widget.showTiles,
         places: _places,
         buildings: _buildings,
         points: _anchorPoints,
@@ -2951,7 +2986,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                   Text(
-                    Supabase.instance.client.auth.currentUser?.email ?? '',
+                    _userEmail() ?? '',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -3132,7 +3167,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: l10n.commonLogOut,
-            onPressed: () => Supabase.instance.client.auth.signOut(),
+            onPressed: _signOut,
           ),
         ],
       ),

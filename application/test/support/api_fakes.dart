@@ -10,29 +10,81 @@ import 'package:geolocator/geolocator.dart';
 /// constructors read `API_GATEWAY_URL`, so tests call
 /// `dotenv.testLoad(fileInput: '')` first.
 
-class FakeMapApi extends MapManagementApi {
+/// Every write a fake API was asked for, in order, as (method, path, body).
+typedef ApiWrite = (String, String, Map<String, dynamic>?);
+
+/// Records writes and answers each with its own body.
+mixin RecordsWrites on ApiService {
+  final writes = <ApiWrite>[];
+
+  /// The paths written with [method] ('POST', 'PATCH', 'DELETE').
+  List<String> paths(String method) => [
+    for (final (m, path, _) in writes)
+      if (m == method) path,
+  ];
+
+  @override
+  Future<dynamic> post(
+    String path,
+    Map<String, dynamic> body, {
+    Duration? timeout,
+    bool retry = false,
+  }) async {
+    writes.add(('POST', path, body));
+    return body;
+  }
+
+  @override
+  Future<dynamic> patch(String path, Map<String, dynamic> body) async {
+    writes.add(('PATCH', path, body));
+    return body;
+  }
+
+  @override
+  Future<dynamic> delete(String path) async {
+    writes.add(('DELETE', path, null));
+    return null;
+  }
+}
+
+class FakeMapApi extends MapManagementApi with RecordsWrites {
   FakeMapApi({
     this.places = const [],
     this.buildings = const [],
     this.anchors = const [],
+    this.photos = const [],
     this.connections = const [],
     this.failConnections = false,
+    this.changes,
   });
 
   List<Map<String, dynamic>> places;
   List<Map<String, dynamic>> buildings;
   List<Map<String, dynamic>> anchors;
+  List<Map<String, dynamic>> photos;
   List<Map<String, dynamic>> connections;
   bool failConnections;
 
+  /// `GET /changes?since=` (A5), given the `since` asked; null: a server
+  /// without it (404).
+  Map<String, dynamic> Function(String since)? changes;
+
   @override
-  Future<dynamic> get(String path) async => switch (path) {
-    '/places' => places,
-    '/buildings' => buildings,
-    '/anchor-points' => anchors,
-    '/anchor-point-connections' when !failConnections => connections,
-    _ => _onePoint(path),
-  };
+  Future<dynamic> get(String path) async {
+    if (path.startsWith('/changes?since=')) {
+      final answer = changes;
+      if (answer == null) throw ApiException(404, path);
+      return answer(Uri.decodeQueryComponent(path.substring(15)));
+    }
+    return switch (path) {
+      '/places' => places,
+      '/buildings' => buildings,
+      '/anchor-points' => anchors,
+      '/anchor-point-photos' => photos,
+      '/anchor-point-connections' when !failConnections => connections,
+      _ => _onePoint(path),
+    };
+  }
 
   /// `/anchor-points/{id}` and `/anchor-points/{id}/connections`, as an
   /// older server answers a route's points (no `by-ids`).
@@ -197,3 +249,34 @@ Position fix(double latitude, double longitude) => Position(
   speed: 0,
   speedAccuracy: 0,
 );
+
+class FakeUserApi extends UserManagementApi with RecordsWrites {
+  FakeUserApi({this.profiles = const [], this.orphaned = const []});
+
+  List<Map<String, dynamic>> profiles;
+  List<Map<String, dynamic>> orphaned;
+
+  @override
+  Future<dynamic> get(String path) async => switch (path) {
+    '/profiles' => profiles,
+    '/profiles/orphaned' => orphaned,
+    _ => throw ApiException(404, path),
+  };
+}
+
+class FakeAiTrainingApi extends AiTrainingApi with RecordsWrites {
+  FakeAiTrainingApi({this.indexedPhotoIds});
+
+  /// What `/index_status` says is searchable; null: a 404.
+  Set<String>? indexedPhotoIds;
+
+  @override
+  Future<dynamic> get(String path) async {
+    final ids = indexedPhotoIds;
+    if (path == '/index_status' && ids != null)
+      return {
+        'photo_ids': [...ids],
+      };
+    throw ApiException(404, path);
+  }
+}
