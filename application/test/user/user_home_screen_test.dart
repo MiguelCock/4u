@@ -1,5 +1,4 @@
 import 'package:eyes4u/l10n/app_localizations.dart';
-import 'package:eyes4u/services/api_service.dart';
 import 'package:eyes4u/services/app_preferences.dart';
 import 'package:eyes4u/services/location_service.dart';
 import 'package:eyes4u/user/user_home_screen.dart';
@@ -8,19 +7,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../support/api_fakes.dart';
 import '../support/voice_fakes.dart';
 
 /// Pins how the home screen behaves today (#268), before it's split up:
 /// asking, listening, a place heard, misses, and the tutorial. Every
 /// dependency is a fake, so nothing reaches a server or a plugin.
 
-const _places = [
+const List<Map<String, dynamic>> _places = [
   {'id': 'p1', 'name': 'Campus', 'is_active': true},
 ];
-const _buildings = [
+const List<Map<String, dynamic>> _buildings = [
   {
     'id': 'b1',
     'place_id': 'p1',
@@ -30,7 +29,7 @@ const _buildings = [
     'longitude': -75.58,
   },
 ];
-const _anchors = [
+const List<Map<String, dynamic>> _anchors = [
   {
     'id': 'a1',
     'building_id': 'b1',
@@ -52,37 +51,9 @@ const _anchors = [
     'longitude': -75.5802,
   },
 ];
-const _connections = [
+const List<Map<String, dynamic>> _connections = [
   {'id': 'c1', 'anchor_point_a_id': 'a1', 'anchor_point_b_id': 'a2'},
 ];
-
-class _FakeMapApi extends MapManagementApi {
-  @override
-  Future<dynamic> get(String path) async => switch (path) {
-    '/places' => _places,
-    '/buildings' => _buildings,
-    '/anchor-points' => _anchors,
-    '/anchor-point-connections' => _connections,
-    _ => throw ApiException(404, 'not faked: $path'),
-  };
-}
-
-class _FakeNavigationApi extends NavigationManagementApi {
-  @override
-  Future<dynamic> get(String path) async =>
-      path == '/sessions/active' ? [] : throw ApiException(404, path);
-}
-
-class _FakeRouteApi extends RouteManagementApi {}
-
-class _FakePositioningApi extends PositioningApi {}
-
-class _NoLocation extends LocationPlatform {
-  @override
-  Future<bool> isServiceEnabled() async => false;
-  @override
-  Stream<Position> positions() => const Stream.empty();
-}
 
 class _Harness {
   final speech = FakeSpeech();
@@ -98,11 +69,16 @@ class _Harness {
         supportedLocales: AppLocalizations.supportedLocales,
         navigatorObservers: [voiceRouteObserver],
         home: UserHomeScreen(
-          mapApi: _FakeMapApi(),
-          routeApi: _FakeRouteApi(),
-          positioningApi: _FakePositioningApi(),
-          navigationApi: _FakeNavigationApi(),
-          locationService: LocationService.forTesting(_NoLocation()),
+          mapApi: FakeMapApi(
+            places: _places,
+            buildings: _buildings,
+            anchors: _anchors,
+            connections: _connections,
+          ),
+          routeApi: FakeRouteApi(),
+          positioningApi: FakePositioningApi(),
+          navigationApi: FakeNavigationApi(),
+          locationService: LocationService.forTesting(NoLocation()),
           speech: speech,
           voice: voice.voice,
         ),

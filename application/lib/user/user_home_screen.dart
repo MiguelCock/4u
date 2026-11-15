@@ -1,11 +1,8 @@
 import 'dart:async';
-import 'dart:math';
 
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -14,15 +11,13 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
 import '../services/buzz.dart';
-import '../services/camera_helper.dart';
-import '../services/destinations.dart';
 import '../services/spoken_destination.dart';
 import '../services/geo_utils.dart';
-import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import 'anchor_point_picker_screen.dart';
 import 'home_dialogs.dart';
 import 'navigation_screen.dart';
+import 'trip_starter.dart';
 import 'settings_screen.dart';
 import '../services/api_error_messages.dart';
 import '../services/exit_guard.dart';
@@ -72,29 +67,19 @@ class UserHomeScreen extends StatefulWidget {
 }
 
 class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
-  late final _mapApi = widget.mapApi ?? MapManagementApi();
   late final _routeApi = widget.routeApi ?? RouteManagementApi();
-  late final _positioningApi = widget.positioningApi ?? PositioningApi();
   late final _navigationApi = widget.navigationApi ?? NavigationManagementApi();
   late final _locationService = widget.locationService ?? LocationService();
   StreamSubscription<Position>? _positionSub;
 
-  List<Map<String, dynamic>> _verifiedAnchors = [];
-  Map<String, dynamic>? _start;
+  /// The start, the map behind it, and the route (#268).
+  late final TripStarter _trip;
   Map<String, dynamic>? _end;
   bool _finding = false;
   Timer? _stillFindingTimer;
 
-  /// The user's answer to "which floor are you on?", kept until they've moved
-  /// (see _startFloor).
-  int? _answeredFloor;
-  LatLng? _answeredFloorFrom;
   bool _askingFloor = false;
   static const Duration _kStillFindingEvery = Duration(seconds: 5);
-  bool _locatingStart = false;
-  int _startCheckProgress = 0;
-  DateTime? _startCheckedAt;
-  LatLng? _startCheckedFrom;
   String? _error;
   final _exitGuard = ExitGuard();
 
@@ -106,18 +91,21 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   late final HomeVoiceController _voiceCtl;
   bool _routeSubscribed = false;
   bool get _listening => _voiceCtl.isListening;
-  Map<String, String> _buildingNames = {};
-  List<Map<String, dynamic>> _buildings = [];
-
-  /// Known once the universities have loaded (see _fetchVerifiedAnchors).
-  Set<String>? _activeBuildingIds;
 
   @override
   void initState() {
     super.initState();
     _voiceCtl = HomeVoiceController(speech: widget.speech, voice: widget.voice)
       ..listening.addListener(_onListeningChanged);
-    _positionSub = _locationService.positionStream.listen(_recomputeStart);
+    _trip = TripStarter(
+      mapApi: widget.mapApi,
+      routeApi: _routeApi,
+      positioningApi: widget.positioningApi,
+      locationService: _locationService,
+    )..addListener(_onTripChanged);
+    _positionSub = _locationService.positionStream.listen(
+      (position) => _trip.onPosition(position, busy: _finding),
+    );
     _loadAnchors();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final resumed = await _checkUnfinishedTrip();
@@ -150,6 +138,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     if (mounted) setState(() {});
   }
 
+  void _onTripChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
     _stillFindingTimer?.cancel();
@@ -157,6 +149,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     if (_routeSubscribed) voiceRouteObserver.unsubscribe(this);
     _voiceCtl.listening.removeListener(_onListeningChanged);
     _voiceCtl.dispose();
+    _trip
+      ..removeListener(_onTripChanged)
+      ..dispose();
     super.dispose();
   }
 
@@ -180,16 +175,16 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
 
   /// Buildings a user can be sent to (see [campusBuildings]).
   List<Map<String, dynamic>> get _campusBuildings => campusBuildings(
-    _buildings,
-    activeIds: _activeBuildingIds,
-    startBuildingId: _start?['building_id'],
+    _trip.buildings,
+    activeIds: _trip.activeBuildings,
+    startBuildingId: _trip.start?['building_id'],
   );
 
   List<Map<String, dynamic>> get _destinationCandidates =>
       destinationCandidates(
-        _verifiedAnchors,
+        _trip.anchors,
         buildings: _campusBuildings,
-        startId: _start?['id'],
+        startId: _trip.start?['id'],
       );
 
   /// [_destinationLabel] to be read aloud.
@@ -210,7 +205,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
 
   String _destinationLabel(Map<String, dynamic> anchor) => destinationLabel(
     anchor,
-    buildingNames: _buildingNames,
+    buildingNames: _trip.buildingNames,
     floorLabel: (floor) =>
         AppLocalizations.of(context)!.commonFloorOption(floor + 1),
   );
@@ -285,19 +280,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     final l10n = AppLocalizations.of(context)!;
     final language = Localizations.localeOf(context).languageCode;
 
-    if (_verifiedAnchors.isEmpty) await _loadAnchors();
-    if (_buildingNames.isEmpty) {
-      try {
-        _buildings = (await _mapApi.get('/buildings') as List)
-            .cast<Map<String, dynamic>>();
-        _buildingNames = {
-          for (final b in _buildings)
-            b['id'] as String: b['name'] as String? ?? '',
-        };
-      } on ApiException {
-        // Building names only help tell same-named places apart.
-      }
-    }
+    await _trip.ensureLoaded();
     if (!mounted) return false;
     final started = await _voiceCtl.listen(
       onHeard,
@@ -328,7 +311,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       heard,
       candidates: _destinationCandidates,
       buildings: _campusBuildings,
-      buildingNames: _buildingNames,
+      buildingNames: _trip.buildingNames,
       distance: _distanceFromUser,
     );
     if (found.isEmpty) {
@@ -398,51 +381,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     }
   }
 
-  /// Verified, connected points in active buildings of active universities
-  /// - the only ones offered as a start or a destination. An unconnected
-  /// start made every route at Icesi fail (2026-11-03).
-  Future<List<Map<String, dynamic>>> _fetchVerifiedAnchors() async {
-    final results = await Future.wait([
-      _mapApi.get('/places'),
-      _mapApi.get('/buildings'),
-      _mapApi.get('/anchor-points'),
-    ]);
-    final connected = await fetchConnectedAnchorIds(_mapApi);
-    final buildings = (results[1] as List).cast<Map<String, dynamic>>();
-    _buildings = buildings;
-    _buildingNames = {
-      for (final b in buildings) b['id'] as String: b['name'] as String? ?? '',
-    };
-    final active = activeBuildingIds(
-      (results[0] as List).cast<Map<String, dynamic>>(),
-      buildings,
-    );
-    _activeBuildingIds = active;
-    return (results[2] as List)
-        .cast<Map<String, dynamic>>()
-        .where(
-          (a) =>
-              a['status'] == 'verified' &&
-              active.contains(a['building_id']) &&
-              (connected?.contains(a['id']) ?? true),
-        )
-        .toList();
-  }
-
-  /// Best-effort early load so the Start row can show a real anchor point
-  /// before the user does anything - Find route re-fetches and surfaces
-  /// any real failure.
-  Future<void> _loadAnchors() async {
-    try {
-      final verified = await _fetchVerifiedAnchors();
-      if (!mounted) return;
-      _verifiedAnchors = verified;
-      final position = _locationService.lastPosition;
-      if (position != null) _recomputeStart(position);
-    } on ApiException {
-      // Shown later by _findRoute if it's still failing then.
-    }
-  }
+  /// Best-effort early load (see [TripStarter.loadQuietly]).
+  Future<void> _loadAnchors() => _trip.loadQuietly();
 
   /// How the Start row names the start point. Unnamed in-between points
   /// (hallways...) have no description, so they're described by distance
@@ -465,35 +405,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     return l10n.homeStartUnnamedSubtitle(meters);
   }
 
-  void _recomputeStart(Position position) {
-    if (!mounted || _verifiedAnchors.isEmpty || _finding || _locatingStart) {
-      return;
-    }
-    // Keep a camera-checked start until the user has actually moved away.
-    final checkedFrom = _startCheckedFrom;
-    if (checkedFrom != null &&
-        haversineMeters(
-              checkedFrom,
-              LatLng(position.latitude, position.longitude),
-            ) <
-            _kStartCheckRadiusMeters) {
-      return;
-    }
-    _startCheckedAt = null;
-    _startCheckedFrom = null;
-    final nearest = _nearestAnchor(
-      _verifiedAnchors,
-      LatLng(position.latitude, position.longitude),
-    );
-    if (nearest?['id'] != _start?['id']) setState(() => _start = nearest);
-  }
-
   Future<void> _pickEnd() async {
     final picked = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
         builder: (_) => AnchorPointPickerScreen(
           title: AppLocalizations.of(context)!.homeWhereTo,
-          excludeAnchorId: _start?['id'] as String?,
+          excludeAnchorId: _trip.start?['id'] as String?,
         ),
       ),
     );
@@ -505,127 +422,19 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     }
   }
 
-  /// Photos taken by the start-point check, and the minimum gap between
-  /// them. Each one goes through the same Kalman filter, so later photos
-  /// refine earlier ones; one photo alone barely moved the position.
-  static const int _kStartCheckPhotos = 6;
-  static const Duration _kStartCheckInterval = Duration(milliseconds: 900);
-
-  /// A checked start is kept (not replaced by the raw-GPS nearest point)
-  /// until the user moves this far from where it was checked...
-  static const double _kStartCheckRadiusMeters = 15;
-
-  /// ...and Find route reuses it for this long instead of checking again.
-  static const Duration _kStartCheckFreshFor = Duration(seconds: 60);
-
-  /// Multi-photo position check for the start point. Each photo plus the
-  /// current GPS fix goes to backend-positioning's session
-  /// `POST /correct_position` under a throwaway key: that endpoint only
-  /// uses session_id to key its in-memory filter (no DB lookup), so the
-  /// photos accumulate in one filter and the result is the fused position.
-  /// The filter expires on its own (the positioning service's session TTL).
-  /// Without a camera, or if every photo fails, falls back to raw GPS.
-  Future<({LatLng? position, int matched, int taken})>
-  _checkStartPosition() async {
-    final key =
-        'start-check-${DateTime.now().microsecondsSinceEpoch}-'
-        '${Random().nextInt(1 << 32)}';
-    CameraController? controller;
-    LatLng? fused;
-    var matched = 0;
-    var taken = 0;
-    try {
-      controller = await initCamera();
-      if (controller != null) {
-        for (var i = 0; i < _kStartCheckPhotos; i++) {
-          if (!mounted) break;
-          setState(() => _startCheckProgress = i + 1);
-          final started = DateTime.now();
-          final position = _locationService.lastPosition;
-          if (position != null) {
-            try {
-              final image = await controller.takePicture();
-              final bytes = await image.readAsBytes();
-              if (!isFrameBlocked(bytes)) {
-                final result =
-                    await _positioningApi
-                            .postMultipart(
-                              '/correct_position',
-                              fieldName: 'photo',
-                              bytes: bytes,
-                              filename: path.basename(image.path),
-                              fields: {
-                                'session_id': key,
-                                'latitude': position.latitude.toString(),
-                                'longitude': position.longitude.toString(),
-                                'accuracy': position.accuracy.toString(),
-                                // No compass here, and the GPS course is
-                                // meaningless while turning on the spot, so
-                                // no heading: the backend skips that gate.
-                                'gps_time': position.timestamp
-                                    .toUtc()
-                                    .toIso8601String(),
-                              },
-                            )
-                            .timeout(const Duration(seconds: 10))
-                        as Map<String, dynamic>;
-                fused = LatLng(
-                  (result['corrected_lat'] as num).toDouble(),
-                  (result['corrected_long'] as num).toDouble(),
-                );
-                taken++;
-                if (result['anchor_match_id'] != null) matched++;
-              }
-            } catch (_) {
-              // One bad photo or request just doesn't count.
-            }
-          }
-          final elapsed = DateTime.now().difference(started);
-          if (elapsed < _kStartCheckInterval) {
-            await Future<void>.delayed(_kStartCheckInterval - elapsed);
-          }
-        }
-      }
-    } finally {
-      await controller?.dispose();
-    }
-    final raw = _locationService.lastPosition;
-    return (
-      position:
-          fused ?? (raw == null ? null : LatLng(raw.latitude, raw.longitude)),
-      matched: matched,
-      taken: taken,
-    );
-  }
-
-  /// Runs the start-point check and picks the verified anchor nearest the
-  /// result. Shared by Find route and tapping the Start row. Throws
+  /// Runs the start-point check ([TripStarter.locateStart]) and says what it
+  /// found. Shared by Find route and tapping the Start row. Throws
   /// ApiException if the anchors can't be loaded.
   Future<Map<String, dynamic>?> _locateStart() async {
     final l10n = AppLocalizations.of(context)!;
-    _verifiedAnchors = await _fetchVerifiedAnchors();
+    final check = await _trip.locateStart(
+      // Said in full before the first photo: the user turns while it's taken.
+      beforePhotos: () async {
+        if (mounted) await _say(l10n.homeCheckingStartPrompt);
+      },
+    );
     if (!mounted) return null;
-    setState(() {
-      _locatingStart = true;
-      _startCheckProgress = 0;
-    });
-    // Said in full before the first photo: the user turns while it's taken.
-    await _say(l10n.homeCheckingStartPrompt);
-    if (!mounted) return null;
-    final check = await _checkStartPosition();
-    if (!mounted) return null;
-    final position = check.position;
-    final start = position == null
-        ? null
-        : _nearestAnchor(_verifiedAnchors, position);
-    setState(() {
-      _locatingStart = false;
-      _start = start;
-      if (start != null) {
-        _startCheckedAt = DateTime.now();
-        _startCheckedFrom = position;
-      }
-    });
+    final start = check.start;
     if (start != null) {
       final description = (start['location_description'] as String? ?? '')
           .trim();
@@ -633,37 +442,22 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
         l10n.homeStartChecked(
           description.isNotEmpty ? description : l10n.homeStartNearestPoint,
           check.matched,
-          _kStartCheckPhotos,
+          TripStarter.checkPhotos,
         ),
       );
     }
     return start;
   }
 
-  /// Whether the last start check can be reused instead of running again.
-  bool get _startCheckIsFresh {
-    final checkedAt = _startCheckedAt;
-    final from = _startCheckedFrom;
-    final position = _locationService.lastPosition;
-    if (_start == null || checkedAt == null || from == null) return false;
-    if (DateTime.now().difference(checkedAt) > _kStartCheckFreshFor) {
-      return false;
-    }
-    return position == null ||
-        haversineMeters(from, LatLng(position.latitude, position.longitude)) <
-            _kStartCheckRadiusMeters;
-  }
-
   /// Tapping the Start row: run the check on demand.
   Future<void> _relocateStart() async {
-    if (_locatingStart || _finding) return;
+    if (_trip.locating || _finding) return;
     setState(() => _error = null);
     try {
       await _locateStart();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _locatingStart = false;
         _error = AppLocalizations.of(
           context,
         )!.commonErrorLoadDataFailed(friendlyApiErrorMessage(context, e));
@@ -767,13 +561,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       await _finishSession(latest);
       return false;
     }
-    if (_verifiedAnchors.isEmpty) await _loadAnchors();
+    if (_trip.anchors.isEmpty) await _loadAnchors();
     if (!mounted) return false;
 
     final l10n = AppLocalizations.of(context)!;
-    final end = _verifiedAnchors.where(
-      (a) => a['id'] == route!['end_anchor_id'],
-    );
+    final end = _trip.anchors.where((a) => a['id'] == route!['end_anchor_id']);
     final destination =
         (end.isEmpty ? null : end.first['location_description'] as String?) ??
         l10n.navYourDestination;
@@ -836,37 +628,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     }
   }
 
-  Map<String, dynamic>? _nearestAnchor(
-    List<Map<String, dynamic>> anchors,
-    LatLng from,
-  ) {
-    Map<String, dynamic>? nearest;
-    double? nearestDistance;
-    for (final anchor in anchors) {
-      final lat = (anchor['latitude'] as num?)?.toDouble();
-      final lng = (anchor['longitude'] as num?)?.toDouble();
-      if (lat == null || lng == null) continue;
-      final distance = haversineMeters(from, LatLng(lat, lng));
-      if (nearestDistance == null || distance < nearestDistance) {
-        nearestDistance = distance;
-        nearest = anchor;
-      }
-    }
-    return nearest;
-  }
-
   /// Which of [floors] the user is on: their earlier answer until they've
-  /// moved [_kStartCheckRadiusMeters], else asked ([askStartFloor]). Null
+  /// moved [TripStarter.keepWithinMeters], else asked ([askStartFloor]). Null
   /// if they back out.
   Future<int?> _startFloor(List<int> floors, LatLng here) async {
-    final answered = _answeredFloor;
-    final from = _answeredFloorFrom;
-    if (answered != null &&
-        from != null &&
-        floors.contains(answered) &&
-        haversineMeters(from, here) < _kStartCheckRadiusMeters) {
-      return answered;
-    }
+    final remembered = _trip.rememberedFloor(floors, here);
+    if (remembered != null) return remembered;
     _askingFloor = true;
     final floor = await askStartFloor(
       context,
@@ -874,24 +641,17 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       floors: floors,
     );
     _askingFloor = false;
-    if (floor != null) {
-      _answeredFloor = floor;
-      _answeredFloorFrom = here;
-    }
+    if (floor != null) _trip.rememberFloor(floor, here);
     return floor;
   }
 
   /// backend-route-management's 404 detail says which end isn't connected.
-  String _noPathMessage(AppLocalizations l10n, String? detail) {
-    if (detail == null) return l10n.homeErrorNoPath;
-    if (detail.startsWith('Your starting point')) {
-      return l10n.homeErrorNoPathStart;
-    }
-    if (detail.startsWith("The destination isn't")) {
-      return l10n.homeErrorNoPathDestination;
-    }
-    return l10n.homeErrorNoPath;
-  }
+  String _noPathMessage(AppLocalizations l10n, String? detail) =>
+      switch (noPathEnd(detail)) {
+        NoPathEnd.start => l10n.homeErrorNoPathStart,
+        NoPathEnd.destination => l10n.homeErrorNoPathDestination,
+        NoPathEnd.unknown => l10n.homeErrorNoPath,
+      };
 
   Future<void> _findRoute() async {
     final end = _end;
@@ -954,10 +714,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       // when its instruction wasn't heard: it was spoken over the open
       // microphone, which `_say` no longer does.
       final here = LatLng(position.latitude, position.longitude);
-      var start = _startCheckIsFresh ? _start : await _locateStart();
+      var start = _trip.checkIsFresh ? _trip.start : await _locateStart();
       if (!mounted) return;
       // GPS can't tell floors apart: the nearest point may be overhead.
-      final floors = floorsNear(_verifiedAnchors, here);
+      final floors = floorsNear(_trip.anchors, here);
       if (start != null && floors.length > 1) {
         final floor = await _startFloor(floors, here);
         if (!mounted) return;
@@ -967,13 +727,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
           });
           return;
         }
-        start = _nearestAnchor(
-          _verifiedAnchors
-              .where((a) => (a['floor'] as int? ?? 0) == floor)
-              .toList(),
-          here,
-        );
-        setState(() => _start = start);
+        start = _trip.startOnFloor(floor, here);
       }
       if (start == null) {
         setState(() {
@@ -983,9 +737,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
         _say(_error!);
         return;
       }
-      if (start['id'] == end['id'] ||
-          (end['whole_building'] == true &&
-              start['building_id'] == end['building_id'])) {
+      if (alreadyAt(start, end)) {
         setState(() {
           _error = AppLocalizations.of(context)!.homeErrorAlreadyAtDestination(
             end['location_description'] as String? ?? end['id'] as String,
@@ -996,20 +748,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
         return;
       }
 
-      // Same pair, same answer: safe to send again after a dropped
-      // connection.
-      final route = await _routeApi.post('/routes/find_or_create', {
-        'start_anchor_id': start['id'],
-        if (end['whole_building'] == true)
-          'end_building_id': end['building_id']
-        else
-          'end_anchor_id': end['id'],
-      }, retry: true);
+      final route = await _trip.findRoute(start, end);
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => NavigationScreen(
-            route: route as Map<String, dynamic>,
+            route: route,
             destinationName: _spokenLabel(end),
             adminPreview: widget.adminPreview,
           ),
@@ -1019,7 +763,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _locatingStart = false;
         _error = e.statusCode == 404
             ? _noPathMessage(AppLocalizations.of(context)!, e.detail)
             : AppLocalizations.of(context)!.homeErrorFailedToFindRoute(
@@ -1109,19 +852,19 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
             // start check's result is spoken (#257).
             subtitle: Semantics(
               child: Text(
-                _locatingStart
-                    ? (_startCheckProgress > 0
+                _trip.locating
+                    ? (_trip.progress > 0
                           ? l10n.homeCheckingStartProgress(
-                              _startCheckProgress,
-                              _kStartCheckPhotos,
+                              _trip.progress,
+                              TripStarter.checkPhotos,
                             )
                           : l10n.homeLocatingStart)
-                    : _start != null
-                    ? _startLabel(l10n, _start!)
+                    : _trip.start != null
+                    ? _startLabel(l10n, _trip.start!)
                     : l10n.homeStartSubtitle,
               ),
             ),
-            trailing: _locatingStart
+            trailing: _trip.locating
                 ? const SizedBox(
                     width: 24,
                     height: 24,
@@ -1133,7 +876,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
                     semanticLabel: l10n.homeCheckStartTooltip,
                   )
                 : null,
-            onTap: !widget.adminPreview || _locatingStart || _finding
+            onTap: !widget.adminPreview || _trip.locating || _finding
                 ? null
                 : _relocateStart,
           ),
