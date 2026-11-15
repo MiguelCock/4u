@@ -14,6 +14,7 @@ import '../widgets/admin_dialogs.dart';
 import '../widgets/admin_map/admin_map.dart';
 import '../widgets/map_conflict.dart';
 import 'add_building_screen.dart';
+import 'admin_actions.dart';
 import 'admin_drawer.dart';
 import 'admin_map_data.dart';
 import 'add_connection_screen.dart';
@@ -25,6 +26,7 @@ import 'edit_building_screen.dart';
 import 'edit_place_screen.dart';
 import 'map_home.dart';
 import 'sheets/details.dart';
+import 'sheets/filters.dart';
 import 'tabs/admin_rows.dart';
 import 'tabs/named_rows_tab.dart';
 import 'tabs/users_tab.dart';
@@ -39,8 +41,6 @@ import '../services/connect_chain.dart';
 import '../services/connection_filters.dart';
 import '../services/exit_guard.dart';
 import '../services/location_types.dart';
-import '../widgets/guardrail_dialogs.dart';
-import '../widgets/connection_warning_dialog.dart';
 import '../widgets/fab_row.dart';
 import '../widgets/scope_dropdowns.dart';
 import '../widgets/scrollable_message.dart';
@@ -96,6 +96,18 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       ? widget.signOut!()
       : Supabase.instance.client.auth.signOut();
   late final TabController _tabController;
+
+  /// Deletes, verifying, warnings and re-indexing (AdminActions).
+  late final _actions = AdminActions(
+    mapApi: _mapApi,
+    aiTrainingApi: _aiTrainingApi,
+    data: _data,
+    reload: _loadData,
+    pointLabel: (point) => _pointLabel(AppLocalizations.of(context)!, point),
+    onReindexing: (running) {
+      if (mounted) setState(() => _reindexing = running);
+    },
+  );
 
   /// The five lists, kept fresh from /changes (AdminMapData).
   late final _data = AdminMapData(
@@ -357,103 +369,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     }
   }
 
-  /// Re-sends every verified point with photos to the search index. Points
-  /// verified while indexing was failing were never searchable, and
-  /// re-saving each one by hand is slow.
-  /// Sends to `/index_anchor` the verified points with a photo that isn't
-  /// searchable yet (`/index_status`; all of them if that can't be read),
-  /// retrying each failure twice, then lists the points that still failed.
-  Future<void> _reindexVerified() async {
-    final l10n = AppLocalizations.of(context)!;
-    final messenger = ScaffoldMessenger.of(context);
-    // First drop index entries that shouldn't be there (deleted photos,
-    // unverified points); best effort, older servers lack it.
-    try {
-      await _aiTrainingApi.post('/reconcile', {});
-    } on ApiException {
-      // Re-indexing below still helps.
-    }
-    final indexed = await fetchIndexedPhotoIds(_aiTrainingApi);
-    if (!mounted) return;
-    final targets = pointsMissingFromIndex(_anchorPoints, _photosOf, indexed);
-    if (targets.isEmpty) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            indexed == null
-                ? l10n.adminReindexNothing
-                : l10n.adminReindexAllSearchable,
-          ),
-        ),
-      );
-      _data.unsearchablePhotos = 0;
-      return;
-    }
-    setState(() => _reindexing = true);
-    messenger.showSnackBar(
-      SnackBar(content: Text(l10n.adminReindexRunning(targets.length))),
-    );
-    var ok = 0;
-    Object? lastError;
-    final failed = <Map<String, dynamic>>[];
-    for (final point in targets) {
-      var done = false;
-      for (var attempt = 0; attempt < 3 && !done; attempt++) {
-        try {
-          await indexAnchorPoint(
-            _aiTrainingApi,
-            point,
-            _photosOf(point['id'] as String),
-          );
-          done = true;
-        } on ApiException catch (e) {
-          lastError = e;
-        }
-      }
-      if (done) {
-        ok++;
-      } else {
-        failed.add(point);
-      }
-    }
-    if (!mounted) return;
-    setState(() => _reindexing = false);
-    messenger.hideCurrentSnackBar();
-    _refreshIndexStatus();
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.adminReindexResultTitle),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(l10n.adminReindexDone(ok, targets.length)),
-              if (failed.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(
-                  l10n.adminReindexFailedList(
-                    friendlyApiErrorMessage(context, lastError!),
-                  ),
-                ),
-                for (final point in failed)
-                  Text('• ${_pointLabel(l10n, point)}'),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(MaterialLocalizations.of(context).okButtonLabel),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _refreshIndexStatus() => _data.refreshIndexStatus();
+  Future<void> _reindexVerified() => _actions.reindexVerified(context);
 
   /// The five lists, for what's asked of them (lib/services/admin_lists.dart).
   AdminLists get _lists => _data.lists;
@@ -467,153 +383,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   List<Map<String, dynamic>> _photosOf(String anchorPointId) =>
       _lists.photosOf(anchorPointId);
 
-  List<Map<String, dynamic>> _connectionsOf(String anchorPointId) =>
-      _lists.connectionsOf(anchorPointId);
+  Future<void> _deletePlace(Map<String, dynamic> place) =>
+      _actions.deletePlace(context, place);
 
-  /// Deletes in the database first; [afterSuccess] (removing the points
-  /// from photo search) runs only once that worked. The other way round, a
-  /// delete that failed left points listed but no longer recognisable.
-  Future<void> _runDelete(
-    Future<void> Function() action, {
-    Future<void> Function()? afterSuccess,
-  }) async {
-    try {
-      await action();
-      if (afterSuccess != null) await _bestEffort(afterSuccess);
-      await _loadData();
-    } on ApiException catch (e) {
-      if (mounted) {
-        showApiError(
-          context,
-          e,
-          AppLocalizations.of(context)!.commonErrorDeleteFailed,
-        );
-      }
-    }
-  }
+  Future<void> _deleteBuilding(Map<String, dynamic> building) =>
+      _actions.deleteBuilding(context, building);
 
-  /// Qdrant cleanup that never blocks or surfaces as the "delete failed"
-  /// error - the Postgres delete succeeding is what the confirmation dialog
-  /// and reload actually depend on; leaving a few stale vectors behind on a
-  /// bad day is far better than refusing to delete.
-  Future<void> _bestEffort(Future<void> Function() action) async {
-    try {
-      await action();
-    } on ApiException {
-      // Swallowed - see doc comment above.
-    }
-  }
+  Future<void> _deleteAnchorPoint(Map<String, dynamic> point) =>
+      _actions.deleteAnchorPoint(context, point);
 
-  Future<void> _deletePlace(Map<String, dynamic> place) async {
-    final cascade = _lists.placeCascade(place['id'] as String);
-    final buildings = cascade.buildings;
-    final l10n = AppLocalizations.of(context)!;
-    final confirmed = await confirmAction(
-      context,
-      title: l10n.adminDeletePlaceTitle,
-      content:
-          l10n.adminDeletePlaceContent(
-            place['name'] as String? ?? place['id'] as String,
-            buildings.length,
-            cascade.anchors.length,
-            cascade.photos,
-            cascade.connections,
-          ) +
-          l10n.adminDeleteKeepsHistoryNote,
-    );
-    if (!confirmed) return;
-    await _runDelete(
-      () => _mapApi.delete('/places/${place['id']}'),
-      afterSuccess: () => Future.wait(
-        buildings.map(
-          (b) => _aiTrainingApi.delete('/index_building/${b['id']}'),
-        ),
-      ),
-    );
-  }
+  Future<void> _deleteConnection(Map<String, dynamic> connection) =>
+      _actions.deleteConnection(context, connection);
 
-  Future<void> _deleteBuilding(Map<String, dynamic> building) async {
-    final cascade = _lists.buildingCascade(building['id'] as String);
-    final l10n = AppLocalizations.of(context)!;
-    final confirmed = await confirmAction(
-      context,
-      title: l10n.adminDeleteBuildingTitle,
-      content:
-          l10n.adminDeleteBuildingContent(
-            building['name'] as String? ?? building['id'] as String,
-            cascade.anchors.length,
-            cascade.photos,
-            cascade.connections,
-          ) +
-          l10n.adminDeleteKeepsHistoryNote,
-    );
-    if (!confirmed) return;
-    await _runDelete(
-      () => _mapApi.delete('/buildings/${building['id']}'),
-      afterSuccess: () =>
-          _aiTrainingApi.delete('/index_building/${building['id']}'),
-    );
-  }
-
-  Future<void> _deleteAnchorPoint(Map<String, dynamic> point) async {
-    final photoCount = _photosOf(point['id'] as String).length;
-    final connectionCount = _connectionsOf(point['id'] as String).length;
-    final l10n = AppLocalizations.of(context)!;
-    final confirmed = await confirmAction(
-      context,
-      title: l10n.adminDeleteAnchorTitle,
-      content:
-          l10n.adminDeleteAnchorContent(photoCount, connectionCount) +
-          l10n.adminDeleteKeepsHistoryNote,
-    );
-    if (!confirmed) return;
-    await _runDelete(
-      () => _mapApi.delete('/anchor-points/${point['id']}'),
-      afterSuccess: () => _aiTrainingApi.delete('/index_anchor/${point['id']}'),
-    );
-  }
-
-  Future<void> _deleteConnection(Map<String, dynamic> connection) async {
-    final l10n = AppLocalizations.of(context)!;
-    final confirmed = await confirmAction(
-      context,
-      title: l10n.adminDeleteConnectionTitle,
-      content: l10n.commonCannotBeUndone,
-    );
-    if (!confirmed) return;
-    await _runDelete(
-      () => _mapApi.delete('/anchor-point-connections/${connection['id']}'),
-    );
-  }
-
-  /// The connection's warning for users ("three steps down"), spoken as
-  /// they start walking it. Testers asked to be told about obstacles.
-  Future<void> _editConnectionWarning(Map<String, dynamic> connection) async {
-    final l10n = AppLocalizations.of(context)!;
-    final notes = await showConnectionWarningDialog(
-      context,
-      connection['notes'] as String? ?? '',
-    );
-    if (notes == null || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await _mapApi.patch('/anchor-point-connections/${connection['id']}', {
-        'notes': notes,
-      });
-      messenger.showSnackBar(
-        SnackBar(content: Text(l10n.connectionWarningSaved)),
-      );
-      await _loadData();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      showApiError(
-        context,
-        e,
-        l10n.connectionWarningSaveFailed,
-        messenger: messenger,
-      );
-    }
-  }
+  Future<void> _editConnectionWarning(Map<String, dynamic> connection) =>
+      _actions.editConnectionWarning(context, connection);
 
   Future<void> _editPlace(Map<String, dynamic> place) async {
     final changed = await Navigator.of(context).push<bool>(
@@ -929,84 +712,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
-  /// [scopedAnchorPoints] is the building-filtered (but not yet
-  /// status-filtered) list - counts here must reflect whichever building
-  /// is currently selected, not every building's anchor points, or an
-  /// admin drilled into one building sees a global "Verified (47)" count
-  /// that doesn't match anything on screen.
-  /// Verify or unverify straight from the list or the map. Verifying needs
-  /// at least one photo (the backend enforces it too) and adds the point to
-  /// photo search; unverifying puts it back to pending and removes it.
-  Future<void> _setAnchorStatus(
-    Map<String, dynamic> point,
-    String status,
-  ) async {
-    final l10n = AppLocalizations.of(context)!;
-    final messenger = ScaffoldMessenger.of(context);
-    final id = point['id'] as String;
-    final name = _pointLabel(l10n, point);
-    final photos = _photosOf(id);
-    void show(String text) => messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text)));
-
-    if (status == 'verified' && photos.isEmpty) {
-      show(l10n.editAnchorErrorVerifyNeedsPhoto);
-      return;
-    }
-    if (status == 'verified' &&
-        _connectionsOf(id).isEmpty &&
-        !await confirmVerifyUnconnected(context, name: name)) {
-      return;
-    }
-    if (!mounted) return;
-    try {
-      // A second admin verifying the same point finds out here, instead of
-      // both seeming to succeed.
-      final saved = await saveAnchorPoint(
-        context,
-        _mapApi,
-        id: point['id'] as String,
-        original: point,
-        changes: {'status': status},
-        name: name,
-      );
-      if (!saved) {
-        show(l10n.mapConflictKeptTheirs(name));
-        await _loadData();
-        return;
-      }
-    } on ApiException catch (e) {
-      if (mounted) {
-        show(
-          l10n.editAnchorErrorUpdateFailed(friendlyApiErrorMessage(context, e)),
-        );
-      }
-      return;
-    }
-    try {
-      if (status == 'verified') {
-        await indexAnchorPoint(_aiTrainingApi, point, photos);
-      } else {
-        await _aiTrainingApi.delete('/index_anchor/$id');
-      }
-      show(
-        status == 'verified'
-            ? l10n.adminAnchorVerifiedSnackbar(name)
-            : l10n.adminAnchorUnverifiedSnackbar(name),
-      );
-    } on ApiException catch (e) {
-      if (mounted) {
-        final reason = friendlyApiErrorMessage(context, e);
-        show(
-          status == 'verified'
-              ? l10n.editAnchorErrorIndexingFailed(reason)
-              : l10n.editAnchorErrorUnindexFailed(reason),
-        );
-      }
-    }
-    await _loadData();
-  }
+  Future<void> _setAnchorStatus(Map<String, dynamic> point, String status) =>
+      _actions.setAnchorStatus(context, point, status);
 
   Widget _statusToggleButton(Map<String, dynamic> point) {
     final l10n = AppLocalizations.of(context)!;
@@ -1291,210 +998,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
-  /// The metadata filters sheet for the Anchor points tab. Changes apply
-  /// right away to the list and map behind it.
-  /// [scoped]: the points the list or map shows before these filters, for
-  /// the status counts; [buildingId] for the floors offered.
+  /// The points' filters sheet. [scoped]: the points the list or map shows
+  /// before these filters, for the status counts; [buildingId] for the
+  /// floors offered.
   Future<void> _showAnchorFilters(
     List<Map<String, dynamic>> scoped,
     String? buildingId,
-  ) async {
-    final l10n = AppLocalizations.of(context)!;
-    int count(String? status) => status == null
+  ) => showAnchorFiltersSheet(
+    context,
+    current: () => _anchorFilters,
+    onChanged: (next) => setState(() => _anchorFilters = next),
+    count: (status) => status == null
         ? scoped.length
-        : scoped.where((p) => p['status'] == status).length;
-    final maxFloors = _lists.maxFloors(buildingId);
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) {
-          final f = _anchorFilters;
-          void update(AnchorFilters next) {
-            setState(() => _anchorFilters = next);
-            setSheetState(() {});
-          }
-
-          Widget section(String title, List<Widget> chips) => Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.titleSmall),
-                const SizedBox(height: 4),
-                Wrap(spacing: 6, runSpacing: 4, children: chips),
-              ],
-            ),
-          );
-          Widget choice<T>(
-            String label,
-            T? value,
-            T? current,
-            void Function(T?) set,
-          ) => ChoiceChip(
-            label: Text(label),
-            selected: value == current,
-            onSelected: (_) => set(value),
-          );
-
-          final typesInCategory = f.category == null
-              ? const <LocationType>[]
-              : kLocationTypeCatalog
-                    .where((t) => t.category == f.category)
-                    .toList();
-
-          return SafeArea(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.8,
-              ),
-              child: ListView(
-                shrinkWrap: true,
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          l10n.adminFiltersTitle,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                      if (!f.isEmpty)
-                        TextButton(
-                          onPressed: () => update(AnchorFilters.none),
-                          child: Text(l10n.adminFiltersClear),
-                        ),
-                    ],
-                  ),
-                  section(l10n.adminFilterStatus, [
-                    for (final (value, label) in [
-                      (null, l10n.commonStatusAll),
-                      ('pending', l10n.commonStatusPending),
-                      ('verified', l10n.commonStatusVerified),
-                      ('rejected', l10n.commonStatusRejected),
-                    ])
-                      choice<String>(
-                        l10n.adminStatusChipLabel(label, count(value)),
-                        value,
-                        f.status,
-                        (v) => update(f.copyWith(status: v)),
-                      ),
-                  ]),
-                  section(l10n.adminFilterCategory, [
-                    choice<LocationCategory>(
-                      l10n.adminFilterAny,
-                      null,
-                      f.category,
-                      (v) =>
-                          update(f.copyWith(category: v, locationTypeId: null)),
-                    ),
-                    for (final category in LocationCategory.values)
-                      choice<LocationCategory>(
-                        locationCategoryLabel(l10n, category),
-                        category,
-                        f.category,
-                        (v) => update(
-                          f.copyWith(category: v, locationTypeId: null),
-                        ),
-                      ),
-                  ]),
-                  if (typesInCategory.isNotEmpty)
-                    section(l10n.adminFilterType, [
-                      choice<int>(
-                        l10n.adminFilterAny,
-                        null,
-                        f.locationTypeId,
-                        (v) => update(f.copyWith(locationTypeId: v)),
-                      ),
-                      for (final type in typesInCategory)
-                        choice<int>(
-                          locationTypeLabel(l10n, type.key),
-                          type.id,
-                          f.locationTypeId,
-                          (v) => update(f.copyWith(locationTypeId: v)),
-                        ),
-                    ]),
-                  section(l10n.adminFilterFloor, [
-                    choice<int>(
-                      l10n.adminFilterAny,
-                      null,
-                      f.floor,
-                      (v) => update(f.copyWith(floor: v)),
-                    ),
-                    for (var floor = 0; floor < maxFloors; floor++)
-                      choice<int>(
-                        l10n.commonFloorOption(floor + 1),
-                        floor,
-                        f.floor,
-                        (v) => update(f.copyWith(floor: v)),
-                      ),
-                  ]),
-                  section(l10n.adminFilterPlace, [
-                    for (final (label, value) in [
-                      (l10n.adminFilterAny, null),
-                      (l10n.adminFilterIndoor, 'indoor'),
-                      (l10n.adminFilterOutdoor, 'outdoor'),
-                      (l10n.adminFilterNotSet, 'unset'),
-                    ])
-                      choice<String>(
-                        label,
-                        value,
-                        f.indoor,
-                        (v) => update(f.copyWith(indoor: v)),
-                      ),
-                  ]),
-                  section(l10n.adminFilterLighting, [
-                    for (final (label, value) in [
-                      (l10n.adminFilterAny, null),
-                      (l10n.commonLightingBright, 'bright'),
-                      (l10n.commonLightingModerate, 'moderate'),
-                      (l10n.commonLightingDim, 'dim'),
-                      (l10n.adminFilterNotSet, 'unset'),
-                    ])
-                      choice<String>(
-                        label,
-                        value,
-                        f.lighting,
-                        (v) => update(f.copyWith(lighting: v)),
-                      ),
-                  ]),
-                  section(l10n.adminFilterPhotos, [
-                    for (final (label, value) in [
-                      (l10n.adminFilterAny, null),
-                      (l10n.adminFilterHas, true),
-                      (l10n.adminFilterHasNone, false),
-                    ])
-                      choice<bool>(
-                        label,
-                        value,
-                        f.hasPhotos,
-                        (v) => update(f.copyWith(hasPhotos: v)),
-                      ),
-                  ]),
-                  section(l10n.adminFilterConnections, [
-                    for (final (label, value) in [
-                      (l10n.adminFilterAny, null),
-                      (l10n.adminFilterHas, true),
-                      (l10n.adminFilterHasNone, false),
-                    ])
-                      choice<bool>(
-                        label,
-                        value,
-                        f.hasConnections,
-                        (v) => update(f.copyWith(hasConnections: v)),
-                      ),
-                  ]),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
+        : scoped.where((p) => p['status'] == status).length,
+    maxFloors: _lists.maxFloors(buildingId),
+  );
 
   /// The Anchor points list's university and building scope.
   List<Map<String, dynamic>> get _anchorPointsScoped => pointsInScope(
@@ -1643,95 +1161,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   double get _fabClearance => fabClearance(context);
 
-  Future<void> _showConnectionFilters() async {
-    final l10n = AppLocalizations.of(context)!;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) {
-          final f = _connectionFilters;
-          void update(ConnectionFilters next) {
-            setState(() => _connectionFilters = next);
-            setSheetState(() {});
-          }
-
-          Widget section(
-            String title,
-            bool? current,
-            void Function(bool?) set,
-          ) {
-            Widget choice(String label, bool? value) => ChoiceChip(
-              label: Text(label),
-              selected: value == current,
-              onSelected: (_) => set(value),
-            );
-            return Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: Theme.of(context).textTheme.titleSmall),
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 6,
-                    children: [
-                      choice(l10n.adminFilterAny, null),
-                      choice(l10n.adminFilterYes, true),
-                      choice(l10n.adminFilterNo, false),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          l10n.adminConnectionFiltersTitle,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                      if (!f.isEmpty)
-                        TextButton(
-                          onPressed: () => update(ConnectionFilters.none),
-                          child: Text(l10n.adminFiltersClear),
-                        ),
-                    ],
-                  ),
-                  section(
-                    l10n.adminConnectionFilterLong,
-                    f.long,
-                    (v) => update(f.copyWith(long: v)),
-                  ),
-                  section(
-                    l10n.adminConnectionFilterWarning,
-                    f.hasWarning,
-                    (v) => update(f.copyWith(hasWarning: v)),
-                  ),
-                  section(
-                    l10n.adminConnectionChangesFloor,
-                    f.changesFloor,
-                    (v) => update(f.copyWith(changesFloor: v)),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
+  Future<void> _showConnectionFilters() => showConnectionFiltersSheet(
+    context,
+    current: () => _connectionFilters,
+    onChanged: (next) => setState(() => _connectionFilters = next),
+  );
 
   /// The Filters button, bottom left, with how many are on: the Map, the
   /// Anchor points list and the Connections tab.
