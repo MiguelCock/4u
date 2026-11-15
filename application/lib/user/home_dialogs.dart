@@ -14,9 +14,6 @@ import '../voice/home_voice_controller.dart';
 const _kAnswerListenFor = Duration(seconds: 20);
 const _kAnswerPauseFor = Duration(seconds: 3);
 
-/// How many times an answer that wasn't understood is asked again.
-const _kAnswerRetries = 2;
-
 /// What [chooseDestination] ended with: an option, "none of them" (ask
 /// again), or neither (closed).
 typedef DestinationChoice = ({Map<String, dynamic>? picked, bool noneOfThem});
@@ -45,39 +42,19 @@ Future<DestinationChoice> chooseDestination(
         ].join('; '),
       ),
     );
-    var tries = 0;
-    Future<void> answer(String heard) async {
-      final sheet = openSheet;
-      if (sheet == null || !sheet.mounted) return;
-      final picked = pickSpokenOption(heard, labels);
-      if (picked != null) {
-        Navigator.of(sheet).pop(picked < 0 ? none : options[picked]);
-        return;
-      }
-      if (++tries > _kAnswerRetries) {
-        await voice.say(l10n.homeOptionsGiveUp);
-        return; // the list is still there to tap
-      }
-      await voice.say(l10n.homeVoiceOptionNotUnderstood);
-      if (sheet.mounted) {
-        await voice.listen(
-          answer,
-          language: language,
-          listenFor: _kAnswerListenFor,
-          pauseFor: _kAnswerPauseFor,
-        );
-      }
-    }
-
     final sheet = openSheet;
-    if (listen && sheet != null && sheet.mounted) {
-      await voice.listen(
-        answer,
-        language: language,
-        listenFor: _kAnswerListenFor,
-        pauseFor: _kAnswerPauseFor,
-      );
-    }
+    if (!listen || sheet == null || !sheet.mounted) return;
+    await voice.askUntil<int>(
+      (heard) => pickSpokenOption(heard, labels),
+      onAnswer: (picked) =>
+          Navigator.of(sheet).pop(picked < 0 ? none : options[picked]),
+      language: language,
+      notUnderstood: l10n.homeVoiceOptionNotUnderstood,
+      giveUp: l10n.homeOptionsGiveUp, // the list is still there to tap
+      stillOpen: () => openSheet?.mounted ?? false,
+      listenFor: _kAnswerListenFor,
+      pauseFor: _kAnswerPauseFor,
+    );
   }();
   final picked = await showModalBottomSheet<Map<String, dynamic>>(
     context: context,
@@ -141,33 +118,14 @@ Future<bool?> confirmDestination(
     // Saying "yes" starts it: the buttons stay for everyone else.
     final dialog = openDialog;
     if (!listen || dialog == null || !dialog.mounted) return;
-    var tries = 0;
-    Future<void> heardAnswer(String heard) async {
-      final still = openDialog;
-      if (still == null || !still.mounted) return;
-      final answer = spokenAnswer(heard);
-      if (answer != null) {
-        Navigator.of(still).pop(answer == SpokenAnswer.start);
-        return;
-      }
-      if (++tries > _kAnswerRetries) {
-        await voice.say(l10n.homeConfirmGiveUp);
-        return; // the buttons are still there
-      }
-      await voice.say(l10n.homeSayYesOrNo);
-      if (still.mounted) {
-        await voice.listen(
-          heardAnswer,
-          language: language,
-          listenFor: _kAnswerListenFor,
-          pauseFor: _kAnswerPauseFor,
-        );
-      }
-    }
-
-    await voice.listen(
-      heardAnswer,
+    await voice.askUntil<SpokenAnswer>(
+      spokenAnswer,
+      onAnswer: (answer) =>
+          Navigator.of(dialog).pop(answer == SpokenAnswer.start),
       language: language,
+      notUnderstood: l10n.homeSayYesOrNo,
+      giveUp: l10n.homeConfirmGiveUp, // the buttons are still there
+      stillOpen: () => openDialog?.mounted ?? false,
       listenFor: _kAnswerListenFor,
       pauseFor: _kAnswerPauseFor,
     );

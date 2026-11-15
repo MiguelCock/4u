@@ -199,4 +199,60 @@ void main() {
       expect(s.speech.isListening, isFalse);
     });
   });
+
+  group('askUntil', () {
+    Future<void> ask(_Setup s, List<int> answers, {bool Function()? open}) =>
+        s.ctl.askUntil<int>(
+          (heard) => int.tryParse(heard),
+          onAnswer: answers.add,
+          language: 'es',
+          notUnderstood: 'Di el número.',
+          giveUp: 'Toca uno.',
+          stillOpen: open ?? () => true,
+        );
+
+    test('an answer it understands goes to onAnswer', () {
+      fakeAsync((async) {
+        final s = _Setup();
+        final answers = <int>[];
+        ask(s, answers);
+        async.elapse(const Duration(seconds: 1));
+        s.speech.hear('2');
+        async.elapse(const Duration(seconds: 1));
+        expect(answers, [2]);
+        expect(s.voice.said, isEmpty);
+      });
+    });
+
+    test('not understood: asked again twice, then it gives up', () {
+      fakeAsync((async) {
+        final s = _Setup();
+        final answers = <int>[];
+        ask(s, answers);
+        for (var i = 0; i < 3; i++) {
+          async.elapse(const Duration(seconds: 2));
+          s.speech.hear('mmm');
+        }
+        async.elapse(const Duration(seconds: 2));
+        expect(s.voice.said, ['Di el número.', 'Di el número.', 'Toca uno.']);
+        expect(s.speech.listens, 3);
+        expect(answers, isEmpty);
+      });
+    });
+
+    test('once the dialog has closed, an answer does nothing', () {
+      fakeAsync((async) {
+        final s = _Setup();
+        final answers = <int>[];
+        var open = true;
+        ask(s, answers, open: () => open);
+        async.elapse(const Duration(seconds: 1));
+        open = false;
+        s.speech.hear('mmm');
+        async.elapse(const Duration(seconds: 2));
+        expect(s.voice.said, isEmpty);
+        expect(s.speech.listens, 1);
+      });
+    });
+  });
 }
