@@ -358,6 +358,7 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 
 - **Optional parameters:** `AdminHomeScreen` takes `mapApi`, `aiTrainingApi`, `userApi`, `userId`, `userEmail`, `signOut` and `showTiles`; every real caller keeps the defaults (the real APIs, the Supabase account, tiles on).
 - **Tests:** `test/admin/admin_home_screen_test.dart` pins the first load (with the unsearchable-photos notice), back through a drill-down and tabs to the exit guard, a university's delete with its cascade counts and index cleanup, verifying a point (PATCH with `expected`, then `/index_anchor`), promoting a user (never your own row) and the 30 s `/changes` merge.
+- **Its pure logic:** `AdminLists` (`lib/services/admin_lists.dart`): who belongs to whom, a delete's cascade counts, the filters' photo and connection sets, the floors offered, the Connections tab's scope; `rowsByName` for the Universities and Buildings tabs; `adminBack`, the order system back undoes things in. Tests: `test/services/admin_lists_test.dart`.
 - **Fakes:** `FakeMapApi` (lists, `/changes`), `FakeUserApi` and `FakeAiTrainingApi` in `test/support/api_fakes.dart`; each records its writes (`writes`, `paths(method)`). Photos in tests have no `image_url`, or the rows load thumbnails over the network.
 
 ## Shared helpers (one copy each)
