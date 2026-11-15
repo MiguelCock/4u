@@ -66,9 +66,16 @@ class AppVoice {
   String? _language;
   VoiceOwner? _owner;
 
-  /// Set by the screen that opens the microphone. Nothing is said while it's
-  /// open: the recognizer would hear it.
+  /// Whether a screen has the microphone open ([VoiceOwner.beginListening]).
+  /// Nothing another screen says is heard meanwhile: the recognizer would
+  /// take it as the answer.
   final ValueNotifier<bool> listening = ValueNotifier(false);
+  VoiceOwner? _listener;
+
+  void _setListener(VoiceOwner? owner) {
+    _listener = owner;
+    listening.value = owner != null;
+  }
 
   /// The engine's own events: a sentence started, and ended (finished,
   /// cancelled or failed).
@@ -90,6 +97,8 @@ class AppVoice {
   VoiceOwner claim() {
     final owner = VoiceOwner._(this);
     _owner = owner;
+    // A covered screen's listen is over, whether or not it said so.
+    _setListener(null);
     _interrupt();
     return owner;
   }
@@ -98,7 +107,10 @@ class AppVoice {
 
   Future<void> _say(VoiceOwner owner, String text, bool interrupt) async {
     if (!identical(owner, _owner)) return;
-    while (listening.value) {
+    // The listening screen speaking has closed its own microphone: a listen
+    // that ended without saying so must not silence it. That kept "¿Ir a
+    // X? Di sí…" waiting until a tap, after a place was heard.
+    while (listening.value && !identical(_listener, owner)) {
       await _whenNotListening();
       if (!identical(owner, _owner)) return;
     }
@@ -136,6 +148,16 @@ class VoiceOwner {
   Future<void> say(String text, {bool interrupt = false}) =>
       _voice._say(this, text, interrupt);
 
+  /// The microphone is open for this owner; nothing others say is heard
+  /// until [endListening].
+  void beginListening() {
+    if (isCurrent) _voice._setListener(this);
+  }
+
+  void endListening() {
+    if (identical(_voice._listener, this)) _voice._setListener(null);
+  }
+
   /// Silences this owner's speech, if it still owns the voice.
   void stop() {
     if (isCurrent) _voice._interrupt();
@@ -144,6 +166,7 @@ class VoiceOwner {
   /// Gives the voice up: what this owner was saying stops, and nothing it
   /// says afterwards is heard.
   void release() {
+    endListening();
     if (!isCurrent) return;
     _voice._interrupt();
     _voice._owner = null;

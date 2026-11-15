@@ -323,7 +323,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     if (_listening) {
       _onHeard = null; // stopped on purpose: no answer, no retry
       _listenTimeout?.cancel();
-      setState(() => _listening = false);
+      _setListening(false);
       _voiceMisses = 0;
       final stopped = AppLocalizations.of(context)!.homeStoppedListening;
       await _speech.cancel();
@@ -352,8 +352,20 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     _onHeard = null;
     _listenTimeout?.cancel();
     if (!mounted) return;
-    setState(() => _listening = false);
+    _setListening(false);
     if (onHeard != null) onHeard(heard);
+  }
+
+  /// Whether the microphone is open, for the button and for the app's voice
+  /// (#264's flag was cleared only when stopped by hand, so after a place
+  /// was heard "¿Ir a X? Di sí…" waited for a tap).
+  void _setListening(bool on) {
+    if (on) {
+      _voice.beginListening();
+    } else {
+      _voice.endListening();
+    }
+    if (mounted && _listening != on) setState(() => _listening = on);
   }
 
   /// Whether the current listen has itself reported "listening". A listen
@@ -452,11 +464,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     }
     if (_speech.isListening) await _speech.cancel();
     if (!mounted || _covered) return false;
-    AppVoice.instance.listening.value = true;
-    setState(() {
-      _listening = true;
-      _heard = '';
-    });
+    _heard = '';
+    _setListening(true);
     _onHeard = onHeard;
     _listenSawStart = false;
     // If the recognizer never reports back, this still ends the listen.
@@ -640,8 +649,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   void _stopAnyListening() {
     _onHeard = null;
     _listenTimeout?.cancel();
-    AppVoice.instance.listening.value = false;
-    if (_listening && mounted) setState(() => _listening = false);
+    _setListening(false);
     _speech.cancel();
   }
 
