@@ -13,7 +13,6 @@ import '../services/map_sync.dart';
 import '../widgets/admin_dialogs.dart';
 import '../widgets/admin_map/admin_map.dart';
 import '../widgets/map_conflict.dart';
-import '../widgets/category_mark.dart';
 import 'add_building_screen.dart';
 import 'admin_drawer.dart';
 import 'admin_map_data.dart';
@@ -21,11 +20,11 @@ import 'add_connection_screen.dart';
 import 'add_place_screen.dart';
 import 'capture_photo_screen.dart';
 import 'capture_screen.dart';
-import 'edit_anchor_point_screen.dart'
-    show EditAnchorPointScreen, anchorStatusLabel;
+import 'edit_anchor_point_screen.dart' show EditAnchorPointScreen;
 import 'edit_building_screen.dart';
 import 'edit_place_screen.dart';
 import 'map_home.dart';
+import 'sheets/details.dart';
 import 'tabs/admin_rows.dart';
 import 'tabs/named_rows_tab.dart';
 import 'tabs/users_tab.dart';
@@ -40,7 +39,6 @@ import '../services/connect_chain.dart';
 import '../services/connection_filters.dart';
 import '../services/exit_guard.dart';
 import '../services/location_types.dart';
-import '../services/floor_view.dart';
 import '../widgets/guardrail_dialogs.dart';
 import '../widgets/connection_warning_dialog.dart';
 import '../widgets/fab_row.dart';
@@ -833,52 +831,22 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       return null;
     }
 
-    final a = point(aId);
-    final b = point(bId);
-    final meters = (c['distance_meters'] as num?)?.toStringAsFixed(1);
-    final notes = (c['notes'] as String? ?? '').trim();
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.timeline, color: kAdminPalette.connectionActive),
-          title: Text('${_describePoint(aId)} ↔ ${_describePoint(bId)}'),
-          subtitle: Text(
-            [
-              if (meters != null)
-                c['distance_manual'] == true
-                    ? l10n.adminConnectionDistanceTyped(meters)
-                    : l10n.adminConnectionDistance(meters),
-              if (a != null && b != null && pointFloor(a) != pointFloor(b))
-                l10n.adminConnectionChangesFloor,
-              notes.isEmpty
-                  ? l10n.adminConnectionNoWarning
-                  : l10n.adminConnectionWarning(notes),
-            ].join('\n'),
-          ),
+    return ConnectionDetails(
+      connection: c,
+      title: '${_describePoint(aId)} ↔ ${_describePoint(bId)}',
+      a: point(aId),
+      b: point(bId),
+      close: close,
+      actions: [
+        (
+          icon: Icons.warning_amber_outlined,
+          label: l10n.adminConnectionEditWarning,
+          onTap: () => _editConnectionWarning(c),
         ),
-        Wrap(
-          spacing: 4,
-          children: [
-            TextButton.icon(
-              icon: const Icon(Icons.warning_amber_outlined),
-              label: Text(l10n.adminConnectionEditWarning),
-              onPressed: () {
-                close();
-                _editConnectionWarning(c);
-              },
-            ),
-            TextButton.icon(
-              icon: const Icon(Icons.delete_outline),
-              label: Text(l10n.commonDelete),
-              onPressed: () {
-                close();
-                _deleteConnection(c);
-              },
-            ),
-          ],
+        (
+          icon: Icons.delete_outline,
+          label: l10n.commonDelete,
+          onTap: () => _deleteConnection(c),
         ),
       ],
     );
@@ -1061,109 +1029,45 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// [close] hides it before an action runs.
   Widget _pointDetails(Map<String, dynamic> point, VoidCallback close) {
     final l10n = AppLocalizations.of(context)!;
-    final photos = _photosOf(point['id'] as String);
-    final building = _buildings.firstWhere(
-      (b) => b['id'] == point['building_id'],
-      orElse: () => const {},
-    );
-    final type = kLocationTypes[point['location_type_id'] as int?];
-    final thumbUrl = photos.isNotEmpty
-        ? photos.first['image_url'] as String?
-        : null;
     final verified = point['status'] == 'verified';
-
-    Widget action(IconData icon, String label, VoidCallback onTap) {
-      return TextButton.icon(
-        icon: Icon(icon),
-        label: Text(label),
-        onPressed: () {
-          close();
-          onTap();
-        },
-      );
-    }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            if (thumbUrl != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: Image.network(
-                    thumbUrl,
-                    width: 64,
-                    height: 64,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CategoryTitle(
-                    anchorDisplayName(l10n, point),
-                    locationTypeId: point['location_type_id'] as int?,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  Text(
-                    [
-                      if (type != null) locationTypeLabel(l10n, type),
-                      building['name'] as String? ?? l10n.commonUnknownBuilding,
-                      l10n.adminStatusLabel(
-                        anchorStatusLabel(
-                          l10n,
-                          point['status'] as String? ?? 'unknown',
-                        ),
-                      ),
-                      l10n.adminPhotoCountLabel(photos.length),
-                    ].join(' · '),
-                  ),
-                ],
-              ),
-            ),
-          ],
+    return PointDetails(
+      point: point,
+      building: _buildings
+          .where((b) => b['id'] == point['building_id'])
+          .firstOrNull,
+      photos: _photosOf(point['id'] as String),
+      close: close,
+      actions: [
+        (
+          icon: Icons.edit_outlined,
+          label: l10n.commonEdit,
+          onTap: () => _editAnchorPoint(point),
         ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 4,
-          children: [
-            action(
-              Icons.edit_outlined,
-              l10n.commonEdit,
-              () => _editAnchorPoint(point),
-            ),
-            action(
-              Icons.open_with,
-              l10n.adminAnchorMoveAction,
-              () => setState(() {
-                _movingPoint = point;
-                _moveTarget = null;
-              }),
-            ),
-            action(
-              verified ? Icons.remove_done : Icons.verified_outlined,
-              verified
-                  ? l10n.adminAnchorUnverifyTooltip
-                  : l10n.adminAnchorVerifyTooltip,
-              () => _setAnchorStatus(point, verified ? 'pending' : 'verified'),
-            ),
-            action(
-              Icons.timeline,
-              l10n.adminAnchorConnectAction,
-              () => _connectFromAnchorPoint(point),
-            ),
-            action(
-              Icons.add_a_photo_outlined,
-              l10n.adminAddPhotoTooltip,
-              () => _addPhoto(point),
-            ),
-          ],
+        (
+          icon: Icons.open_with,
+          label: l10n.adminAnchorMoveAction,
+          onTap: () => setState(() {
+            _movingPoint = point;
+            _moveTarget = null;
+          }),
+        ),
+        (
+          icon: verified ? Icons.remove_done : Icons.verified_outlined,
+          label: verified
+              ? l10n.adminAnchorUnverifyTooltip
+              : l10n.adminAnchorVerifyTooltip,
+          onTap: () =>
+              _setAnchorStatus(point, verified ? 'pending' : 'verified'),
+        ),
+        (
+          icon: Icons.timeline,
+          label: l10n.adminAnchorConnectAction,
+          onTap: () => _connectFromAnchorPoint(point),
+        ),
+        (
+          icon: Icons.add_a_photo_outlined,
+          label: l10n.adminAddPhotoTooltip,
+          onTap: () => _addPhoto(point),
         ),
       ],
     );
@@ -1172,49 +1076,23 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// A university's data and actions on the map.
   Widget _placeDetails(Map<String, dynamic> place, VoidCallback close) {
     final l10n = AppLocalizations.of(context)!;
-    final active = place['is_active'] as bool? ?? true;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(
-            Icons.flag,
-            color: active ? kAdminPalette.university : kAdminPalette.inactive,
-          ),
-          title: Text(place['name'] as String? ?? ''),
-          subtitle: Text(
-            [
-              if (place['code'] case final String code) code,
-              l10n.adminBuildingCountLabel(
-                _buildingsOf(place['id'] as String).length,
-              ),
-              if (!active) l10n.adminMapInactive,
-            ].join(' · '),
-          ),
+    return PlaceDetails(
+      place: place,
+      buildingCount: _buildingsOf(place['id'] as String).length,
+      close: close,
+      actions: [
+        (
+          icon: Icons.edit_outlined,
+          label: l10n.commonEdit,
+          onTap: () => _editPlace(place),
         ),
-        Wrap(
-          spacing: 4,
-          children: [
-            TextButton.icon(
-              icon: const Icon(Icons.edit_outlined),
-              label: Text(l10n.commonEdit),
-              onPressed: () {
-                close();
-                _editPlace(place);
-              },
-            ),
-            TextButton.icon(
-              icon: const Icon(Icons.list),
-              label: Text(l10n.adminMapOpenBuildingsList),
-              onPressed: () {
-                close();
-                setState(() => _buildingsPlaceFilterId = place['id'] as String);
-                _tabController.animateTo(_kBuildings);
-              },
-            ),
-          ],
+        (
+          icon: Icons.list,
+          label: l10n.adminMapOpenBuildingsList,
+          onTap: () {
+            setState(() => _buildingsPlaceFilterId = place['id'] as String);
+            _tabController.animateTo(_kBuildings);
+          },
         ),
       ],
     );
@@ -1223,58 +1101,27 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// A building's data and actions on the map.
   Widget _buildingDetails(Map<String, dynamic> building, VoidCallback close) {
     final l10n = AppLocalizations.of(context)!;
-    final active = building['is_active'] as bool? ?? true;
-    final place = _places.firstWhere(
-      (p) => p['id'] == building['place_id'],
-      orElse: () => const {},
-    );
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(
-            Icons.apartment,
-            color: active ? kAdminPalette.building : kAdminPalette.inactive,
-          ),
-          title: Text(building['name'] as String? ?? ''),
-          subtitle: Text(
-            [
-              place['name'] as String? ?? l10n.commonUnknownUniversity,
-              if (building['floors'] case final int floors)
-                l10n.adminMapFloorsLabel(floors),
-              l10n.adminAnchorCountLabel(
-                _anchorPointsOf(building['id'] as String).length,
-              ),
-              if (!active) l10n.adminMapInactive,
-            ].join(' · '),
-          ),
+    return BuildingDetails(
+      building: building,
+      place: _places.where((p) => p['id'] == building['place_id']).firstOrNull,
+      pointCount: _anchorPointsOf(building['id'] as String).length,
+      close: close,
+      actions: [
+        (
+          icon: Icons.edit_outlined,
+          label: l10n.commonEdit,
+          onTap: () => _editBuilding(building),
         ),
-        Wrap(
-          spacing: 4,
-          children: [
-            TextButton.icon(
-              icon: const Icon(Icons.edit_outlined),
-              label: Text(l10n.commonEdit),
-              onPressed: () {
-                close();
-                _editBuilding(building);
-              },
-            ),
-            TextButton.icon(
-              icon: const Icon(Icons.list),
-              label: Text(l10n.adminMapOpenPointsList),
-              onPressed: () {
-                close();
-                setState(() {
-                  _anchorPointsBuildingFilterId = building['id'] as String;
-                  _anchorPointsPlaceFilterId = building['place_id'] as String?;
-                });
-                _tabController.animateTo(_kPoints);
-              },
-            ),
-          ],
+        (
+          icon: Icons.list,
+          label: l10n.adminMapOpenPointsList,
+          onTap: () {
+            setState(() {
+              _anchorPointsBuildingFilterId = building['id'] as String;
+              _anchorPointsPlaceFilterId = building['place_id'] as String?;
+            });
+            _tabController.animateTo(_kPoints);
+          },
         ),
       ],
     );
