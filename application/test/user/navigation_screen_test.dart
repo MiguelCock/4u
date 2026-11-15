@@ -1,6 +1,7 @@
 import 'package:eyes4u/l10n/app_localizations.dart';
 import 'package:eyes4u/services/app_preferences.dart';
 import 'package:eyes4u/services/location_service.dart';
+import 'package:eyes4u/services/route_points.dart';
 import 'package:eyes4u/user/navigation_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -51,19 +52,55 @@ const _route = {
   'end_anchor_id': 'a3',
 };
 
+// Up a floor: 33 m north to the elevator, up it, then 33 m east upstairs.
+const _liftDown = {
+  'id': 'f2',
+  'building_id': 'b1',
+  'location_type_id': 3,
+  'location_description': '',
+  'floor': 0,
+  'latitude': 6.2003,
+  'longitude': -75.5800,
+};
+final _liftUp = {..._liftDown}
+  ..['id'] = 'f3'
+  ..['floor'] = 1;
+final _libraryUp = {..._library}
+  ..['id'] = 'f4'
+  ..['floor'] = 1;
+const _floorRoute = {
+  'id': 'r2',
+  'building_id': 'b1',
+  'start_anchor_id': 'a1',
+  'waypoint_anchor_ids': ['f2', 'f3'],
+  'end_anchor_id': 'f4',
+};
+
+List<Map<String, dynamic>> _chain(List<String> ids) => [
+  for (var i = 0; i + 1 < ids.length; i++)
+    {'id': 'c$i', 'anchor_point_a_id': ids[i], 'anchor_point_b_id': ids[i + 1]},
+];
+
 class _Trip {
-  _Trip({this.signedIn = true, this.resumeSessionId});
+  _Trip({
+    this.signedIn = true,
+    this.resumeSessionId,
+    this.route = _route,
+    List<Map<String, dynamic>> anchors = const [_entrance, _corner, _library],
+    this.hPa,
+  }) : map = FakeMapApi(
+         anchors: anchors,
+         connections: _chain(routeAnchorIds(route)),
+       );
 
   final bool signedIn;
   final String? resumeSessionId;
+  final Map<String, dynamic> route;
+
+  /// The barometer's reading, sent every 100 ms; null: no barometer.
+  double? hPa;
   final navigation = FakeNavigationApi();
-  final map = FakeMapApi(
-    anchors: [_entrance, _corner, _library],
-    connections: [
-      {'id': 'c1', 'anchor_point_a_id': 'a1', 'anchor_point_b_id': 'a2'},
-      {'id': 'c2', 'anchor_point_a_id': 'a2', 'anchor_point_b_id': 'a3'},
-    ],
-  );
+  final FakeMapApi map;
   final gps = FixedLocation(fix(6.2000, -75.5800));
   late final location = LocationService.forTesting(gps);
   final sensors = FakeTripSensors();
@@ -86,7 +123,7 @@ class _Trip {
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => NavigationScreen(
-                    route: _route,
+                    route: route,
                     destinationName: 'Biblioteca',
                     resumeSessionId: resumeSessionId,
                     navigationApi: navigation,
@@ -112,6 +149,7 @@ class _Trip {
   /// Lets the trip run: timers, ticks, speech.
   Future<void> run(WidgetTester tester, {int seconds = 3}) async {
     for (var i = 0; i < seconds * 10; i++) {
+      if (hPa case final p?) sensors.pressureIs(p);
       await tester.pump(const Duration(milliseconds: 100));
     }
   }
@@ -137,6 +175,14 @@ class _Trip {
       await run(tester, seconds: 1);
     }
   }
+
+  /// Every guidance event logged so far, by type.
+  List<Map<dynamic, dynamic>> events(String type) => [
+    for (final (path, body) in navigation.posts)
+      if (path == '/logs')
+        for (final e in (body['debug']?['events'] as List? ?? const []))
+          if ((e as Map)['type'] == type) e,
+  ];
 
   Future<void> close(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox());
@@ -286,6 +332,114 @@ void main() {
       'comment': 'Muy bien',
     });
     expect(find.text('go'), findsOneWidget);
+    await t.close(tester);
+  });
+
+  testWidgets('up a floor: the elevator, the barometer hears it, then on', (
+    tester,
+  ) async {
+    final t = _Trip(
+      route: _floorRoute,
+      anchors: [_entrance, _liftDown, _liftUp, _libraryUp],
+      hPa: 1000,
+    );
+    await t.start(tester);
+    t.sensors.face(0);
+    await t.run(tester, seconds: 4);
+    await t.walkTo(tester, 6.2003, -75.5800, heading: 0);
+    await t.run(tester, seconds: 6);
+    t.hPa = 999.6; // a floor up
+    await t.run(tester, seconds: 8);
+    await t.walkTo(tester, 6.2003, -75.5797, heading: 90);
+    await t.run(tester, seconds: 4);
+
+    expect(t.voice.said, [
+      t.l10n.navStartingTo('Biblioteca'),
+      t.l10n.navAnnouncementCameraDisclosure,
+      'Camina hacia adelante unos 50 pasos. Te avisaré si vas en otra '
+          'dirección.',
+      'Atención: ascensor en unos 8 pasos.',
+      'Toma el ascensor hasta el piso 2. Te avisaré cuando llegues.',
+      t.l10n.navFloorReached(2),
+      'Gira a la derecha y camina unos 45 pasos.',
+      t.l10n.navArrivedFinished('Biblioteca'),
+      '¿Cómo te fue?',
+    ]);
+    expect(t.events('floor_wait'), hasLength(1));
+    expect(t.events('floor_detected'), hasLength(1));
+    expect(t.navigation.patches['/sessions/s1']?['status'], 'completed');
+    await t.close(tester);
+  });
+
+  testWidgets('up a floor with no barometer: carries on after 60 s', (
+    tester,
+  ) async {
+    final t = _Trip(
+      route: _floorRoute,
+      anchors: [_entrance, _liftDown, _liftUp, _libraryUp],
+    );
+    await t.start(tester);
+    t.sensors.face(0);
+    await t.run(tester, seconds: 4);
+    await t.walkTo(tester, 6.2003, -75.5800, heading: 0);
+    await t.run(tester, seconds: 62);
+
+    expect(t.voice.said, [
+      t.l10n.navStartingTo('Biblioteca'),
+      t.l10n.navAnnouncementCameraDisclosure,
+      'Camina hacia adelante unos 50 pasos. Te avisaré si vas en otra '
+          'dirección.',
+      'Atención: ascensor en unos 8 pasos.',
+      'Toma el ascensor hasta el piso 2. ${t.l10n.navFloorNoSensor}',
+      t.l10n.navFloorTimeout(2),
+      t.l10n.homeSearchingLocation, // standing still all along
+      'Gira a la derecha y camina unos 45 pasos.',
+    ]);
+    expect(t.events('floor_timeout'), hasLength(1));
+    await t.close(tester);
+  });
+
+  testWidgets('a fix past the corner, at the library: arrives, skipping it', (
+    tester,
+  ) async {
+    final t = _Trip();
+    await t.start(tester);
+    t.sensors.face(0);
+    await t.run(tester, seconds: 4);
+    t.gps.moveTo(fix(6.2003, -75.5797));
+    await t.run(tester, seconds: 4);
+
+    expect(t.voice.said, [
+      t.l10n.navStartingTo('Biblioteca'),
+      t.l10n.navAnnouncementCameraDisclosure,
+      'Camina hacia adelante unos 50 pasos. Te avisaré si vas en otra '
+          'dirección.',
+      t.l10n.navArrivedFinished('Biblioteca'),
+      '¿Cómo te fue?',
+    ]);
+    expect(t.events('arrival').single['skipped'], 1);
+    await t.close(tester);
+  });
+
+  testWidgets('walking away from the path: said, after the periodic wait', (
+    tester,
+  ) async {
+    final t = _Trip();
+    await t.start(tester);
+    t.sensors.face(0);
+    await t.run(tester, seconds: 4);
+    // Some progress (so it isn't a stall), then back past the start.
+    await t.walkTo(tester, 6.20010, -75.5800, heading: 0, steps: 5);
+    await t.walkTo(tester, 6.19995, -75.5800, heading: 180, steps: 8);
+    await t.run(tester, seconds: 10);
+
+    expect(t.voice.said, [
+      t.l10n.navStartingTo('Biblioteca'),
+      t.l10n.navAnnouncementCameraDisclosure,
+      'Camina hacia adelante unos 50 pasos. Te avisaré si vas en otra '
+          'dirección.',
+      t.l10n.navMovingAway,
+    ]);
     await t.close(tester);
   });
 }
