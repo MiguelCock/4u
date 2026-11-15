@@ -21,7 +21,6 @@ class EditBuildingScreen extends StatefulWidget {
 class _EditBuildingScreenState extends State<EditBuildingScreen> {
   final _mapApi = MapManagementApi();
   late final TextEditingController _nameController;
-  late final TextEditingController _addressController;
   late final TextEditingController _floorsController;
   late final TextEditingController _latController;
   late final TextEditingController _lngController;
@@ -40,9 +39,6 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
     super.initState();
     _nameController = TextEditingController(
       text: widget.building['name'] as String? ?? '',
-    );
-    _addressController = TextEditingController(
-      text: widget.building['address'] as String? ?? '',
     );
     _floorsController = TextEditingController(
       text: (widget.building['floors'] as num?)?.toString() ?? '1',
@@ -139,9 +135,6 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
         'has_elevator': _hasElevator,
         'has_stairs': _hasStairs,
         'is_active': _isActive,
-        'address': _addressController.text.trim().isEmpty
-            ? null
-            : _addressController.text.trim(),
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
@@ -159,7 +152,6 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _addressController.dispose();
     _floorsController.dispose();
     _latController.dispose();
     _lngController.dispose();
@@ -202,11 +194,6 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
               TextField(
                 controller: _nameController,
                 decoration: InputDecoration(labelText: l10n.commonName),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _addressController,
-                decoration: InputDecoration(labelText: l10n.commonAddress),
               ),
               const SizedBox(height: 12),
               TextField(

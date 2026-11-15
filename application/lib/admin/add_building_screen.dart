@@ -23,9 +23,7 @@ class AddBuildingScreen extends StatefulWidget {
 
 class _AddBuildingScreenState extends State<AddBuildingScreen> {
   final _mapApi = MapManagementApi();
-  final _codeController = TextEditingController();
   final _nameController = TextEditingController();
-  final _addressController = TextEditingController();
   final _floorsController = TextEditingController(text: '1');
   late final TextEditingController _latController;
   late final TextEditingController _lngController;
@@ -114,7 +112,6 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
   }
 
   Future<void> _submit() async {
-    final code = _codeController.text.trim();
     final name = _nameController.text.trim();
     final lat = double.tryParse(_latController.text.trim());
     final lng = double.tryParse(_lngController.text.trim());
@@ -133,11 +130,9 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
       );
       return;
     }
-    if (code.isEmpty || name.isEmpty || lat == null || lng == null) {
+    if (name.isEmpty || lat == null || lng == null) {
       setState(
-        () => _error = AppLocalizations.of(
-          context,
-        )!.commonErrorCodeNameLatLngRequired,
+        () => _error = AppLocalizations.of(context)!.addBuildingErrorRequired,
       );
       return;
     }
@@ -150,15 +145,12 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
     try {
       await _mapApi.post('/buildings', {
         'place_id': _selectedPlaceId,
-        'code': code,
         'name': name,
         'latitude': lat,
         'longitude': lng,
         'floors': floors,
         'has_elevator': _hasElevator,
         'has_stairs': _hasStairs,
-        if (_addressController.text.trim().isNotEmpty)
-          'address': _addressController.text.trim(),
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
@@ -175,9 +167,7 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
 
   @override
   void dispose() {
-    _codeController.dispose();
     _nameController.dispose();
-    _addressController.dispose();
     _floorsController.dispose();
     _latController.dispose();
     _lngController.dispose();
@@ -223,18 +213,8 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
                 ),
               const SizedBox(height: 12),
               TextField(
-                controller: _codeController,
-                decoration: InputDecoration(labelText: l10n.commonCode),
-              ),
-              const SizedBox(height: 12),
-              TextField(
                 controller: _nameController,
                 decoration: InputDecoration(labelText: l10n.commonName),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _addressController,
-                decoration: InputDecoration(labelText: l10n.commonAddress),
               ),
               const SizedBox(height: 12),
               TextField(

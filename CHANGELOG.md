@@ -12,7 +12,14 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ### Changed
 
+- **Admin: type first, then the name.** When creating a point, the place type comes first and the name field appears once it's chosen. What was called "Description" is now "Name" everywhere.
+- **Admin: simpler university and building forms.** Universities have an "Abbreviation" (suggested from the name, such as UPB) instead of a code. Buildings need no code at all, and neither form asks for an address.
 - **Accessible from the start.** New accounts open in Spanish, with high contrast, bold text and the largest text size. Anyone can change them in Settings, and saved choices are kept. "Automatic" language is now saved as such.
+
+### Fixed
+
+- Admin: "Otro" no longer appears twice in the place type list; its category is now "Otros lugares".
+- Admin: on phones, the last menu item (Test as user) is no longer hidden under the phone's own buttons.
 
 ## [0.6.0-pre] - 2026-11-10
 
