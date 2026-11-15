@@ -18,6 +18,7 @@ import '../widgets/floor_field.dart';
 import '../widgets/guardrail_dialogs.dart';
 import '../widgets/location_type_field.dart';
 import '../services/geo_utils.dart';
+import '../services/initial_choice.dart';
 
 /// Creates a new `anchor_points` row (position + description only — no
 /// photos live here anymore, since one physical point ends up with ~4-8
@@ -119,12 +120,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
         _buildingsAll = (results[1] as List).cast<Map<String, dynamic>>();
         // The admin's current filter wins; otherwise start where the last
         // point was created (ignored if that university is gone).
-        final initialPlaceId = widget.initialPlaceId ?? defaults.placeId;
-        if (initialPlaceId != null &&
-            _places.any((p) => p['id'] == initialPlaceId)) {
-          _selectedPlaceId = initialPlaceId;
-        } else if (_places.isNotEmpty) {
-          _selectedPlaceId = _places.first['id'] as String?;
+        if (_places.isNotEmpty) {
+          _selectedPlaceId = initialChoice(
+            _places,
+            widget.initialPlaceId ?? defaults.placeId,
+          );
         }
         _applyBuildingFilter(
           preferredBuildingId:
@@ -175,14 +175,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _buildings = _buildingsAll
         .where((b) => b['place_id'] == _selectedPlaceId)
         .toList();
-    if (preferredBuildingId != null &&
-        _buildings.any((b) => b['id'] == preferredBuildingId)) {
-      _selectedBuildingId = preferredBuildingId;
-    } else {
-      _selectedBuildingId = _buildings.isNotEmpty
-          ? _buildings.first['id'] as String?
-          : null;
-    }
+    _selectedBuildingId = initialChoice(_buildings, preferredBuildingId);
   }
 
   /// Where the picker opens with no GPS, as in the web app: 0,0 is the ocean.

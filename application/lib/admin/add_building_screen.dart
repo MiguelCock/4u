@@ -7,6 +7,7 @@ import '../services/location_service.dart';
 import 'location_picker_screen.dart';
 import '../services/api_error_messages.dart';
 import '../services/geo_utils.dart';
+import '../services/initial_choice.dart';
 
 /// Admin form to create a `buildings` row under an existing place - the
 /// building dropdown in `capture_screen.dart` is populated from these.
@@ -56,11 +57,8 @@ class _AddBuildingScreenState extends State<AddBuildingScreen> {
       if (result is List) {
         setState(() {
           _places = result.cast<Map<String, dynamic>>();
-          final initial = widget.initialPlaceId;
-          if (initial != null && _places.any((p) => p['id'] == initial)) {
-            _selectedPlaceId = initial;
-          } else if (_places.isNotEmpty) {
-            _selectedPlaceId = _places.first['id'] as String?;
+          if (_places.isNotEmpty) {
+            _selectedPlaceId = initialChoice(_places, widget.initialPlaceId);
           }
         });
       }
