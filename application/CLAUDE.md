@@ -332,6 +332,19 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 - **The edit screen** checks the point every 30 s and shows a notice if another admin saved it meanwhile (`updated_at` changed).
 - **Admin home stays fresh without reading all five lists** (about 490 KB). The first load and pull-to-refresh are full (`_loadAll`). `_loadData`, called after every edit, now fetches `GET /map/changes?since=` and merges it (`applyChanges`, pure and tested); a 30 s timer does the same and says how many changes came from other admins. It skips while another screen or dialog covers the admin screen, and the first refresh after is silent (`syncTickAction`): otherwise the admin's own new photos and connections, made on those screens, were announced as other admins'. The lists carry `updated_at` too, so a row already held isn't counted again. `since` comes from the server's clock (`_serverSince`). If `/changes` fails or isn't there (before the migration), it falls back to full loads, and the timer does nothing.
 
+## Testing the trip screen
+
+- **Optional parameters:** `NavigationScreen` takes `navigationApi`, `positioningApi`, `mapApi`, `locationService`, `voice`, `userId`, and `sensors`. `TripSensors` (`lib/user/trip_sensors.dart`) groups the compass, motion and pressure streams, the camera, the wakelock and `deviceDetails`. Every real caller keeps the defaults.
+- **Time:** it reads `clock.now()` (`package:clock`), never `DateTime.now()`, so `testWidgets`' fake time drives its timers, holds and stale-fix rules. Keep it that way in new code there and in the services it calls.
+- **Tests:** `test/user/navigation_screen_test.dart` pins today's trip:
+  - starting;
+  - resuming;
+  - ending early;
+  - an L-shaped walk, with every sentence said in order;
+  - a stale fix.
+
+  Fakes: `test/support/sensor_fakes.dart`, `FixedLocation.moveTo`, and `fix()`, stamped with the test clock.
+
 ## Shared helpers (one copy each)
 
 - **A row's position:** `anchorPosition(row)` (`lib/services/geo_utils.dart`), for points, buildings and places. Don't parse `latitude`/`longitude` by hand; there were two identical copies and six inline ones.
