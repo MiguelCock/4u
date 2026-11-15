@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/abbreviation.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import 'location_picker_screen.dart';
@@ -19,8 +20,10 @@ class AddPlaceScreen extends StatefulWidget {
 class _AddPlaceScreenState extends State<AddPlaceScreen> {
   final _mapApi = MapManagementApi();
   final _codeController = TextEditingController();
+
+  /// Set once the admin types an abbreviation: the name stops filling it.
+  bool _abbreviationEdited = false;
   final _nameController = TextEditingController();
-  final _addressController = TextEditingController();
   late final TextEditingController _latController;
   late final TextEditingController _lngController;
   bool _submitting = false;
@@ -29,6 +32,10 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
   @override
   void initState() {
     super.initState();
+    _nameController.addListener(() {
+      if (_abbreviationEdited) return;
+      _codeController.text = abbreviationFor(_nameController.text);
+    });
     final position = LocationService().lastPosition;
     _latController = TextEditingController(
       text: position?.latitude.toString() ?? '',
@@ -65,9 +72,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     final lng = double.tryParse(_lngController.text.trim());
     if (code.isEmpty || name.isEmpty || lat == null || lng == null) {
       setState(
-        () => _error = AppLocalizations.of(
-          context,
-        )!.commonErrorCodeNameLatLngRequired,
+        () => _error = AppLocalizations.of(context)!.addPlaceErrorRequired,
       );
       return;
     }
@@ -83,8 +88,6 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         'name': name,
         'latitude': lat,
         'longitude': lng,
-        if (_addressController.text.trim().isNotEmpty)
-          'address': _addressController.text.trim(),
       });
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
@@ -103,7 +106,6 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
   void dispose() {
     _codeController.dispose();
     _nameController.dispose();
-    _addressController.dispose();
     _latController.dispose();
     _lngController.dispose();
     super.dispose();
@@ -121,18 +123,18 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TextField(
-                controller: _codeController,
-                decoration: InputDecoration(labelText: l10n.commonCode),
-              ),
-              const SizedBox(height: 12),
-              TextField(
                 controller: _nameController,
                 decoration: InputDecoration(labelText: l10n.commonName),
               ),
               const SizedBox(height: 12),
+              // Filled from the name's initials until the admin edits it.
               TextField(
-                controller: _addressController,
-                decoration: InputDecoration(labelText: l10n.commonAddress),
+                controller: _codeController,
+                onChanged: (_) => _abbreviationEdited = true,
+                decoration: InputDecoration(
+                  labelText: l10n.addPlaceAbbreviationLabel,
+                  helperText: l10n.addPlaceAbbreviationHelper,
+                ),
               ),
               const SizedBox(height: 12),
               TextField(

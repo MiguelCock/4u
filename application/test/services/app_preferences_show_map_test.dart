@@ -3,18 +3,18 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('the map is off unless the user turned it on (D2)', () {
-    applyPreferences({}, defaultHighContrast: false);
+    applyPreferences({});
     expect(showMapNotifier.value, isFalse);
-    applyPreferences({'show_map': true}, defaultHighContrast: false);
+    applyPreferences({'show_map': true});
     expect(showMapNotifier.value, isTrue);
-    applyPreferences(null, defaultHighContrast: false);
+    applyPreferences(null);
     expect(showMapNotifier.value, isFalse);
   });
 
   test('start and destination are hidden unless turned on', () {
-    applyPreferences({}, defaultHighContrast: false);
+    applyPreferences({});
     expect(showChoicesNotifier.value, isFalse);
-    applyPreferences({'show_choices': true}, defaultHighContrast: false);
+    applyPreferences({'show_choices': true});
     expect(showChoicesNotifier.value, isTrue);
   });
 
@@ -24,10 +24,10 @@ void main() {
     expect(homeShowsChoices(setting: false, revealed: true), isTrue);
   });
 
-  test('bold text follows the phone until the user chooses', () {
-    applyPreferences({}, defaultHighContrast: false);
-    expect(boldTextNotifier.value, isNull);
-    applyPreferences({'bold_text': true}, defaultHighContrast: false);
+  test('bold text is on until the user chooses (D10)', () {
+    applyPreferences({});
     expect(boldTextNotifier.value, isTrue);
+    applyPreferences({'bold_text': false});
+    expect(boldTextNotifier.value, isFalse);
   });
 }
