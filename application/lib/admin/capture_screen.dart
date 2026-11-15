@@ -17,6 +17,7 @@ import '../services/location_types.dart';
 import '../widgets/floor_field.dart';
 import '../widgets/guardrail_dialogs.dart';
 import '../widgets/location_type_field.dart';
+import '../services/geo_utils.dart';
 
 /// Creates a new `anchor_points` row (position + description only — no
 /// photos live here anymore, since one physical point ends up with ~4-8
@@ -94,9 +95,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
-  LatLng? get _position =>
-      _pickedPosition ??
-      (_gpsFix == null ? null : LatLng(_gpsFix!.latitude, _gpsFix!.longitude));
+  LatLng? get _position => _pickedPosition ?? _gpsFix?.latLng;
 
   bool get _liveFixIsGoodEnough =>
       _livePosition != null &&
@@ -190,9 +189,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   LatLng? get _selectedBuildingPosition {
     for (final building in _buildings) {
       if (building['id'] != _selectedBuildingId) continue;
-      final lat = (building['latitude'] as num?)?.toDouble();
-      final lng = (building['longitude'] as num?)?.toDouble();
-      return lat == null || lng == null ? null : LatLng(lat, lng);
+      return anchorPosition(building);
     }
     return null;
   }
@@ -202,7 +199,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final initial =
         _position ??
         (fallback != null
-            ? LatLng(fallback.latitude, fallback.longitude)
+            ? fallback.latLng
             : _selectedBuildingPosition ?? const LatLng(0, 0));
     final result = await Navigator.of(context).push<LatLng>(
       MaterialPageRoute(

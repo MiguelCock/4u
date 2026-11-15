@@ -5,7 +5,7 @@ import 'package:latlong2/latlong.dart';
 import '../../map.dart' show locationPinMarker;
 import '../../services/destinations.dart' show isDestinationAnchor;
 import '../../services/floor_view.dart';
-import '../../services/geo_utils.dart' show haversineMeters;
+import '../../services/geo_utils.dart' show anchorPosition, haversineMeters;
 import '../../services/location_types.dart';
 import '../../services/map_tap.dart';
 import '../floor_selector.dart';

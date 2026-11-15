@@ -332,6 +332,12 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 - **The edit screen** checks the point every 30 s and shows a notice if another admin saved it meanwhile (`updated_at` changed).
 - **Admin home stays fresh without reading all five lists** (about 490 KB). The first load and pull-to-refresh are full (`_loadAll`). `_loadData`, called after every edit, now fetches `GET /map/changes?since=` and merges it (`applyChanges`, pure and tested); a 30 s timer does the same and says how many changes came from other admins. It skips while another screen or dialog covers the admin screen, and the first refresh after is silent (`syncTickAction`): otherwise the admin's own new photos and connections, made on those screens, were announced as other admins'. The lists carry `updated_at` too, so a row already held isn't counted again. `since` comes from the server's clock (`_serverSince`). If `/changes` fails or isn't there (before the migration), it falls back to full loads, and the timer does nothing.
 
+## Shared helpers (one copy each)
+
+- **A row's position:** `anchorPosition(row)` (`lib/services/geo_utils.dart`), for points, buildings and places. Don't parse `latitude`/`longitude` by hand; there were two identical copies and six inline ones.
+- **A GPS fix as a map position:** `position.latLng` (`PositionLatLng`, same file).
+- **A route's points in order:** `routeAnchorIds(route)` (`lib/services/route_points.dart`). Load them with `fetchRoutePoints`, one request when the server has `by-ids`; the session view used to fetch them one after another.
+
 ## Known gaps
 
 - **Photo search ignores floors**: `search_similar` has no floor filter, so a look-alike corridor on another floor can still pull the position.

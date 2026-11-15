@@ -5,11 +5,11 @@ import 'package:latlong2/latlong.dart';
 import '../l10n/app_localizations.dart';
 import '../services/floor_view.dart';
 import '../services/map_scope.dart';
-import '../services/map_tap.dart';
 import '../widgets/admin_map/admin_map.dart';
 import '../widgets/admin_map/layers.dart';
 import '../widgets/admin_map/map_legend.dart';
 import '../widgets/category_mark.dart';
+import '../services/geo_utils.dart';
 
 /// A one-shot request to show something on the map (a notice's item, a list
 /// row's "Show on map"): its building, its floor, centred, and opened. A new

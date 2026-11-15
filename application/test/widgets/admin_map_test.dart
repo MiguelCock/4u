@@ -6,10 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:eyes4u/l10n/app_localizations.dart';
 import 'package:eyes4u/services/floor_view.dart';
-import 'package:eyes4u/services/map_tap.dart';
 import 'package:eyes4u/widgets/admin_map/admin_map.dart';
 import 'package:eyes4u/theme/admin_palette.dart';
 import 'package:eyes4u/widgets/admin_map/layers.dart';
+import 'package:eyes4u/services/geo_utils.dart';
 
 const _here = LatLng(6.2, -75.58);
 

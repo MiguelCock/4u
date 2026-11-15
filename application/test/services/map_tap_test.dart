@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'package:eyes4u/services/map_tap.dart';
+import 'package:eyes4u/services/geo_utils.dart';
 
 void main() {
   const center = LatLng(6.2, -75.58);

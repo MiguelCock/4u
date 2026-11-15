@@ -30,12 +30,6 @@ const double kMaxCaptureGpsAccuracyMeters = 8;
 /// Mirrors `VERTICAL_LOCATION_TYPE_IDS` in `backend-map-management`.
 const Set<int> kVerticalLocationTypes = {3, 4, 11};
 
-LatLng? anchorLatLng(Map<String, dynamic> anchor) {
-  final lat = (anchor['latitude'] as num?)?.toDouble();
-  final lng = (anchor['longitude'] as num?)?.toDouble();
-  return lat == null || lng == null ? null : LatLng(lat, lng);
-}
-
 /// The point nearest [position] in the same building and floor, if one is
 /// within [kNearbyPointMeters].
 ({Map<String, dynamic> anchor, double meters})? nearbyPoint(
@@ -52,7 +46,7 @@ LatLng? anchorLatLng(Map<String, dynamic> anchor) {
         ((anchor['floor'] as int?) ?? 0) != floor) {
       continue;
     }
-    final other = anchorLatLng(anchor);
+    final other = anchorPosition(anchor);
     if (other == null) continue;
     final meters = haversineMeters(position, other);
     if (meters <= kNearbyPointMeters &&
@@ -85,8 +79,8 @@ ConnectionProblem? connectionProblem(
 /// Straight-line distance between two anchor points, null if either has
 /// no position.
 double? anchorDistance(Map<String, dynamic> a, Map<String, dynamic> b) {
-  final pa = anchorLatLng(a);
-  final pb = anchorLatLng(b);
+  final pa = anchorPosition(a);
+  final pb = anchorPosition(b);
   return pa == null || pb == null ? null : haversineMeters(pa, pb);
 }
 
