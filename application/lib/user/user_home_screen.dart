@@ -3,12 +3,10 @@ import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show SystemSound, SystemSoundType;
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -27,8 +25,8 @@ import 'navigation_screen.dart';
 import 'settings_screen.dart';
 import '../services/api_error_messages.dart';
 import '../services/exit_guard.dart';
-import '../services/speech_voice.dart';
 import '../voice/app_voice.dart';
+import '../voice/home_voice_controller.dart';
 import '../voice/notices.dart';
 import '../widgets/speak_circle.dart';
 
@@ -101,17 +99,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
 
   // Saying the destination out loud (speech_to_text) instead of drilling
   // down University -> Building -> place.
-  late final _speech = widget.speech ?? SpeechToText();
-  late final AppVoice _appVoice = widget.voice ?? AppVoice.instance;
 
-  /// This screen's right to speak (the app's one voice, #258). Given up
-  /// while another page covers it, such as a trip: its last sentence and
-  /// its listening used to go on under the trip's own voice.
-  late VoiceOwner _voice;
-  bool _covered = false;
+  /// Speaking and listening (#268): the voice, the microphone, their
+  /// order, misses, and going quiet while a page covers this screen.
+  late final HomeVoiceController _voiceCtl;
   bool _routeSubscribed = false;
-  bool _listening = false;
-  String _heard = '';
+  bool get _listening => _voiceCtl.isListening;
   Map<String, String> _buildingNames = {};
   List<Map<String, dynamic>> _buildings = [];
 
@@ -121,7 +114,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   @override
   void initState() {
     super.initState();
-    _voice = _appVoice.claim();
+    _voiceCtl = HomeVoiceController(speech: widget.speech, voice: widget.voice)
+      ..listening.addListener(_onListeningChanged);
     _positionSub = _locationService.positionStream.listen(_recomputeStart);
     _loadAnchors();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -135,7 +129,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _appVoice.setLanguage(Localizations.localeOf(context).languageCode);
+    _voiceCtl.setLanguage(Localizations.localeOf(context).languageCode);
     final route = ModalRoute.of(context);
     if (!_routeSubscribed && route is PageRoute) {
       _routeSubscribed = true;
@@ -146,32 +140,22 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   /// A page (a trip, Settings) now covers this screen: stop listening and
   /// give up the voice until it's back on top.
   @override
-  void didPushNext() {
-    _covered = true;
-    _stopAnyListening();
-    _voice.release();
-  }
+  void didPushNext() => _voiceCtl.cover();
 
   @override
-  void didPopNext() {
-    _covered = false;
-    _voice = _appVoice.claim();
+  void didPopNext() => _voiceCtl.uncover();
+
+  void _onListeningChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _stillFindingTimer?.cancel();
     _positionSub?.cancel();
-    _onHeard = null;
-    _listenTimeout?.cancel();
-    // The recognizer outlives this screen: leave it no callbacks into it.
-    if (_speech.statusListener == _onSpeechStatus) {
-      _speech.statusListener = null;
-      _speech.errorListener = null;
-    }
-    _speech.cancel();
     if (_routeSubscribed) voiceRouteObserver.unsubscribe(this);
-    _voice.release();
+    _voiceCtl.listening.removeListener(_onListeningChanged);
+    _voiceCtl.dispose();
     super.dispose();
   }
 
@@ -181,19 +165,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   /// the recognizer (D1).
   /// Always, whatever "Guía de voz" says: that setting is for the trip's
   /// instructions, and with it off this screen was silent.
-  Future<void> _say(String text, {bool interrupt = false}) async {
-    // Never over an open microphone: a sentence spoken while the recognizer
-    // is still closing is lost on Android ("Di sí…" after a place, "gira
-    // despacio" after "sí").
-    if (_listening || _speech.isListening) _stopAnyListening();
-    for (var i = 0; i < 10 && _speech.isListening; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    if (!mounted || _covered) return;
-    // Returns when the voice says this sentence is over, after any before it.
-    await _voice.say(text, interrupt: interrupt);
-  }
+  Future<void> _say(String text, {bool interrupt = false}) =>
+      _voiceCtl.say(text, interrupt: interrupt);
 
   /// Start and destination rows, shown only when the user asked for them
   /// in Settings, or when voice can't be used this time (D1, D2).
@@ -277,38 +250,16 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     ].join(' · ');
   }
 
-  /// The recognizer locale for the app language (es-CO first, like the
-  /// voice), or null to let the phone use its default.
-  Future<String?> _speechLocale(String language) async {
-    final available = {
-      for (final l in await _speech.locales())
-        l.localeId.replaceAll('_', '-').toLowerCase(): l.localeId,
-    };
-    for (final candidate in ttsLanguageCandidates(language)) {
-      final match = available[candidate.toLowerCase()];
-      if (match != null) return match;
-    }
-    for (final entry in available.entries) {
-      if (entry.key.startsWith(language)) return entry.value;
-    }
-    return null;
-  }
-
   /// Voice first (D1): the app asks and listens by itself, unless the voice is
   /// off or a screen reader is on (it would be heard as the answer). Not
   /// over a dialog, and never again once a destination is chosen.
   bool get _voiceFirst => !_revealChoices;
 
-  /// How many times in a row nothing usable was heard. After the first try
-  /// and [_kVoiceRetries] more, it stops and points to the buttons.
-  int _voiceMisses = 0;
-  static const _kVoiceRetries = 2;
-
   /// Right after sign-in: "Where do you want to go?", then listening.
   Future<void> _askForDestination() async {
     if (!mounted || _end != null || !_voiceFirst) return;
     if (ModalRoute.of(context)?.isCurrent != true) return;
-    _voiceMisses = 0;
+    _voiceCtl.resetMisses();
     if (MediaQuery.of(context).accessibleNavigation) {
       // TalkBack reads the new screen first; the question comes after it.
       await Future<void>.delayed(const Duration(seconds: 2));
@@ -322,13 +273,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     await _startListening(_handleSpoken, prompt: l10n.homeListenExample);
   }
 
-  /// Nothing usable was heard: say why, and try again up to [_kVoiceRetries]
+  /// Nothing usable was heard: say why, and try again up to
+  /// [HomeVoiceController.retries]
   /// times, then stop with the way to carry on by hand. Never a loop.
   Future<void> _missed(String why) async {
     final l10n = AppLocalizations.of(context)!;
-    _voiceMisses++;
-    if (_voiceMisses > _kVoiceRetries) {
-      _voiceMisses = 0;
+    if (!_voiceCtl.missed()) {
       await _say('$why ${l10n.homeVoiceGiveUp}');
       return;
     }
@@ -344,67 +294,16 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   /// at once, whatever the recognizer does next.
   Future<void> _listenForDestination() async {
     if (_listening) {
-      _onHeard = null; // stopped on purpose: no answer, no retry
-      _listenTimeout?.cancel();
-      _setListening(false);
-      _voiceMisses = 0;
-      final stopped = AppLocalizations.of(context)!.homeStoppedListening;
-      await _speech.cancel();
-      await _say(stopped, interrupt: true);
+      await _voiceCtl.stopListeningByHand(
+        AppLocalizations.of(context)!.homeStoppedListening,
+      );
       return;
     }
-    _voiceMisses = 0;
+    _voiceCtl.resetMisses();
     await _startListening(
       _handleSpoken,
       prompt: AppLocalizations.of(context)!.homeListenPrompt,
     );
-  }
-
-  /// Who gets the current listen's answer; null when nobody is listening.
-  /// The recognizer is one object for the whole app, and keeps the callbacks
-  /// of its first `initialize` (speech_to_text 7.5). #225 passed a new
-  /// callback each time, so every answer after the first, and every one after
-  /// logging in again, went to a callback that was already done, and the
-  /// button stayed on "Listening". Now this screen sets its own listeners
-  /// before every listen, and they hand the answer to this field.
-  Future<void> Function(String heard)? _onHeard;
-  Timer? _listenTimeout;
-
-  void _finishListening(String heard) {
-    final onHeard = _onHeard;
-    _onHeard = null;
-    _listenTimeout?.cancel();
-    if (!mounted) return;
-    _setListening(false);
-    if (onHeard != null) onHeard(heard);
-  }
-
-  /// Whether the microphone is open, for the button and for the app's voice
-  /// (#264's flag was cleared only when stopped by hand, so after a place
-  /// was heard "¿Ir a X? Di sí…" waited for a tap).
-  void _setListening(bool on) {
-    if (on) {
-      _voice.beginListening();
-    } else {
-      _voice.endListening();
-    }
-    if (mounted && _listening != on) setState(() => _listening = on);
-  }
-
-  /// Whether the current listen has itself reported "listening". A listen
-  /// that ended a moment ago still sends its "done" late, and it reached the
-  /// next one (the "sí" at "Go to X?"), ending it at once with the old words.
-  /// Until this is set, "done" and errors belong to an earlier listen.
-  bool _listenSawStart = false;
-
-  /// "done" comes after the final result, if there was one.
-  void _onSpeechStatus(String status) {
-    if (status == 'listening') _listenSawStart = true;
-    if (status == 'done' && _listenSawStart) _finishListening(_heard);
-  }
-
-  void _onSpeechError(SpeechRecognitionError error) {
-    if (_listenSawStart) _finishListening('');
   }
 
   /// Opens the microphone once, after saying [prompt] (what to say: a tester
@@ -435,88 +334,20 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       }
     }
     if (!mounted) return false;
-    _speech.statusListener = _onSpeechStatus;
-    _speech.errorListener = _onSpeechError;
-    final available = await _speech.initialize(
-      onStatus: _onSpeechStatus,
-      onError: _onSpeechError,
-    );
-    if (!mounted) return false;
-    if (!available) {
-      // Said once, and the choices appear. Retrying can't bring a
-      // microphone back.
-      _voiceMisses = 0;
-      setState(() => _revealChoices = true);
-      await _say(l10n.homeVoiceUnavailable);
-      return false;
-    }
-    if (prompt != null) {
-      await _say(prompt);
-      if (!mounted) return false;
-    }
-    // The prompt has finished (its own end event): a short pause, and then
-    // the marks and the microphone, always in that order.
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    if (!mounted) return false;
-    final localeId = await _speechLocale(language);
-    if (!mounted) return false;
-    // Felt and heard before the microphone opens: once it's on, anything
-    // the app plays would be taken as speech.
-    await buzz(Buzz.short);
-    await SystemSound.play(SystemSoundType.click);
-    return _openRecognizer(
+    final started = await _voiceCtl.listen(
       onHeard,
-      localeId: localeId,
+      language: language,
+      prompt: prompt,
       listenFor: listenFor,
       pauseFor: pauseFor,
     );
-  }
-
-  /// One recognizer session, no prompt and no marks. Silence ends it, and
-  /// the caller says so: reopening quietly left people in a long silent
-  /// cycle, with the button flickering.
-  Future<bool> _openRecognizer(
-    Future<void> Function(String heard) onHeard, {
-    required String? localeId,
-    required Duration listenFor,
-    required Duration pauseFor,
-  }) async {
-    // One listen at a time: the last one may still be closing.
-    for (var i = 0; i < 10 && _speech.isListening; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+    if (started == ListenStart.unavailable && mounted) {
+      // Said once, and the choices appear. Retrying can't bring a
+      // microphone back.
+      setState(() => _revealChoices = true);
+      await _say(l10n.homeVoiceUnavailable);
     }
-    if (_speech.isListening) await _speech.cancel();
-    if (!mounted || _covered) return false;
-    _heard = '';
-    _setListening(true);
-    _onHeard = onHeard;
-    _listenSawStart = false;
-    // If the recognizer never reports back, this still ends the listen.
-    _listenTimeout?.cancel();
-    _listenTimeout = Timer(
-      listenFor + const Duration(seconds: 4),
-      () => _finishListening(_heard),
-    );
-    try {
-      await _speech.listen(
-        onResult: (result) {
-          if (!mounted) return;
-          setState(() => _heard = result.recognizedWords);
-          if (result.finalResult) _finishListening(result.recognizedWords);
-        },
-        listenOptions: SpeechListenOptions(
-          localeId: localeId,
-          listenFor: listenFor,
-          pauseFor: pauseFor,
-          partialResults: true,
-          cancelOnError: true,
-        ),
-      );
-    } catch (_) {
-      _finishListening('');
-      return false;
-    }
-    return true;
+    return started == ListenStart.started;
   }
 
   Future<void> _handleSpoken(String heard) async {
@@ -527,7 +358,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       await _missed(l10n.homeVoiceNothingHeard);
       return;
     }
-    _voiceMisses = 0;
+    _voiceCtl.resetMisses();
     final candidates = _destinationCandidates;
     // A place called exactly that first: there may be a "Cafetería central"
     // both as a place and as a building.
@@ -655,7 +486,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       ),
     );
     openSheet = null;
-    _stopAnyListening();
+    _voiceCtl.stopListening();
     if (!mounted) return;
     if (identical(picked, _kNone)) {
       _askForDestination(); // "ninguno": ask again
@@ -666,15 +497,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
 
   /// "None of them", from the read-out list.
   static const Map<String, dynamic> _kNone = {};
-
-  /// A dialog or list closed: an answer still on its way is for something
-  /// that's gone.
-  void _stopAnyListening() {
-    _onHeard = null;
-    _listenTimeout?.cancel();
-    _setListening(false);
-    _speech.cancel();
-  }
 
   void _chooseVoiceDestination(Map<String, dynamic> anchor) =>
       _confirmAndStart(anchor);
@@ -764,8 +586,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       ),
     );
     openDialog = null;
-    _stopAnyListening();
-    _voice.stop();
+    _voiceCtl.stopListening();
+    _voiceCtl.stopSpeaking();
     if (!mounted) return;
     if (start == true) {
       _findRoute();
@@ -1117,7 +939,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       );
       if (next != true) break;
     }
-    _voice.stop();
+    _voiceCtl.stopSpeaking();
   }
 
   /// True when the user went back into an unfinished trip.
@@ -1279,7 +1101,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       ),
     );
     _askingFloor = false;
-    _voice.stop();
+    _voiceCtl.stopSpeaking();
     if (floor != null) {
       _answeredFloor = floor;
       _answeredFloorFrom = here;

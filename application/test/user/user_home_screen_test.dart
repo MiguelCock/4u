@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:eyes4u/l10n/app_localizations.dart';
 import 'package:eyes4u/services/api_service.dart';
 import 'package:eyes4u/services/app_preferences.dart';
@@ -12,8 +10,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:speech_to_text/speech_recognition_result.dart';
-import 'package:speech_to_text/speech_to_text.dart';
+
+import '../support/voice_fakes.dart';
 
 /// Pins how the home screen behaves today (#268), before it's split up:
 /// asking, listening, a place heard, misses, and the tutorial. Every
@@ -86,86 +84,9 @@ class _NoLocation extends LocationPlatform {
   Stream<Position> positions() => const Stream.empty();
 }
 
-/// A recognizer that listens when asked, and hears what a test says.
-class _FakeSpeech extends Fake implements SpeechToText {
-  @override
-  SpeechStatusListener? statusListener;
-  @override
-  SpeechErrorListener? errorListener;
-
-  bool available = true;
-  int listens = 0;
-  bool _on = false;
-  SpeechResultListener? _onResult;
-
-  @override
-  bool get isListening => _on;
-
-  @override
-  Future<bool> initialize({
-    SpeechErrorListener? onError,
-    SpeechStatusListener? onStatus,
-    debugLogging = false,
-    Duration finalTimeout = const Duration(milliseconds: 2000),
-    List<SpeechConfigOption>? options,
-  }) async => available;
-
-  @override
-  Future<List<LocaleName>> locales() async => [LocaleName('es_CO', 'Español')];
-
-  @override
-  Future listen({
-    SpeechResultListener? onResult,
-    Duration? listenFor,
-    Duration? pauseFor,
-    String? localeId,
-    SpeechSoundLevelChange? onSoundLevelChange,
-    cancelOnError = false,
-    partialResults = true,
-    onDevice = false,
-    ListenMode listenMode = ListenMode.confirmation,
-    sampleRate = 0,
-    SpeechListenOptions? listenOptions,
-  }) async {
-    listens++;
-    _on = true;
-    _onResult = onResult;
-    statusListener?.call('listening');
-  }
-
-  @override
-  Future<void> cancel() async => _on = false;
-
-  /// The user said [words] ('' for silence), and the listen ended.
-  void hear(String words) {
-    expect(_on, isTrue, reason: 'heard "$words" with the microphone closed');
-    _on = false;
-    _onResult?.call(
-      SpeechRecognitionResult([
-        SpeechRecognitionWords(words, null, 1),
-      ], ResultType.finalResult.value),
-    );
-    statusListener?.call('done');
-  }
-}
-
-/// A voice that takes 100 ms per sentence and remembers what it said.
-class _FakeVoice {
-  final said = <String>[];
-  late final AppVoice voice = AppVoice(
-    speak: (text) async {
-      said.add(text);
-      voice.onStarted();
-      Timer(const Duration(milliseconds: 100), voice.onEnded);
-    },
-    stop: () async {},
-    configure: (_) async => true,
-  );
-}
-
 class _Harness {
-  final speech = _FakeSpeech();
-  final voice = _FakeVoice();
+  final speech = FakeSpeech();
+  final voice = FakeVoice();
 
   late AppLocalizations l10n;
 
