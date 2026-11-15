@@ -244,6 +244,53 @@ class HomeVoiceController {
         : ListenStart.gone;
   }
 
+  /// Listens for a short answer that [parse] understands (null: not
+  /// understood), and hands it to [onAnswer]. Not understood, it says
+  /// [notUnderstood] and listens again, [retries] times, then says [giveUp]
+  /// and stops: the buttons are still there. Nothing more happens once
+  /// [stillOpen] is false (the dialog asking has closed).
+  Future<void> askUntil<T extends Object>(
+    T? Function(String heard) parse, {
+    required FutureOr<void> Function(T answer) onAnswer,
+    required String language,
+    required String notUnderstood,
+    required String giveUp,
+    required bool Function() stillOpen,
+    int retries = HomeVoiceController.retries,
+    Duration listenFor = const Duration(seconds: 20),
+    Duration pauseFor = const Duration(seconds: 3),
+  }) async {
+    var tries = 0;
+    Future<void> heard(String words) async {
+      if (!stillOpen()) return;
+      final answer = parse(words);
+      if (answer != null) {
+        await onAnswer(answer);
+        return;
+      }
+      if (++tries > retries) {
+        await say(giveUp);
+        return;
+      }
+      await say(notUnderstood);
+      if (stillOpen()) {
+        await listen(
+          heard,
+          language: language,
+          listenFor: listenFor,
+          pauseFor: pauseFor,
+        );
+      }
+    }
+
+    await listen(
+      heard,
+      language: language,
+      listenFor: listenFor,
+      pauseFor: pauseFor,
+    );
+  }
+
   /// One recognizer session, no prompt and no marks. Silence ends it, and
   /// the caller says so: reopening quietly left people in a long silent
   /// cycle, with the button flickering.
