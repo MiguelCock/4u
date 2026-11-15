@@ -15,13 +15,13 @@ import '../services/api_service.dart';
 import '../services/app_preferences.dart';
 import '../services/buzz.dart';
 import '../services/camera_helper.dart';
-import '../services/destination_matcher.dart';
 import '../services/destinations.dart';
 import '../services/spoken_destination.dart';
 import '../services/geo_utils.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import 'anchor_point_picker_screen.dart';
+import 'home_dialogs.dart';
 import 'navigation_screen.dart';
 import 'settings_screen.dart';
 import '../services/api_error_messages.dart';
@@ -344,191 +344,45 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   }
 
   /// One option goes straight to "Go to X?", several to a choice of the first
-  /// few.
+  /// few ([chooseDestination]).
   Future<void> _chooseFrom(List<Map<String, dynamic>> found) async {
     if (found.length == 1) {
-      _chooseVoiceDestination(found.single);
+      _confirmAndStart(found.single);
       return;
     }
-    final l10n = AppLocalizations.of(context)!;
-    final options = found.take(3).toList();
-    final labels = options.map(_spokenLabel).toList();
-    BuildContext? openSheet;
-    // Read out numbered, then chosen by saying the number or the name (D1).
-    // The list stays on screen for tapping.
-    () async {
-      await _say(
-        l10n.homeVoiceSeveralMatches(
-          [
-            for (final (i, label) in labels.indexed) '${i + 1}, $label',
-          ].join('; '),
-        ),
-      );
-      var tries = 0;
-      Future<void> answer(String heard) async {
-        final sheet = openSheet;
-        if (sheet == null || !sheet.mounted) return;
-        final picked = pickSpokenOption(heard, labels);
-        if (picked != null) {
-          Navigator.of(sheet).pop(picked < 0 ? _kNone : options[picked]);
-          return;
-        }
-        if (++tries > 2) {
-          await _say(l10n.homeOptionsGiveUp);
-          return; // the list is still there to tap
-        }
-        await _say(l10n.homeVoiceOptionNotUnderstood);
-        if (sheet.mounted) {
-          await _startListening(
-            answer,
-            listenFor: const Duration(seconds: 20),
-            pauseFor: const Duration(seconds: 3),
-          );
-        }
-      }
-
-      final sheet = openSheet;
-      if (_voiceFirst && sheet != null && sheet.mounted) {
-        await _startListening(
-          answer,
-          listenFor: const Duration(seconds: 20),
-          pauseFor: const Duration(seconds: 3),
-        );
-      }
-    }();
-    final picked = await showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Builder(
-                builder: (_) {
-                  openSheet = context;
-                  // Read out with the options by the app's voice.
-                  return SpokenText(
-                    child: Text(
-                      l10n.homeVoiceChooseTitle,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  );
-                },
-              ),
-            ),
-            for (final option in options)
-              ListTile(
-                leading: const Icon(Icons.location_on, color: Colors.blue),
-                title: Text(_destinationLabel(option)),
-                onTap: () => Navigator.of(context).pop(option),
-              ),
-          ],
-        ),
-      ),
+    final choice = await chooseDestination(
+      context,
+      voice: _voiceCtl,
+      language: Localizations.localeOf(context).languageCode,
+      options: found.take(3).toList(),
+      label: _destinationLabel,
+      spoken: _spokenLabel,
+      listen: _voiceFirst,
     );
-    openSheet = null;
-    _voiceCtl.stopListening();
     if (!mounted) return;
-    if (identical(picked, _kNone)) {
+    final picked = choice.picked;
+    if (choice.noneOfThem) {
       _askForDestination(); // "ninguno": ask again
     } else if (picked != null) {
-      _chooseVoiceDestination(picked);
+      _confirmAndStart(picked);
     }
   }
 
-  /// "None of them", from the read-out list.
-  static const Map<String, dynamic> _kNone = {};
-
-  void _chooseVoiceDestination(Map<String, dynamic> anchor) =>
-      _confirmAndStart(anchor);
-
-  /// A destination was chosen (by voice or from the list): "Go to X?" with
-  /// one big Start route button, which starts the trip. In the first user
-  /// test people expected the route to start once they'd said the place,
-  /// and couldn't find the separate Find route button.
+  /// A destination was chosen (by voice or from the list): "Go to X?"
+  /// ([confirmDestination]), whose Start route button starts the trip.
   Future<void> _confirmAndStart(Map<String, dynamic> anchor) async {
     setState(() {
       _end = anchor;
       _error = null;
     });
-    final l10n = AppLocalizations.of(context)!;
-    final title = l10n.homeGoToTitle(_destinationLabel(anchor));
-    BuildContext? openDialog;
-    {
-      final voiceFirst = _voiceFirst;
-      () async {
-        await _say(
-          voiceFirst
-              ? '${l10n.homeGoToTitle(_spokenLabel(anchor))} ${l10n.homeSayYesToStart}'
-              : l10n.homeGoToTitle(_spokenLabel(anchor)),
-        );
-        // Saying "yes" starts it (D1): the buttons stay for everyone else.
-        final dialog = openDialog;
-        if (!voiceFirst || dialog == null || !dialog.mounted) return;
-        var tries = 0;
-        Future<void> heardAnswer(String heard) async {
-          final still = openDialog;
-          if (still == null || !still.mounted) return;
-          final answer = spokenAnswer(heard);
-          if (answer != null) {
-            Navigator.of(still).pop(answer == SpokenAnswer.start);
-            return;
-          }
-          if (++tries > 2) {
-            await _say(l10n.homeConfirmGiveUp);
-            return; // the buttons are still there
-          }
-          await _say(l10n.homeSayYesOrNo);
-          if (still.mounted) {
-            await _startListening(
-              heardAnswer,
-              listenFor: const Duration(seconds: 20),
-              pauseFor: const Duration(seconds: 3),
-            );
-          }
-        }
-
-        await _startListening(
-          heardAnswer,
-          listenFor: const Duration(seconds: 20),
-          pauseFor: const Duration(seconds: 3),
-        );
-      }();
-    }
-    final start = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Builder(
-          builder: (context) {
-            openDialog = dialogContext;
-            // The app asks it aloud, then listens: TalkBack reading it too
-            // was heard by the microphone as the answer (#257).
-            return SpokenText(child: Text(title));
-          },
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actionsOverflowDirection: VerticalDirection.up,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(l10n.homeChangeDestinationButton),
-          ),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(220, 64),
-              textStyle: Theme.of(dialogContext).textTheme.titleLarge,
-            ),
-            autofocus: true,
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            icon: const Icon(Icons.directions_walk),
-            label: Text(l10n.homeStartRouteButton),
-          ),
-        ],
-      ),
+    final start = await confirmDestination(
+      context,
+      voice: _voiceCtl,
+      language: Localizations.localeOf(context).languageCode,
+      label: _destinationLabel(anchor),
+      spoken: _spokenLabel(anchor),
+      listen: _voiceFirst,
     );
-    openDialog = null;
-    _voiceCtl.stopListening();
-    _voiceCtl.stopSpeaking();
     if (!mounted) return;
     if (start == true) {
       _findRoute();
@@ -1002,8 +856,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   }
 
   /// Which of [floors] the user is on: their earlier answer until they've
-  /// moved [_kStartCheckRadiusMeters], else asked, spoken, with one big button
-  /// per floor. Null if they back out.
+  /// moved [_kStartCheckRadiusMeters], else asked ([askStartFloor]). Null
+  /// if they back out.
   Future<int?> _startFloor(List<int> floors, LatLng here) async {
     final answered = _answeredFloor;
     final from = _answeredFloorFrom;
@@ -1013,36 +867,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
         haversineMeters(from, here) < _kStartCheckRadiusMeters) {
       return answered;
     }
-    final l10n = AppLocalizations.of(context)!;
     _askingFloor = true;
-    final labels = [for (final f in floors) l10n.commonFloorOption(f + 1)];
-    _say('${l10n.homeWhichFloorTitle} ${labels.join(', ')}.');
-    final floor = await showDialog<int>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: SpokenText(child: Text(l10n.homeWhichFloorTitle)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var i = 0; i < floors.length; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(64),
-                    textStyle: Theme.of(dialogContext).textTheme.titleLarge,
-                  ),
-                  onPressed: () => Navigator.of(dialogContext).pop(floors[i]),
-                  child: Text(labels[i]),
-                ),
-              ),
-          ],
-        ),
-      ),
+    final floor = await askStartFloor(
+      context,
+      voice: _voiceCtl,
+      floors: floors,
     );
     _askingFloor = false;
-    _voiceCtl.stopSpeaking();
     if (floor != null) {
       _answeredFloor = floor;
       _answeredFloorFrom = here;

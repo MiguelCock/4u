@@ -236,7 +236,7 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 
 - **Maps.** `lib/services/floor_view.dart` (pure) decides what shows; `lib/widgets/floor_selector.dart` is the elevator control and `floorPointMarker`. `AdminMap` (the Map section and the location picker) shows the selected floor, ±1 floor as ▲/▼ (tappable, the selected floor winning a tap), and lines only with an end on the selected floor (dashed across floors). `session_tracking_screen.dart` and `SimpleMapWidget` show a route, not points: its stretches away from the floor are faint.
 - **Guidance.** GPS can't tell floors apart, so `_checkProximity` stops at the first waypoint on another floor than `_currentFloor`. Reaching the last point before a change (`floorChangeAfter`, `lib/services/floor_steps.dart`; hops collapse into one) speaks the instruction and pauses guidance until `FloorChangeDetector` (`lib/services/floor_detector.dart`) hears it: 0.28 hPa per floor, the right way, held 3 s. If it doesn't within 3 min, or 60 s per floor with no barometer, the trip carries on and says so. The barometer is the only signal for now; a confirmation button is the fallback if tests need one. Logs: `pressure_hpa`, `floor`, `waiting_floor` per tick, events `floor_wait`, `floor_detected`, `floor_timeout`, `barometer_missing` (`docs/TUNING.md` §9).
-- **Start.** `_findRoute` asks "which floor are you on?" when `floorsNear` (15 m) finds several, and keeps the answer until the user moves 15 m.
+- **Start.** `_findRoute` asks "which floor are you on?" (`askStartFloor`) when `floorsNear` (15 m) finds several, and keeps the answer until the user moves 15 m.
 
 ## One admin map (C1)
 
@@ -359,7 +359,7 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 - **Asking:** after `_checkUnfinishedTrip` (`Future<bool>`, true when resumed) and the first-run tutorial (`tutorial_seen_v3`), `_askForDestination` says `homeAskDestination` and listens. With TalkBack it waits 2 s first, for TalkBack to read the screen.
   - It listens up to 30 s, and stops after 5 s of silence.
   - Misses go through `_missed` (counted by `HomeVoiceController.missed`): two retries, then `homeVoiceGiveUp`, then it stops.
-- **Several matches** (`_chooseFrom`): read out numbered ("1, Baño, Biblioteca; 2, …"), then chosen by voice with `pickSpokenOption` (a number, or words only one option has; "ninguno" asks again). One retry. The sheet stays for tapping.
+- **Several matches** (`_chooseFrom` → `chooseDestination`, `lib/user/home_dialogs.dart`, #268, with `confirmDestination` and `askStartFloor`; widget tests in `test/user/home_dialogs_test.dart`): read out numbered ("1, Baño, Biblioteca; 2, …"), then chosen by voice with `pickSpokenOption` (a number, or words only one option has; "ninguno" asks again). One retry. The sheet stays for tapping.
 - **"Go to X?"** adds `homeSayYesToStart` and listens 15 s; `spokenAnswer` gives start or change, with one retry (`homeSayYesOrNo`). "No" with the rows hidden asks again.
 - **The recognizer is one object for the whole app** (`SpeechToText()` is a singleton, and `initialize` keeps only its first callbacks). So before every listen `HomeVoiceController` (`lib/voice/home_voice_controller.dart`, #268) sets `statusListener`/`errorListener` to its own handlers, which pass the answer to `_onHeard`; `dispose` clears them.
   - **A previous listen's late "done"** is ignored until the current listen has reported "listening" (`_listenSawStart`). It used to end the confirmation's listen at once.
