@@ -266,4 +266,26 @@ void main() {
     expect(events, contains('gps_stale'));
     await t.close(tester);
   });
+
+  testWidgets('a comment after the trip is sent with the session', (
+    tester,
+  ) async {
+    final t = _Trip();
+    await t.start(tester);
+    await t.run(tester, seconds: 5); // the camera notice goes
+    await tester.tap(find.text(t.l10n.navEndButton));
+    await t.run(tester);
+
+    await tester.enterText(find.byType(TextField), 'Muy bien');
+    await tester.tap(find.text(t.l10n.navFeedbackSubmit));
+    await t.run(tester);
+    final feedback = t.navigation.posts.lastWhere((p) => p.$1 == '/feedback');
+    expect(feedback.$2, {
+      'user_id': 'u1',
+      'session_id': 's1',
+      'comment': 'Muy bien',
+    });
+    expect(find.text('go'), findsOneWidget);
+    await t.close(tester);
+  });
 }

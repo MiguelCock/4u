@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
+import '../services/trip_sessions.dart';
 
 /// A trip left open by closing the app mid-route (#268): offered to
 /// continue or finish, instead of staying "active" forever. Came out of
@@ -19,16 +20,13 @@ class UnfinishedTrips {
     NavigationManagementApi? navigationApi,
     RouteManagementApi? routeApi,
     LocationService? locationService,
-    DateTime Function()? now,
   }) : _navigationApi = navigationApi ?? NavigationManagementApi(),
        _routeApi = routeApi ?? RouteManagementApi(),
-       _location = locationService ?? LocationService(),
-       _now = now ?? DateTime.now;
+       _location = locationService ?? LocationService();
 
   final NavigationManagementApi _navigationApi;
   final RouteManagementApi _routeApi;
   final LocationService _location;
-  final DateTime Function() _now;
 
   /// The newest open trip that can be resumed, or null. Older ones are
   /// closed, and so is the newest when its route is gone (nothing to resume
@@ -66,17 +64,13 @@ class UnfinishedTrips {
   /// `completed`: they never arrived), so admins can tell them apart. Best
   /// effort: it will be offered again next launch.
   Future<void> abandon(Map<String, dynamic> session) async {
-    final position = _location.lastPosition;
     try {
-      await _navigationApi.patch('/sessions/${session['id']}', {
-        'status': 'abandoned',
-        'end_time': _now().toUtc().toIso8601String(),
-        if (position != null)
-          'end_position': {
-            'latitude': position.latitude,
-            'longitude': position.longitude,
-          },
-      });
+      await closeSession(
+        _navigationApi,
+        session['id'] as String,
+        status: 'abandoned',
+        at: _location.lastPosition,
+      );
     } on ApiException {
       // Offered again next launch.
     }

@@ -344,7 +344,9 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
   - a stale fix.
 
   Fakes: `test/support/sensor_fakes.dart`, `FixedLocation.moveTo`, and `fix()`, stamped with the test clock.
+- **Where it thinks the user is:** `PositionSource` (`lib/user/position_source.dart`): the live fix moved by the latest correction's offset for 20 s, then raw GPS, blended over 2 s. It remembers which it used, for `position_source` in the logs.
 - **Its correction tick:** `CorrectionLoop` (`lib/user/correction_loop.dart`) takes a photo through `TripCamera`, sends it with `postCorrection` (`lib/services/correction_request.dart`, shared with the start check), and logs the tick. It owns the blocked-lens streak, the server-busy pause and the new-match buzz; the screen gets `onCorrected`/`onCameraBlocked` back. Tests: `test/user/correction_loop_test.dart`.
+- **Closing a session:** `closeSession(api, id, status:, at:)` (`lib/services/trip_sessions.dart`) for the trip's `completed` and the home screen's `abandoned`; the after-trip question is `showTripFeedback` (`lib/user/trip_feedback.dart`).
 - **Its log queue:** `TripLog` (`lib/user/trip_log.dart`) holds the cues said and the events since the last tick; each tick's `debug` takes them (`drain`), and a refused `POST /logs` puts them back first. Log through `_log.cue`/`_log.event`, never a list of your own.
 - **Pure pieces it uses:**
   - `buildTripPlan` and `resumeWaypointIndex` (`lib/services/trip_plan.dart`): the route's stops (corners, named places, hazards, both ends of a floor change) and where a resumed trip picks up;

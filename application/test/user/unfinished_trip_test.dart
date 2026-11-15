@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:eyes4u/l10n/app_localizations.dart';
 import 'package:eyes4u/services/location_service.dart';
 import 'package:eyes4u/user/home_tutorial.dart';
@@ -37,7 +38,6 @@ class _Setup {
     navigationApi: navigation,
     routeApi: route,
     locationService: location,
-    now: () => DateTime.utc(2026, 11, 15, 15),
   );
 }
 
@@ -82,7 +82,10 @@ void main() {
 
   test('abandon: when and where it ended', () async {
     final s = _Setup()..location.lastPosition = fix(6.2, -75.58);
-    await s.trips.abandon(_session('s1'));
+    await withClock(
+      Clock.fixed(DateTime.utc(2026, 11, 15, 15)),
+      () => s.trips.abandon(_session('s1')),
+    );
     expect(s.navigation.patches['/sessions/s1'], {
       'status': 'abandoned',
       'end_time': '2026-11-15T15:00:00.000Z',
