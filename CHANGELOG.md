@@ -6,6 +6,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-15
+
 ### Added
 
 - **iPhone (for testers):** each release now has an `Eyes4U-unsigned.ipa`, installed with your own Apple ID through Sideloadly or AltStore. It has to be installed again every 7 days. See [docs/ios-sideload.md](docs/ios-sideload.md).
@@ -313,7 +315,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.6.0-pre...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.6.0...develop
+[0.6.0]: https://github.com/MiguelCock/4u/compare/v0.6.0-pre...v0.6.0
 [0.6.0-pre]: https://github.com/MiguelCock/4u/compare/v0.5.6...v0.6.0-pre
 [0.5.6]: https://github.com/MiguelCock/4u/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/MiguelCock/4u/compare/v0.5.4...v0.5.5

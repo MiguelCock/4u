@@ -86,15 +86,18 @@ Every component is expected to carry its own test suite: the Flutter app is test
 - **Sync check:** `packages/tests/test_app_versions.py` fails if `latest` and the pubspec version disagree.
 - **Compatibility rule for every backend change:** the previous release's app must keep working. API changes are additive. A field or endpoint the previous app still uses is removed only in a release after `min_supported` has moved past every version that uses it.
 
+**Frequent, small releases** (since 0.6.0, after the presentation): each release is a patch (0.6.1, 0.6.2, …) with its own milestone of a few issues, shipped as soon as they're done. Everything else waits in the `Backlog` milestone; when a release ships, the next patch milestone is opened and filled from it. A minor version (0.7) is for a larger change of direction.
+
 **Release checklist** (with the flow above):
 - Every issue in the release's milestone meets the definition of done below, and `gh issue list --milestone <version>` shows what isn't in.
-- `python3 scripts/bump_version.py X.Y.Z`. `min_supported` moves to the previous release, so anything older gets "Update required": phones need the new APK first.
+- `python3 scripts/bump_version.py X.Y.Z`. `min_supported` moves to the previous release, so anything older gets "Update required": every release asks phones to update, so the APK and IPA are out before the deploy.
 - Database changes are run by hand in Supabase before deploying (`db_schema/migrations/`).
 - After tagging, deploy every service and the gateway (`deployment/deploy.sh`), and check the services and the web guide.
+- Close the release's milestone, open the next patch's, and move its issues in from `Backlog`.
 
 ## Definition of done
 
-Work is tracked in GitHub issues, grouped by milestone. Every issue, on top of its own "done when":
+Work is tracked in GitHub issues: the next patch release's milestone, or `Backlog`. Every issue, on top of its own "done when":
 - **Older apps keep working:** backend changes are additive (see Releases).
 - **Tests** for what changed, and CI green.
 - **Strings** in English and Spanish.
