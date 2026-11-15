@@ -10,17 +10,24 @@ import 'package:flutter/material.dart';
 /// Deliberately not persisted locally (e.g. SharedPreferences) - the
 /// source of truth is `profiles.preferences` server-side; these notifiers
 /// are just the in-memory mirror of it for the current app session.
-final ValueNotifier<bool> highContrastNotifier = ValueNotifier<bool>(false);
+final ValueNotifier<bool> highContrastNotifier = ValueNotifier<bool>(
+  kDefaultHighContrast,
+);
 
 /// `null` means "follow the device locale" (Flutter's default resolution
 /// when `MaterialApp.locale` is left unset); a non-null value forces that
-/// language regardless of device locale.
-final ValueNotifier<Locale?> localeNotifier = ValueNotifier<Locale?>(null);
+/// language regardless of device locale. Spanish until a profile says
+/// otherwise (D10).
+final ValueNotifier<Locale?> localeNotifier = ValueNotifier<Locale?>(
+  kDefaultLocale,
+);
 
 /// Multiplies every `TextStyle`'s font size app-wide (`MainApp`'s
 /// `MaterialApp.builder` applies it via a `MediaQuery.textScaler`
 /// override) - 1.0 is normal size.
-final ValueNotifier<double> textScaleNotifier = ValueNotifier<double>(1.0);
+final ValueNotifier<double> textScaleNotifier = ValueNotifier<double>(
+  kDefaultTextScale,
+);
 
 /// Whether `NavigationScreen` should speak announcements (route start,
 /// waypoint proximity, arrival, end-of-session) via `flutter_tts` - the
@@ -47,33 +54,44 @@ bool homeShowsChoices({required bool setting, required bool revealed}) =>
     setting || revealed;
 
 /// Bold text everywhere (Settings, next to high contrast and font size).
-/// Null until the user chooses: then the phone's own bold-text setting.
-final ValueNotifier<bool?> boldTextNotifier = ValueNotifier<bool?>(null);
+/// Null would mean the phone's own bold-text setting; on by default (D10).
+final ValueNotifier<bool?> boldTextNotifier = ValueNotifier<bool?>(
+  kDefaultBoldText,
+);
+
+/// The look of anything never chosen (D10): high contrast, bold, the
+/// largest text Settings offers, and Spanish. Most users need them, and
+/// had to find each setting; anyone can switch back in Settings.
+const bool kDefaultHighContrast = true;
+const bool kDefaultBoldText = true;
+const double kDefaultTextScale = 1.3;
+const Locale kDefaultLocale = Locale('es');
+
+/// The saved `language` meaning "follow the phone". Saved explicitly now
+/// that nothing saved means Spanish; older apps read it as the phone's too.
+const String kLanguageAuto = 'auto';
+
+/// The locale for a saved `language`: Spanish when none was saved.
+Locale? localeFor(String? language) => switch (language) {
+  'en' => const Locale('en'),
+  'es' => const Locale('es'),
+  kLanguageAuto => null,
+  _ => kDefaultLocale,
+};
 
 /// Reads `high_contrast`/`language`/`font_scale`/`voice_guidance` out of a
 /// `profiles.preferences` map (as returned by `GET /profiles/{id}`) and
-/// applies them to the notifiers above. `defaultHighContrast` and
-/// `defaultTextScale` are OS-level signals
-/// (`MediaQuery.of(context).highContrast`/`textScaler.scale(1.0)`), used
-/// only when the corresponding preference has never been explicitly set.
-void applyPreferences(
-  Map<String, dynamic>? preferences, {
-  required bool defaultHighContrast,
-  double defaultTextScale = 1.0,
-}) {
+/// applies them to the notifiers above. What was never chosen takes the
+/// defaults above.
+void applyPreferences(Map<String, dynamic>? preferences) {
   final prefs = preferences ?? const {};
   highContrastNotifier.value =
-      prefs['high_contrast'] as bool? ?? defaultHighContrast;
-  final language = prefs['language'] as String?;
-  localeNotifier.value = switch (language) {
-    'en' => const Locale('en'),
-    'es' => const Locale('es'),
-    _ => null,
-  };
+      prefs['high_contrast'] as bool? ?? kDefaultHighContrast;
+  localeNotifier.value = localeFor(prefs['language'] as String?);
   textScaleNotifier.value =
-      (prefs['font_scale'] as num?)?.toDouble() ?? defaultTextScale;
+      (prefs['font_scale'] as num?)?.toDouble() ?? kDefaultTextScale;
   voiceGuidanceNotifier.value = prefs['voice_guidance'] as bool? ?? true;
   showMapNotifier.value = prefs['show_map'] as bool? ?? false;
   showChoicesNotifier.value = prefs['show_choices'] as bool? ?? false;
-  boldTextNotifier.value = prefs['bold_text'] as bool?;
+  boldTextNotifier.value = prefs['bold_text'] as bool? ?? kDefaultBoldText;
 }

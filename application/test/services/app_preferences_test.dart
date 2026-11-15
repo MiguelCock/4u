@@ -4,66 +4,54 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:eyes4u/services/app_preferences.dart';
 
 void main() {
-  test('falls back to the OS-level default when high_contrast is unset', () {
-    applyPreferences(null, defaultHighContrast: true);
-    expect(highContrastNotifier.value, true);
-
-    applyPreferences({}, defaultHighContrast: false);
-    expect(highContrastNotifier.value, false);
+  test('nothing chosen: high contrast, bold, large text, Spanish (D10)', () {
+    for (final prefs in [null, <String, dynamic>{}]) {
+      applyPreferences(prefs);
+      expect(highContrastNotifier.value, isTrue);
+      expect(boldTextNotifier.value, isTrue);
+      expect(textScaleNotifier.value, 1.3);
+      expect(localeNotifier.value, const Locale('es'));
+    }
   });
 
-  test('an explicit high_contrast preference overrides the OS default', () {
-    applyPreferences({'high_contrast': true}, defaultHighContrast: false);
-    expect(highContrastNotifier.value, true);
-
-    applyPreferences({'high_contrast': false}, defaultHighContrast: true);
-    expect(highContrastNotifier.value, false);
-  });
-
-  test('language maps to the matching Locale, unknown/missing stays null', () {
-    applyPreferences({'language': 'es'}, defaultHighContrast: false);
-    expect(localeNotifier.value, const Locale('es'));
-
-    applyPreferences({'language': 'en'}, defaultHighContrast: false);
+  test('a saved choice wins over the defaults', () {
+    applyPreferences({
+      'high_contrast': false,
+      'bold_text': false,
+      'font_scale': 1.0,
+      'language': 'en',
+    });
+    expect(highContrastNotifier.value, isFalse);
+    expect(boldTextNotifier.value, isFalse);
+    expect(textScaleNotifier.value, 1.0);
     expect(localeNotifier.value, const Locale('en'));
 
-    applyPreferences({'language': 'fr'}, defaultHighContrast: false);
-    expect(localeNotifier.value, null);
-
-    applyPreferences({}, defaultHighContrast: false);
-    expect(localeNotifier.value, null);
-  });
-
-  test('falls back to the OS-level default when font_scale is unset', () {
-    applyPreferences(null, defaultHighContrast: false, defaultTextScale: 1.3);
-    expect(textScaleNotifier.value, 1.3);
-
-    applyPreferences({}, defaultHighContrast: false, defaultTextScale: 1.0);
-    expect(textScaleNotifier.value, 1.0);
-  });
-
-  test('an explicit font_scale preference overrides the OS default', () {
-    applyPreferences(
-      {'font_scale': 1.15},
-      defaultHighContrast: false,
-      defaultTextScale: 1.0,
-    );
+    applyPreferences({'font_scale': 1.15});
     expect(textScaleNotifier.value, 1.15);
   });
 
-  test('voice_guidance defaults to on, no OS signal to fall back to', () {
-    applyPreferences(null, defaultHighContrast: false);
-    expect(voiceGuidanceNotifier.value, true);
-
-    applyPreferences({}, defaultHighContrast: false);
-    expect(voiceGuidanceNotifier.value, true);
+  test('language: Spanish unless chosen; "auto" follows the phone', () {
+    expect(localeFor('es'), const Locale('es'));
+    expect(localeFor('en'), const Locale('en'));
+    expect(localeFor(null), const Locale('es'));
+    // An unknown value: the default, as when nothing was saved.
+    expect(localeFor('fr'), const Locale('es'));
+    // "Automatic" in Settings: the phone's language (null).
+    expect(localeFor(kLanguageAuto), isNull);
   });
 
-  test('an explicit voice_guidance preference overrides the default', () {
-    applyPreferences({'voice_guidance': false}, defaultHighContrast: false);
-    expect(voiceGuidanceNotifier.value, false);
+  test('the defaults hold before anyone signs in', () {
+    // The notifiers' starting values, which the sign-in screen uses.
+    expect(kDefaultHighContrast, isTrue);
+    expect(kDefaultBoldText, isTrue);
+    expect(kDefaultTextScale, 1.3);
+    expect(kDefaultLocale, const Locale('es'));
+  });
 
-    applyPreferences({'voice_guidance': true}, defaultHighContrast: false);
+  test('voice_guidance defaults to on', () {
+    applyPreferences(null);
     expect(voiceGuidanceNotifier.value, true);
+    applyPreferences({'voice_guidance': false});
+    expect(voiceGuidanceNotifier.value, false);
   });
 }

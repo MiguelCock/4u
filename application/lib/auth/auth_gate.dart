@@ -86,11 +86,7 @@ class _AuthGateState extends State<AuthGate> {
   Map<String, dynamic> _applyAndReturn(Map<String, dynamic> result) {
     _checkAppVersion();
     if (mounted) {
-      applyPreferences(
-        result['preferences'] as Map<String, dynamic>?,
-        defaultHighContrast: MediaQuery.of(context).highContrast,
-        defaultTextScale: MediaQuery.of(context).textScaler.scale(1.0),
-      );
+      applyPreferences(result['preferences'] as Map<String, dynamic>?);
     }
     return result;
   }
