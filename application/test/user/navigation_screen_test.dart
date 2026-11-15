@@ -181,12 +181,7 @@ void main() {
     await t.close(tester);
   });
 
-  // A bug today: with nobody signed in, _startSession reads the strings
-  // from initState and throws, so "not signed in" never shows. Fixed in
-  // its own PR, since that changes behaviour.
-  testWidgets('no account: says so, and starts nothing', skip: true, (
-    tester,
-  ) async {
+  testWidgets('no account: says so, and starts nothing', (tester) async {
     final t = _Trip(signedIn: false);
     await t.start(tester);
     expect(find.text(t.l10n.commonNotSignedIn), findsOneWidget);
