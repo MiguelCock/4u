@@ -35,6 +35,11 @@ def parse(version: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in match.groups()[:3])
 
 
+def order(version: str) -> tuple[int, int, int, int]:
+    """For "is it newer": a final X.Y.Z comes after its own X.Y.Z-pre."""
+    return (*parse(version), 0 if "-" in version else 1)
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit(__doc__)
@@ -43,7 +48,7 @@ def main() -> None:
 
     policy = json.loads(POLICY.read_text())
     old = policy["latest"]
-    if parse(new) <= parse(old):
+    if order(new) <= order(old):
         raise SystemExit(f"{new} is not newer than the current {old}")
 
     pubspec = PUBSPEC.read_text()

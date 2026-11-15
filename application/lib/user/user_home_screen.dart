@@ -4,7 +4,6 @@ import 'dart:math';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemSound, SystemSoundType;
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
@@ -28,8 +27,10 @@ import 'navigation_screen.dart';
 import 'settings_screen.dart';
 import '../services/api_error_messages.dart';
 import '../services/exit_guard.dart';
-import '../services/speech_queue.dart';
 import '../services/speech_voice.dart';
+import '../voice/app_voice.dart';
+import '../voice/notices.dart';
+import '../widgets/speak_circle.dart';
 
 /// The `user`-role home screen IS the trip-planning flow now (not a map,
 /// not a separate screen reached via a FAB): the user only picks a
@@ -50,7 +51,7 @@ class UserHomeScreen extends StatefulWidget {
   State<UserHomeScreen> createState() => _UserHomeScreenState();
 }
 
-class _UserHomeScreenState extends State<UserHomeScreen> {
+class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   final _mapApi = MapManagementApi();
   final _routeApi = RouteManagementApi();
   final _positioningApi = PositioningApi();
@@ -80,16 +81,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   // Saying the destination out loud (speech_to_text) instead of drilling
   // down University -> Building -> place.
   final _speech = SpeechToText();
-  FlutterTts _tts = FlutterTts();
 
-  /// One sentence at a time, each waited for until the voice says it's done:
-  /// a guessed duration cut sentences off when the microphone opened.
-  late final _voice = SpeechQueue(
-    speak: (text) async => _tts.speak(text),
-    stop: () async => _tts.stop(),
-  );
-  Future<bool>? _ttsReady;
-  String? _ttsLanguage;
+  /// This screen's right to speak (the app's one voice, #258). Given up
+  /// while another page covers it, such as a trip: its last sentence and
+  /// its listening used to go on under the trip's own voice.
+  VoiceOwner _voice = AppVoice.instance.claim();
+  bool _covered = false;
+  bool _routeSubscribed = false;
   bool _listening = false;
   String _heard = '';
   Map<String, String> _buildingNames = {};
@@ -114,18 +112,27 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final language = Localizations.localeOf(context).languageCode;
-    if (language != _ttsLanguage) {
-      _ttsLanguage = language;
-      // The end of each sentence comes from the voice's own events
-      // (_claimVoiceEvents), not from speak() returning.
-      _ttsReady = configureTts(_tts, language).then((ready) async {
-        try {
-          await _tts.awaitSpeakCompletion(false);
-        } catch (_) {}
-        return ready;
-      });
+    AppVoice.instance.setLanguage(Localizations.localeOf(context).languageCode);
+    final route = ModalRoute.of(context);
+    if (!_routeSubscribed && route is PageRoute) {
+      _routeSubscribed = true;
+      voiceRouteObserver.subscribe(this, route);
     }
+  }
+
+  /// A page (a trip, Settings) now covers this screen: stop listening and
+  /// give up the voice until it's back on top.
+  @override
+  void didPushNext() {
+    _covered = true;
+    _stopAnyListening();
+    _voice.release();
+  }
+
+  @override
+  void didPopNext() {
+    _covered = false;
+    _voice = AppVoice.instance.claim();
   }
 
   @override
@@ -140,7 +147,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       _speech.errorListener = null;
     }
     _speech.cancel();
-    _tts.stop();
+    if (_routeSubscribed) voiceRouteObserver.unsubscribe(this);
+    _voice.release();
     super.dispose();
   }
 
@@ -159,23 +167,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     await Future<void>.delayed(const Duration(milliseconds: 250));
-    if (!mounted) return;
-    await _ttsReady;
-    _claimVoiceEvents();
+    if (!mounted || _covered) return;
     // Returns when the voice says this sentence is over, after any before it.
     await _voice.say(text, interrupt: interrupt);
-  }
-
-  /// The voice's events go to whichever FlutterTts was created last (one
-  /// channel for the app): after a trip, NavigationScreen's had them, and
-  /// this screen never heard a sentence end. A new one takes them back; the
-  /// engine and its settings are shared, so nothing else changes.
-  void _claimVoiceEvents() {
-    _tts = FlutterTts()
-      ..setStartHandler(_voice.onStarted)
-      ..setCompletionHandler(_voice.onEnded)
-      ..setCancelHandler(_voice.onEnded)
-      ..setErrorHandler((_) => _voice.onEnded());
   }
 
   /// Start and destination rows, shown only when the user asked for them
@@ -329,7 +323,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     if (_listening) {
       _onHeard = null; // stopped on purpose: no answer, no retry
       _listenTimeout?.cancel();
-      setState(() => _listening = false);
+      _setListening(false);
       _voiceMisses = 0;
       final stopped = AppLocalizations.of(context)!.homeStoppedListening;
       await _speech.cancel();
@@ -358,8 +352,20 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     _onHeard = null;
     _listenTimeout?.cancel();
     if (!mounted) return;
-    setState(() => _listening = false);
+    _setListening(false);
     if (onHeard != null) onHeard(heard);
+  }
+
+  /// Whether the microphone is open, for the button and for the app's voice
+  /// (#264's flag was cleared only when stopped by hand, so after a place
+  /// was heard "¿Ir a X? Di sí…" waited for a tap).
+  void _setListening(bool on) {
+    if (on) {
+      _voice.beginListening();
+    } else {
+      _voice.endListening();
+    }
+    if (mounted && _listening != on) setState(() => _listening = on);
   }
 
   /// Whether the current listen has itself reported "listening". A listen
@@ -457,11 +463,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     if (_speech.isListening) await _speech.cancel();
-    if (!mounted) return false;
-    setState(() {
-      _listening = true;
-      _heard = '';
-    });
+    if (!mounted || _covered) return false;
+    _heard = '';
+    _setListening(true);
     _onHeard = onHeard;
     _listenSawStart = false;
     // If the recognizer never reports back, this still ends the listen.
@@ -607,9 +611,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               title: Builder(
                 builder: (_) {
                   openSheet = context;
-                  return Text(
-                    l10n.homeVoiceChooseTitle,
-                    style: Theme.of(context).textTheme.titleMedium,
+                  // Read out with the options by the app's voice.
+                  return SpokenText(
+                    child: Text(
+                      l10n.homeVoiceChooseTitle,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                   );
                 },
               ),
@@ -642,7 +649,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   void _stopAnyListening() {
     _onHeard = null;
     _listenTimeout?.cancel();
-    if (_listening && mounted) setState(() => _listening = false);
+    _setListening(false);
     _speech.cancel();
   }
 
@@ -708,7 +715,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         title: Builder(
           builder: (context) {
             openDialog = dialogContext;
-            return Text(title);
+            // The app asks it aloud, then listens: TalkBack reading it too
+            // was heard by the microphone as the answer (#257).
+            return SpokenText(child: Text(title));
           },
         ),
         actionsAlignment: MainAxisAlignment.center,
@@ -733,7 +742,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     );
     openDialog = null;
     _stopAnyListening();
-    await _tts.stop();
+    _voice.stop();
     if (!mounted) return;
     if (start == true) {
       _findRoute();
@@ -1019,6 +1028,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           context,
         )!.commonErrorLoadDataFailed(friendlyApiErrorMessage(context, e));
       });
+      _say(_error!);
     }
   }
 
@@ -1055,12 +1065,18 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       final next = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: Text(
-            '${l10n.homeTutorialTitle} '
-            '(${l10n.homeTutorialProgress(i + 1, pages.length)})',
+          // The app reads each page; TalkBack reading the dialog as well
+          // spoke over it (#257).
+          title: SpokenText(
+            child: Text(
+              '${l10n.homeTutorialTitle} '
+              '(${l10n.homeTutorialProgress(i + 1, pages.length)})',
+            ),
           ),
-          content: SingleChildScrollView(
-            child: Text(pages[i], style: const TextStyle(fontSize: 18)),
+          content: SpokenText(
+            child: SingleChildScrollView(
+              child: Text(pages[i], style: const TextStyle(fontSize: 18)),
+            ),
           ),
           actions: [
             FilledButton(
@@ -1078,7 +1094,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       );
       if (next != true) break;
     }
-    await _tts.stop();
+    _voice.stop();
   }
 
   /// True when the user went back into an unfinished trip.
@@ -1218,7 +1234,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     final floor = await showDialog<int>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.homeWhichFloorTitle),
+        title: SpokenText(child: Text(l10n.homeWhichFloorTitle)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1240,7 +1256,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       ),
     );
     _askingFloor = false;
-    await _tts.stop();
+    _voice.stop();
     if (floor != null) {
       _answeredFloor = floor;
       _answeredFloorFrom = here;
@@ -1347,6 +1363,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           _error = AppLocalizations.of(context)!.homeErrorNoVerifiedAnchors;
           _finding = false;
         });
+        _say(_error!);
         return;
       }
       if (start['id'] == end['id'] ||
@@ -1358,6 +1375,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           );
           _finding = false;
         });
+        _say(_error!);
         return;
       }
 
@@ -1435,36 +1453,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
   /// The one button of the simple home screen: a circle, not a screen-wide
   /// pill. While listening its colour and icon change; no text says so.
-  Widget _speakCircle(AppLocalizations l10n) {
-    final scheme = Theme.of(context).colorScheme;
-    final size = min(320.0, MediaQuery.sizeOf(context).width * 0.85);
-    return SizedBox.square(
-      dimension: size,
-      child: FilledButton(
-        style: FilledButton.styleFrom(
-          shape: const CircleBorder(),
-          backgroundColor: _listening ? scheme.error : scheme.primary,
-          foregroundColor: _listening ? scheme.onError : scheme.onPrimary,
-          padding: const EdgeInsets.all(24),
-          textStyle: Theme.of(context).textTheme.headlineSmall,
-        ),
-        onPressed: _finding ? null : _listenForDestination,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(_listening ? Icons.stop_rounded : Icons.mic, size: 96),
-            const SizedBox(height: 8),
-            Text(
-              _listening
-                  ? l10n.homeStopListeningButton
-                  : l10n.homeSayDestinationButton,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _speakCircle(AppLocalizations l10n) => SpeakCircle(
+    listening: _listening,
+    busy: _finding,
+    label: l10n.homeSayDestinationButton,
+    stopLabel: l10n.homeStopListeningButton,
+    onPressed: _listenForDestination,
+  );
 
   Widget _body(AppLocalizations l10n) {
     // Without the choices the screen is one big Speak button (D1/D2): the
@@ -1493,8 +1488,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           ListTile(
             leading: const Icon(Icons.radio_button_checked, color: Colors.blue),
             title: Text(l10n.homeStartLabel),
+            // Not a live region: it changes on every GPS fix, and the
+            // start check's result is spoken (#257).
             subtitle: Semantics(
-              liveRegion: true,
               child: Text(
                 _locatingStart
                     ? (_startCheckProgress > 0
@@ -1568,10 +1564,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         if (_error != null)
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Semantics(
-              liveRegion: true,
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
-            ),
+            // Spoken by _say where it's set; a live region made TalkBack
+            // say it a second time (#257).
+            child: Text(_error!, style: const TextStyle(color: Colors.red)),
           ),
         if (!choices && _finding)
           Padding(

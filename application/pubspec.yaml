@@ -1,7 +1,7 @@
 name: eyes4u
 description: "GPS positioning correction app for assisted navigation of visually impaired users on university campuses."
 publish_to: 'none'
-version: 0.6.0-pre+599
+version: 0.6.0+600
 
 environment:
   sdk: ^3.12.2

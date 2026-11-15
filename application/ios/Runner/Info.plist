@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Eyes4U</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>eyes4u</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<!-- The email-confirmation link (supabase_flutter, kAuthRedirectUrl):
+	     the same scheme as Android's intent filter. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>io.github.miguelcock.eyes4u</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>io.github.miguelcock.eyes4u</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Permission texts, Spanish then English: one string, no extra
+	     localization files in the Xcode project. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Eyes4U usa la cámara para reconocer dónde estás y corregir tu posición, y para fotografiar puntos de referencia. / Eyes4U uses the camera to recognize where you are and correct your position, and to photograph anchor points.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Eyes4U usa tu ubicación para guiarte por el campus. / Eyes4U uses your location to guide you around campus.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Eyes4U usa el micrófono para que digas a dónde quieres ir. / Eyes4U uses the microphone so you can say where you want to go.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Eyes4U reconoce lo que dices para encontrar tu destino. / Eyes4U recognizes what you say to find your destination.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Eyes4U usa los sensores de movimiento para saber hacia dónde miras y en qué piso estás. / Eyes4U uses the motion sensors to know which way you face and which floor you're on.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Eyes4U puede subir fotos de puntos de referencia desde tus fotos. / Eyes4U can upload anchor point photos from your library.</string>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>flutter</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<key>UISceneStoryboardFile</key>
+					<string>Main</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>

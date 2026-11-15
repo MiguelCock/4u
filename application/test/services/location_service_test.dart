@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 
 import 'package:eyes4u/services/location_service.dart';
@@ -88,6 +89,35 @@ void main() {
     );
     expect(position, isNull);
     expect(service.lastError, isNull);
+  });
+
+  group('positionSettings', () {
+    test('Android: every second, standing still too', () {
+      final s = positionSettings(TargetPlatform.android) as AndroidSettings;
+      expect(s.accuracy, LocationAccuracy.bestForNavigation);
+      expect(s.distanceFilter, 0);
+      expect(s.intervalDuration, const Duration(seconds: 1));
+    });
+
+    test('iOS keeps updating when the user stops (#160)', () {
+      final s =
+          positionSettings(
+                TargetPlatform.iOS,
+                timeLimit: const Duration(seconds: 10),
+              )
+              as AppleSettings;
+      expect(s.accuracy, LocationAccuracy.bestForNavigation);
+      expect(s.distanceFilter, 0);
+      expect(s.pauseLocationUpdatesAutomatically, isFalse);
+      expect(s.timeLimit, const Duration(seconds: 10));
+    });
+
+    test('elsewhere (the web): plain settings', () {
+      final s = positionSettings(TargetPlatform.linux);
+      expect(s, isNot(isA<AndroidSettings>()));
+      expect(s, isNot(isA<AppleSettings>()));
+      expect(s.accuracy, LocationAccuracy.bestForNavigation);
+    });
   });
 }
 

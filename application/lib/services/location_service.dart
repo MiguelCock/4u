@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 enum LocationError {
@@ -6,6 +7,35 @@ enum LocationError {
   permissionDenied,
   permissionDeniedForever,
 }
+
+/// How to ask [platform] for fixes: the best accuracy, every second even
+/// standing still ([timeLimit] for a single fix). iOS gets its own settings
+/// (#160), so it keeps updating instead of pausing when the user stops.
+LocationSettings positionSettings(
+  TargetPlatform platform, {
+  Duration? timeLimit,
+}) => switch (platform) {
+  TargetPlatform.android => AndroidSettings(
+    accuracy: LocationAccuracy.bestForNavigation,
+    // Every second, standing still too: how old a fix is has to mean GPS
+    // stopped answering, not that the user stopped walking.
+    distanceFilter: 0,
+    intervalDuration: const Duration(seconds: 1),
+    timeLimit: timeLimit,
+  ),
+  TargetPlatform.iOS => AppleSettings(
+    accuracy: LocationAccuracy.bestForNavigation,
+    distanceFilter: 0,
+    activityType: ActivityType.fitness,
+    pauseLocationUpdatesAutomatically: false,
+    timeLimit: timeLimit,
+  ),
+  _ => LocationSettings(
+    accuracy: LocationAccuracy.bestForNavigation,
+    distanceFilter: 0,
+    timeLimit: timeLimit,
+  ),
+};
 
 /// What [LocationService] needs from the platform, so tests can stand in
 /// for Geolocator.
@@ -18,19 +48,13 @@ class LocationPlatform {
       Geolocator.requestPermission();
   Future<Position?> lastKnown() => Geolocator.getLastKnownPosition();
   Future<Position> current(Duration timeLimit) => Geolocator.getCurrentPosition(
-    locationSettings: AndroidSettings(
-      accuracy: LocationAccuracy.bestForNavigation,
+    locationSettings: positionSettings(
+      defaultTargetPlatform,
       timeLimit: timeLimit,
     ),
   );
   Stream<Position> positions() => Geolocator.getPositionStream(
-    locationSettings: AndroidSettings(
-      accuracy: LocationAccuracy.bestForNavigation,
-      // Every second, standing still too: how old a fix is has to mean GPS
-      // stopped answering, not that the user stopped walking.
-      distanceFilter: 0,
-      intervalDuration: const Duration(seconds: 1),
-    ),
+    locationSettings: positionSettings(defaultTargetPlatform),
   );
   Stream<ServiceStatus> serviceStatus() => Geolocator.getServiceStatusStream();
 }

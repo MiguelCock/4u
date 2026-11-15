@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/location_types.dart' show LocationCategory;
+
 /// Every colour the admin screens give a meaning to, in one place (C4,
 /// `docs/decisions/c4-palette.md`). Shape carries meaning as well as colour:
 /// floors are ▲/▼, and an option may draw a status as a ring or a ✕, so no
@@ -56,6 +58,17 @@ class AdminPalette {
   /// The menu's notices of things to fix.
   final Color notice;
 
+  /// A connection's colour by length (C7): up to 5 m, at 15 m (the warning),
+  /// at 30 m (the limit), and past it. Blended between the first three.
+  final Color connectionShort;
+  final Color connectionMid;
+  final Color connectionLong;
+  final Color connectionTooLong;
+
+  /// Each kind of place (C8): destinations on the map, and the mark before
+  /// a point's name in lists.
+  final Map<LocationCategory, Color> categories;
+
   const AdminPalette({
     required this.name,
     required this.verified,
@@ -83,7 +96,26 @@ class AdminPalette {
     required this.report,
     required this.checkpoint,
     required this.notice,
+    required this.connectionShort,
+    required this.connectionMid,
+    required this.connectionLong,
+    required this.connectionTooLong,
+    required this.categories,
   });
+
+  /// The colour of a connection [meters] long: green when short, orange at
+  /// the 15 m warning, red at the 30 m limit, black past it.
+  Color connectionFor(double meters) {
+    if (meters > 30) return connectionTooLong;
+    if (meters <= 5) return connectionShort;
+    if (meters <= 15) {
+      return Color.lerp(connectionShort, connectionMid, (meters - 5) / 10)!;
+    }
+    return Color.lerp(connectionMid, connectionLong, (meters - 15) / 15)!;
+  }
+
+  /// A kind of place's colour.
+  Color category(LocationCategory category) => categories[category] ?? inactive;
 
   /// A status's colour (null or unknown: pending).
   Color status(String? status) => switch (status) {
@@ -129,4 +161,17 @@ const kAdminPalette = AdminPalette(
   report: Color(0xFFA84400),
   checkpoint: Color(0xFF0072B2),
   notice: Color(0xFFA84400),
+  connectionShort: Color(0xFF007A5A),
+  connectionMid: Color(0xFFB35900),
+  connectionLong: Color(0xFF8B0000),
+  connectionTooLong: Color(0xFF000000),
+  // Paul Tol's colour-blind-safe "muted" set, its darker members.
+  categories: {
+    LocationCategory.paths: Color(0xFF6E6E6E),
+    LocationCategory.gettingAround: Color(0xFF332288),
+    LocationCategory.academic: Color(0xFF882255),
+    LocationCategory.services: Color(0xFF117733),
+    LocationCategory.wellbeing: Color(0xFFAA4499),
+    LocationCategory.other: Color(0xFF6E6E6E),
+  },
 );

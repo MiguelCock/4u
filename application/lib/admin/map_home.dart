@@ -8,6 +8,8 @@ import '../services/map_scope.dart';
 import '../services/map_tap.dart';
 import '../widgets/admin_map/admin_map.dart';
 import '../widgets/admin_map/layers.dart';
+import '../widgets/admin_map/map_legend.dart';
+import '../widgets/category_mark.dart';
 
 /// A one-shot request to show something on the map (a notice's item, a list
 /// row's "Show on map"): its building, its floor, centred, and opened. A new
@@ -548,6 +550,11 @@ class _MapHomeState extends State<MapHome> {
               onSelected: onConnecting,
             ),
           ],
+          IconButton(
+            icon: const Icon(Icons.palette_outlined),
+            tooltip: l10n.adminMapLegend,
+            onPressed: () => showMapLegend(context),
+          ),
         ],
       ),
     );
@@ -607,7 +614,13 @@ class _MapHomeState extends State<MapHome> {
                     for (final result in results)
                       ListTile(
                         leading: Icon(icon(result.kind)),
-                        title: Text(result.title),
+                        title: result.kind == MapSearchKind.point
+                            ? CategoryTitle(
+                                result.title,
+                                locationTypeId:
+                                    result.item['location_type_id'] as int?,
+                              )
+                            : Text(result.title),
                         subtitle: result.subtitle.isEmpty
                             ? null
                             : Text(result.subtitle),

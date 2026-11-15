@@ -49,7 +49,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
   String? _selectedBuildingId;
   // Hallway: most points an admin adds while filling in a route are
   // in-between ones, which don't need a description.
-  int _selectedLocationTypeId = 10;
+  /// Chosen first (C9): the name field appears once there's a type. Null
+  /// until chosen, unless the last point's type is remembered.
+  int? _selectedLocationTypeId;
   int _floor = 0;
   // The position is never taken silently from the phone: the admin either
   // picks it on the map or taps "Use my location" while standing on the
@@ -235,8 +237,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
       setState(() => _error = l10n.captureErrorSelectBuilding);
       return;
     }
-    if (description.isEmpty &&
-        descriptionRequiredFor(_selectedLocationTypeId)) {
+    final typeId = _selectedLocationTypeId;
+    if (typeId == null) {
+      setState(() => _error = l10n.captureErrorSelectType);
+      return;
+    }
+    if (description.isEmpty && descriptionRequiredFor(typeId)) {
       setState(() => _error = l10n.commonErrorDescriptionRequired);
       return;
     }
@@ -248,11 +254,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
       setState(() => _error = l10n.captureErrorIndoorRequired);
       return;
     }
-    if (isNamedInBetweenPoint(_selectedLocationTypeId, description) &&
+    if (isNamedInBetweenPoint(typeId, description) &&
         !await confirmInBetweenName(
           context,
           name: description,
-          locationTypeId: _selectedLocationTypeId,
+          locationTypeId: typeId,
         )) {
       return;
     }
@@ -274,7 +280,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       final surface = _surfaceController.text.trim();
       final result = await _mapApi.post('/anchor-points', {
         'building_id': _selectedBuildingId,
-        'location_type_id': _selectedLocationTypeId,
+        'location_type_id': typeId,
         'latitude': position.latitude,
         'longitude': position.longitude,
         // The phone's GPS altitude only means something when the point is
@@ -294,7 +300,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       await CaptureDefaults(
         placeId: _selectedPlaceId,
         buildingId: _selectedBuildingId,
-        locationTypeId: _selectedLocationTypeId,
+        locationTypeId: typeId,
         floor: _floor,
         lighting: _lighting,
         surface: surface.isEmpty ? null : surface,
@@ -302,7 +308,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       // Unnamed in-between points are announced by their type instead.
       final displayName = description.isNotEmpty
           ? description
-          : locationTypeLabel(l10n, kLocationTypes[_selectedLocationTypeId]!);
+          : locationTypeLabel(l10n, kLocationTypes[typeId]!);
 
       if (!mounted) return;
       // The root ScaffoldMessenger keeps this visible over the photo screen
@@ -470,17 +476,24 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           setState(() => _selectedLocationTypeId = value),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _descriptionController,
-                      decoration: InputDecoration(
-                        labelText: l10n.commonDescriptionLabel,
-                        helperText:
-                            descriptionRequiredFor(_selectedLocationTypeId)
-                            ? l10n.commonDescriptionHelper
-                            : l10n.commonDescriptionHelperOptional,
-                        helperMaxLines: 3,
+                    // The name only once the type says whether it's needed.
+                    if (_selectedLocationTypeId == null)
+                      Text(
+                        l10n.captureChooseTypeFirst,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      )
+                    else
+                      TextField(
+                        controller: _descriptionController,
+                        decoration: InputDecoration(
+                          labelText: l10n.commonDescriptionLabel,
+                          helperText:
+                              descriptionRequiredFor(_selectedLocationTypeId)
+                              ? l10n.commonDescriptionHelper
+                              : l10n.commonDescriptionHelperOptional,
+                          helperMaxLines: 3,
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 12),
                     Text(l10n.captureIndoorQuestion),
                     const SizedBox(height: 4),

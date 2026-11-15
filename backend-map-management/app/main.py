@@ -231,7 +231,7 @@ def _require_description_for_destinations(
         raise HTTPException(
             status_code=400,
             detail="Destinations (entrances, classrooms, restrooms...) need a "
-            "description - it's the name users pick and hear.",
+            "name - it's what users pick and hear.",
         )
 
 
@@ -776,8 +776,31 @@ def get_building(id: str, caller_id: str = Depends(get_caller_id)) -> BuildingRe
 def create_building(building: BuildingCreate, caller_id: str = Depends(get_caller_id)):
     if not db.is_admin(caller_id):
         raise HTTPException(status_code=403, detail="Admin only")
-    result = db.client.table("buildings").insert(building.model_dump()).execute()
+    payload = building.model_dump()
+    if not (payload.get("code") or "").strip():
+        payload["code"] = _building_code(building.place_id, building.name)
+    result = db.client.table("buildings").insert(payload).execute()
     return result.data
+
+
+def _building_code(place_id: str, name: str) -> str:
+    """A code for a building created without one (C10): its name in capitals,
+    with a number added when another building of the university has it.
+    The column is NOT NULL and unique per university, and voice search still
+    matches it, so it reads like the name."""
+    base = " ".join(name.split()).upper() or "BUILDING"
+    taken = {
+        row["code"]
+        for row in db.client.table("buildings")
+        .select("code")
+        .eq("place_id", place_id)
+        .execute()
+        .data
+    }
+    code, n = base, 2
+    while code in taken:
+        code, n = f"{base} {n}", n + 1
+    return code
 
 
 @app.patch("/buildings/{id}")
