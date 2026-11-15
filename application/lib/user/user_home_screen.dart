@@ -17,6 +17,7 @@ import '../services/buzz.dart';
 import '../services/camera_helper.dart';
 import '../services/destination_matcher.dart';
 import '../services/destinations.dart';
+import '../services/spoken_destination.dart';
 import '../services/geo_utils.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
@@ -177,52 +178,23 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     revealed: _revealChoices,
   );
 
-  /// Buildings a user can be sent to: active, on the campus they're on. A
-  /// route can't cross campuses, and every campus has an "Edificio A".
-  List<Map<String, dynamic>> get _campusBuildings {
-    final active = _activeBuildingIds;
-    final startBuilding = _start?['building_id'];
-    String? campus;
-    for (final building in _buildings) {
-      if (building['id'] == startBuilding) {
-        campus = building['place_id'] as String?;
-      }
-    }
-    return _buildings
-        .where(
-          (b) =>
-              (active?.contains(b['id']) ?? b['is_active'] != false) &&
-              (campus == null || b['place_id'] == campus),
-        )
-        .toList();
-  }
+  /// Buildings a user can be sent to (see [campusBuildings]).
+  List<Map<String, dynamic>> get _campusBuildings => campusBuildings(
+    _buildings,
+    activeIds: _activeBuildingIds,
+    startBuildingId: _start?['building_id'],
+  );
 
-  List<Map<String, dynamic>> get _destinationCandidates {
-    final campus = {for (final b in _campusBuildings) b['id']};
-    return _verifiedAnchors
-        .where(
-          (a) =>
-              isDestinationAnchor(a) &&
-              a['id'] != _start?['id'] &&
-              (campus.isEmpty || campus.contains(a['building_id'])),
-        )
-        .toList();
-  }
-
-  /// A building as a destination, in the shape of a point: the server picks
-  /// the door when the route is requested.
-  Map<String, dynamic> _wholeBuilding(Map<String, dynamic> building) => {
-    'id': 'building:${building['id']}',
-    'building_id': building['id'],
-    'location_description': building['name'],
-    'latitude': building['latitude'],
-    'longitude': building['longitude'],
-    'whole_building': true,
-  };
+  List<Map<String, dynamic>> get _destinationCandidates =>
+      destinationCandidates(
+        _verifiedAnchors,
+        buildings: _campusBuildings,
+        startId: _start?['id'],
+      );
 
   /// [_destinationLabel] to be read aloud.
   String _spokenLabel(Map<String, dynamic> anchor) =>
-      _destinationLabel(anchor).replaceAll(' · ', ', ');
+      spokenLabel(_destinationLabel(anchor));
 
   /// Meters from the user, for the nearest-first order of same-named places.
   double _distanceFromUser(Map<String, dynamic> anchor) {
@@ -236,19 +208,12 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     );
   }
 
-  String _destinationLabel(Map<String, dynamic> anchor) {
-    final name = anchor['location_description'] as String? ?? '';
-    if (anchor['whole_building'] == true) return name;
-    final building = _buildingNames[anchor['building_id']];
-    final floor = (anchor['floor'] as int?) ?? 0;
-    return [
-      name,
-      // Two "Baño" on different floors have to be told apart.
-      if (floor != 0)
+  String _destinationLabel(Map<String, dynamic> anchor) => destinationLabel(
+    anchor,
+    buildingNames: _buildingNames,
+    floorLabel: (floor) =>
         AppLocalizations.of(context)!.commonFloorOption(floor + 1),
-      if (building != null && building.isNotEmpty) building,
-    ].join(' · ');
-  }
+  );
 
   /// Voice first (D1): the app asks and listens by itself, unless the voice is
   /// off or a screen reader is on (it would be heard as the answer). Not
@@ -359,35 +324,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       return;
     }
     _voiceCtl.resetMisses();
-    final candidates = _destinationCandidates;
-    // A place called exactly that first: there may be a "Cafetería central"
-    // both as a place and as a building.
-    final exact = exactPlaces(heard, candidates, buildingNames: _buildingNames);
-    if (exact.isNotEmpty) {
-      await _chooseFrom(
-        nearestFirst([
-          for (final place in exact) DestinationMatch(place, 1),
-        ], _distanceFromUser).map((m) => m.anchor).toList(),
-      );
-      return;
-    }
-    // Then a building: "Edificio C" means its closest entrance. Saying more
-    // than the building ("baño edificio C") is a place in it, below.
-    final buildings = matchBuildings(heard, _campusBuildings);
-    if (buildings.isNotEmpty) {
-      final winner = clearWinner(buildings);
-      await _chooseFrom(
-        winner != null
-            ? [_wholeBuilding(winner.anchor)]
-            : [for (final match in buildings) _wholeBuilding(match.anchor)],
-      );
-      return;
-    }
-    final matches = nearestFirst(
-      matchDestinations(heard, candidates, buildingNames: _buildingNames),
-      _distanceFromUser,
+    final found = resolveSpokenDestination(
+      heard,
+      candidates: _destinationCandidates,
+      buildings: _campusBuildings,
+      buildingNames: _buildingNames,
+      distance: _distanceFromUser,
     );
-    if (matches.isEmpty) {
+    if (found.isEmpty) {
       // Only mention a list when there's one on screen.
       await _missed(
         _showsChoices
@@ -396,10 +340,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       );
       return;
     }
-    final winner = clearWinner(matches);
-    await _chooseFrom(
-      winner != null ? [winner.anchor] : matches.map((m) => m.anchor).toList(),
-    );
+    await _chooseFrom(found);
   }
 
   /// One option goes straight to "Go to X?", several to a choice of the first
