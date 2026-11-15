@@ -344,6 +344,11 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
   - a stale fix.
 
   Fakes: `test/support/sensor_fakes.dart`, `FixedLocation.moveTo`, and `fix()`, stamped with the test clock.
+- **Its correction tick:** `CorrectionLoop` (`lib/user/correction_loop.dart`) takes a photo through `TripCamera`, sends it with `postCorrection` (`lib/services/correction_request.dart`, shared with the start check), and logs the tick. It owns the blocked-lens streak, the server-busy pause and the new-match buzz; the screen gets `onCorrected`/`onCameraBlocked` back. Tests: `test/user/correction_loop_test.dart`.
+- **Its log queue:** `TripLog` (`lib/user/trip_log.dart`) holds the cues said and the events since the last tick; each tick's `debug` takes them (`drain`), and a refused `POST /logs` puts them back first. Log through `_log.cue`/`_log.event`, never a list of your own.
+- **Pure pieces it uses:**
+  - `buildTripPlan` and `resumeWaypointIndex` (`lib/services/trip_plan.dart`): the route's stops (corners, named places, hazards, both ends of a floor change) and where a resumed trip picks up;
+  - `turnWords`, `legWords`, `hazardLabel` and `floorChangeAction` (`lib/services/trip_words.dart`): a turn, a leg, a hazard and a floor change in words. There were two copies of each turn switch.
 
 ## Shared helpers (one copy each)
 

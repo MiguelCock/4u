@@ -16,14 +16,10 @@ import '../location.dart';
 import '../map.dart';
 import '../services/api_service.dart';
 import '../services/app_preferences.dart';
-import '../services/capture_checks.dart' show kVerticalLocationTypes;
-import '../services/destinations.dart';
 import '../services/floor_detector.dart';
 import '../services/floor_steps.dart';
-import '../services/floor_view.dart';
 import '../services/geo_utils.dart';
 import '../services/heading_tracker.dart';
-import '../services/image_utils.dart';
 import '../services/location_service.dart';
 import '../voice/app_voice.dart';
 import '../voice/notices.dart';
@@ -31,37 +27,12 @@ import '../services/buzz.dart';
 import '../services/route_points.dart';
 import '../services/test_walk.dart';
 import '../services/turn_guidance.dart';
+import '../services/trip_plan.dart';
+import '../services/trip_words.dart';
+import 'correction_loop.dart';
+import 'trip_log.dart';
 import 'trip_sensors.dart';
 import '../services/api_error_messages.dart';
-
-/// A resolved checkpoint along the planned route: an anchor point's
-/// coordinates, plus its name only when it's a named destination-type
-/// point. Unnamed in-between points (hallways...) are never spoken, so
-/// guidance is just directions: "turn left about 45 degrees, then walk 12
-/// meters".
-class _Waypoint {
-  final LatLng point;
-  final String? name;
-
-  /// 0-based, like `anchor_points.floor`.
-  final int floor;
-
-  /// Stairwell, elevator or ramp (kVerticalLocationTypes): warned about
-  /// before reaching it.
-  final int? hazardType;
-
-  /// The admins' warnings ("three steps down") on the connections of the
-  /// leg that ends here, spoken when that leg starts.
-  final List<String> legNotes;
-
-  const _Waypoint({
-    required this.point,
-    this.name,
-    this.floor = 0,
-    this.hazardType,
-    this.legNotes = const [],
-  });
-}
 
 /// Cues that are instructions: a short vibration comes first, so a user
 /// holding the phone in front (not at the ear) knows to listen.
@@ -84,11 +55,8 @@ const Duration _kNoBarometerWaitPerFloor = Duration(seconds: 60);
 /// No barometer reading this long after opening: the phone hasn't got one.
 const Duration _kBarometerProbe = Duration(seconds: 3);
 
-/// Location type of an elevator (kVerticalLocationTypes): which wording a
-/// floor change gets, and it wins when the two ends differ, like the backend's
-/// route cost.
-const int _kElevatorType = 3;
-const int _kRampType = 11;
+/// Location type of a hallway: a trip starting anywhere else gets the
+/// compass direction at once (see _checkStall).
 const int _kHallwayType = 10;
 
 /// This much nearer the next stop counts as progress (see isStalled).
@@ -176,12 +144,6 @@ const Duration _kQuietBeforePeriodic = Duration(seconds: 10);
 /// frequent to be useful signal rather than noise).
 const Duration _kPeriodicAnnouncementInterval = Duration(seconds: 25);
 
-/// How many consecutive ticks must read as blocked (see
-/// `services/image_utils.dart`'s `isFrameBlocked`) before the camera is
-/// treated as actually covered - debounced so one dim hallway or a brief
-/// motion blur doesn't trigger a false alarm.
-const int _kCameraBlockedDebounceTicks = 3;
-
 class NavigationScreen extends StatefulWidget {
   final Map<String, dynamic> route;
 
@@ -249,14 +211,6 @@ class _NavigationScreenState extends State<NavigationScreen>
   String? _sessionId;
   CameraController? _cameraController;
 
-  // Self-rescheduling loop, not Timer.periodic: each tick schedules the
-  // next one 1s after it *finishes*, not 1s after it started - a
-  // POST /correct_position round-trip (camera shutter + CNN embedding +
-  // Qdrant search, ~600ms-1s per #122's benchmark) can exceed 1s, and a
-  // blind periodic timer would let ticks for the same session_id overlap
-  // and queue up behind backend-positioning's per-session lock instead of
-  // just running slightly slower.
-  Timer? _pendingTickTimer;
   Timer? _periodicAnnouncementTimer;
   Timer? _guidanceTimer;
   Timer? _loadingTimer;
@@ -302,8 +256,6 @@ class _NavigationScreenState extends State<NavigationScreen>
   final _pathLoaded = Completer<void>();
   bool _guiding = false;
   bool _arrived = false;
-  // Set when the server answers server_busy (see photoPaused).
-  DateTime? _photosPausedUntil;
   DateTime? _correctedAt;
   DateTime? _lastSpokenAt;
   bool _stopped = false;
@@ -348,11 +300,8 @@ class _NavigationScreenState extends State<NavigationScreen>
   ({double x, double y})? _correctionOffset;
   double? _correctionError;
   List<LatLng> _plannedPath = [];
-  List<_Waypoint> _waypoints = [];
+  List<Waypoint> _waypoints = [];
   int _nextWaypointIndex = 0;
-  String? _lastHapticAnchorId;
-  int _consecutiveBlockedTicks = 0;
-  bool _blockedAnnounced = false;
   String? _lastAnnouncement;
 
   /// What kind of cue [_lastAnnouncement] was (turn, start_walking, leg,
@@ -362,8 +311,27 @@ class _NavigationScreenState extends State<NavigationScreen>
 
   /// Cues spoken and guidance events since the last log, sent with the next
   /// tick's `debug` so the session view can show what was said where.
-  final List<Map<String, dynamic>> _pendingCues = [];
-  final List<Map<String, dynamic>> _pendingEvents = [];
+  /// The cues and events for the next tick's log.
+  late final _log = TripLog(_navigationApi, timeout: _kTickRequestTimeout);
+
+  /// The photo-and-correction tick, once a second.
+  late final _loop = CorrectionLoop(
+    api: _positioningApi,
+    log: _log,
+    sessionId: () => _sessionId,
+    position: () => _locationService.lastPosition,
+    camera: () {
+      final controller = _cameraController;
+      return controller == null ? null : _Lens(controller);
+    },
+    debug: _debugSnapshot,
+    heading: _sentHeading,
+    onCorrected: _applyCorrection,
+    onCameraBlocked: _sayCameraBlocked,
+    onNewMatch: HapticFeedback.selectionClick,
+    storeFrame: widget.adminPreview,
+    timeout: _kTickRequestTimeout,
+  );
 
   /// Latest guidance inputs, kept for the per-tick diagnostics.
   double? _lastRawCompass;
@@ -459,10 +427,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     }, onError: _sensorError);
     _barometerProbeTimer = Timer(_kBarometerProbe, () {
       if (_barometerSeen) return;
-      _pendingEvents.add({
-        'at': clock.now().toUtc().toIso8601String(),
-        'type': 'barometer_missing',
-      });
+      _log.event('barometer_missing');
     });
   }
 
@@ -484,11 +449,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// A sensor stream failed: logged with the next tick, so a phone whose
   /// gyroscope doesn't work shows up in the session data.
   void _sensorError(Object error) {
-    _pendingEvents.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': 'sensor_error',
-      'error': error.toString(),
-    });
+    _log.event('sensor_error', fields: {'error': error.toString()});
   }
 
   /// Speaks [text] if the user has voice guidance on (#39/#40/#85) -
@@ -522,11 +483,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       // The "I'll vibrate when you face the right way" of SlowTurnCue.
       buzz(Buzz.long);
     }
-    _pendingCues.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': cueType,
-      'text': text,
-    });
+    _log.cue(cueType, text);
     if (!voiceGuidanceNotifier.value) return;
     await _voice.say(text, interrupt: assertive);
   }
@@ -553,105 +510,23 @@ class _NavigationScreenState extends State<NavigationScreen>
     // One request when the server has it (E2), else all at once: one request
     // after another took ~90 s on campus mobile data in a test walk, and
     // guidance can't start without the path.
-    final route = await fetchRoutePoints(_mapApi, anchorIds);
-    final anchors = route.anchors;
-    final connections = route.connections;
-    String? noteBetween(int i) {
-      final a = anchorIds[i];
-      final b = anchorIds[i + 1];
-      for (final c in connections[i]) {
-        final ends = {c['anchor_point_a_id'], c['anchor_point_b_id']};
-        if (ends.contains(a) && ends.contains(b)) {
-          final note = (c['notes'] as String? ?? '').trim();
-          return note.isEmpty ? null : note;
-        }
-      }
-      return null;
-    }
-
-    final startType = anchors.first?['location_type_id'] as int?;
-    final points = <LatLng>[];
-    final names = <String?>[];
-    final hazards = <int?>[];
-    final floors = <int>[];
-    // The note of the connection arriving at each resolved point.
-    final notes = <String?>[];
-    String? pendingNote;
-    var resolvedStart = false;
-    for (var i = 0; i < anchors.length; i++) {
-      final anchor = anchors[i];
-      final point = anchor == null ? null : anchorPosition(anchor);
-      if (i > 0) pendingNote ??= noteBetween(i - 1);
-      if (anchor == null || point == null) continue;
-      notes.add(pendingNote);
-      pendingNote = null;
-      final type = anchor['location_type_id'] as int?;
-      hazards.add(kVerticalLocationTypes.contains(type) ? type : null);
-      floors.add(pointFloor(anchor));
-      points.add(point);
-      if (i == 0) {
-        _startPoint = point;
-        resolvedStart = true;
-      }
-      final description = (anchor['location_description'] as String? ?? '')
-          .trim();
-      // The final point is always named when spoken (falling back to
-      // "your destination"); in-between ones only if they're a real
-      // destination-type place.
-      final named =
-          i > 0 &&
-          description.isNotEmpty &&
-          (i == anchorIds.length - 1 || isDestinationAnchor(anchor));
-      names.add(named ? description : null);
-    }
-    // Guidance stops at corners (and named places), not at every anchor
-    // along a straight - see routeCorners.
-    // Checkpoints use the corners alone (not named places), the same rule
-    // backend-positioning/scripts/replay.py applies to score a walk.
-    final checkpoints = CheckpointSequence(routeCorners(points).length);
-    // Stairs, elevators and ramps stay too: they're warned about. So do both
-    // ends of any floor change, wherever guidance has to wait for one.
-    final corners = routeCorners(
-      points,
-      keep: {
-        for (var i = 0; i < names.length; i++)
-          if (names[i] != null ||
-              hazards[i] != null ||
-              (i > 0 && floors[i - 1] != floors[i]) ||
-              (i + 1 < floors.length && floors[i + 1] != floors[i]))
-            i,
-      },
+    final plan = buildTripPlan(
+      anchorIds,
+      await fetchRoutePoints(_mapApi, anchorIds),
     );
-    final waypoints = <_Waypoint>[];
-    for (var k = 0; k < corners.length; k++) {
-      final i = corners[k];
-      if (i == 0 && resolvedStart) continue;
-      final from = k == 0 ? 0 : corners[k - 1] + 1;
-      waypoints.add(
-        _Waypoint(
-          point: points[i],
-          name: names[i],
-          floor: floors[i],
-          hazardType: hazards[i],
-          legNotes: [
-            for (var j = from; j <= i; j++)
-              if (notes[j] != null) notes[j]!,
-          ],
-        ),
-      );
-    }
+    _startPoint = plan.startPoint;
     if (mounted) {
       setState(() {
-        _plannedPath = points;
-        _plannedFloors = floors;
-        if (floors.isNotEmpty) {
-          _startFloor = floors.first;
-          _currentFloor = floors.first;
-          _startHazard = hazards.first;
-          _startTypeId = startType;
+        _plannedPath = plan.points;
+        _plannedFloors = plan.floors;
+        if (plan.floors.isNotEmpty) {
+          _startFloor = plan.startFloor!;
+          _currentFloor = plan.startFloor!;
+          _startHazard = plan.startHazard;
+          _startTypeId = plan.startTypeId;
         }
-        _waypoints = waypoints;
-        _checkpoints = checkpoints;
+        _waypoints = plan.waypoints;
+        _checkpoints = CheckpointSequence(plan.cornerCount);
       });
     }
     if (!_pathLoaded.isCompleted) _pathLoaded.complete();
@@ -663,28 +538,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   void _skipToNearestWaypoint() {
     final here = _currentPosition();
     if (here == null || _waypoints.isEmpty) return;
-    var nearest = 0;
-    var nearestDistance = double.infinity;
-    for (var i = 0; i < _waypoints.length; i++) {
-      final distance = haversineMeters(here, _waypoints[i].point);
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearest = i;
-      }
-    }
-    // Corners can be 40 m apart: if the user is already past the nearest
-    // one along the next straight, aim at the corner after it instead of
-    // sending them back. Never across a floor change.
-    if (nearest + 1 < _waypoints.length &&
-        _waypoints[nearest + 1].floor == _waypoints[nearest].floor &&
-        projectOntoSegment(
-              here,
-              _waypoints[nearest].point,
-              _waypoints[nearest + 1].point,
-            ).along >
-            0) {
-      nearest++;
-    }
+    final nearest = resumeWaypointIndex(here, _waypoints);
     _nextWaypointIndex = nearest;
     // GPS can't tell the floor: trust the waypoint it's nearest to.
     _currentFloor = _waypoints[nearest].floor;
@@ -838,18 +692,8 @@ class _NavigationScreenState extends State<NavigationScreen>
     );
     final l10n = AppLocalizations.of(context)!;
     switch (cue) {
-      case TurnCue(turnAround: true):
-        _speak(l10n.navTurnAround, cueType: 'turn');
-      case TurnCue(kind: TurnKind.slight, :final right):
-        _speak(
-          right ? l10n.navTurnSlightRight : l10n.navTurnSlightLeft,
-          cueType: 'turn',
-        );
-      case TurnCue(:final right):
-        _speak(
-          right ? l10n.navTurnRightShort : l10n.navTurnLeftShort,
-          cueType: 'turn',
-        );
+      case TurnCue():
+        _speak(turnWords(l10n, cue), cueType: 'turn');
       case StartWalkingCue(:final steps):
         _resetProgress(_lastTargetDistance);
         _speak(l10n.navGoStraightSteps(steps), cueType: 'start_walking');
@@ -907,26 +751,15 @@ class _NavigationScreenState extends State<NavigationScreen>
     final turn = signedTurn(trueHeading(compass, _declination), bearing);
     final steps = roundSteps(haversineMeters(here, target));
     final l10n = AppLocalizations.of(context)!;
-    _pendingEvents.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': 'stall',
-      'compass': compass,
-      'bearing': bearing,
-      'turn': turn,
-    });
+    _log.event(
+      'stall',
+      fields: {'compass': compass, 'bearing': bearing, 'turn': turn},
+    );
     final String text;
     if (turn.abs() <= TurnGuidance.alignedDegrees) {
       text = l10n.navContinueStraightSteps(steps);
     } else {
-      text = switch (TurnCue.from(turn)) {
-        TurnCue(turnAround: true) => l10n.navLegAround(steps),
-        TurnCue(kind: TurnKind.slight, right: true) => l10n.navLegSlightRight(
-          steps,
-        ),
-        TurnCue(kind: TurnKind.slight) => l10n.navLegSlightLeft(steps),
-        TurnCue(right: true) => l10n.navLegRight(steps),
-        TurnCue() => l10n.navLegLeft(steps),
-      };
+      text = legWords(l10n, TurnCue.from(turn), steps);
     }
     _speak(text, cueType: 'turn');
     return true;
@@ -963,11 +796,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   void _sayGpsStale(Duration age) {
     if (_gpsStaleAnnounced || age < _kStaleFixAnnounce) return;
     _gpsStaleAnnounced = true;
-    _pendingEvents.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': 'gps_stale',
-      'age_s': age.inSeconds,
-    });
+    _log.event('gps_stale', fields: {'age_s': age.inSeconds});
     _speak(
       AppLocalizations.of(context)!.homeSearchingLocation,
       repeatable: false,
@@ -980,19 +809,16 @@ class _NavigationScreenState extends State<NavigationScreen>
     final now = clock.now();
     if (state == AppLifecycleState.paused) {
       _pausedAt = now;
-      _pendingEvents.add({
-        'at': now.toUtc().toIso8601String(),
-        'type': 'app_paused',
-      });
+      _log.event('app_paused', at: now);
     } else if (state == AppLifecycleState.resumed) {
       final pausedAt = _pausedAt;
       if (pausedAt == null) return;
       _pausedAt = null;
-      _pendingEvents.add({
-        'at': now.toUtc().toIso8601String(),
-        'type': 'app_resumed',
-        'gap_s': now.difference(pausedAt).inSeconds,
-      });
+      _log.event(
+        'app_resumed',
+        at: now,
+        fields: {'gap_s': now.difference(pausedAt).inSeconds},
+      );
       if (mounted && !_stopped) _repeatLastAnnouncement();
     }
   }
@@ -1059,12 +885,10 @@ class _NavigationScreenState extends State<NavigationScreen>
       _arrivalStreak = 0;
     }
     if (reached == -1) return false;
-    _pendingEvents.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': reached == _waypoints.length - 1 ? 'arrival' : 'waypoint',
-      'index': reached,
-      'skipped': reached - _nextWaypointIndex,
-    });
+    _log.event(
+      reached == _waypoints.length - 1 ? 'arrival' : 'waypoint',
+      fields: {'index': reached, 'skipped': reached - _nextWaypointIndex},
+    );
     if (reached == _waypoints.length - 1) {
       _arrive();
       return true;
@@ -1107,29 +931,20 @@ class _NavigationScreenState extends State<NavigationScreen>
     };
     final up = floors > 0;
     final floor = change.floor + 1;
-    final String action;
-    if (types.contains(_kElevatorType)) {
-      action = l10n.navFloorElevator(floor);
-    } else if (types.contains(_kRampType)) {
-      action = up ? l10n.navFloorUpRamp(floor) : l10n.navFloorDownRamp(floor);
-    } else if (types.any((t) => t != null)) {
-      action = up
-          ? l10n.navFloorUpStairs(floor)
-          : l10n.navFloorDownStairs(floor);
-    } else {
-      action = up ? l10n.navFloorUp(floor) : l10n.navFloorDown(floor);
-    }
+    final action = floorChangeAction(l10n, types: types, up: up, floor: floor);
     _floorChange = change;
     _floorWaitSince = now;
     _floorDetector.start(floors, now: now);
-    _pendingEvents.add({
-      'at': now.toUtc().toIso8601String(),
-      'type': 'floor_wait',
-      'from': _currentFloor,
-      'to': change.floor,
-      'pressure_hpa': _floorDetector.pressure,
-      'barometer': _barometerSeen,
-    });
+    _log.event(
+      'floor_wait',
+      at: now,
+      fields: {
+        'from': _currentFloor,
+        'to': change.floor,
+        'pressure_hpa': _floorDetector.pressure,
+        'barometer': _barometerSeen,
+      },
+    );
     _speak(
       '$action ${_barometerSeen ? l10n.navFloorWillTell : l10n.navFloorNoSensor}',
       cueType: 'floor',
@@ -1147,13 +962,15 @@ class _NavigationScreenState extends State<NavigationScreen>
         ? _kFloorWaitLimit
         : _kNoBarometerWaitPerFloor * (change.floor - _currentFloor).abs();
     if (!detected && waited < limit) return;
-    _pendingEvents.add({
-      'at': now.toUtc().toIso8601String(),
-      'type': detected ? 'floor_detected' : 'floor_timeout',
-      'to': change.floor,
-      'seconds': waited.inSeconds,
-      'delta_hpa': _floorDetector.delta,
-    });
+    _log.event(
+      detected ? 'floor_detected' : 'floor_timeout',
+      at: now,
+      fields: {
+        'to': change.floor,
+        'seconds': waited.inSeconds,
+        'delta_hpa': _floorDetector.delta,
+      },
+    );
     _floorChange = null;
     _floorDetector.stop();
     _currentFloor = change.floor;
@@ -1230,7 +1047,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       final l10n = AppLocalizations.of(context)!;
       _speak(
         l10n.navHazardAhead(
-          _hazardLabel(l10n, hazard),
+          hazardLabel(l10n, hazard),
           roundSteps(haversineMeters(here, corner)),
         ),
         cueType: 'hazard',
@@ -1255,15 +1072,9 @@ class _NavigationScreenState extends State<NavigationScreen>
     );
   }
 
-  String _hazardLabel(AppLocalizations l10n, int type) => switch (type) {
-    3 => l10n.navHazardElevator,
-    11 => l10n.navHazardRamp,
-    _ => l10n.navHazardStairs,
-  };
-
   /// "Attention: three steps down" - the admins' warnings on the leg that
   /// ends at [to], said as it starts.
-  void _speakLegNotes(_Waypoint to) {
+  void _speakLegNotes(Waypoint to) {
     final l10n = AppLocalizations.of(context)!;
     for (final note in to.legNotes) {
       _speak(l10n.navLegWarning(note), cueType: 'hazard');
@@ -1285,7 +1096,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// legs), not the phone's heading, which can be far off; the steps are the
   /// leg's length. A user who has already turned (by a trusted heading) just
   /// hears "go straight".
-  void _announceNextLeg(LatLng? previous, _Waypoint from, _Waypoint to) {
+  void _announceNextLeg(LatLng? previous, Waypoint from, Waypoint to) {
     final l10n = AppLocalizations.of(context)!;
     final steps = roundSteps(haversineMeters(from.point, to.point));
     final nextBearing = bearingDegrees(from.point, to.point);
@@ -1300,16 +1111,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     if (routeTurn.abs() <= kCornerTurnDegrees || alreadyTurned) {
       action = l10n.navContinueStraightSteps(steps);
     } else {
-      final cue = TurnCue.from(routeTurn);
-      action = switch (cue) {
-        TurnCue(turnAround: true) => l10n.navLegAround(steps),
-        TurnCue(kind: TurnKind.slight, right: true) => l10n.navLegSlightRight(
-          steps,
-        ),
-        TurnCue(kind: TurnKind.slight) => l10n.navLegSlightLeft(steps),
-        TurnCue(right: true) => l10n.navLegRight(steps),
-        TurnCue() => l10n.navLegLeft(steps),
-      };
+      action = legWords(l10n, TurnCue.from(routeTurn), steps);
     }
     final name = from.name;
     _speak(
@@ -1357,19 +1159,20 @@ class _NavigationScreenState extends State<NavigationScreen>
     final raw = _rawPosition;
     final corrected = _liveCorrected();
     final correctedAt = _correctedAt;
-    _pendingEvents.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': 'checkpoint',
-      'index': index,
-      'of': _checkpoints.count,
-      'raw': ?(raw == null ? null : [raw.latitude, raw.longitude]),
-      'corrected': ?(corrected == null
-          ? null
-          : [corrected.latitude, corrected.longitude]),
-      'correction_age_s': ?(correctedAt == null
-          ? null
-          : clock.now().difference(correctedAt).inMilliseconds / 1000),
-    });
+    _log.event(
+      'checkpoint',
+      fields: {
+        'index': index,
+        'of': _checkpoints.count,
+        'raw': ?(raw == null ? null : [raw.latitude, raw.longitude]),
+        'corrected': ?(corrected == null
+            ? null
+            : [corrected.latitude, corrected.longitude]),
+        'correction_age_s': ?(correctedAt == null
+            ? null
+            : clock.now().difference(correctedAt).inMilliseconds / 1000),
+      },
+    );
     final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -1387,11 +1190,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   void _undoCheckpoint() {
     final index = _checkpoints.undo();
     if (index == null) return;
-    _pendingEvents.add({
-      'at': clock.now().toUtc().toIso8601String(),
-      'type': 'checkpoint_undo',
-      'index': index,
-    });
+    _log.event('checkpoint_undo', fields: {'index': index});
     final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -1477,14 +1276,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     );
     if (turn.abs() <= TurnGuidance.alignedDegrees) return;
     final l10n = AppLocalizations.of(context)!;
-    final cue = TurnCue.from(turn);
-    _speak(switch (cue) {
-      TurnCue(turnAround: true) => l10n.navTurnAround,
-      TurnCue(kind: TurnKind.slight, right: true) => l10n.navTurnSlightRight,
-      TurnCue(kind: TurnKind.slight) => l10n.navTurnSlightLeft,
-      TurnCue(right: true) => l10n.navTurnRightShort,
-      TurnCue() => l10n.navTurnLeftShort,
-    }, cueType: 'turn');
+    _speak(turnWords(l10n, TurnCue.from(turn)), cueType: 'turn');
   }
 
   Future<void> _initCamera() async {
@@ -1570,7 +1362,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       _guidance.reset(now: clock.now());
       _needsStartCue = true;
       _guiding = true;
-      _runTick();
+      _loop.start();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1579,37 +1371,6 @@ class _NavigationScreenState extends State<NavigationScreen>
         )!.navFailedToStartSession(friendlyApiErrorMessage(context, e));
         _starting = false;
       });
-    }
-  }
-
-  Future<void> _runTick() async {
-    if (_stopped) return;
-    final started = clock.now();
-    final sessionId = _sessionId;
-    final position = _locationService.lastPosition;
-    final paused = photoPaused(started, _photosPausedUntil);
-    try {
-      if (sessionId == null || position == null) return;
-      if (paused) {
-        await _logRawTick(sessionId, position, failure: 'server_busy');
-        return;
-      }
-      final controller = _cameraController;
-      if (controller == null || !controller.value.isInitialized) {
-        await _logRawTick(sessionId, position);
-        return;
-      }
-      await _correctionTick(sessionId, position, controller);
-    } finally {
-      if (!_stopped) {
-        _pendingTickTimer = Timer(
-          nextTickDelay(
-            clock.now().difference(started),
-            period: paused ? pausedTickPeriod : const Duration(seconds: 1),
-          ),
-          _runTick,
-        );
-      }
     }
   }
 
@@ -1657,46 +1418,13 @@ class _NavigationScreenState extends State<NavigationScreen>
       'target_bearing': _lastTargetBearing,
       'turn': _lastTurn,
       'guidance': _guidance.walking ? 'walking' : 'orienting',
-      if (_pendingCues.isNotEmpty) 'cues': List.of(_pendingCues),
-      if (_pendingEvents.isNotEmpty) 'events': List.of(_pendingEvents),
+      ..._log.drain(),
       'correction': ?correction,
       'failure': ?failure,
       'timing_ms': ?timing,
       'photo_at': ?photoAt?.toUtc().toIso8601String(),
     };
-    _pendingCues.clear();
-    _pendingEvents.clear();
     return snapshot;
-  }
-
-  Future<void> _logRawTick(
-    String sessionId,
-    Position position, {
-    String? failure,
-  }) async {
-    await _postLog({
-      'session_id': sessionId,
-      'gps_lat': position.latitude,
-      'gps_long': position.longitude,
-      'gps_accuracy': position.accuracy,
-      'heading': position.heading,
-      'debug': _debugSnapshot(position, failure: failure),
-    });
-  }
-
-  /// Best-effort - a dropped tick shouldn't interrupt navigation. What it
-  /// carried that happens only once (cues, events, checkpoints) goes back
-  /// into the queue for the next tick.
-  Future<void> _postLog(Map<String, dynamic> body) async {
-    try {
-      await _navigationApi.post('/logs', body, timeout: _kTickRequestTimeout);
-    } on ApiException catch (_) {
-      final debug = body['debug'] as Map<String, dynamic>?;
-      final cues = debug?['cues'] as List?;
-      final events = debug?['events'] as List?;
-      if (cues != null) _pendingCues.insertAll(0, cues.cast());
-      if (events != null) _pendingEvents.insertAll(0, events.cast());
-    }
   }
 
   /// The heading sent with a photo: the tracked heading back in magnetic
@@ -1708,128 +1436,28 @@ class _NavigationScreenState extends State<NavigationScreen>
     return tracked == null ? null : trueHeading(tracked, -_declination);
   }
 
-  Future<void> _correctionTick(
-    String sessionId,
-    Position position,
-    CameraController controller,
-  ) async {
-    try {
-      final captureStarted = clock.now();
-      // The direction the camera faces as the photo is taken (see
-      // _sentHeading), not when the answer comes back.
-      final sentHeading = _sentHeading();
-      final image = await controller.takePicture();
-      final bytes = await image.readAsBytes();
-      final captureMs = clock.now().difference(captureStarted).inMilliseconds;
-
-      if (isFrameBlocked(bytes)) {
-        _consecutiveBlockedTicks++;
-        if (_consecutiveBlockedTicks >= _kCameraBlockedDebounceTicks &&
-            !_blockedAnnounced) {
-          _blockedAnnounced = true;
-          if (mounted) {
-            _speak(
-              AppLocalizations.of(context)!.navAnnouncementCameraBlocked,
-              assertive: true,
-            );
-            showSpokenNotice(
-              context,
-              AppLocalizations.of(context)!.navAnnouncementCameraBlocked,
-            );
-          }
-        }
-        await _logRawTick(sessionId, position, failure: 'camera_blocked');
-        return;
-      }
-      _consecutiveBlockedTicks = 0;
-      _blockedAnnounced = false;
-
-      final correctStarted = clock.now();
-      final result =
-          await _positioningApi.postMultipart(
-                '/correct_position',
-                timeout: _kTickRequestTimeout,
-                fieldName: 'photo',
-                bytes: bytes,
-                filename: path.basename(image.path),
-                fields: {
-                  'session_id': sessionId,
-                  'latitude': position.latitude.toString(),
-                  'longitude': position.longitude.toString(),
-                  'accuracy': position.accuracy.toString(),
-                  // The direction the camera faces, so a match can be
-                  // checked against it (see _sentHeading).
-                  'heading': ?sentHeading?.toString(),
-                  // Lets the backend skip re-fusing the same fix.
-                  'gps_time': position.timestamp.toUtc().toIso8601String(),
-                  // Test walks keep their frames, to compare photo models
-                  // on real queries (backend-positioning's store_frame).
-                  if (widget.adminPreview) 'store_frame': 'true',
-                },
-              )
-              as Map<String, dynamic>;
-      final correctMs = clock.now().difference(correctStarted).inMilliseconds;
-
-      if (result['server_busy'] == true) {
-        _photosPausedUntil = clock.now().add(photoPauseWhenBusy);
-      }
-
-      if (mounted) {
-        setState(() {
-          _correctedLat = (result['corrected_lat'] as num).toDouble();
-          _correctedLong = (result['corrected_long'] as num).toDouble();
-          _correctionError = (result['correction_error'] as num).toDouble();
-          _correctedAt = clock.now();
-          _correctionOffset = offsetMeters(
-            position.latLng,
-            LatLng(_correctedLat!, _correctedLong!),
-          );
-        });
-      }
-
-      // A short haptic pulse once per *newly* matched anchor point, not
-      // every tick re-confirming the same match (every ~1s - that would be
-      // constant buzzing, noise rather than a signal) (#83).
-      final anchorMatchId = result['anchor_match_id'] as String?;
-      if (anchorMatchId != null && anchorMatchId != _lastHapticAnchorId) {
-        _lastHapticAnchorId = anchorMatchId;
-        HapticFeedback.selectionClick();
-      }
-
-      // Not awaited: the next photo shouldn't wait on the log upload.
-      unawaited(
-        _postLog({
-          'session_id': sessionId,
-          'gps_lat': position.latitude,
-          'gps_long': position.longitude,
-          'gps_accuracy': position.accuracy,
-          'heading': position.heading,
-          'corrected_lat': result['corrected_lat'],
-          'corrected_long': result['corrected_long'],
-          'correction_error': result['correction_error'],
-          'anchor_match_id': result['anchor_match_id'],
-          'confidence_score': result['confidence_score'],
-          'raw_image_url': result['raw_image_url'],
-          'debug': _debugSnapshot(
-            position,
-            correction: (result['debug'] as Map?)?.cast<String, dynamic>(),
-            timing: {'capture': captureMs, 'correct': correctMs},
-            photoAt: captureStarted,
-          ),
-        }),
+  /// A correction came back for [fix]: the green marker and guidance use
+  /// it, through the offset from that fix (see _liveCorrected).
+  void _applyCorrection(Map<String, dynamic> result, Position fix) {
+    if (!mounted) return;
+    setState(() {
+      _correctedLat = (result['corrected_lat'] as num).toDouble();
+      _correctedLong = (result['corrected_long'] as num).toDouble();
+      _correctionError = (result['correction_error'] as num).toDouble();
+      _correctedAt = clock.now();
+      _correctionOffset = offsetMeters(
+        fix.latLng,
+        LatLng(_correctedLat!, _correctedLong!),
       );
-    } catch (e) {
-      // Camera capture or /correct_position failed (unreachable, slow,
-      // unauthenticated, etc.) - degrade to a raw-GPS-only tick rather than
-      // dropping this tick entirely.
-      await _logRawTick(
-        sessionId,
-        position,
-        failure: e is ApiException
-            ? 'api_${e.statusCode}'
-            : e.runtimeType.toString(),
-      );
-    }
+    });
+  }
+
+  /// The lens looks covered: said (assertive) and shown, once per streak.
+  void _sayCameraBlocked() {
+    if (!mounted) return;
+    final text = AppLocalizations.of(context)!.navAnnouncementCameraBlocked;
+    _speak(text, assertive: true);
+    showSpokenNotice(context, text);
   }
 
   /// Admin test flow: records the last instruction as wrong, with where it
@@ -1894,7 +1522,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     final sessionId = _sessionId;
     _stopped = true;
     _guiding = false;
-    _pendingTickTimer?.cancel();
+    _loop.stop();
     _guidanceTimer?.cancel();
     _loadingTimer?.cancel();
     _barometerProbeTimer?.cancel();
@@ -1913,9 +1541,8 @@ class _NavigationScreenState extends State<NavigationScreen>
     // One last tick before the session is closed, carrying what happened
     // since the previous one - the arrival above all. It used to be lost
     // whenever the camera loop's own tick was still in flight.
-    if (position != null &&
-        (_pendingEvents.isNotEmpty || _pendingCues.isNotEmpty)) {
-      await _logRawTick(sessionId, position);
+    if (position != null && _log.hasPending) {
+      await _loop.logRaw(sessionId, position);
     }
     try {
       await _navigationApi.patch('/sessions/$sessionId', {
@@ -1985,7 +1612,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     _stopped = true;
     WidgetsBinding.instance.removeObserver(this);
     widget.sensors.keepAwake(false);
-    _pendingTickTimer?.cancel();
+    _loop.stop();
     _periodicAnnouncementTimer?.cancel();
     _guidanceTimer?.cancel();
     _loadingTimer?.cancel();
@@ -2193,6 +1820,25 @@ class _NavigationScreenState extends State<NavigationScreen>
                 ],
               ),
       ),
+    );
+  }
+}
+
+/// The trip's camera, for [CorrectionLoop].
+class _Lens implements TripCamera {
+  _Lens(this._controller);
+
+  final CameraController _controller;
+
+  @override
+  bool get ready => _controller.value.isInitialized;
+
+  @override
+  Future<TripPhoto> take() async {
+    final image = await _controller.takePicture();
+    return (
+      bytes: await image.readAsBytes(),
+      filename: path.basename(image.path),
     );
   }
 }
