@@ -30,6 +30,7 @@ import '../services/turn_guidance.dart';
 import '../services/trip_plan.dart';
 import '../services/trip_words.dart';
 import 'correction_loop.dart';
+import 'position_source.dart';
 import 'trip_log.dart';
 import 'trip_sensors.dart';
 import '../services/api_error_messages.dart';
@@ -77,14 +78,6 @@ const Duration _kStaleFixAnnounce = Duration(seconds: 25);
 const Duration _kLoadingNotice = Duration(milliseconds: 1500);
 const Duration _kLoadingRepeat = Duration(seconds: 6);
 
-/// A correction's offset from raw GPS is applied to the live fix for this
-/// long, then dropped in favour of raw GPS (the camera loop has stalled).
-/// The offset is the GPS's own slowly changing error (backend-positioning's
-/// bias, tau 120 s), so it holds well past the next tick. Showing the
-/// corrected position itself instead put it 5-11 s behind the user in a
-/// field test: a tick's answer arrives ~5 s after its photo.
-const Duration _kCorrectionFreshness = Duration(seconds: 20);
-
 /// Below this GPS speed (m/s), GPS heading is meaningless (standing still),
 /// so it's only used as a fallback for a missing compass when walking.
 const double _kMinSpeedForGpsHeading = 0.7;
@@ -126,10 +119,6 @@ const int _kArrivalConfirmTicks = 2;
 /// waiting the default 60 s stalled the whole loop (no logs, stale
 /// correction) through a ~20 s connection drop in a field test.
 const Duration _kTickRequestTimeout = Duration(seconds: 8);
-
-/// When the correction goes stale, guidance blends from the last corrected
-/// position to raw GPS over this long instead of jumping between them.
-const Duration _kSourceBlend = Duration(seconds: 2);
 
 /// The periodic "N meters ahead" update is skipped if anything else was
 /// said this recently, so it never piles onto a turn instruction.
@@ -256,7 +245,6 @@ class _NavigationScreenState extends State<NavigationScreen>
   final _pathLoaded = Completer<void>();
   bool _guiding = false;
   bool _arrived = false;
-  DateTime? _correctedAt;
   DateTime? _lastSpokenAt;
   bool _stopped = false;
 
@@ -281,8 +269,6 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// leg's start), and the steps said then: see progressSince.
   double? _progressMeters;
   int? _progressSteps;
-  DateTime? _staleSince;
-  LatLng? _staleFrom;
 
   /// Magnetic declination (degrees, east positive) - see trueHeading().
   final double _declination =
@@ -292,13 +278,8 @@ class _NavigationScreenState extends State<NavigationScreen>
   bool _ending = false;
   String? _error;
 
-  double? _correctedLat;
-  double? _correctedLong;
-
-  /// The last correction minus the raw fix it corrected, metres east/north
-  /// (see _kCorrectionFreshness).
-  ({double x, double y})? _correctionOffset;
-  double? _correctionError;
+  /// Where guidance thinks the user is: corrected, raw, or between.
+  final _where = PositionSource();
   List<LatLng> _plannedPath = [];
   List<Waypoint> _waypoints = [];
   int _nextWaypointIndex = 0;
@@ -339,7 +320,6 @@ class _NavigationScreenState extends State<NavigationScreen>
   double? _lastTurn;
   double? _lastTargetDistance;
   double? _lastTargetBearing;
-  bool _lastUsedCorrected = false;
 
   /// The app language whose voice was checked (see [_onTtsConfigured]).
   String? _ttsLanguage;
@@ -417,7 +397,7 @@ class _NavigationScreenState extends State<NavigationScreen>
         movedMeters: _recentFixes.movedMeters,
       );
       // The corrected marker follows the live fix (see _liveCorrected).
-      if (_correctionOffset != null && mounted) setState(() {});
+      if (_where.hasCorrection && mounted) setState(() {});
     });
     _guidanceTimer = Timer.periodic(_kGuidanceInterval, (_) => _guide());
     _loadingTimer = Timer(_kLoadingNotice, _sayStillLoading);
@@ -550,59 +530,13 @@ class _NavigationScreenState extends State<NavigationScreen>
       (_waypoints.isNotEmpty ? _waypoints.last.name : null) ??
       l10n.navYourDestination;
 
-  /// Where guidance thinks the user is: the camera-corrected position when
-  /// it's fresh, raw GPS otherwise.
-  LatLng? _currentPosition() {
-    final live = _liveCorrected();
-    if (live != null) {
-      _lastUsedCorrected = true;
-      _staleSince = null;
-      _staleFrom = live;
-      return live;
-    }
-    _lastUsedCorrected = false;
-    final position = _locationService.lastPosition;
-    if (position == null) return null;
-    final raw = position.latLng;
-    // Blend from the last corrected position to raw GPS instead of jumping
-    // the tens of metres that can separate them.
-    final staleFrom = _staleFrom;
-    if (staleFrom != null) {
-      _staleSince ??= clock.now();
-      final from = staleFrom;
-      final f =
-          (clock.now().difference(_staleSince!).inMilliseconds /
-                  _kSourceBlend.inMilliseconds)
-              .clamp(0.0, 1.0);
-      if (f < 1) {
-        return LatLng(
-          from.latitude + (raw.latitude - from.latitude) * f,
-          from.longitude + (raw.longitude - from.longitude) * f,
-        );
-      }
-    }
-    return raw;
-  }
+  /// Where guidance thinks the user is ([PositionSource.current]).
+  LatLng? _currentPosition() => _where.current(_rawPosition);
 
-  /// The live GPS fix with the latest correction's offset applied, while
-  /// that offset is fresh; null otherwise.
-  LatLng? _liveCorrected() {
-    final offset = _correctionOffset;
-    final correctedAt = _correctedAt;
-    final raw = _rawPosition;
-    if (offset == null ||
-        correctedAt == null ||
-        raw == null ||
-        clock.now().difference(correctedAt) >= _kCorrectionFreshness) {
-      return null;
-    }
-    return applyOffset(raw, offset.x, offset.y);
-  }
+  /// The live fix moved by the latest correction, while it's fresh.
+  LatLng? _liveCorrected() => _where.live(_rawPosition);
 
-  LatLng? get _rawPosition {
-    final position = _locationService.lastPosition;
-    return position?.latLng;
-  }
+  LatLng? get _rawPosition => _locationService.lastPosition?.latLng;
 
   /// Where the segment being walked starts: the previous waypoint, or the
   /// route's start for the first one.
@@ -1158,7 +1092,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     buzz(Buzz.short);
     final raw = _rawPosition;
     final corrected = _liveCorrected();
-    final correctedAt = _correctedAt;
+    final correctedAt = _where.correctedAt;
     _log.event(
       'checkpoint',
       fields: {
@@ -1384,7 +1318,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     Map<String, int>? timing,
     DateTime? photoAt,
   }) {
-    final correctedAt = _correctedAt;
+    final correctedAt = _where.correctedAt;
     final snapshot = <String, dynamic>{
       'compass': _heading.value,
       'compass_raw': _lastRawCompass,
@@ -1409,7 +1343,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       'gps_speed': position.speed,
       'gps_course': position.heading,
       'gps_time': position.timestamp.toUtc().toIso8601String(),
-      'position_source': _lastUsedCorrected ? 'corrected' : 'raw',
+      'position_source': _where.usedCorrected ? 'corrected' : 'raw',
       'correction_age_s': correctedAt == null
           ? null
           : clock.now().difference(correctedAt).inMilliseconds / 1000,
@@ -1440,16 +1374,16 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// it, through the offset from that fix (see _liveCorrected).
   void _applyCorrection(Map<String, dynamic> result, Position fix) {
     if (!mounted) return;
-    setState(() {
-      _correctedLat = (result['corrected_lat'] as num).toDouble();
-      _correctedLong = (result['corrected_long'] as num).toDouble();
-      _correctionError = (result['correction_error'] as num).toDouble();
-      _correctedAt = clock.now();
-      _correctionOffset = offsetMeters(
+    setState(
+      () => _where.correct(
         fix.latLng,
-        LatLng(_correctedLat!, _correctedLong!),
-      );
-    });
+        LatLng(
+          (result['corrected_lat'] as num).toDouble(),
+          (result['corrected_long'] as num).toDouble(),
+        ),
+        (result['correction_error'] as num).toDouble(),
+      ),
+    );
   }
 
   /// The lens looks covered: said (assertive) and shown, once per streak.
@@ -1480,17 +1414,19 @@ class _NavigationScreenState extends State<NavigationScreen>
           'gps_lat': position.latitude,
           'gps_long': position.longitude,
         },
-        'corrected_lat': _liveCorrected()?.latitude ?? _correctedLat,
-        'corrected_long': _liveCorrected()?.longitude ?? _correctedLong,
+        'corrected_lat':
+            _liveCorrected()?.latitude ?? _where.corrected?.latitude,
+        'corrected_long':
+            _liveCorrected()?.longitude ?? _where.corrected?.longitude,
         'compass_heading': _heading.value,
         'debug': {
           'turn': _lastTurn,
           'target_distance_m': _lastTargetDistance,
           'target_bearing': _lastTargetBearing,
-          'position_source': _lastUsedCorrected ? 'corrected' : 'raw',
+          'position_source': _where.usedCorrected ? 'corrected' : 'raw',
           'guidance': _guidance.walking ? 'walking' : 'orienting',
           'gps_accuracy': position?.accuracy,
-          'correction_error': _correctionError,
+          'correction_error': _where.correctionError,
         },
       });
       messenger
@@ -1631,8 +1567,8 @@ class _NavigationScreenState extends State<NavigationScreen>
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final live = _liveCorrected();
-    final correctedLat = live?.latitude ?? _correctedLat;
-    final correctedLong = live?.longitude ?? _correctedLong;
+    final correctedLat = live?.latitude ?? _where.corrected?.latitude;
+    final correctedLong = live?.longitude ?? _where.corrected?.longitude;
     final showDebugPreview =
         kDebugMode &&
         _cameraController != null &&
@@ -1679,8 +1615,8 @@ class _NavigationScreenState extends State<NavigationScreen>
                               l10n.navCorrectedPosition(
                                 correctedLat.toStringAsFixed(6),
                                 correctedLong.toStringAsFixed(6),
-                                _correctionError != null
-                                    ? ' (±${_correctionError!.toStringAsFixed(2)}m)'
+                                _where.correctionError != null
+                                    ? ' (±${_where.correctionError!.toStringAsFixed(2)}m)'
                                     : '',
                               ),
                               style: const TextStyle(color: Colors.green),
