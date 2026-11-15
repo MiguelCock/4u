@@ -394,7 +394,7 @@
   "locationCategoryAcademic": "Académico",
   "locationCategoryServices": "Comida, tiendas y servicios",
   "locationCategoryWellbeing": "Bienestar y deporte",
-  "locationCategoryOther": "Otro",
+  "locationCategoryOther": "Otros lugares",
   "locationTypeSearchHint": "Buscar tipos, p. ej. biblioteca",
   "locationTypeNoMatches": "Ningún tipo coincide con \"{query}\".",
   "adminAnchorViewList": "Lista",
