@@ -364,6 +364,8 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 
 - **A row's position:** `anchorPosition(row)` (`lib/services/geo_utils.dart`), for points, buildings and places. Don't parse `latitude`/`longitude` by hand; there were two identical copies and six inline ones.
 - **A GPS fix as a map position:** `position.latLng` (`PositionLatLng`, same file).
+- **Admin confirmations and errors:** `confirmAction(context, title:, content:, confirmLabel:)` and `showApiError(context, e, sentence)` (`lib/widgets/admin_dialogs.dart`). Don't hand-write another "Cancel / Delete" dialog or `SnackBar(Text(x(friendlyApiErrorMessage(...))))`.
+- **A dropdown's first choice:** `initialChoice(rows, preferred)` (`lib/services/initial_choice.dart`): the preferred row while it exists, else the first. Add building, edit building and capture use it.
 - **A route's points in order:** `routeAnchorIds(route)` (`lib/services/route_points.dart`). Load them with `fetchRoutePoints`, one request when the server has `by-ids`; the session view used to fetch them one after another.
 
 ## Known gaps

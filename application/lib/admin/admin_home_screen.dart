@@ -11,6 +11,7 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/map_scope.dart';
 import '../services/map_sync.dart';
+import '../widgets/admin_dialogs.dart';
 import '../widgets/admin_map/admin_map.dart';
 import '../widgets/map_conflict.dart';
 import '../widgets/category_mark.dart';
@@ -183,8 +184,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           _lastTabIndex = index;
           _navigatingBack = false;
           // A move belongs to the map it started on, and so does connecting.
-          _movingPoint = null;
-          _moveTarget = null;
+          _clearMove();
           if (index != _kMap) {
             _connecting = false;
             _connectFromId = null;
@@ -195,30 +195,17 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         setState(() {});
         if (index == _kUsers && !_usersLoaded) _loadUsers();
       });
-    _placeSearchController.addListener(
-      () => setState(
-        () => _placeQuery = _placeSearchController.text.trim().toLowerCase(),
-      ),
-    );
-    _buildingSearchController.addListener(
-      () => setState(
-        () => _buildingQuery = _buildingSearchController.text
-            .trim()
-            .toLowerCase(),
-      ),
-    );
-    _anchorSearchController.addListener(
-      () => setState(
-        () => _anchorQuery = _anchorSearchController.text.trim().toLowerCase(),
-      ),
-    );
-    _connectionSearchController.addListener(
-      () => setState(
-        () => _connectionQuery = _connectionSearchController.text
-            .trim()
-            .toLowerCase(),
-      ),
-    );
+    // Each search box filters its tab, case-insensitively.
+    for (final (controller, setQuery) in [
+      (_placeSearchController, (String q) => _placeQuery = q),
+      (_buildingSearchController, (String q) => _buildingQuery = q),
+      (_anchorSearchController, (String q) => _anchorQuery = q),
+      (_connectionSearchController, (String q) => _connectionQuery = q),
+    ]) {
+      controller.addListener(
+        () => setState(() => setQuery(controller.text.trim().toLowerCase())),
+      );
+    }
     _loadAll();
     // Other admins' changes appear within about 30 s.
     _syncTimer = Timer.periodic(
@@ -437,10 +424,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   void _handleBack() {
     final index = _tabController.index;
     if (index == _kMap && _movingPoint != null) {
-      setState(() {
-        _movingPoint = null;
-        _moveTarget = null;
-      });
+      setState(_clearMove);
       return;
     }
     if (index == _kMap && _connectFromId != null) {
@@ -605,14 +589,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       await _loadUsers();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLocalizations.of(
-              context,
-            )!.adminUsersErrorUpdateFailed(friendlyApiErrorMessage(context, e)),
-          ),
-        ),
+      showApiError(
+        context,
+        e,
+        AppLocalizations.of(context)!.adminUsersErrorUpdateFailed,
       );
     }
   }
@@ -629,15 +609,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            l10n.adminOrphanedErrorRepairFailed(
-              friendlyApiErrorMessage(context, e),
-            ),
-          ),
-        ),
-      );
+      showApiError(context, e, l10n.adminOrphanedErrorRepairFailed);
     }
   }
 
@@ -646,7 +618,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   Future<void> _setUserActive(Map<String, dynamic> user, bool active) async {
     final l10n = AppLocalizations.of(context)!;
     if (!active) {
-      final confirmed = await _confirm(
+      final confirmed = await confirmAction(
+        context,
         title: l10n.adminUserDeactivateTooltip,
         content: l10n.adminUserDeactivateConfirm(
           user['full_name'] as String? ?? user['id'] as String,
@@ -659,15 +632,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       await _loadUsers();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            l10n.adminUsersErrorUpdateFailed(
-              friendlyApiErrorMessage(context, e),
-            ),
-          ),
-        ),
-      );
+      showApiError(context, e, l10n.adminUsersErrorUpdateFailed);
     }
   }
 
@@ -680,7 +645,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       return;
     }
     final l10n = AppLocalizations.of(context)!;
-    final confirmed = await _confirm(
+    final confirmed = await confirmAction(
+      context,
       title: l10n.adminUsersDemoteConfirmTitle,
       content: l10n.adminUsersDemoteConfirmContent(
         user['full_name'] as String? ?? user['id'] as String,
@@ -839,31 +805,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           )
           .toList();
 
-  Future<bool> _confirm({
-    required String title,
-    required String content,
-  }) async {
-    final l10n = AppLocalizations.of(context)!;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(content),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(l10n.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(l10n.commonDelete),
-          ),
-        ],
-      ),
-    );
-    return confirmed == true;
-  }
-
   /// Deletes in the database first; [afterSuccess] (removing the points
   /// from photo search) runs only once that worked. The other way round, a
   /// delete that failed left points listed but no longer recognisable.
@@ -877,14 +818,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       await _loadData();
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              AppLocalizations.of(
-                context,
-              )!.commonErrorDeleteFailed(friendlyApiErrorMessage(context, e)),
-            ),
-          ),
+        showApiError(
+          context,
+          e,
+          AppLocalizations.of(context)!.commonErrorDeleteFailed,
         );
       }
     }
@@ -921,7 +858,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         .length;
 
     final l10n = AppLocalizations.of(context)!;
-    final confirmed = await _confirm(
+    final confirmed = await confirmAction(
+      context,
       title: l10n.adminDeletePlaceTitle,
       content:
           l10n.adminDeletePlaceContent(
@@ -959,7 +897,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         .length;
 
     final l10n = AppLocalizations.of(context)!;
-    final confirmed = await _confirm(
+    final confirmed = await confirmAction(
+      context,
       title: l10n.adminDeleteBuildingTitle,
       content:
           l10n.adminDeleteBuildingContent(
@@ -982,7 +921,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final photoCount = _photosOf(point['id'] as String).length;
     final connectionCount = _connectionsOf(point['id'] as String).length;
     final l10n = AppLocalizations.of(context)!;
-    final confirmed = await _confirm(
+    final confirmed = await confirmAction(
+      context,
       title: l10n.adminDeleteAnchorTitle,
       content:
           l10n.adminDeleteAnchorContent(photoCount, connectionCount) +
@@ -997,7 +937,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   Future<void> _deleteConnection(Map<String, dynamic> connection) async {
     final l10n = AppLocalizations.of(context)!;
-    final confirmed = await _confirm(
+    final confirmed = await confirmAction(
+      context,
       title: l10n.adminDeleteConnectionTitle,
       content: l10n.commonCannotBeUndone,
     );
@@ -1027,14 +968,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       await _loadData();
     } on ApiException catch (e) {
       if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            l10n.connectionWarningSaveFailed(
-              friendlyApiErrorMessage(context, e),
-            ),
-          ),
-        ),
+      showApiError(
+        context,
+        e,
+        l10n.connectionWarningSaveFailed,
+        messenger: messenger,
       );
     }
   }
@@ -1085,11 +1023,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// Connect mode on the map, with [point] as the first of the pair: the
   /// next point tapped connects to it (a point row's tap, the sheet's
   /// Connect).
+  /// Ends a move on the map: no point being moved, no new spot.
+  void _clearMove() {
+    _movingPoint = null;
+    _moveTarget = null;
+  }
+
   void _connectFromAnchorPoint(Map<String, dynamic> point) {
     if (_tabController.index != _kMap) _tabController.animateTo(_kMap);
     setState(() {
-      _movingPoint = null;
-      _moveTarget = null;
+      _clearMove();
       _connecting = true;
       _connectFromId = point['id'] as String?;
       _mapFocus = MapFocus(PointHit(point), open: false);
@@ -1103,18 +1046,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     setState(() => _mapFocus = MapFocus(item));
   }
 
-  String _describePoint(String id) {
-    final l10n = AppLocalizations.of(context)!;
-    final point = _anchorPoints.firstWhere(
-      (p) => p['id'] == id,
-      orElse: () => {'id': id},
-    );
-    return anchorLabel(
-      l10n,
-      point,
-      _buildingName(point['building_id'] as String?),
-    );
-  }
+  String _describePoint(String id) => _pointLabel(
+    AppLocalizations.of(context)!,
+    _anchorPoints.firstWhere((p) => p['id'] == id, orElse: () => {'id': id}),
+  );
 
   void _snack(String text, {int seconds = 4}) {
     ScaffoldMessenger.of(context)
@@ -1856,8 +1791,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         onConnectingChanged: (on) => setState(() {
           _connecting = on;
           _connectFromId = null;
-          _movingPoint = null;
-          _moveTarget = null;
+          _clearMove();
         }),
         selectedPointId: _connectFromId,
         onConnectTap: _onConnectTap,
@@ -1907,10 +1841,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           SnackBar(content: Text(l10n.mapConflictKeptTheirs(name))),
         );
         if (!mounted) return;
-        setState(() {
-          _movingPoint = null;
-          _moveTarget = null;
-        });
+        setState(_clearMove);
         await _loadData();
         return;
       }
@@ -1929,22 +1860,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            l10n.editAnchorErrorUpdateFailed(
-              friendlyApiErrorMessage(context, e),
-            ),
-          ),
-        ),
+      showApiError(
+        context,
+        e,
+        l10n.editAnchorErrorUpdateFailed,
+        messenger: messenger,
       );
       return;
     }
     if (!mounted) return;
-    setState(() {
-      _movingPoint = null;
-      _moveTarget = null;
-    });
+    setState(_clearMove);
     await _loadData();
   }
 
@@ -1978,10 +1903,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       ),
                     ),
                     TextButton(
-                      onPressed: () => setState(() {
-                        _movingPoint = null;
-                        _moveTarget = null;
-                      }),
+                      onPressed: () => setState(_clearMove),
                       child: Text(l10n.commonCancel),
                     ),
                   ],
@@ -2893,15 +2815,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     ];
   }
 
-  /// A point's name with its building: names don't repeat it.
-  String _pointLabel(AppLocalizations l10n, Map<String, dynamic>? point) {
-    for (final building in _buildings) {
-      if (building['id'] == point?['building_id']) {
-        return anchorLabel(l10n, point, building['name'] as String?);
-      }
-    }
-    return anchorDisplayName(l10n, point);
-  }
+  /// A point as admins see it everywhere: its name, then its building
+  /// (names don't repeat it).
+  String _pointLabel(AppLocalizations l10n, Map<String, dynamic>? point) =>
+      anchorLabel(l10n, point, _buildingName(point?['building_id'] as String?));
 
   String _buildingName(String? id) =>
       _buildings.firstWhere(
