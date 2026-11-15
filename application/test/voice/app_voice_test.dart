@@ -77,4 +77,38 @@ void main() {
       expect(done, isTrue);
     });
   });
+
+  test(
+    'a listen left open never silences its own screen (#264 regression)',
+    () {
+      fakeAsync((async) {
+        final engine = FakeEngine();
+        final voice = _voice(engine);
+        final home = voice.claim();
+        // A place was heard; the listen ended without endListening.
+        home.beginListening();
+        home.say('¿Ir a Biblioteca? Di sí para empezar.');
+        async.elapse(const Duration(seconds: 3));
+        expect(engine.said, ['¿Ir a Biblioteca? Di sí para empezar.']);
+      });
+    },
+  );
+
+  test('another screen waits for the listen to end, or for a new claim', () {
+    fakeAsync((async) {
+      final engine = FakeEngine();
+      final voice = _voice(engine);
+      final home = voice.claim()..beginListening();
+      expect(voice.listening.value, isTrue);
+      home.endListening();
+      expect(voice.listening.value, isFalse);
+      home.beginListening();
+      // The trip takes the voice: the home screen's listen no longer counts.
+      final trip = voice.claim();
+      expect(voice.listening.value, isFalse);
+      trip.say('Iniciando ruta.');
+      async.elapse(const Duration(seconds: 3));
+      expect(engine.said, ['Iniciando ruta.']);
+    });
+  });
 }

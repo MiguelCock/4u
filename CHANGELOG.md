@@ -6,6 +6,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-15
+
 ### Added
 
 - **iPhone (for testers):** each release now has an `Eyes4U-unsigned.ipa`, installed with your own Apple ID through Sideloadly or AltStore. It has to be installed again every 7 days. See [docs/ios-sideload.md](docs/ios-sideload.md).
@@ -21,6 +23,7 @@ Each release's section becomes its GitHub release description (`.github/workflow
 ### Fixed
 
 - **With TalkBack, each message is heard once.** The app no longer shows what it says as a notice TalkBack reads again (the camera notice was read over and over at the start of a trip), and TalkBack no longer speaks into the microphone while the app listens for a place.
+- **After saying a place, the app asks "Di sí para empezar" and listens again** without a tap. Since the previous change it waited until a button was tapped.
 - **Test as user (admin) and trips no longer talk over each other.** The home screen stops talking and listening as soon as the trip starts.
 - Admin: "Otro" no longer appears twice in the place type list; its category is now "Otros lugares".
 - Admin: on phones, the last menu item (Test as user) is no longer hidden under the phone's own buttons.
@@ -312,7 +315,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.6.0-pre...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.6.0...develop
+[0.6.0]: https://github.com/MiguelCock/4u/compare/v0.6.0-pre...v0.6.0
 [0.6.0-pre]: https://github.com/MiguelCock/4u/compare/v0.5.6...v0.6.0-pre
 [0.5.6]: https://github.com/MiguelCock/4u/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/MiguelCock/4u/compare/v0.5.4...v0.5.5
