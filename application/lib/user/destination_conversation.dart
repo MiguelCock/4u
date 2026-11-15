@@ -1,0 +1,252 @@
+import 'package:flutter/material.dart';
+
+import '../l10n/app_localizations.dart';
+import '../services/app_preferences.dart';
+import '../services/buzz.dart';
+import '../services/geo_utils.dart';
+import '../services/spoken_destination.dart';
+import '../voice/home_voice_controller.dart';
+import 'anchor_point_picker_screen.dart';
+import 'home_dialogs.dart';
+import 'trip_starter.dart';
+
+/// What [DestinationConversation] needs from the screen it runs on.
+abstract interface class ConversationHost {
+  BuildContext get context;
+  bool get mounted;
+
+  /// Something shown changed: the destination, or the choices appearing.
+  void conversationChanged();
+
+  /// A destination was just chosen: an earlier error no longer applies.
+  void destinationChosen();
+
+  /// The user said yes to "Go to X?": find the route.
+  Future<void> startTrip();
+}
+
+/// Choosing where to go, by voice first (D1), or by hand (#268): asking,
+/// listening, misses, several matches, "Go to X?", and the picker. Came out
+/// of `UserHomeScreen`; the voice is [HomeVoiceController]'s, the places
+/// [TripStarter]'s.
+class DestinationConversation {
+  DestinationConversation({
+    required this.host,
+    required this.voice,
+    required this.trip,
+  });
+
+  final ConversationHost host;
+  final HomeVoiceController voice;
+  final TripStarter trip;
+
+  /// Where the user chose to go, or null.
+  Map<String, dynamic>? destination;
+
+  /// Start and destination rows, shown only when the user asked for them
+  /// in Settings, or when voice can't be used this time (D1, D2).
+  bool _revealChoices = false;
+
+  bool get showsChoices => homeShowsChoices(
+    setting: showChoicesNotifier.value,
+    revealed: _revealChoices,
+  );
+
+  /// Voice first (D1): the app asks and listens by itself, unless the phone
+  /// has no recognizer.
+  bool get voiceFirst => !_revealChoices;
+
+  BuildContext get _context => host.context;
+  AppLocalizations get _l10n => AppLocalizations.of(_context)!;
+  String get _language => Localizations.localeOf(_context).languageCode;
+  bool get _onTop => ModalRoute.of(_context)?.isCurrent == true;
+
+  /// "Baño · Piso 2 · Edificio C" (see [destinationLabel]).
+  String label(Map<String, dynamic> anchor) => destinationLabel(
+    anchor,
+    buildingNames: trip.buildingNames,
+    floorLabel: (floor) => _l10n.commonFloorOption(floor + 1),
+  );
+
+  /// [label] to be read aloud.
+  String spoken(Map<String, dynamic> anchor) => spokenLabel(label(anchor));
+
+  /// Meters from the user, for the nearest-first order of same-named places.
+  double _distanceFromUser(Map<String, dynamic> anchor) {
+    final position = trip.location.lastPosition;
+    final there = anchorPosition(anchor);
+    if (position == null || there == null) return double.infinity;
+    return haversineMeters(position.latLng, there);
+  }
+
+  List<Map<String, dynamic>> get _buildings => campusBuildings(
+    trip.buildings,
+    activeIds: trip.activeBuildings,
+    startBuildingId: trip.start?['building_id'],
+  );
+
+  /// Right after sign-in: "Where do you want to go?", then listening. Not
+  /// over another page, and not once a destination is chosen.
+  Future<void> ask() async {
+    if (!host.mounted || destination != null || !voiceFirst || !_onTop) return;
+    voice.resetMisses();
+    if (MediaQuery.of(_context).accessibleNavigation) {
+      // TalkBack reads the new screen first; the question comes after it.
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!host.mounted) return;
+    }
+    final l10n = _l10n;
+    await voice.say(l10n.homeAskDestination);
+    if (!host.mounted || destination != null || !_onTop) return;
+    await _listen(prompt: l10n.homeListenExample);
+  }
+
+  /// The Speak button: listens again, or stops listening. It never restarts
+  /// anything else, which is how people got lost (D1). Stopping takes
+  /// effect at once, whatever the recognizer does next.
+  Future<void> speakButton() async {
+    if (voice.isListening) {
+      await voice.stopListeningByHand(_l10n.homeStoppedListening);
+      return;
+    }
+    voice.resetMisses();
+    await _listen(prompt: _l10n.homeListenPrompt);
+  }
+
+  /// Listens for a place, after saying [prompt] (what to say: a tester
+  /// heard nothing and didn't know what to answer). Without a recognizer,
+  /// says so once and shows the choices: retrying can't bring one back.
+  Future<void> _listen({required String prompt}) async {
+    final l10n = _l10n;
+    final language = _language;
+    await trip.ensureLoaded();
+    if (!host.mounted) return;
+    final started = await voice.listen(
+      _heard,
+      language: language,
+      prompt: prompt,
+    );
+    if (started == ListenStart.unavailable && host.mounted) {
+      _revealChoices = true;
+      host.conversationChanged();
+      await voice.say(l10n.homeVoiceUnavailable);
+    }
+  }
+
+  Future<void> _heard(String heard) async {
+    final l10n = _l10n;
+    // Felt: listening has stopped.
+    buzz(Buzz.short);
+    if (heard.trim().isEmpty) {
+      await _missed(l10n.homeVoiceNothingHeard);
+      return;
+    }
+    voice.resetMisses();
+    final buildings = _buildings;
+    final found = resolveSpokenDestination(
+      heard,
+      candidates: destinationCandidates(
+        trip.anchors,
+        buildings: buildings,
+        startId: trip.start?['id'],
+      ),
+      buildings: buildings,
+      buildingNames: trip.buildingNames,
+      distance: _distanceFromUser,
+    );
+    if (found.isEmpty) {
+      // Only mention a list when there's one on screen.
+      await _missed(
+        showsChoices
+            ? l10n.homeVoiceNoMatchWithList(heard)
+            : l10n.homeVoiceNoMatch(heard),
+      );
+      return;
+    }
+    await _chooseFrom(found);
+  }
+
+  /// Nothing usable was heard: say why, and try again up to
+  /// [HomeVoiceController.retries] times, then stop with the way to carry
+  /// on by hand. Never a loop.
+  Future<void> _missed(String why) async {
+    final l10n = _l10n;
+    if (!voice.missed()) {
+      await voice.say('$why ${l10n.homeVoiceGiveUp}');
+      return;
+    }
+    await voice.say(why);
+    // A destination chosen earlier doesn't stop it: the user is asking again.
+    if (host.mounted && _onTop) await _listen(prompt: l10n.homeListenPrompt);
+  }
+
+  /// One option goes straight to "Go to X?", several to a choice of the
+  /// first few ([chooseDestination]).
+  Future<void> _chooseFrom(List<Map<String, dynamic>> found) async {
+    if (found.length == 1) {
+      confirm(found.single);
+      return;
+    }
+    final choice = await chooseDestination(
+      _context,
+      voice: voice,
+      language: _language,
+      options: found.take(3).toList(),
+      label: label,
+      spoken: spoken,
+      listen: voiceFirst,
+    );
+    if (!host.mounted) return;
+    final picked = choice.picked;
+    if (choice.noneOfThem) {
+      ask(); // "ninguno": ask again
+    } else if (picked != null) {
+      confirm(picked);
+    }
+  }
+
+  /// A destination was chosen (by voice or from the list): "Go to X?"
+  /// ([confirmDestination]), whose Start route button starts the trip.
+  Future<void> confirm(Map<String, dynamic> anchor) async {
+    destination = anchor;
+    host.destinationChosen();
+    final start = await confirmDestination(
+      _context,
+      voice: voice,
+      language: _language,
+      label: label(anchor),
+      spoken: spoken(anchor),
+      listen: voiceFirst,
+    );
+    if (!host.mounted) return;
+    if (start == true) {
+      host.startTrip();
+    } else if (start == false) {
+      if (showsChoices) {
+        // "Change destination": every tester was unsure how to (2026-11-03).
+        pickByHand();
+      } else {
+        // No list on screen: ask again instead.
+        destination = null;
+        host.conversationChanged();
+        ask();
+      }
+    }
+  }
+
+  /// The University → Building → place picker, then "Go to X?".
+  Future<void> pickByHand() async {
+    final picked = await Navigator.of(_context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => AnchorPointPickerScreen(
+          title: _l10n.homeWhereTo,
+          excludeAnchorId: trip.start?['id'] as String?,
+        ),
+      ),
+    );
+    if (picked != null && host.mounted) {
+      await voice.say(_l10n.homeYouChose(spoken(picked)));
+      if (host.mounted) confirm(picked);
+    }
+  }
+}

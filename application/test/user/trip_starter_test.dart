@@ -1,4 +1,7 @@
+import 'package:eyes4u/l10n/app_localizations.dart';
+import 'package:eyes4u/services/api_service.dart';
 import 'package:eyes4u/services/location_service.dart';
+import 'package:flutter/widgets.dart';
 import 'package:eyes4u/user/trip_starter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -294,6 +297,51 @@ void main() {
       final outcome = await plan(s, _anchors.first);
       expect(outcome, isA<TripNoPath>());
       expect((outcome as TripNoPath).end, NoPathEnd.unknown);
+    });
+  });
+
+  group('tripOutcomeMessage', () {
+    final l10n = lookupAppLocalizations(const Locale('es'));
+    String? say(TripOutcome outcome) => tripOutcomeMessage(
+      l10n,
+      outcome,
+      destination: const {'id': 'a1', 'location_description': 'Biblioteca'},
+      apiError: (_) => 'sin conexión',
+    );
+
+    test('nothing to say for a found route or a cancel', () {
+      expect(say(const TripFound({})), isNull);
+      expect(say(const TripCancelled()), isNull);
+    });
+
+    test('why there is no GPS', () {
+      expect(
+        say(const TripNoGps(LocationError.serviceDisabled)),
+        l10n.locationServiceDisabledError,
+      );
+      expect(
+        say(const TripNoGps(LocationError.permissionDenied)),
+        l10n.locationPermissionDeniedError,
+      );
+      expect(say(const TripNoGps(null)), l10n.homeErrorNoGpsFix);
+    });
+
+    test('the rest', () {
+      expect(say(const TripNoStart()), l10n.homeErrorNoVerifiedAnchors);
+      expect(
+        say(const TripAlreadyThere()),
+        l10n.homeErrorAlreadyAtDestination('Biblioteca'),
+      );
+      expect(say(const TripNoPath(NoPathEnd.start)), l10n.homeErrorNoPathStart);
+      expect(
+        say(const TripNoPath(NoPathEnd.destination)),
+        l10n.homeErrorNoPathDestination,
+      );
+      expect(say(const TripNoPath(NoPathEnd.unknown)), l10n.homeErrorNoPath);
+      expect(
+        say(TripFailed(ApiException(503, ''))),
+        l10n.homeErrorFailedToFindRoute('sin conexión'),
+      );
     });
   });
 }

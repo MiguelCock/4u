@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/camera_helper.dart';
 import '../services/destinations.dart';
@@ -97,6 +98,30 @@ class TripFailed extends TripOutcome {
 class TripCancelled extends TripOutcome {
   const TripCancelled();
 }
+
+/// What the screen says for [outcome], or null for a found route or a
+/// cancel (nothing to say). [apiError] words a server failure.
+String? tripOutcomeMessage(
+  AppLocalizations l10n,
+  TripOutcome outcome, {
+  required Map<String, dynamic> destination,
+  required String Function(ApiException error) apiError,
+}) => switch (outcome) {
+  TripFound() || TripCancelled() => null,
+  TripNoGps(error: LocationError.serviceDisabled) =>
+    l10n.locationServiceDisabledError,
+  TripNoGps(error: null) => l10n.homeErrorNoGpsFix,
+  TripNoGps() => l10n.locationPermissionDeniedError,
+  TripNoStart() => l10n.homeErrorNoVerifiedAnchors,
+  TripAlreadyThere() => l10n.homeErrorAlreadyAtDestination(
+    destination['location_description'] as String? ??
+        destination['id'] as String,
+  ),
+  TripNoPath(end: NoPathEnd.start) => l10n.homeErrorNoPathStart,
+  TripNoPath(end: NoPathEnd.destination) => l10n.homeErrorNoPathDestination,
+  TripNoPath() => l10n.homeErrorNoPath,
+  TripFailed(:final error) => l10n.homeErrorFailedToFindRoute(apiError(error)),
+};
 
 /// Where a trip starts, and the route to its destination (#268). It holds
 /// the map the home screen offers (verified, connected points in active

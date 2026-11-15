@@ -8,12 +8,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
-import '../services/app_preferences.dart';
-import '../services/buzz.dart';
-import '../services/spoken_destination.dart';
 import '../services/geo_utils.dart';
 import '../services/location_service.dart';
-import 'anchor_point_picker_screen.dart';
+import 'destination_conversation.dart';
 import 'home_dialogs.dart';
 import 'home_tutorial.dart';
 import 'home_widgets.dart';
@@ -67,7 +64,9 @@ class UserHomeScreen extends StatefulWidget {
   State<UserHomeScreen> createState() => _UserHomeScreenState();
 }
 
-class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
+class _UserHomeScreenState extends State<UserHomeScreen>
+    with RouteAware
+    implements ConversationHost {
   late final _routeApi = widget.routeApi ?? RouteManagementApi();
   late final _locationService = widget.locationService ?? LocationService();
   StreamSubscription<Position>? _positionSub;
@@ -81,7 +80,6 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     routeApi: _routeApi,
     locationService: _locationService,
   );
-  Map<String, dynamic>? _end;
   bool _finding = false;
   Timer? _stillFindingTimer;
 
@@ -118,7 +116,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
       final resumed = await _checkUnfinishedTrip();
       // Admins' "Test as user" too: testers at Icesi used it.
       await _showTutorialOnFirstRun();
-      if (!resumed) await _askForDestination();
+      if (!resumed) await _talk.ask();
     });
   }
 
@@ -171,218 +169,25 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   Future<void> _say(String text, {bool interrupt = false}) =>
       _voiceCtl.say(text, interrupt: interrupt);
 
-  /// Start and destination rows, shown only when the user asked for them
-  /// in Settings, or when voice can't be used this time (D1, D2).
-  bool _revealChoices = false;
-
-  bool get _showsChoices => homeShowsChoices(
-    setting: showChoicesNotifier.value,
-    revealed: _revealChoices,
+  /// Choosing where to go (#268): voice first, or by hand.
+  late final _talk = DestinationConversation(
+    host: this,
+    voice: _voiceCtl,
+    trip: _trip,
   );
 
-  /// Buildings a user can be sent to (see [campusBuildings]).
-  List<Map<String, dynamic>> get _campusBuildings => campusBuildings(
-    _trip.buildings,
-    activeIds: _trip.activeBuildings,
-    startBuildingId: _trip.start?['building_id'],
-  );
-
-  List<Map<String, dynamic>> get _destinationCandidates =>
-      destinationCandidates(
-        _trip.anchors,
-        buildings: _campusBuildings,
-        startId: _trip.start?['id'],
-      );
-
-  /// [_destinationLabel] to be read aloud.
-  String _spokenLabel(Map<String, dynamic> anchor) =>
-      spokenLabel(_destinationLabel(anchor));
-
-  /// Meters from the user, for the nearest-first order of same-named places.
-  double _distanceFromUser(Map<String, dynamic> anchor) {
-    final position = _locationService.lastPosition;
-    final there = anchorPosition(anchor);
-    if (position == null || there == null) return double.infinity;
-    return haversineMeters(position.latLng, there);
+  @override
+  void conversationChanged() {
+    if (mounted) setState(() {});
   }
 
-  String _destinationLabel(Map<String, dynamic> anchor) => destinationLabel(
-    anchor,
-    buildingNames: _trip.buildingNames,
-    floorLabel: (floor) =>
-        AppLocalizations.of(context)!.commonFloorOption(floor + 1),
-  );
-
-  /// Voice first (D1): the app asks and listens by itself, unless the voice is
-  /// off or a screen reader is on (it would be heard as the answer). Not
-  /// over a dialog, and never again once a destination is chosen.
-  bool get _voiceFirst => !_revealChoices;
-
-  /// Right after sign-in: "Where do you want to go?", then listening.
-  Future<void> _askForDestination() async {
-    if (!mounted || _end != null || !_voiceFirst) return;
-    if (ModalRoute.of(context)?.isCurrent != true) return;
-    _voiceCtl.resetMisses();
-    if (MediaQuery.of(context).accessibleNavigation) {
-      // TalkBack reads the new screen first; the question comes after it.
-      await Future<void>.delayed(const Duration(seconds: 2));
-      if (!mounted) return;
-    }
-    final l10n = AppLocalizations.of(context)!;
-    await _say(l10n.homeAskDestination);
-    if (!mounted || _end != null || ModalRoute.of(context)?.isCurrent != true) {
-      return;
-    }
-    await _startListening(_handleSpoken, prompt: l10n.homeListenExample);
+  @override
+  void destinationChosen() {
+    if (mounted) setState(() => _error = null);
   }
 
-  /// Nothing usable was heard: say why, and try again up to
-  /// [HomeVoiceController.retries]
-  /// times, then stop with the way to carry on by hand. Never a loop.
-  Future<void> _missed(String why) async {
-    final l10n = AppLocalizations.of(context)!;
-    if (!_voiceCtl.missed()) {
-      await _say('$why ${l10n.homeVoiceGiveUp}');
-      return;
-    }
-    await _say(why);
-    // A destination chosen earlier doesn't stop it: the user is asking again.
-    if (mounted && ModalRoute.of(context)?.isCurrent == true) {
-      await _startListening(_handleSpoken, prompt: l10n.homeListenPrompt);
-    }
-  }
-
-  /// The Speak button: listens again, or stops listening. It never restarts
-  /// anything else, which is how people got lost (D1). Stopping takes effect
-  /// at once, whatever the recognizer does next.
-  Future<void> _listenForDestination() async {
-    if (_listening) {
-      await _voiceCtl.stopListeningByHand(
-        AppLocalizations.of(context)!.homeStoppedListening,
-      );
-      return;
-    }
-    _voiceCtl.resetMisses();
-    await _startListening(
-      _handleSpoken,
-      prompt: AppLocalizations.of(context)!.homeListenPrompt,
-    );
-  }
-
-  /// Opens the microphone once, after saying [prompt] (what to say: a tester
-  /// heard nothing and didn't know what to answer), with a felt and heard
-  /// mark just before (the recognizer isn't on yet, so it doesn't take them
-  /// as speech). Calls [onHeard] once with what was said, '' for nothing.
-  /// False when there's no recognizer or microphone.
-  Future<bool> _startListening(
-    Future<void> Function(String heard) onHeard, {
-    String? prompt,
-    Duration listenFor = const Duration(seconds: 30),
-    Duration pauseFor = const Duration(seconds: 5),
-  }) async {
-    final l10n = AppLocalizations.of(context)!;
-    final language = Localizations.localeOf(context).languageCode;
-
-    await _trip.ensureLoaded();
-    if (!mounted) return false;
-    final started = await _voiceCtl.listen(
-      onHeard,
-      language: language,
-      prompt: prompt,
-      listenFor: listenFor,
-      pauseFor: pauseFor,
-    );
-    if (started == ListenStart.unavailable && mounted) {
-      // Said once, and the choices appear. Retrying can't bring a
-      // microphone back.
-      setState(() => _revealChoices = true);
-      await _say(l10n.homeVoiceUnavailable);
-    }
-    return started == ListenStart.started;
-  }
-
-  Future<void> _handleSpoken(String heard) async {
-    final l10n = AppLocalizations.of(context)!;
-    // Felt: listening has stopped.
-    buzz(Buzz.short);
-    if (heard.trim().isEmpty) {
-      await _missed(l10n.homeVoiceNothingHeard);
-      return;
-    }
-    _voiceCtl.resetMisses();
-    final found = resolveSpokenDestination(
-      heard,
-      candidates: _destinationCandidates,
-      buildings: _campusBuildings,
-      buildingNames: _trip.buildingNames,
-      distance: _distanceFromUser,
-    );
-    if (found.isEmpty) {
-      // Only mention a list when there's one on screen.
-      await _missed(
-        _showsChoices
-            ? l10n.homeVoiceNoMatchWithList(heard)
-            : l10n.homeVoiceNoMatch(heard),
-      );
-      return;
-    }
-    await _chooseFrom(found);
-  }
-
-  /// One option goes straight to "Go to X?", several to a choice of the first
-  /// few ([chooseDestination]).
-  Future<void> _chooseFrom(List<Map<String, dynamic>> found) async {
-    if (found.length == 1) {
-      _confirmAndStart(found.single);
-      return;
-    }
-    final choice = await chooseDestination(
-      context,
-      voice: _voiceCtl,
-      language: Localizations.localeOf(context).languageCode,
-      options: found.take(3).toList(),
-      label: _destinationLabel,
-      spoken: _spokenLabel,
-      listen: _voiceFirst,
-    );
-    if (!mounted) return;
-    final picked = choice.picked;
-    if (choice.noneOfThem) {
-      _askForDestination(); // "ninguno": ask again
-    } else if (picked != null) {
-      _confirmAndStart(picked);
-    }
-  }
-
-  /// A destination was chosen (by voice or from the list): "Go to X?"
-  /// ([confirmDestination]), whose Start route button starts the trip.
-  Future<void> _confirmAndStart(Map<String, dynamic> anchor) async {
-    setState(() {
-      _end = anchor;
-      _error = null;
-    });
-    final start = await confirmDestination(
-      context,
-      voice: _voiceCtl,
-      language: Localizations.localeOf(context).languageCode,
-      label: _destinationLabel(anchor),
-      spoken: _spokenLabel(anchor),
-      listen: _voiceFirst,
-    );
-    if (!mounted) return;
-    if (start == true) {
-      _findRoute();
-    } else if (start == false) {
-      if (_showsChoices) {
-        // "Change destination": every tester was unsure how to (2026-11-03).
-        _pickEnd();
-      } else {
-        // No list on screen: ask again instead.
-        setState(() => _end = null);
-        _askForDestination();
-      }
-    }
-  }
+  @override
+  Future<void> startTrip() => _findRoute();
 
   /// Best-effort early load (see [TripStarter.loadQuietly]).
   Future<void> _loadAnchors() => _trip.loadQuietly();
@@ -393,30 +198,13 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   String _startLabel(AppLocalizations l10n, Map<String, dynamic> start) {
     final description = (start['location_description'] as String? ?? '').trim();
     if (description.isNotEmpty) {
-      return l10n.homeStartNearestSubtitle(_destinationLabel(start));
+      return l10n.homeStartNearestSubtitle(_talk.label(start));
     }
     final position = _locationService.lastPosition;
     final there = anchorPosition(start);
     if (position == null || there == null) return l10n.homeStartSubtitle;
     final meters = haversineMeters(position.latLng, there).round();
     return l10n.homeStartUnnamedSubtitle(meters);
-  }
-
-  Future<void> _pickEnd() async {
-    final picked = await Navigator.of(context).push<Map<String, dynamic>>(
-      MaterialPageRoute(
-        builder: (_) => AnchorPointPickerScreen(
-          title: AppLocalizations.of(context)!.homeWhereTo,
-          excludeAnchorId: _trip.start?['id'] as String?,
-        ),
-      ),
-    );
-    if (picked != null && mounted) {
-      await _say(
-        AppLocalizations.of(context)!.homeYouChose(_spokenLabel(picked)),
-      );
-      if (mounted) _confirmAndStart(picked);
-    }
   }
 
   /// Runs the start-point check ([TripStarter.locateStart]) and says what it
@@ -520,16 +308,8 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     return floor;
   }
 
-  /// Which end of the route isn't connected, in words.
-  String _noPathMessage(AppLocalizations l10n, NoPathEnd which) =>
-      switch (which) {
-        NoPathEnd.start => l10n.homeErrorNoPathStart,
-        NoPathEnd.destination => l10n.homeErrorNoPathDestination,
-        NoPathEnd.unknown => l10n.homeErrorNoPath,
-      };
-
   Future<void> _findRoute() async {
-    final end = _end;
+    final end = _talk.destination;
     if (end == null) return;
     setState(() {
       _finding = true;
@@ -565,7 +345,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
   }
 
   Future<void> _findRouteFrom(AppLocalizations l10n) async {
-    final end = _end!;
+    final end = _talk.destination!;
     final outcome = await _trip.planTrip(
       end,
       locate: _locateStart,
@@ -578,7 +358,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
           MaterialPageRoute(
             builder: (_) => NavigationScreen(
               route: route,
-              destinationName: _spokenLabel(end),
+              destinationName: _talk.spoken(end),
               adminPreview: widget.adminPreview,
             ),
           ),
@@ -586,27 +366,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
         setState(() => _finding = false);
       case TripCancelled():
         setState(() => _finding = false);
-      case TripNoGps(:final error):
-        _fail(switch (error) {
-          LocationError.serviceDisabled => l10n.locationServiceDisabledError,
-          null => l10n.homeErrorNoGpsFix,
-          _ => l10n.locationPermissionDeniedError,
-        });
-      case TripNoStart():
-        _fail(l10n.homeErrorNoVerifiedAnchors);
-      case TripAlreadyThere():
+      default:
         _fail(
-          l10n.homeErrorAlreadyAtDestination(
-            end['location_description'] as String? ?? end['id'] as String,
-          ),
-        );
-      case TripNoPath(end: final which):
-        _fail(_noPathMessage(l10n, which));
-      case TripFailed(:final error):
-        _fail(
-          l10n.homeErrorFailedToFindRoute(
-            friendlyApiErrorMessage(context, error),
-          ),
+          tripOutcomeMessage(
+            l10n,
+            outcome,
+            destination: end,
+            apiError: (e) => friendlyApiErrorMessage(context, e),
+          )!,
         );
     }
   }
@@ -664,14 +431,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
     busy: _finding,
     label: l10n.homeSayDestinationButton,
     stopLabel: l10n.homeStopListeningButton,
-    onPressed: _listenForDestination,
+    onPressed: _talk.speakButton,
   );
 
   Widget _body(AppLocalizations l10n) {
     // Without the choices the screen is one big Speak button (D1/D2): the
     // simplest it can be. They appear when voice can't be used.
-    final choices = _showsChoices;
-    final end = _end;
+    final choices = _talk.showsChoices;
+    final end = _talk.destination;
     return Column(
       children: [
         if (widget.adminPreview) const AdminPreviewBanner(),
@@ -689,11 +456,11 @@ class _UserHomeScreenState extends State<UserHomeScreen> with RouteAware {
             name: end == null
                 ? null
                 : end['location_description'] as String? ?? end['id'] as String,
-            onTap: _pickEnd,
+            onTap: _talk.pickByHand,
           ),
           SayDestinationButton(
             listening: _listening,
-            onPressed: _finding ? null : _listenForDestination,
+            onPressed: _finding ? null : _talk.speakButton,
           ),
         ] else
           Expanded(child: Center(child: _speakCircle(l10n))),
