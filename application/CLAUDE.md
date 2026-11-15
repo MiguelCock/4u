@@ -354,6 +354,12 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
   - `buildTripPlan` and `resumeWaypointIndex` (`lib/services/trip_plan.dart`): the route's stops (corners, named places, hazards, both ends of a floor change) and where a resumed trip picks up;
   - `turnWords`, `legWords`, `hazardLabel` and `floorChangeAction` (`lib/services/trip_words.dart`): a turn, a leg, a hazard and a floor change in words. There were two copies of each turn switch.
 
+## Testing the admin home
+
+- **Optional parameters:** `AdminHomeScreen` takes `mapApi`, `aiTrainingApi`, `userApi`, `userId`, `userEmail`, `signOut` and `showTiles`; every real caller keeps the defaults (the real APIs, the Supabase account, tiles on).
+- **Tests:** `test/admin/admin_home_screen_test.dart` pins the first load (with the unsearchable-photos notice), back through a drill-down and tabs to the exit guard, a university's delete with its cascade counts and index cleanup, verifying a point (PATCH with `expected`, then `/index_anchor`), promoting a user (never your own row) and the 30 s `/changes` merge.
+- **Fakes:** `FakeMapApi` (lists, `/changes`), `FakeUserApi` and `FakeAiTrainingApi` in `test/support/api_fakes.dart`; each records its writes (`writes`, `paths(method)`). Photos in tests have no `image_url`, or the rows load thumbnails over the network.
+
 ## Shared helpers (one copy each)
 
 - **A row's position:** `anchorPosition(row)` (`lib/services/geo_utils.dart`), for points, buildings and places. Don't parse `latitude`/`longitude` by hand; there were two identical copies and six inline ones.
