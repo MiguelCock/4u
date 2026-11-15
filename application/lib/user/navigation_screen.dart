@@ -31,6 +31,7 @@ import '../services/trip_words.dart';
 import 'correction_loop.dart';
 import 'trip_feedback.dart';
 import 'position_source.dart';
+import 'leg_progress.dart';
 import 'route_progress.dart';
 import 'trip_log.dart';
 import 'trip_sensors.dart';
@@ -54,9 +55,6 @@ const Duration _kBarometerProbe = Duration(seconds: 3);
 /// Location type of a hallway: a trip starting anywhere else gets the
 /// compass direction at once (see _checkStall).
 const int _kHallwayType = 10;
-
-/// This much nearer the next stop counts as progress (see isStalled).
-const double _kStallProgressMeters = 3;
 
 /// With no progress, "keep walking" at most this often.
 const Duration _kQuietBeforeKeepWalking = Duration(seconds: 30);
@@ -176,10 +174,9 @@ class _NavigationScreenState extends State<NavigationScreen>
 
   int? _startTypeId;
 
-  /// Real progress toward the next stop (see isStalled): the nearest it has
-  /// been, and when.
-  double? _bestMeters;
-  DateTime? _lastProgressAt;
+  /// Progress along the leg being walked: the stall check and the
+  /// periodic update.
+  final _leg = LegProgress();
 
   final _recentFixes = RecentFixes();
 
@@ -208,11 +205,6 @@ class _NavigationScreenState extends State<NavigationScreen>
 
   /// "Loading the route" was said (the path is slow to arrive).
   bool _loadingAnnounced = false;
-
-  /// The distance to the next waypoint at the last periodic update (or the
-  /// leg's start), and the steps said then: see progressSince.
-  double? _progressMeters;
-  int? _progressSteps;
 
   /// Magnetic declination (degrees, east positive) - see trueHeading().
   final double _declination =
@@ -555,7 +547,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       case TurnCue():
         _speak(turnWords(l10n, cue), cueType: 'turn');
       case StartWalkingCue(:final steps):
-        _resetProgress(_lastTargetDistance);
+        _leg.reset(_lastTargetDistance);
         _speak(l10n.navGoStraightSteps(steps), cueType: 'start_walking');
       case SlowTurnCue():
         _speak(l10n.navSlowTurn, cueType: 'slow_turn');
@@ -575,7 +567,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   void _speakStartCue(LatLng here) {
     _route.needsStartCue = false;
     _speakLegNotes(_waypoints[_route.next]);
-    _resetProgress(haversineMeters(here, _waypoints[_route.next].point));
+    _leg.reset(haversineMeters(here, _waypoints[_route.next].point));
     if (_reliableHeading() != null) {
       _guidance.reset(now: clock.now());
       return;
@@ -629,19 +621,10 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// trusted heading, nothing else would speak: says which way to go by the
   /// compass, or else to keep walking.
   void _checkStall(LatLng here) {
-    final now = clock.now();
     final meters = haversineMeters(here, _waypoints[_route.next].point);
-    final best = _bestMeters;
-    if (best == null || meters <= best - _kStallProgressMeters) {
-      _bestMeters = meters;
-      _lastProgressAt = now;
+    if (!_leg.stalled(meters, trustedHeading: _reliableHeading() != null)) {
       return;
     }
-    if (_reliableHeading() != null ||
-        !isStalled(lastProgressAt: _lastProgressAt, now: now)) {
-      return;
-    }
-    _lastProgressAt = now;
     if (!_speakCompassDirection(here)) _sayKeepWalking(meters);
   }
 
@@ -766,7 +749,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       _arrive();
       return;
     }
-    _resetProgress(null);
+    _leg.reset(null);
   }
 
   /// "In 8 meters, turn left", and the hazard there, once per corner
@@ -801,15 +784,6 @@ class _NavigationScreenState extends State<NavigationScreen>
     }
   }
 
-  /// Starts counting progress toward the next waypoint afresh, from
-  /// [meters] away (null: the next periodic update speaks regardless).
-  void _resetProgress(double? meters) {
-    _bestMeters = null;
-    _lastProgressAt = null;
-    _progressMeters = meters;
-    _progressSteps = meters == null ? null : roundSteps(meters);
-  }
-
   /// At a waypoint: one sentence for what to do next. "At the cafeteria,
   /// turn right and walk about 20 steps", or "go straight, about 30
   /// steps". The turn comes from the route itself (the bend between the two
@@ -839,7 +813,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       cueType: 'leg',
     );
     _speakLegNotes(to);
-    _resetProgress(haversineMeters(from.point, to.point));
+    _leg.reset(haversineMeters(from.point, to.point));
     // Walking: the user turns as told, and is corrected (once) only if a
     // trusted heading shows them going the wrong way.
     _guidance.reset(now: clock.now(), walking: true);
@@ -948,8 +922,8 @@ class _NavigationScreenState extends State<NavigationScreen>
     final distance = haversineMeters(here, _waypoints[_route.next].point);
     if (distance <= RouteProgress.proximityMeters) return;
     final l10n = AppLocalizations.of(context)!;
-    switch (progressSince(lastMeters: _progressMeters, meters: distance)) {
-      case Progress.same:
+    switch (_leg.update(distance)) {
+      case LegUpdate.keepWalking:
         // Not getting closer: "N steps to go" as if it were progress doesn't
         // help, but neither did the silence (Icesi, 2026-11-05).
         final spoken = _lastSpokenAt;
@@ -958,14 +932,14 @@ class _NavigationScreenState extends State<NavigationScreen>
           _sayKeepWalking(distance);
         }
         return;
-      case Progress.closer:
-        final steps = roundSteps(distance);
-        _progressMeters = distance;
-        if (steps == _progressSteps) return;
-        _progressSteps = steps;
-        _speak(l10n.navStepsAhead(steps), cueType: 'meters_ahead');
-      case Progress.away:
-        _resetProgress(distance);
+      case LegUpdate.quiet:
+        return;
+      case LegUpdate.stepsAhead:
+        _speak(
+          l10n.navStepsAhead(roundSteps(distance)),
+          cueType: 'meters_ahead',
+        );
+      case LegUpdate.away:
         _speak(l10n.navMovingAway, cueType: 'away');
         _turnBackTowardTarget(here);
     }
