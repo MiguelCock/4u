@@ -32,7 +32,9 @@ METERS_PER_DEGREE = 111_320
 
 def older_than_supported() -> str:
     """A version just below min_supported, which must be refused with 426."""
-    major, minor, patch = (int(part) for part in MIN_SUPPORTED.split("."))
+    # A pre-release ("0.6.0-pre") is judged as its X.Y.Z.
+    core = MIN_SUPPORTED.split("-", 1)[0]
+    major, minor, patch = (int(part) for part in core.split("."))
     if patch:
         return f"{major}.{minor}.{patch - 1}"
     return f"{major}.{minor - 1}.99"
