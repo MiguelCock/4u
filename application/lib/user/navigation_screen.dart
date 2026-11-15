@@ -28,8 +28,10 @@ import '../services/route_points.dart';
 import '../services/test_walk.dart';
 import '../services/turn_guidance.dart';
 import '../services/trip_plan.dart';
+import '../services/trip_sessions.dart';
 import '../services/trip_words.dart';
 import 'correction_loop.dart';
+import 'trip_feedback.dart';
 import 'position_source.dart';
 import 'trip_log.dart';
 import 'trip_sensors.dart';
@@ -1481,66 +1483,28 @@ class _NavigationScreenState extends State<NavigationScreen>
       await _loop.logRaw(sessionId, position);
     }
     try {
-      await _navigationApi.patch('/sessions/$sessionId', {
-        'status': 'completed',
-        'end_time': clock.now().toUtc().toIso8601String(),
-        if (position != null)
-          'end_position': {
-            'latitude': position.latitude,
-            'longitude': position.longitude,
-          },
-      });
+      await closeSession(
+        _navigationApi,
+        sessionId,
+        status: 'completed',
+        at: position,
+      );
     } on ApiException catch (_) {
       // Session end best-effort too - still let the user leave the screen.
     }
     if (mounted && !arrived) {
       await _speak(AppLocalizations.of(context)!.navAnnouncementEnded);
     }
-    if (mounted) await _showFeedbackDialog(sessionId);
+    if (mounted) {
+      await showTripFeedback(
+        context,
+        api: _navigationApi,
+        sessionId: sessionId,
+        userId: _userId,
+        speak: _speak,
+      );
+    }
     if (mounted) Navigator.of(context).pop();
-  }
-
-  Future<void> _showFeedbackDialog(String sessionId) async {
-    final l10n = AppLocalizations.of(context)!;
-    final controller = TextEditingController();
-    await _speak(l10n.navFeedbackTitle);
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        // Said aloud just before (#257).
-        title: SpokenText(child: Text(l10n.navFeedbackTitle)),
-        content: TextField(
-          controller: controller,
-          decoration: InputDecoration(hintText: l10n.navFeedbackHint),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.navFeedbackSkip),
-          ),
-          TextButton(
-            onPressed: () async {
-              final comment = controller.text.trim();
-              final userId = _userId;
-              if (comment.isNotEmpty && userId != null) {
-                try {
-                  await _navigationApi.post('/feedback', {
-                    'user_id': userId,
-                    'session_id': sessionId,
-                    'comment': comment,
-                  });
-                } on ApiException catch (_) {
-                  // Feedback is best-effort - don't block leaving the screen.
-                }
-              }
-              if (context.mounted) Navigator.of(context).pop();
-            },
-            child: Text(l10n.navFeedbackSubmit),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
