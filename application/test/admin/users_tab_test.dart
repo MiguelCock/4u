@@ -50,7 +50,9 @@ void main() {
 
     await tester.tap(find.byTooltip(l10n.adminUsersDemote));
     await tester.pumpAndSettle();
-    await tester.tap(find.text(l10n.commonDelete));
+    // The button says what it does, not "Delete".
+    expect(find.text(l10n.commonDelete), findsNothing);
+    await tester.tap(find.text(l10n.adminUsersDemoteButton));
     await tester.pumpAndSettle();
     final (_, path, body) = api.writes.single;
     expect(path, '/profiles/u2');
@@ -64,7 +66,7 @@ void main() {
     await tester.tap(find.byTooltip(l10n.adminUserDeactivateTooltip));
     await tester.pumpAndSettle();
     expect(find.text(l10n.adminUserDeactivateConfirm('Ana')), findsOneWidget);
-    await tester.tap(find.text(l10n.commonDelete));
+    await tester.tap(find.text(l10n.adminUserDeactivateButton));
     await tester.pumpAndSettle();
     expect(api.writes.single.$3, {'is_active': false});
 

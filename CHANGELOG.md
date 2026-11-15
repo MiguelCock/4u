@@ -9,6 +9,7 @@ Each release's section becomes its GitHub release description (`.github/workflow
 ### Fixed
 
 - **A trip started without a signed-in account** now says "No has iniciado sesión" instead of showing a blank screen.
+- **Admin, Users:** the confirmation for deactivating an account or removing admin rights now says **Desactivar** or **Quitar privilegios**, instead of **Eliminar**: nothing is deleted.
 
 ## [0.6.0] - 2026-11-15
 
