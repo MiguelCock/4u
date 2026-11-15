@@ -12,6 +12,7 @@ import '../services/map_scope.dart';
 import '../services/map_sync.dart';
 import '../widgets/admin_map/admin_map.dart';
 import '../widgets/map_conflict.dart';
+import '../widgets/category_mark.dart';
 import 'add_building_screen.dart';
 import 'add_connection_screen.dart';
 import 'add_place_screen.dart';
@@ -1610,8 +1611,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  CategoryTitle(
                     anchorDisplayName(l10n, point),
+                    locationTypeId: point['location_type_id'] as int?,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   Text(
@@ -2282,7 +2284,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                               Icons.location_pin,
                               color: kAdminPalette.verified,
                             ),
-                      title: Text(anchorDisplayName(l10n, point)),
+                      title: CategoryTitle(
+                        anchorDisplayName(l10n, point),
+                        locationTypeId: point['location_type_id'] as int?,
+                      ),
                       subtitle: Text(
                         '${building?['name'] as String? ?? l10n.commonUnknownBuilding} · '
                         '${l10n.adminStatusLabel(anchorStatusLabel(l10n, point['status'] as String? ?? 'unknown'))} · '
@@ -2403,8 +2408,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         anchorPointsById[connection['anchor_point_b_id']];
                     final aBuilding = buildingsById[aPoint?['building_id']];
                     final bBuilding = buildingsById[bPoint?['building_id']];
-                    final distance = (connection['distance_meters'] as num?)
-                        ?.toStringAsFixed(1);
+                    final meters = (connection['distance_meters'] as num?)
+                        ?.toDouble();
+                    final distance = meters?.toStringAsFixed(1);
                     return ListTile(
                       leading: Icon(
                         Icons.timeline,
@@ -2414,11 +2420,30 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         '${describe(connection['anchor_point_a_id'] as String?)} '
                         '↔ ${describe(connection['anchor_point_b_id'] as String?)}',
                       ),
-                      subtitle: Text(
-                        '${aBuilding?['name'] as String? ?? l10n.commonUnknownBuilding} / '
-                        '${bBuilding?['name'] as String? ?? l10n.commonUnknownBuilding}'
-                        '${distance != null ? ' · ${distance}m' : ''}'
-                        '${(connection['notes'] as String? ?? '').isEmpty ? '' : '\n⚠ ${connection['notes']}'}',
+                      // The distance in the map's colour for it (C7).
+                      subtitle: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text:
+                                  '${aBuilding?['name'] as String? ?? l10n.commonUnknownBuilding} / '
+                                  '${bBuilding?['name'] as String? ?? l10n.commonUnknownBuilding}',
+                            ),
+                            if (distance != null) ...[
+                              const TextSpan(text: ' · '),
+                              TextSpan(
+                                text: '${distance}m',
+                                style: TextStyle(
+                                  color: kAdminPalette.connectionFor(meters!),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                            if ((connection['notes'] as String? ?? '')
+                                .isNotEmpty)
+                              TextSpan(text: '\n⚠ ${connection['notes']}'),
+                          ],
+                        ),
                       ),
                       onTap: () => _editConnectionWarning(connection),
                       trailing: Row(

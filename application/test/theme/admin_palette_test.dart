@@ -42,4 +42,23 @@ void main() {
     expect(kAdminPalette.rejectedCross, isTrue);
     expect(kAdminPalette.dotOutline, isNotNull);
   });
+
+  test('the length ramp and the category colours meet the thresholds', () {
+    final problems = rampAndCategoryProblems(kAdminPalette);
+    // ignore: avoid_print
+    if (problems.isNotEmpty) print(problems.join('\n'));
+    expect(problems, isEmpty);
+  });
+
+  test('connections: green when short, black past the limit', () {
+    final p = kAdminPalette;
+    expect(p.connectionFor(3), p.connectionShort);
+    expect(p.connectionFor(15), p.connectionMid);
+    expect(p.connectionFor(30), p.connectionLong);
+    expect(p.connectionFor(31), p.connectionTooLong);
+    // Between two stops: a blend of both.
+    final ten = p.connectionFor(10);
+    expect(ten, isNot(p.connectionShort));
+    expect(ten, isNot(p.connectionMid));
+  });
 }

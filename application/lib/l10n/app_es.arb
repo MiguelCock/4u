@@ -640,5 +640,15 @@
   "adminConnectionFilterWarning": "Aviso para usuarios",
   "adminFilterYes": "Sí",
   "adminFilterNo": "No",
-  "adminHealthHowToFix": "Cómo arreglarlo"
+  "adminHealthHowToFix": "Cómo arreglarlo",
+  "adminMapLegend": "Leyenda del mapa",
+  "adminLegendConnections": "Conexiones, por longitud",
+  "adminLegendShort": "Hasta 5 m",
+  "adminLegendMid": "Unos 15 m (más gruesa desde aquí)",
+  "adminLegendLong": "Unos 30 m",
+  "adminLegendTooLong": "Más de 30 m: demasiado larga",
+  "adminLegendFloorChange": "Discontinua: cambia de piso",
+  "adminLegendPlaces": "Lugares con nombre, por categoría",
+  "adminLegendPlacesHint": "El punto en la esquina es el estado de revisión. Los puntos sin nombre siguen siendo puntos simples.",
+  "adminLegendStatus": "Estado de revisión"
 }

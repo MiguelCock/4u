@@ -3,7 +3,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../map.dart' show locationPinMarker;
+import '../../services/destinations.dart' show isDestinationAnchor;
 import '../../services/floor_view.dart';
+import '../../services/geo_utils.dart' show haversineMeters;
+import '../../services/location_types.dart';
 import '../../services/map_tap.dart';
 import '../floor_selector.dart';
 import 'admin_map.dart';
@@ -44,6 +47,9 @@ class PointsLayer extends AdminMapLayer {
   List<Widget> build(AdminMapView view) {
     final circles = <CircleMarker>[];
     final markers = <Marker>[];
+    // Named destinations (C8): over the dots, so a place isn't hidden under
+    // the hallway point beside it.
+    final places = <Marker>[];
     Marker? moving;
     Marker? selected;
     for (final point in points) {
@@ -76,6 +82,8 @@ class PointsLayer extends AdminMapLayer {
         continue;
       }
       switch (view.relation(point)) {
+        case FloorRelation.current when isDestinationAnchor(point):
+          places.add(destinationMarker(position, point));
         case FloorRelation.current:
           final palette = kAdminPalette;
           final status = point['status'] as String?;
@@ -123,6 +131,7 @@ class PointsLayer extends AdminMapLayer {
       // The other floors first, so the selected one is drawn on top.
       MarkerLayer(markers: markers),
       CircleLayer(circles: circles),
+      MarkerLayer(markers: places),
       if (moving != null || selected != null)
         MarkerLayer(markers: [?moving, ?selected]),
     ];
@@ -152,8 +161,75 @@ class PointsLayer extends AdminMapLayer {
   }
 }
 
+/// A named destination (C8): a rounded mark in its category's colour with
+/// its type's icon, and its review status as a small dot on the corner.
+Marker destinationMarker(LatLng position, Map<String, dynamic> point) {
+  final palette = kAdminPalette;
+  final type = locationTypeById(point['location_type_id'] as int?);
+  final fill = type == null
+      ? palette.inactive
+      : palette.category(type.category);
+  final status = point['status'] as String?;
+  final statusColor = anchorStatusColor(status);
+  final rejected = status == 'rejected' && palette.rejectedCross;
+  final hollow =
+      status != 'verified' && status != 'rejected' && palette.pendingHollow;
+  return Marker(
+    point: position,
+    width: 40,
+    height: 40,
+    child: Stack(
+      alignment: Alignment.center,
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: const [
+              BoxShadow(color: Color(0x66000000), blurRadius: 2),
+            ],
+          ),
+          child: Icon(
+            locationTypeIcon(type?.key),
+            color: Colors.white,
+            size: 18,
+          ),
+        ),
+        Positioned(
+          right: 0,
+          top: 0,
+          child: Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: hollow || rejected ? Colors.white : statusColor,
+              border: Border.all(
+                color: hollow ? statusColor : Colors.black,
+                width: hollow ? 3 : 1.5,
+              ),
+            ),
+            child: rejected
+                ? Icon(Icons.close, color: statusColor, size: 10)
+                : null,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+/// A connection's length: the stored distance, else the straight line.
+double connectionLength(Map<String, dynamic> c, LatLng a, LatLng b) =>
+    (c['distance_meters'] as num?)?.toDouble() ?? haversineMeters(a, b);
+
 /// Connections between [points], drawn when one end is on the selected floor
-/// and the other is shown; dashed across floors.
+/// and the other is shown; dashed across floors. Coloured by length (C7),
+/// and thicker past 15 m, so a long one stands out by shape too.
 class ConnectionsLayer extends AdminMapLayer {
   final List<Map<String, dynamic>> points;
   final List<Map<String, dynamic>> connections;
@@ -221,15 +297,14 @@ class ConnectionsLayer extends AdminMapLayer {
       final sameFloor =
           pointFloor(byId[c['anchor_point_a_id']]!) ==
           pointFloor(byId[c['anchor_point_b_id']]!);
+      final long = connectionLength(c, a, b) > 15;
       lines.add(
         Polyline(
           points: [a, b],
           color: pending
               ? kAdminPalette.connectionPending
-              : prominent
-              ? kAdminPalette.connectionActive
-              : kAdminPalette.connection,
-          strokeWidth: prominent && !pending ? 3 : 2,
+              : kAdminPalette.connectionFor(connectionLength(c, a, b)),
+          strokeWidth: (prominent && !pending ? 3 : 2) + (long ? 2 : 0),
           pattern: pending
               ? const StrokePattern.dotted()
               : sameFloor

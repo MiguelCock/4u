@@ -7,6 +7,7 @@ library;
 import 'dart:math' as math;
 import 'dart:ui' show Color;
 
+import '../services/location_types.dart' show LocationCategory;
 import 'admin_palette.dart';
 
 /// OpenStreetMap's standard style, where the admin maps are drawn.
@@ -272,4 +273,63 @@ class PaletteReport {
             '${e.key.a}/${e.key.b}: ${v.value.toStringAsFixed(1)} '
                 'for ${v.key.name}',
   ];
+}
+
+/// The kinds of place shown as destination markers (C8): told apart by
+/// colour, so every pair is checked.
+const kMarkerCategories = [
+  LocationCategory.gettingAround,
+  LocationCategory.academic,
+  LocationCategory.services,
+  LocationCategory.wellbeing,
+  LocationCategory.other,
+];
+
+const _white = Color(0xFFFFFFFF);
+
+/// What fails for the connection ramp (C7) and the category colours (C8):
+/// a colour faint on the map (or, for categories, on the marker's white
+/// body), or two colours that some vision can't tell apart.
+List<String> rampAndCategoryProblems(AdminPalette p) {
+  final problems = <String>[];
+  void needsContrast(String name, Color c, {bool onWhite = false}) {
+    final backgrounds = [...kMapBackgrounds.values, if (onWhite) _white];
+    final lowest = backgrounds.map((bg) => contrast(c, bg)).reduce(math.min);
+    if (lowest < kMinContrast) {
+      problems.add('$name: contrast ${lowest.toStringAsFixed(1)}');
+    }
+  }
+
+  void apart(String a, Color ca, String b, Color cb) {
+    for (final v in Vision.values) {
+      final d = distance(simulate(ca, v), simulate(cb, v));
+      if (d < kMinDistance) {
+        problems.add('$a/$b: ${d.toStringAsFixed(1)} for ${v.name}');
+      }
+    }
+  }
+
+  final ramp = {
+    'short': p.connectionShort,
+    'mid': p.connectionMid,
+    'long': p.connectionLong,
+    'tooLong': p.connectionTooLong,
+  };
+  ramp.forEach(needsContrast);
+  final steps = ramp.entries.toList();
+  for (var i = 0; i + 1 < steps.length; i++) {
+    apart(steps[i].key, steps[i].value, steps[i + 1].key, steps[i + 1].value);
+  }
+
+  for (final c in kMarkerCategories) {
+    needsContrast(c.name, p.category(c), onWhite: true);
+  }
+  for (var i = 0; i < kMarkerCategories.length; i++) {
+    for (var j = i + 1; j < kMarkerCategories.length; j++) {
+      final a = kMarkerCategories[i];
+      final b = kMarkerCategories[j];
+      apart(a.name, p.category(a), b.name, p.category(b));
+    }
+  }
+  return problems;
 }

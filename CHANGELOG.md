@@ -9,6 +9,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 ### Added
 
 - **iPhone (for testers):** each release now has an `Eyes4U-unsigned.ipa`, installed with your own Apple ID through Sideloadly or AltStore. It has to be installed again every 7 days. See [docs/ios-sideload.md](docs/ios-sideload.md).
+- **Admin map, connections by length (#240):** lines go from green (up to 5 m) through orange (15 m) to red (30 m), and black past 30 m, and are thicker from 15 m. The Connections list shows each distance in the same colour.
+- **Admin map, named places at a glance (#241):** a named destination is a rounded mark in its category's colour with its type's icon, and its review status as a dot on the corner; in-between points stay plain dots. Lists, details and search put a small category mark before a point's name. A legend button beside **Connect** explains every colour.
 
 ## [0.6.0-pre] - 2026-11-10
 
