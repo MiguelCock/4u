@@ -40,14 +40,17 @@ class SpeechQueue {
     if (current != null && !current.isCompleted) current.complete();
   }
 
+  /// Stops the sentence being said and drops every one still waiting.
+  void cancel() {
+    _generation++;
+    stop();
+    onEnded();
+  }
+
   /// Returns once [text] has been said in full, after any sentence before
   /// it. With [interrupt], whatever is being said or waiting is dropped.
   Future<void> say(String text, {bool interrupt = false}) {
-    if (interrupt) {
-      _generation++;
-      stop();
-      onEnded();
-    }
+    if (interrupt) cancel();
     final generation = _generation;
     final previous = _tail;
     final done = Completer<void>();

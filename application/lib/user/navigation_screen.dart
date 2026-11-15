@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as path;
@@ -29,7 +28,8 @@ import '../services/geo_utils.dart';
 import '../services/heading_tracker.dart';
 import '../services/image_utils.dart';
 import '../services/location_service.dart';
-import '../services/speech_voice.dart';
+import '../voice/app_voice.dart';
+import '../voice/notices.dart';
 import '../services/buzz.dart';
 import '../services/device_details.dart';
 import '../services/route_points.dart';
@@ -219,7 +219,10 @@ class _NavigationScreenState extends State<NavigationScreen>
   final _navigationApi = NavigationManagementApi();
   final _positioningApi = PositioningApi();
   final _locationService = LocationService();
-  final _tts = FlutterTts();
+
+  /// The trip's right to speak: claimed as the trip starts, so whatever the
+  /// home screen was still saying is dropped (#258).
+  late VoiceOwner _voice;
   String? _sessionId;
   CameraController? _cameraController;
 
@@ -347,37 +350,39 @@ class _NavigationScreenState extends State<NavigationScreen>
   double? _lastTargetBearing;
   bool _lastUsedCorrected = false;
 
-  /// Completes once [_tts] is set to the app language's voice; [_speak]
-  /// waits on it so the first announcement isn't read in the phone's
-  /// default voice.
-  Future<bool>? _ttsReady;
+  /// The app language whose voice was checked (see [_onTtsConfigured]).
   String? _ttsLanguage;
+
+  /// TalkBack (or another screen reader) on, as of the last build.
+  bool _screenReader = false;
   bool _voiceMissingShown = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _screenReader = screenReaderOn(context);
     final language = Localizations.localeOf(context).languageCode;
     if (language != _ttsLanguage) {
       _ttsLanguage = language;
-      _ttsReady = configureTts(_tts, language)..then(_onTtsConfigured);
+      AppVoice.instance.setLanguage(language).then(_onTtsConfigured);
     }
   }
 
   void _onTtsConfigured(bool hasVoice) {
     if (hasVoice || _voiceMissingShown || !mounted) return;
     _voiceMissingShown = true;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 10),
-        content: Text(AppLocalizations.of(context)!.navVoiceLanguageMissing),
-      ),
+    showSpokenNotice(
+      context,
+      AppLocalizations.of(context)!.navVoiceLanguageMissing,
+      spoken: false,
+      duration: const Duration(seconds: 10),
     );
   }
 
   @override
   void initState() {
     super.initState();
+    _voice = AppVoice.instance.claim();
     _startSession();
     _initCamera();
     _loadPlannedPath();
@@ -507,9 +512,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       'text': text,
     });
     if (!voiceGuidanceNotifier.value) return;
-    await _ttsReady;
-    if (assertive) await _tts.stop();
-    await _tts.speak(text);
+    await _voice.say(text, interrupt: assertive);
   }
 
   /// Re-speaks the most recent announcement on demand (a tap on the map) -
@@ -519,9 +522,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     final text = _lastAnnouncement;
     if (text == null) return;
     _speak(text, assertive: true, cueType: _lastCueType ?? 'info');
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text)));
+    showSpokenNotice(context, text, replace: true);
   }
 
   /// Resolves the route's anchor ids (already in hand from find_or_create,
@@ -1548,9 +1549,9 @@ class _NavigationScreenState extends State<NavigationScreen>
         // principle this screen already follows for every other
         // announcement, for anyone who can't hear it.
         _speak(l10n.navAnnouncementCameraDisclosure, repeatable: false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.navAnnouncementCameraDisclosure)),
-        );
+        // Once: TalkBack used to read the notice again and again on top
+        // of the voice (#257).
+        showSpokenNotice(context, l10n.navAnnouncementCameraDisclosure);
       }
       // The first instruction comes from _guide once the route is loaded
       // (_speakStartCue).
@@ -1618,6 +1619,8 @@ class _NavigationScreenState extends State<NavigationScreen>
       'heading': _tracker.value,
       'heading_source': _tracker.source,
       'heading_reliable': _tracker.reliable(DateTime.now()),
+      // Which mode the trip ran in, for reading the logs (#257).
+      'talkback': _screenReader,
       'pressure_hpa': _floorDetector.pressure,
       'floor': _currentFloor,
       'waiting_floor': _floorChange?.floor,
@@ -1719,12 +1722,9 @@ class _NavigationScreenState extends State<NavigationScreen>
               AppLocalizations.of(context)!.navAnnouncementCameraBlocked,
               assertive: true,
             );
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  AppLocalizations.of(context)!.navAnnouncementCameraBlocked,
-                ),
-              ),
+            showSpokenNotice(
+              context,
+              AppLocalizations.of(context)!.navAnnouncementCameraBlocked,
             );
           }
         }
@@ -1937,7 +1937,8 @@ class _NavigationScreenState extends State<NavigationScreen>
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(l10n.navFeedbackTitle),
+        // Said aloud just before (#257).
+        title: SpokenText(child: Text(l10n.navFeedbackTitle)),
         content: TextField(
           controller: controller,
           decoration: InputDecoration(hintText: l10n.navFeedbackHint),
@@ -1987,7 +1988,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     _accelSub?.cancel();
     _positionSub?.cancel();
     _cameraController?.dispose();
-    _tts.stop();
+    _voice.release();
     super.dispose();
   }
 

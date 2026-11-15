@@ -20,6 +20,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ### Fixed
 
+- **With TalkBack, each message is heard once.** The app no longer shows what it says as a notice TalkBack reads again (the camera notice was read over and over at the start of a trip), and TalkBack no longer speaks into the microphone while the app listens for a place.
+- **Test as user (admin) and trips no longer talk over each other.** The home screen stops talking and listening as soon as the trip starts.
 - Admin: "Otro" no longer appears twice in the place type list; its category is now "Otros lugares".
 - Admin: on phones, the last menu item (Test as user) is no longer hidden under the phone's own buttons.
 
