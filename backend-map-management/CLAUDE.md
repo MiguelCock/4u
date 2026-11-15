@@ -69,6 +69,12 @@ There's no service-to-service HTTP call here — only shared-table relationships
 6. **`POST /places`** / **`GET /places`** / **`GET /places/{id}`** — same CRUD pattern over `places` (`PlaceCreate`: `code`, `name`, `latitude`, `longitude`, plus optional `address`), via the app's `AddPlaceScreen`. **`PATCH /places/{id}`** / **`DELETE /places/{id}`** — edit/delete; delete cascades through buildings all the way to anchor points, photos, and connections in Postgres (so the app warns with counts before calling it), and best-effort deletes every affected photo's file from Storage.
 7. **`POST /anchor-point-connections`** — `AnchorPointConnectionCreate` (`anchor_point_a_id`, `anchor_point_b_id`, optional `distance_meters`, optional `notes`, `created_by`); 400s if the two ids are equal, normalizes their order, and computes `distance_meters` server-side when omitted (see the schema section above). **`GET /anchor-point-connections`** — every connection, flat, same "fetch all, join client-side" pattern as `anchor-point-photos`, via the app's Connections tab. **`GET /anchor-points/{id}/connections`** — connections touching one point (an `.or_()` filter, since the point could be on either side of the edge). **`DELETE /anchor-point-connections/{id}`** — no `PATCH`; fixing a wrong connection is delete-and-recreate (mirrors `backend-route-management`'s `routes`, which also has no `PATCH`).
 
+## Building codes (C10)
+
+- **Optional:** `BuildingCreate.code` is optional; the app no longer sends one.
+- **Filled in:** `create_building` fills a missing code from the name in capitals (`_building_code`), adding a number when another building of the university has it. The column stays `NOT NULL` and unique per university, and voice search still matches it.
+- **Older apps:** a code sent by an older app is kept.
+
 ## Names without their building
 
 `POST`/`PATCH /anchor-points` remove a trailing building name from `location_description` (`app/names.py`, `name_without_building`): the whole name, a part of one like "Edificio N - Ingenierías", or a form without generic and campus words if it's 4+ letters. Whole words at the end only, and a name that's only the building or about it ("Escaleras hacia Biblioteca") stays. The app shows the building next to names (`anchorLabel`), and voice search counts the building's words. `scripts/strip_building_names.py` does the same to existing points; it only lists unless given `--apply`, and needs `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`.

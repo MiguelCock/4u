@@ -212,13 +212,12 @@ A university is a campus; everything belongs to one. A university's row opens it
 
 | # | Field | What it means |
 |---|---|---|
-| 1 | **Code** | Short and unique, such as `ICESI`. Can't be changed later. |
-| 2 | **Name** | Shown across the app. |
-| 3 | **Address (optional)** | For reference. |
-| 4 | **Latitude** | The campus's rough centre. |
-| 5 | **Longitude** | The same. |
-| 6 | **Pick on map** | Fills both by tapping a map. |
-| 7 | **Save university** | Creates it. |
+| 1 | **Name** | Shown across the app. |
+| 2 | **Abbreviation** | A short name, such as `UPB`. Filled in from the name's initials; you can change it. Can't be changed later. |
+| 3 | **Latitude** | The campus's rough centre. |
+| 4 | **Longitude** | The same. |
+| 5 | **Pick on map** | Fills both by tapping a map. |
+| 6 | **Save university** | Creates it. |
 
 > **On the web, type rough coordinates first:** with none, the map opens in the ocean at 0,0.
 
@@ -229,16 +228,14 @@ A university is a campus; everything belongs to one. A university's row opens it
 | # | Field | What it means |
 |---|---|---|
 | 1 | **University** | Which one it belongs to. |
-| 2 | **Code** | Short and unique. Can't be changed later. |
-| 3 | **Name** | The name people use ("Edificio C"); users can say it. |
-| 4 | **Address (optional)** | For reference. |
-| 5 | **Latitude** | Its position. Points over 300 m away are refused. |
-| 6 | **Longitude** | The same. |
-| 7 | **Pick on map** | Fills both, starting at the university. |
-| 8 | **Floors** | How many; its points' floor options. |
-| 9 | **Has elevator** | Accessibility information. |
-| 10 | **Has stairs** | Accessibility information. |
-| 11 | **Save building** | Creates it. |
+| 2 | **Name** | The name people use ("Edificio C", "Bloque 20"); users can say it, so write it as they do. |
+| 3 | **Latitude** | Its position. Points over 300 m away are refused. |
+| 4 | **Longitude** | The same. |
+| 5 | **Pick on map** | Fills both, starting at the university. |
+| 6 | **Floors** | How many; its points' floor options. |
+| 7 | **Has elevator** | Accessibility information. |
+| 8 | **Has stairs** | Accessibility information. |
+| 9 | **Save building** | Creates it. |
 
 Editing either one shows a switch to **deactivate** it: users stop being offered it, and nothing is deleted.
 
@@ -273,8 +270,8 @@ An anchor point is a physical place (a door, an intersection, an elevator lobby)
 | 1 | **University** | Narrows the buildings. |
 | 2 | **Building** | Where it belongs. |
 | 3 | **Floor** | "Floor 1" is the ground floor. |
-| 4 | **Location type** | By category, with a search box. |
-| 5 | **Description** | The name users choose and hear; required for destinations. "South entrance", not "Point 1", and **without the building**, which is removed. |
+| 4 | **Location type** | Chosen first, by category, with a search box. It decides whether the point needs a name. |
+| 5 | **Name** | Appears once the type is chosen. What users choose and hear; required for destinations. "South entrance", not "Point 1", and **without the building**, which is removed. |
 | 6 | **Indoors** | Under a roof. Choose one of the two each time. |
 | 7 | **Outdoors** | In the open. |
 | 8 | **Lighting** | Optional. Explains dark photos. |

@@ -153,11 +153,11 @@
   "commonErrorSelectUniversity": "Select a university.",
   "commonErrorCodeNameLatLngRequired": "Code, name, latitude and longitude are required.",
   "commonErrorNameLatLngRequired": "Name, latitude and longitude are required.",
-  "commonErrorDescriptionRequired": "Destinations (entrances, classrooms, restrooms...) need a description - it's the name users pick and hear.",
+  "commonErrorDescriptionRequired": "Destinations (entrances, classrooms, restrooms...) need a name - it's what users pick and hear.",
   "commonNoUniversitiesYetHint": "No universities exist yet - add one first (Add university).",
   "commonLocationTypeLabel": "Location type",
-  "commonDescriptionLabel": "Description",
-  "commonDescriptionHelper": "Required for destinations - it's the name users pick and hear.",
+  "commonDescriptionLabel": "Name",
+  "commonDescriptionHelper": "Required for destinations - it's what users pick and hear.",
   "commonIndoorLocationLabel": "Indoor location",
   "commonLightingLabel": "Lighting",
   "commonLightingNotSet": "Not set",
@@ -812,5 +812,11 @@
   "adminConnectionFilterWarning": "Warning for users",
   "adminFilterYes": "Yes",
   "adminFilterNo": "No",
-  "adminHealthHowToFix": "How to fix"
+  "adminHealthHowToFix": "How to fix",
+  "captureErrorSelectType": "Choose the type of place first.",
+  "captureChooseTypeFirst": "Choose the type of place first: then you can name it, if it needs a name.",
+  "addPlaceAbbreviationLabel": "Abbreviation",
+  "addPlaceAbbreviationHelper": "A short name, such as UPB. Filled in from the name; you can change it.",
+  "addPlaceErrorRequired": "Name, abbreviation, latitude and longitude are required.",
+  "addBuildingErrorRequired": "Name, latitude and longitude are required."
 }
