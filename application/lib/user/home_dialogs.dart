@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/destination_matcher.dart';
+import '../services/place_suggestions.dart' show asksForMore;
 import '../voice/notices.dart' show SpokenText;
 import '../voice/home_voice_controller.dart';
 import '../voice/skip_speech.dart';
@@ -15,13 +16,22 @@ import '../voice/skip_speech.dart';
 const _kAnswerListenFor = Duration(seconds: 20);
 const _kAnswerPauseFor = Duration(seconds: 3);
 
+/// [chooseDestination]'s spoken "más": not an option's index, nor "none".
+const _kMore = -2;
+
 /// What [chooseDestination] ended with: an option, "none of them" (ask
-/// again), or neither (closed).
-typedef DestinationChoice = ({Map<String, dynamic>? picked, bool noneOfThem});
+/// again), "more" (the next few, D9), or none of these (closed).
+typedef DestinationChoice = ({
+  Map<String, dynamic>? picked,
+  bool noneOfThem,
+  bool more,
+});
 
 /// Several places matched: they're read out numbered ("1, Baño, Biblioteca;
 /// 2, …"), then chosen by saying the number or the name (D1), or tapped.
-/// [label] is what's shown, [spoken] what's read.
+/// [label] is what's shown, [spoken] what's read. [intro] says the list
+/// ("Cerca hay: …"; by default "Encontré varios lugares: …"). With [more],
+/// there are others after these: "más" (or the button) asks for them.
 Future<DestinationChoice> chooseDestination(
   BuildContext context, {
   required HomeVoiceController voice,
@@ -30,25 +40,31 @@ Future<DestinationChoice> chooseDestination(
   required String Function(Map<String, dynamic>) label,
   required String Function(Map<String, dynamic>) spoken,
   required bool listen,
+  String Function(String options)? intro,
+  bool more = false,
 }) async {
   final l10n = AppLocalizations.of(context)!;
   final labels = options.map(spoken).toList();
   const none = <String, dynamic>{};
+  const moreOfThem = <String, dynamic>{'more': true};
   BuildContext? openSheet;
   () async {
-    await voice.say(
-      l10n.homeVoiceSeveralMatches(
-        [
-          for (final (i, label) in labels.indexed) '${i + 1}, $label',
-        ].join('; '),
-      ),
-    );
+    final list = [
+      for (final (i, label) in labels.indexed) '${i + 1}, $label',
+    ].join('; ');
+    await voice.say((intro ?? l10n.homeVoiceSeveralMatches)(list));
     final sheet = openSheet;
     if (!listen || sheet == null || !sheet.mounted) return;
     await voice.askUntil<int>(
-      (heard) => pickSpokenOption(heard, labels),
-      onAnswer: (picked) =>
-          Navigator.of(sheet).pop(picked < 0 ? none : options[picked]),
+      (heard) =>
+          more && asksForMore(heard) ? _kMore : pickSpokenOption(heard, labels),
+      onAnswer: (picked) => Navigator.of(sheet).pop(
+        picked == _kMore
+            ? moreOfThem
+            : picked < 0
+            ? none
+            : options[picked],
+      ),
       language: language,
       notUnderstood: l10n.homeVoiceOptionNotUnderstood,
       giveUp: l10n.homeOptionsGiveUp, // the list is still there to tap
@@ -83,15 +99,24 @@ Future<DestinationChoice> chooseDestination(
               title: Text(label(option)),
               onTap: () => Navigator.of(context).pop(option),
             ),
+          if (more)
+            ListTile(
+              leading: const Icon(Icons.more_horiz),
+              title: Text(l10n.homeMorePlacesButton),
+              onTap: () => Navigator.of(context).pop(moreOfThem),
+            ),
         ],
       ),
     ),
   );
   openSheet = null;
   voice.stopListening();
+  if (identical(picked, moreOfThem)) {
+    return (picked: null, noneOfThem: false, more: true);
+  }
   return identical(picked, none)
-      ? (picked: null, noneOfThem: true)
-      : (picked: picked, noneOfThem: false);
+      ? (picked: null, noneOfThem: true, more: false)
+      : (picked: picked, noneOfThem: false, more: false);
 }
 
 /// "Go to X?" with one big Start route button: true to start, false to

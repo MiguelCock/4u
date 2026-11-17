@@ -423,7 +423,7 @@
   "homeVoiceNoMatchWithList": "I couldn't find \"{heard}\". Try again or choose from the list.",
   "@homeVoiceNoMatchWithList": {"placeholders": {"heard": {"type": "String"}}},
   "homeListenPrompt": "I'm listening. Say a place, for example: the cafeteria.",
-  "homeListenExample": "I'm listening. For example: the cafeteria.",
+  "homeListenExample": "I'm listening. For example: the cafeteria. Or ask: what places are there?",
   "settingsBoldTextLabel": "Bold text",
   "settingsBoldTextSubtitle": "Thicker letters everywhere in the app, easier to read.",
   "@homeVoiceNoMatch": {"placeholders": {"heard": {"type": "String"}}},
@@ -838,5 +838,12 @@
   "navDriftLeft": "You're drifting to the left, move a little to the right.",
   "navDriftRight": "You're drifting to the right, move a little to the left.",
   "navOnTrackStepsAhead": "You're on track, about {steps} steps left.",
-  "@navOnTrackStepsAhead": {"placeholders": {"steps": {"type": "int"}}}
+  "@navOnTrackStepsAhead": {"placeholders": {"steps": {"type": "int"}}},
+  "homeSuggestPlaces": "Nearby there's: {options}. Say the number, or \"more\" for others.",
+  "@homeSuggestPlaces": {"placeholders": {"options": {"type": "String"}}},
+  "homeMoreOptions": "I found more: {options}. Say the number, or \"more\" for others.",
+  "@homeMoreOptions": {"placeholders": {"options": {"type": "String"}}},
+  "homeMorePlacesButton": "More places",
+  "homeNoMorePlaces": "There are no more places. Say where you want to go.",
+  "homeNoPlacesYet": "There are no places to go to here yet."
 }

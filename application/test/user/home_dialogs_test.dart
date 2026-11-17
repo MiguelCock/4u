@@ -71,6 +71,8 @@ class _Setup {
 Future<Object?> Function(BuildContext) _choose(
   _Setup s, {
   bool listen = true,
+  bool more = false,
+  String Function(String)? intro,
 }) =>
     (context) => chooseDestination(
       context,
@@ -80,6 +82,8 @@ Future<Object?> Function(BuildContext) _choose(
       label: (o) => o['name'] as String,
       spoken: (o) => (o['name'] as String).replaceAll(' · ', ', '),
       listen: listen,
+      more: more,
+      intro: intro,
     );
 
 Future<Object?> Function(BuildContext) _confirm(
@@ -114,7 +118,46 @@ void main() {
       s.speech.hear('el dos');
       await s.run(tester);
       expect(s.done, isTrue);
-      expect(s.result, (picked: _options[1], noneOfThem: false));
+      expect(s.result, (picked: _options[1], noneOfThem: false, more: false));
+      await s.close(tester);
+    });
+
+    testWidgets('with more to come, "más" asks for them (D9)', (tester) async {
+      final s = _Setup();
+      await s.open(
+        tester,
+        _choose(s, more: true, intro: (o) => 'Cerca hay: $o.'),
+      );
+      expect(
+        s.voice.said.single,
+        'Cerca hay: 1, Baño, Biblioteca; 2, Baño, Edificio C.',
+      );
+      expect(find.text('Más lugares'), findsOneWidget);
+      s.speech.hear('más');
+      await s.run(tester);
+      expect(s.result, (picked: null, noneOfThem: false, more: true));
+      await s.close(tester);
+    });
+
+    testWidgets('the More places button asks for them too', (tester) async {
+      final s = _Setup();
+      await s.open(tester, _choose(s, more: true));
+      await tester.tap(find.text('Más lugares'));
+      await s.run(tester);
+      expect(s.result, (picked: null, noneOfThem: false, more: true));
+      await s.close(tester);
+    });
+
+    testWidgets('without more to come, "más" is not understood', (
+      tester,
+    ) async {
+      final s = _Setup();
+      await s.open(tester, _choose(s));
+      expect(find.text('Más lugares'), findsNothing);
+      s.speech.hear('más');
+      await s.run(tester);
+      expect(s.done, isFalse);
+      expect(s.voice.said.last, s.l10n.homeVoiceOptionNotUnderstood);
       await s.close(tester);
     });
 
@@ -123,7 +166,7 @@ void main() {
       await s.open(tester, _choose(s));
       s.speech.hear('ninguno');
       await s.run(tester);
-      expect(s.result, (picked: null, noneOfThem: true));
+      expect(s.result, (picked: null, noneOfThem: true, more: false));
       await s.close(tester);
     });
 
@@ -145,7 +188,7 @@ void main() {
 
       await tester.tap(find.text('Baño · Biblioteca'));
       await s.run(tester);
-      expect(s.result, (picked: _options[0], noneOfThem: false));
+      expect(s.result, (picked: _options[0], noneOfThem: false, more: false));
       await s.close(tester);
     });
 

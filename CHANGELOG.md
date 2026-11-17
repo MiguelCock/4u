@@ -8,6 +8,7 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ### Added
 
+- **"¿Qué lugares hay?" (#248):** a user who doesn't know the campus can ask what's there, or what the app recommends. It reads the three nearest places, and "más" reads the next three. Pick one by its number or its name. Any list of several matches works the same way.
 - **Quiet the app:** tapping the screen three times quickly stops what the app is saying, and a question it was about to ask comes at once. With TalkBack, the same is the **Callar la app** action on the main buttons. The tutorial says how.
 
 ### Changed

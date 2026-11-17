@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../services/app_preferences.dart';
 import '../services/buzz.dart';
 import '../services/geo_utils.dart';
+import '../services/place_suggestions.dart';
 import '../services/spoken_destination.dart';
 import '../voice/home_voice_controller.dart';
 import 'anchor_point_picker_screen.dart';
@@ -143,6 +144,10 @@ class DestinationConversation {
     }
     voice.resetMisses();
     final buildings = _buildings;
+    if (asksWhatPlaces(heard)) {
+      await _suggest(buildings);
+      return;
+    }
     final found = resolveSpokenDestination(
       heard,
       candidates: destinationCandidates(
@@ -180,28 +185,72 @@ class DestinationConversation {
     if (host.mounted && _onTop) await _listen(prompt: l10n.homeListenPrompt);
   }
 
-  /// One option goes straight to "Go to X?", several to a choice of the
-  /// first few ([chooseDestination]).
-  Future<void> _chooseFrom(List<Map<String, dynamic>> found) async {
-    if (found.length == 1) {
+  /// "¿Qué lugares hay?" (D9): the nearest places, a few at a time.
+  Future<void> _suggest(List<Map<String, dynamic>> buildings) async {
+    final places = suggestedPlaces(
+      destinationCandidates(
+        trip.anchors,
+        buildings: buildings,
+        startId: trip.start?['id'],
+      ),
+      name: spoken,
+      distance: _distanceFromUser,
+    );
+    if (places.isEmpty) {
+      await voice.say(_l10n.homeNoPlacesYet);
+      return;
+    }
+    await _chooseFrom(places, suggested: true);
+  }
+
+  /// One option goes straight to "Go to X?", several to a choice of a few
+  /// at a time ([chooseDestination], D12 rule R10), with "más" for the next
+  /// ones. [suggested]: an answer to "¿qué lugares hay?", read as "Cerca
+  /// hay: …" even when there's one.
+  Future<void> _chooseFrom(
+    List<Map<String, dynamic>> found, {
+    bool suggested = false,
+  }) async {
+    if (found.length == 1 && !suggested) {
       confirm(found.single);
       return;
     }
-    final choice = await chooseDestination(
-      _context,
-      voice: voice,
-      language: _language,
-      options: found.take(3).toList(),
-      label: label,
-      spoken: spoken,
-      listen: voiceFirst,
-    );
-    if (!host.mounted) return;
-    final picked = choice.picked;
-    if (choice.noneOfThem) {
-      ask(); // "ninguno": ask again
-    } else if (picked != null) {
-      confirm(picked);
+    for (var page = 0; ; page++) {
+      final options = optionsPage(found, page);
+      if (options.isEmpty) {
+        // Only on a page asked for by "más" when there was none (a stale
+        // button): back to asking.
+        await voice.say(_l10n.homeNoMorePlaces);
+        if (host.mounted && _onTop) {
+          await _listen(prompt: _l10n.homeListenPrompt);
+        }
+        return;
+      }
+      final l10n = _l10n;
+      final choice = await chooseDestination(
+        _context,
+        voice: voice,
+        language: _language,
+        options: options,
+        label: label,
+        spoken: spoken,
+        listen: voiceFirst,
+        intro: page > 0
+            ? l10n.homeMoreOptions
+            : suggested
+            ? l10n.homeSuggestPlaces
+            : null,
+        more: found.length > (page + 1) * kOptionsPerPage,
+      );
+      if (!host.mounted) return;
+      final picked = choice.picked;
+      if (choice.more) continue;
+      if (choice.noneOfThem) {
+        ask(); // "ninguno": ask again
+      } else if (picked != null) {
+        confirm(picked);
+      }
+      return;
     }
   }
 

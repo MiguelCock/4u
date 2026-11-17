@@ -335,7 +335,7 @@
   "homeVoiceNoMatch": "No encontré \"{heard}\". Prueba con otro nombre.",
   "homeVoiceNoMatchWithList": "No encontré \"{heard}\". Inténtalo de nuevo o elige de la lista.",
   "homeListenPrompt": "Te escucho. Di un lugar, por ejemplo: la cafetería.",
-  "homeListenExample": "Te escucho. Por ejemplo: la cafetería.",
+  "homeListenExample": "Te escucho. Por ejemplo: la cafetería. O pregunta: ¿qué lugares hay?",
   "settingsBoldTextLabel": "Texto en negrita",
   "settingsBoldTextSubtitle": "Letras más gruesas en toda la aplicación, más fáciles de leer.",
   "homeVoiceNothingHeard": "No te escuché.",
@@ -665,5 +665,10 @@
   "voiceQuietAction": "Callar la app",
   "navDriftLeft": "Te estás desviando a la izquierda, ve un poco a la derecha.",
   "navDriftRight": "Te estás desviando a la derecha, ve un poco a la izquierda.",
-  "navOnTrackStepsAhead": "Vas bien, faltan unos {steps} pasos."
+  "navOnTrackStepsAhead": "Vas bien, faltan unos {steps} pasos.",
+  "homeSuggestPlaces": "Cerca hay: {options}. Di el número, o «más» para otros.",
+  "homeMoreOptions": "Hay más: {options}. Di el número, o «más» para otros.",
+  "homeMorePlacesButton": "Más lugares",
+  "homeNoMorePlaces": "No hay más lugares. Dime a dónde quieres ir.",
+  "homeNoPlacesYet": "Todavía no hay lugares a dónde ir aquí."
 }
