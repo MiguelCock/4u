@@ -62,8 +62,11 @@ Only when the user has turned the app's voice off does TalkBack announce instead
 A control's label and enabled state don't change while it can have focus, for example while listening or busy. Use a sound, a buzz or the app's voice for state changes instead (#264).
 
 ### R6. Polite by default, assertive only for safety
-- Routine announcements queue: route start, distance, approaching, arrival, session end.
-- Only what can't wait interrupts the queue (`interrupt: true` / `assertive`): the covered camera, a dropped connection mid-trip, and repeats the user asked for.
+- Routine announcements queue: route start, distance, approaching, drift, on-track updates.
+- Only what can't wait interrupts the queue (`interrupt: true` / `assertive`):
+  - safety: the covered camera, a dropped connection mid-trip;
+  - the end of something, which makes whatever is still queued stale: arrival, logging out;
+  - repeats the user asked for.
 
 ### R7. Every announcement can be repeated
 - The last instruction is kept, and a tap on the trip screen (one labelled button for TalkBack) says it again.

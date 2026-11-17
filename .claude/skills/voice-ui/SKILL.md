@@ -37,7 +37,7 @@ For each changed file in `application/lib/` that speaks, listens, shows a notice
 2. A `say`/`_speak` that can run while the microphone is open, or a listen without a prompt → R4.
 3. A `Semantics(label:` or button label/`onPressed` that depends on listening/busy state → R5.
 4. `liveRegion: true` on text the app speaks or that updates per fix → R2.
-5. `interrupt: true` / `assertive: true` for something that isn't safety or a requested repeat → R6.
+5. `interrupt: true` / `assertive: true` for something that isn't safety, an ending (arrival, logging out) or a requested repeat → R6.
 6. A new screen or dialog that speaks without being `RouteAware`, or without releasing in `dispose` → R12.
 7. A spoken list longer than 3 items → R10.
 8. A trip, start or change acted on from speech without confirmation → R11.
