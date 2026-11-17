@@ -55,7 +55,38 @@ const List<Map<String, dynamic>> _connections = [
   {'id': 'c1', 'anchor_point_a_id': 'a1', 'anchor_point_b_id': 'a2'},
 ];
 
+/// Five places to go to, for "¿qué lugares hay?" (D9).
+final List<Map<String, dynamic>> _fivePlaces = [
+  for (final (i, (name, type)) in [
+    ('Biblioteca', 23),
+    ('Cafetería', 8),
+    ('Baño', 7),
+    ('Enfermería', 27),
+    ('Auditorio', 15),
+  ].indexed)
+    {
+      'id': 'd$i',
+      'building_id': 'b1',
+      'location_type_id': type,
+      'location_description': name,
+      'status': 'verified',
+      'floor': 0,
+      'latitude': 6.2001 + i / 10000,
+      'longitude': -75.5801,
+    },
+  _anchors[1],
+];
+
+final List<Map<String, dynamic>> _fiveConnections = [
+  for (var i = 0; i < 5; i++)
+    {'id': 'c$i', 'anchor_point_a_id': 'd$i', 'anchor_point_b_id': 'a2'},
+];
+
 class _Harness {
+  _Harness({this.anchors = _anchors, this.connections = _connections});
+
+  final List<Map<String, dynamic>> anchors;
+  final List<Map<String, dynamic>> connections;
   final speech = FakeSpeech();
   final voice = FakeVoice();
 
@@ -72,8 +103,8 @@ class _Harness {
           mapApi: FakeMapApi(
             places: _places,
             buildings: _buildings,
-            anchors: _anchors,
-            connections: _connections,
+            anchors: anchors,
+            connections: connections,
           ),
           routeApi: FakeRouteApi(),
           positioningApi: FakePositioningApi(),
@@ -160,6 +191,47 @@ void main() {
     );
     expect(h.voice.said.last, h.l10n.homeListenExample);
     expect(h.speech.listens, 3);
+    await h.close(tester);
+  });
+
+  testWidgets('"¿qué lugares hay?" reads three, "más" the next (D9)', (
+    tester,
+  ) async {
+    final h = _Harness(anchors: _fivePlaces, connections: _fiveConnections);
+    await h.pump(tester);
+    await h.run(tester);
+
+    h.speech.hear('no sé, ¿qué lugares hay?');
+    await h.run(tester);
+    expect(
+      h.voice.said.last,
+      h.l10n.homeSuggestPlaces(
+        '1, Biblioteca, Edificio C; 2, Cafetería, Edificio C; '
+        '3, Baño, Edificio C',
+      ),
+    );
+    expect(find.text(h.l10n.homeMorePlacesButton), findsOneWidget);
+
+    h.speech.hear('más');
+    await h.run(tester);
+    expect(
+      h.voice.said.last,
+      h.l10n.homeMoreOptions(
+        '1, Enfermería, Edificio C; 2, Auditorio, Edificio C',
+      ),
+    );
+    expect(
+      find.text(h.l10n.homeMorePlacesButton),
+      findsNothing,
+      reason: 'nothing after these',
+    );
+
+    h.speech.hear('el dos');
+    await h.run(tester);
+    expect(
+      find.text(h.l10n.homeGoToTitle('Auditorio · Edificio C')),
+      findsOneWidget,
+    );
     await h.close(tester);
   });
 

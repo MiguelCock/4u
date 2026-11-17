@@ -239,6 +239,10 @@ Single Flutter codebase serving two roles from the root README's design: `user` 
 - **Kinds of place.** `_typeWords` maps words to `location_type` ids ("baño"/"sanitario"/"servicio" → restroom, "comer"/"cafetería" → cafeteria, "cajero", "enfermería"…; plurals too). Such a word names any place of that type, whatever it's called. A phrase that is only a kind of place (`namesOnlyAKind`) skips the exact-name step, so "baño" offers every restroom, nearest first, not only one called "Baño".
 - **"El más cercano."** `asksForNearest` ("más cercano/a", "próximo/a", "nearest"…): `resolveSpokenDestination` keeps only the nearest of what was found.
 
+**"¿Qué lugares hay?" (D9, #248).** `asksWhatPlaces` (`lib/services/place_suggestions.dart`) recognizes the question in both languages ("qué lugares hay", "qué me recomiendas", "no sé a dónde ir", "what's there"…). `DestinationConversation._suggest` then lists the destinations nearest the user, each name once (`suggestedPlaces`).
+- **Reading and choosing.** Any list of options, suggestions or several matches, goes through `_chooseFrom`. It reads 3 at a time (`optionsPage`, rule R10): "Cerca hay: 1, …; 2, …; 3, …. Di el número, o «más» para otros." "más"/"otros"/"more" (`asksForMore`), or the **Más lugares** row, reads the next three ("Hay más: …"). `chooseDestination` gained `intro` and `more`, and its `DestinationChoice` has `more`. The listen prompt now mentions the question.
+- **Tests:** `test/services/place_suggestions_test.dart`, the sheet's "más" in `home_dialogs_test.dart`, and the whole flow in `user_home_screen_test.dart`.
+
 ## Floors
 
 - **Maps.** `lib/services/floor_view.dart` (pure) decides what shows; `lib/widgets/floor_selector.dart` is the elevator control and `floorPointMarker`. `AdminMap` (the Map section and the location picker) shows the selected floor, ±1 floor as ▲/▼ (tappable, the selected floor winning a tap), and lines only with an end on the selected floor (dashed across floors). `session_tracking_screen.dart` and `SimpleMapWidget` show a route, not points: its stretches away from the floor are faint.
