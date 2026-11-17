@@ -12,6 +12,7 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ### Changed
 
+- **Knowing you're on track (#180):** while walking well, the distance update now starts with "Vas bien". Drifting sideways for a few seconds is announced with its side: "Te estás desviando a la izquierda, ve un poco a la derecha".
 - **Asking for a place the way people talk (#261):** "necesito encontrar la biblioteca", "me puedes llevar donde la enfermería" or "can you take me to the library" now work. A kind of place finds every place of that kind: "baño" offers all restrooms, nearest first, whatever they're called, and "comer" the cafeterias. "El baño más cercano" goes straight to the nearest one.
 - **The tutorial goes on by itself (#259):** each of its three pages moves on once it has been read out, and the last one leads straight to "¿A dónde quieres ir?". Nothing has to be found on the screen. **Atrás**, **Repetir** and **Saltar tutorial** are still there, and **Siguiente** still works.
 

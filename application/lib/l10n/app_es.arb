@@ -662,5 +662,8 @@
   "adminLegendPlaces": "Lugares con nombre, por categoría",
   "adminLegendPlacesHint": "El punto en la esquina es el estado de revisión. Los puntos sin nombre siguen siendo puntos simples.",
   "adminLegendStatus": "Estado de revisión",
-  "voiceQuietAction": "Callar la app"
+  "voiceQuietAction": "Callar la app",
+  "navDriftLeft": "Te estás desviando a la izquierda, ve un poco a la derecha.",
+  "navDriftRight": "Te estás desviando a la derecha, ve un poco a la izquierda.",
+  "navOnTrackStepsAhead": "Vas bien, faltan unos {steps} pasos."
 }

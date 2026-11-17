@@ -29,13 +29,13 @@ import '../services/test_walk.dart';
 import '../services/turn_guidance.dart';
 import '../services/trip_plan.dart';
 import '../services/trip_sessions.dart';
-import '../services/trip_words.dart';
 import 'correction_loop.dart';
 import 'trip_feedback.dart';
 import 'position_source.dart';
 import 'leg_progress.dart';
 import 'route_progress.dart';
 import 'trip_log.dart';
+import 'trip_guide.dart';
 import 'trip_sensors.dart';
 import '../services/api_error_messages.dart';
 import '../voice/skip_speech.dart';
@@ -43,28 +43,12 @@ import '../voice/skip_speech.dart';
 /// No barometer reading this long after opening: the phone hasn't got one.
 const Duration _kBarometerProbe = Duration(seconds: 3);
 
-/// Location type of a hallway: a trip starting anywhere else gets the
-/// compass direction at once (see _checkStall).
-const int _kHallwayType = 10;
-
-/// With no progress, "keep walking" at most this often.
-const Duration _kQuietBeforeKeepWalking = Duration(seconds: 30);
-
-/// A GPS fix this old advances nothing; this old, it's announced and the
-/// stream restarted. A trip ran on a 4-minute-old fix (Icesi, 2026-11-04).
-const Duration _kStaleFix = Duration(seconds: 15);
-const Duration _kStaleFixAnnounce = Duration(seconds: 25);
-
 /// No progress cue for this long after the screen opens unless something
 /// else was said: "Preparing the route", then "One moment" every
 /// [_kLoadingRepeat] until the first instruction. Testers didn't know
 /// whether the app was working (Icesi, 2026-11-03).
 const Duration _kLoadingNotice = Duration(milliseconds: 1500);
 const Duration _kLoadingRepeat = Duration(seconds: 6);
-
-/// Below this GPS speed (m/s), GPS heading is meaningless (standing still),
-/// so it's only used as a fallback for a missing compass when walking.
-const double _kMinSpeedForGpsHeading = 0.7;
 
 /// How often turn guidance re-evaluates heading vs bearing. Independent of
 /// the ~1s camera-correction loop, which can run slower.
@@ -74,10 +58,6 @@ const Duration _kGuidanceInterval = Duration(milliseconds: 500);
 /// waiting the default 60 s stalled the whole loop (no logs, stale
 /// correction) through a ~20 s connection drop in a field test.
 const Duration _kTickRequestTimeout = Duration(seconds: 8);
-
-/// The periodic "N meters ahead" update is skipped if anything else was
-/// said this recently, so it never piles onto a turn instruction.
-const Duration _kQuietBeforePeriodic = Duration(seconds: 10);
 
 /// How often (while still outside `RouteProgress.proximityMeters` of the next
 /// waypoint) to speak an ongoing distance update - real on-device testing
@@ -171,10 +151,8 @@ class _NavigationScreenState extends State<NavigationScreen>
 
   final _recentFixes = RecentFixes();
 
-  /// When the app was paused (the screen went off, say), and whether the
-  /// current GPS silence was already announced.
+  /// When the app was paused (the screen went off, say).
   DateTime? _pausedAt;
-  bool _gpsStaleAnnounced = false;
   List<int> _plannedFloors = const [];
 
   StreamSubscription<CompassReading>? _compassSub;
@@ -183,18 +161,12 @@ class _NavigationScreenState extends State<NavigationScreen>
   StreamSubscription<AxisReading>? _gyroSub;
   StreamSubscription<AxisReading>? _accelSub;
   StreamSubscription<Position>? _positionSub;
-  final _guidance = TurnGuidance();
   final _pathLoaded = Completer<void>();
-  bool _guiding = false;
-  bool _arrived = false;
   bool _stopped = false;
 
   /// Admin test walk: the checkpoints still to tap (see test_walk.dart),
   /// one per route corner plus the start and the destination.
   CheckpointSequence _checkpoints = CheckpointSequence(0);
-
-  /// "Loading the route" was said (the path is slow to arrive).
-  bool _loadingAnnounced = false;
 
   /// Magnetic declination (degrees, east positive) - see trueHeading().
   final double _declination =
@@ -208,6 +180,31 @@ class _NavigationScreenState extends State<NavigationScreen>
   final _where = PositionSource();
   List<LatLng> _plannedPath = [];
   List<Waypoint> get _waypoints => _route.waypoints;
+
+  /// The trip's turn-by-turn guidance (see TripGuide).
+  late final _guide = TripGuide(
+    route: _route,
+    leg: _leg,
+    tracker: _tracker,
+    compass: _heading,
+    announcer: _announcer,
+    log: _log,
+    l10n: () => AppLocalizations.of(context)!,
+    position: _currentPosition,
+    raw: () => _rawPosition,
+    lastFix: () => _locationService.lastPosition,
+    barometerSeen: () => _barometerSeen,
+    startTypeId: () => _startTypeId,
+    pathLoaded: () => _pathLoaded.isCompleted,
+    destinationName: () => _destinationName(AppLocalizations.of(context)!),
+    onArrived: () => _endSession(arrived: true),
+    onChanged: () {
+      if (mounted) setState(() {});
+    },
+    restartGps: _locationService.restart,
+    declination: _declination,
+    adminPreview: widget.adminPreview,
+  );
 
   /// Cues spoken and guidance events since the last log, sent with the next
   /// tick's `debug` so the session view can show what was said where.
@@ -236,9 +233,6 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// Latest guidance inputs, kept for the per-tick diagnostics.
   double? _lastRawCompass;
   double? _lastCompassAccuracy;
-  double? _lastTurn;
-  double? _lastTargetDistance;
-  double? _lastTargetBearing;
 
   /// The app language whose voice was checked (see [_onTtsConfigured]).
   String? _ttsLanguage;
@@ -278,7 +272,9 @@ class _NavigationScreenState extends State<NavigationScreen>
     _loadPlannedPath();
     _periodicAnnouncementTimer = Timer.periodic(
       _kPeriodicAnnouncementInterval,
-      (_) => _announcePeriodicDistance(),
+      (_) {
+        if (mounted && !_stopped) _guide.periodic();
+      },
     );
     _compassSub = widget.sensors.compass()?.listen((event) {
       // Android only fills `heading` (see capture_photo_screen.dart).
@@ -318,7 +314,9 @@ class _NavigationScreenState extends State<NavigationScreen>
       // The corrected marker follows the live fix (see _liveCorrected).
       if (_where.hasCorrection && mounted) setState(() {});
     });
-    _guidanceTimer = Timer.periodic(_kGuidanceInterval, (_) => _guide());
+    _guidanceTimer = Timer.periodic(_kGuidanceInterval, (_) {
+      if (mounted && !_stopped) _guide.step();
+    });
     _loadingTimer = Timer(_kLoadingNotice, _sayStillLoading);
     _barometerSub = widget.sensors.pressure().listen((pressure) {
       _barometerSeen = true;
@@ -341,10 +339,10 @@ class _NavigationScreenState extends State<NavigationScreen>
     }
     final l10n = AppLocalizations.of(context)!;
     _speak(
-      _loadingAnnounced ? l10n.commonOneMoment : l10n.navLoadingRoute,
+      _guide.loadingAnnounced ? l10n.commonOneMoment : l10n.navLoadingRoute,
       repeatable: false,
     );
-    _loadingAnnounced = true;
+    _guide.loadingAnnounced = true;
     _loadingTimer = Timer(_kLoadingRepeat, _sayStillLoading);
   }
 
@@ -423,191 +421,6 @@ class _NavigationScreenState extends State<NavigationScreen>
 
   LatLng? get _rawPosition => _locationService.lastPosition?.latLng;
 
-  /// Where the segment being walked starts: the previous waypoint, or the
-  /// route's start for the first one.
-  LatLng? _segmentStart() => _route.segmentStart;
-
-  /// Which way the user faces (true north): HeadingTracker's gyro heading
-  /// anchored to walking, else the compass, else the GPS direction of
-  /// travel while actually moving. Null when none is usable.
-  double? _currentHeading() {
-    final tracked = _tracker.value;
-    if (tracked != null) return tracked;
-    final compass = _heading.value;
-    // The compass is magnetic; route bearings are true north.
-    if (compass != null) return trueHeading(compass, _declination);
-    final position = _locationService.lastPosition;
-    if (position != null && position.speed >= _kMinSpeedForGpsHeading) {
-      return position.heading;
-    }
-    return null;
-  }
-
-  /// One guidance step: waypoint progress, then face-then-walk cues toward
-  /// the next waypoint (see TurnGuidance).
-  void _guide() {
-    if (!_guiding || _stopped || _arrived || !mounted) return;
-    if (_waypoints.isEmpty && !_pathLoaded.isCompleted) {
-      if (!_loadingAnnounced) {
-        _loadingAnnounced = true;
-        _speak(
-          AppLocalizations.of(context)!.navLoadingRoute,
-          repeatable: false,
-        );
-      }
-      return;
-    }
-    if (_route.done) return;
-    if (_route.waitingForFloor) {
-      _checkFloorChange();
-      return;
-    }
-    // The route starts at the foot of the stairs.
-    if (_route.checkStartFloor(clock.now()) case final wait?) {
-      _sayFloorChange(wait);
-      return;
-    }
-    final here = _currentPosition();
-    if (here == null) return;
-    final fix = _locationService.lastPosition;
-    final fixAge = fix == null
-        ? Duration.zero
-        : clock.now().difference(fix.timestamp);
-    if (fixAge >= _kStaleFix) {
-      // The position is old news: nothing can be reached on its strength.
-      _sayGpsStale(fixAge);
-    } else {
-      _gpsStaleAnnounced = false;
-      if (_checkProximity(here)) return;
-      _warnTurnAhead(here);
-    }
-
-    if (_route.needsStartCue) _speakStartCue(here);
-    _checkStall(here);
-
-    final heading = _currentHeading();
-    if (heading == null) return;
-    final target = _waypoints[_route.next].point;
-    final segmentStart = _segmentStart();
-    // Follow the segment's direction, not the straight line to the
-    // waypoint (see guidanceBearing).
-    _lastTargetBearing = segmentStart == null
-        ? bearingDegrees(here, target)
-        : guidanceBearing(here, segmentStart, target);
-    _lastTargetDistance = haversineMeters(here, target);
-    _lastTurn = signedTurn(heading, _lastTargetBearing!);
-    final now = clock.now();
-    final cue = _guidance.update(
-      turn: _lastTurn!,
-      metersToTarget: _lastTargetDistance!,
-      now: now,
-      reliable: _tracker.reliable(now),
-    );
-    final l10n = AppLocalizations.of(context)!;
-    switch (cue) {
-      case TurnCue():
-        _speak(turnWords(l10n, cue), cueType: 'turn');
-      case StartWalkingCue(:final steps):
-        _leg.reset(_lastTargetDistance);
-        _speak(l10n.navGoStraightSteps(steps), cueType: 'start_walking');
-      case SlowTurnCue():
-        _speak(l10n.navSlowTurn, cueType: 'slow_turn');
-      case null:
-        break;
-    }
-  }
-
-  /// The heading, only when it can be trusted (see HeadingTracker.reliable).
-  double? _reliableHeading() =>
-      _tracker.reliable(clock.now()) ? _tracker.value : null;
-
-  /// The first instruction, once the route is loaded. With a heading that
-  /// can be trusted it's face-then-walk (TurnGuidance); without one there's
-  /// no knowing which way the user faces, so they're told to walk and the
-  /// walking direction takes it from there.
-  void _speakStartCue(LatLng here) {
-    _route.needsStartCue = false;
-    _speakLegNotes(_waypoints[_route.next]);
-    _leg.reset(haversineMeters(here, _waypoints[_route.next].point));
-    if (_reliableHeading() != null) {
-      _guidance.reset(now: clock.now());
-      return;
-    }
-    // A hallway leads the way; a plaza doesn't, and "walk forward" there left
-    // people standing at the start (Icesi, 2026-11-05).
-    if (_startTypeId != _kHallwayType && _speakCompassDirection(here)) {
-      _guidance.reset(now: clock.now(), walking: true);
-      return;
-    }
-    _speak(
-      AppLocalizations.of(context)!.navWalkForward(
-        roundSteps(haversineMeters(here, _waypoints[_route.next].point)),
-      ),
-      cueType: 'start_walking',
-    );
-    _guidance.reset(now: clock.now(), walking: true);
-  }
-
-  /// "Turn left and walk about N steps", from the compass to this stretch's
-  /// own direction (the position is too noisy to aim from). The last resort
-  /// when there's no trusted heading and nothing else says which way: a
-  /// compass can be far off, so it's never used for corners. Returns false
-  /// without a compass reading.
-  bool _speakCompassDirection(LatLng here) {
-    final compass = _heading.value;
-    if (compass == null) return false;
-    final target = _waypoints[_route.next].point;
-    final from = _segmentStart();
-    final bearing = from == null || haversineMeters(from, target) < 1
-        ? bearingDegrees(here, target)
-        : bearingDegrees(from, target);
-    final turn = signedTurn(trueHeading(compass, _declination), bearing);
-    final steps = roundSteps(haversineMeters(here, target));
-    final l10n = AppLocalizations.of(context)!;
-    _log.event(
-      'stall',
-      fields: {'compass': compass, 'bearing': bearing, 'turn': turn},
-    );
-    final String text;
-    if (turn.abs() <= TurnGuidance.alignedDegrees) {
-      text = l10n.navContinueStraightSteps(steps);
-    } else {
-      text = legWords(l10n, TurnCue.from(turn), steps);
-    }
-    _speak(text, cueType: 'turn');
-    return true;
-  }
-
-  /// Tracks real progress to the next stop. With none for a while and no
-  /// trusted heading, nothing else would speak: says which way to go by the
-  /// compass, or else to keep walking.
-  void _checkStall(LatLng here) {
-    final meters = haversineMeters(here, _waypoints[_route.next].point);
-    if (!_leg.stalled(meters, trustedHeading: _reliableHeading() != null)) {
-      return;
-    }
-    if (!_speakCompassDirection(here)) _sayKeepWalking(meters);
-  }
-
-  void _sayKeepWalking(double meters) {
-    _speak(
-      AppLocalizations.of(context)!.navKeepWalking(roundSteps(meters)),
-      cueType: 'stall',
-    );
-  }
-
-  /// GPS has stopped answering: said once, and its stream is started again.
-  void _sayGpsStale(Duration age) {
-    if (_gpsStaleAnnounced || age < _kStaleFixAnnounce) return;
-    _gpsStaleAnnounced = true;
-    _log.event('gps_stale', fields: {'age_s': age.inSeconds});
-    _speak(
-      AppLocalizations.of(context)!.homeSearchingLocation,
-      repeatable: false,
-    );
-    _locationService.restart();
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final now = clock.now();
@@ -625,183 +438,6 @@ class _NavigationScreenState extends State<NavigationScreen>
       );
       if (mounted && !_stopped) _repeatLastAnnouncement();
     }
-  }
-
-  /// Waypoint progress ([RouteProgress.reach]), said. Returns true when
-  /// something was announced.
-  bool _checkProximity(LatLng here) {
-    final reach = _route.reach(
-      here: here,
-      raw: _rawPosition,
-      gpsAccuracy: _locationService.lastPosition?.accuracy ?? 10,
-      heading: _reliableHeading(),
-      now: clock.now(),
-    );
-    if (reach == null) return false;
-    _log.event(
-      reach is ReachedEnd ? 'arrival' : 'waypoint',
-      fields: {'index': reach.index, 'skipped': reach.skipped},
-    );
-    switch (reach) {
-      case ReachedEnd():
-        _arrive();
-      case ReachedFloorChange(:final wait):
-        _sayFloorChange(wait);
-      case ReachedCorner(:final previous, :final from, :final to):
-        _announceNextLeg(previous, from, to);
-    }
-    return true;
-  }
-
-  /// At the foot of the stairs: which way to go. Guidance then waits for the
-  /// barometer ([_checkFloorChange]).
-  void _sayFloorChange(FloorWait wait) {
-    final l10n = AppLocalizations.of(context)!;
-    final action = floorChangeAction(
-      l10n,
-      types: wait.hazardTypes,
-      up: wait.toFloor > wait.fromFloor,
-      floor: wait.toFloor + 1,
-    );
-    _log.event(
-      'floor_wait',
-      at: clock.now(),
-      fields: {
-        'from': wait.fromFloor,
-        'to': wait.toFloor,
-        'pressure_hpa': _route.detector.pressure,
-        'barometer': _barometerSeen,
-      },
-    );
-    _speak(
-      '$action ${_barometerSeen ? l10n.navFloorWillTell : l10n.navFloorNoSensor}',
-      cueType: 'floor',
-    );
-  }
-
-  /// While waiting at a floor change: once it's heard or given up on, says
-  /// so, and guidance picks up from the far end.
-  void _checkFloorChange() {
-    final now = clock.now();
-    final done = _route.checkFloorChange(
-      barometerSeen: _barometerSeen,
-      now: now,
-    );
-    if (done == null) return;
-    _log.event(
-      done.detected ? 'floor_detected' : 'floor_timeout',
-      at: now,
-      fields: {
-        'to': done.floor,
-        'seconds': done.waited.inSeconds,
-        'delta_hpa': done.deltaHpa,
-      },
-    );
-    final l10n = AppLocalizations.of(context)!;
-    buzz(Buzz.long);
-    _speak(
-      done.detected
-          ? l10n.navFloorReached(done.floor + 1)
-          : l10n.navFloorTimeout(done.floor + 1),
-      cueType: 'floor',
-    );
-    setState(() {});
-    if (done.arrived) {
-      _arrive();
-      return;
-    }
-    _leg.reset(null);
-  }
-
-  /// "In 8 meters, turn left", and the hazard there, once per corner
-  /// ([RouteProgress.warnAhead]).
-  void _warnTurnAhead(LatLng here) {
-    final warning = _route.warnAhead(here, heading: _reliableHeading());
-    if (warning == null) return;
-    final l10n = AppLocalizations.of(context)!;
-    final steps = roundSteps(warning.metersToCorner);
-    if (warning.hazardType case final hazard?) {
-      _speak(
-        l10n.navHazardAhead(hazardLabel(l10n, hazard), steps),
-        cueType: 'hazard',
-      );
-    }
-    if (warning.turn case final turn?) {
-      _speak(
-        turn > 0
-            ? l10n.navTurnAheadRightSteps(steps)
-            : l10n.navTurnAheadLeftSteps(steps),
-        cueType: 'turn_ahead',
-      );
-    }
-  }
-
-  /// "Attention: three steps down" - the admins' warnings on the leg that
-  /// ends at [to], said as it starts.
-  void _speakLegNotes(Waypoint to) {
-    final l10n = AppLocalizations.of(context)!;
-    for (final note in to.legNotes) {
-      _speak(l10n.navLegWarning(note), cueType: 'hazard');
-    }
-  }
-
-  /// At a waypoint: one sentence for what to do next. "At the cafeteria,
-  /// turn right and walk about 20 steps", or "go straight, about 30
-  /// steps". The turn comes from the route itself (the bend between the two
-  /// legs), not the phone's heading, which can be far off; the steps are the
-  /// leg's length. A user who has already turned (by a trusted heading) just
-  /// hears "go straight".
-  void _announceNextLeg(LatLng? previous, Waypoint from, Waypoint to) {
-    final l10n = AppLocalizations.of(context)!;
-    final steps = roundSteps(haversineMeters(from.point, to.point));
-    final nextBearing = bearingDegrees(from.point, to.point);
-    final routeTurn = previous == null
-        ? 0.0
-        : signedTurn(bearingDegrees(previous, from.point), nextBearing);
-    final heading = _reliableHeading();
-    final alreadyTurned =
-        heading != null &&
-        signedTurn(heading, nextBearing).abs() <= TurnGuidance.alignedDegrees;
-    final String action;
-    if (routeTurn.abs() <= kCornerTurnDegrees || alreadyTurned) {
-      action = l10n.navContinueStraightSteps(steps);
-    } else {
-      action = legWords(l10n, TurnCue.from(routeTurn), steps);
-    }
-    final name = from.name;
-    _speak(
-      name == null ? action : '${l10n.navAtPlace(name)} $action',
-      cueType: 'leg',
-    );
-    _speakLegNotes(to);
-    _leg.reset(haversineMeters(from.point, to.point));
-    // Walking: the user turns as told, and is corrected (once) only if a
-    // trusted heading shows them going the wrong way.
-    _guidance.reset(now: clock.now(), walking: true);
-  }
-
-  /// Within range of the destination: say so and finish the trip on its
-  /// own - no need to find the End button.
-  void _arrive() {
-    if (_arrived) return;
-    _arrived = true;
-    final l10n = AppLocalizations.of(context)!;
-    if (widget.adminPreview) {
-      // Test walk: keep the session open so the destination checkpoint
-      // shows where the user really was when arrival fired.
-      _speak(
-        l10n.navArrivedTestWalk(_destinationName(l10n)),
-        assertive: true,
-        cueType: 'arrival',
-      );
-      return;
-    }
-    _speak(
-      l10n.navArrivedFinished(_destinationName(l10n)),
-      assertive: true,
-      cueType: 'arrival',
-    );
-    _endSession(arrived: true);
   }
 
   /// Admin test walk: the user is standing exactly on the next checkpoint
@@ -839,7 +475,7 @@ class _NavigationScreenState extends State<NavigationScreen>
         ),
       );
     setState(() {});
-    if (_checkpoints.done) _endSession(arrived: _arrived);
+    if (_checkpoints.done) _endSession(arrived: _guide.arrived);
   }
 
   void _undoCheckpoint() {
@@ -864,72 +500,6 @@ class _NavigationScreenState extends State<NavigationScreen>
       : index == _checkpoints.count - 1
       ? l10n.navCheckpointDestination
       : l10n.navCheckpointCorner(index);
-
-  /// While walking a leg, a short "N meters ahead" every
-  /// `_kPeriodicAnnouncementInterval` fills long silent stretches - but
-  /// only if nothing else was said recently, and never while the user is
-  /// still turning.
-  void _announcePeriodicDistance() {
-    if (!_guiding || _stopped || _arrived || !mounted) return;
-    if (!_guidance.walking || _route.next >= _waypoints.length) return;
-    if (_route.waitingForFloor) return;
-    final lastSpoken = _announcer.lastSpokenAt;
-    if (lastSpoken != null &&
-        clock.now().difference(lastSpoken) < _kQuietBeforePeriodic) {
-      return;
-    }
-    final here = _currentPosition();
-    if (here == null) return;
-    final distance = haversineMeters(here, _waypoints[_route.next].point);
-    if (distance <= RouteProgress.proximityMeters) return;
-    final l10n = AppLocalizations.of(context)!;
-    switch (_leg.update(distance)) {
-      case LegUpdate.keepWalking:
-        // Not getting closer: "N steps to go" as if it were progress doesn't
-        // help, but neither did the silence (Icesi, 2026-11-05).
-        final spoken = _announcer.lastSpokenAt;
-        if (spoken == null ||
-            clock.now().difference(spoken) >= _kQuietBeforeKeepWalking) {
-          _sayKeepWalking(distance);
-        }
-        return;
-      case LegUpdate.quiet:
-        return;
-      case LegUpdate.stepsAhead:
-        _speak(
-          l10n.navStepsAhead(roundSteps(distance)),
-          cueType: 'meters_ahead',
-        );
-      case LegUpdate.away:
-        _speak(l10n.navMovingAway, cueType: 'away');
-        _turnBackTowardTarget(here);
-    }
-  }
-
-  /// After "you're moving away": with a trusted heading, face-then-walk
-  /// takes over (TurnGuidance orients again); otherwise, while walking,
-  /// the GPS direction of travel says which way to turn.
-  void _turnBackTowardTarget(LatLng here) {
-    final now = clock.now();
-    if (_reliableHeading() != null) {
-      _guidance.reset(now: now);
-      return;
-    }
-    final position = _locationService.lastPosition;
-    final segmentStart = _segmentStart();
-    if (position == null ||
-        position.speed < _kMinSpeedForGpsHeading ||
-        segmentStart == null) {
-      return;
-    }
-    final turn = signedTurn(
-      position.heading,
-      guidanceBearing(here, segmentStart, _waypoints[_route.next].point),
-    );
-    if (turn.abs() <= TurnGuidance.alignedDegrees) return;
-    final l10n = AppLocalizations.of(context)!;
-    _speak(turnWords(l10n, TurnCue.from(turn)), cueType: 'turn');
-  }
 
   Future<void> _initCamera() async {
     // Null when unavailable (no hardware, permission denied, etc.) -
@@ -1011,9 +581,8 @@ class _NavigationScreenState extends State<NavigationScreen>
       }
       // The first instruction comes from _guide once the route is loaded
       // (_speakStartCue).
-      _guidance.reset(now: clock.now());
       _route.needsStartCue = true;
-      _guiding = true;
+      _guide.start();
       _loop.start();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -1066,10 +635,10 @@ class _NavigationScreenState extends State<NavigationScreen>
           ? null
           : clock.now().difference(correctedAt).inMilliseconds / 1000,
       'target_index': _route.next,
-      'target_distance_m': _lastTargetDistance,
-      'target_bearing': _lastTargetBearing,
-      'turn': _lastTurn,
-      'guidance': _guidance.walking ? 'walking' : 'orienting',
+      'target_distance_m': _guide.lastTargetDistance,
+      'target_bearing': _guide.lastTargetBearing,
+      'turn': _guide.lastTurn,
+      'guidance': _guide.walking ? 'walking' : 'orienting',
       ..._log.drain(),
       'correction': ?correction,
       'failure': ?failure,
@@ -1084,7 +653,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// no tracker heading yet), so the heading gate compares like with like.
   /// Never the GPS course: meaningless while standing still.
   double? _sentHeading() {
-    final tracked = _reliableHeading();
+    final tracked = _guide.reliableHeading();
     return tracked == null ? null : trueHeading(tracked, -_declination);
   }
 
@@ -1138,11 +707,11 @@ class _NavigationScreenState extends State<NavigationScreen>
             _liveCorrected()?.longitude ?? _where.corrected?.longitude,
         'compass_heading': _heading.value,
         'debug': {
-          'turn': _lastTurn,
-          'target_distance_m': _lastTargetDistance,
-          'target_bearing': _lastTargetBearing,
+          'turn': _guide.lastTurn,
+          'target_distance_m': _guide.lastTargetDistance,
+          'target_bearing': _guide.lastTargetBearing,
           'position_source': _where.usedCorrected ? 'corrected' : 'raw',
-          'guidance': _guidance.walking ? 'walking' : 'orienting',
+          'guidance': _guide.walking ? 'walking' : 'orienting',
           'gps_accuracy': position?.accuracy,
           'correction_error': _where.correctionError,
         },
@@ -1175,7 +744,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   Future<void> _endSession({bool arrived = false}) async {
     final sessionId = _sessionId;
     _stopped = true;
-    _guiding = false;
+    _guide.guiding = false;
     _loop.stop();
     _guidanceTimer?.cancel();
     _loadingTimer?.cancel();

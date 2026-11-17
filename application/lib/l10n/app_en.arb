@@ -834,5 +834,9 @@
   "adminLegendPlaces": "Named places, by category",
   "adminLegendPlacesHint": "The dot on the corner is the review status. Points without a name stay plain dots.",
   "adminLegendStatus": "Review status",
-  "voiceQuietAction": "Quiet the app"
+  "voiceQuietAction": "Quiet the app",
+  "navDriftLeft": "You're drifting to the left, move a little to the right.",
+  "navDriftRight": "You're drifting to the right, move a little to the left.",
+  "navOnTrackStepsAhead": "You're on track, about {steps} steps left.",
+  "@navOnTrackStepsAhead": {"placeholders": {"steps": {"type": "int"}}}
 }
