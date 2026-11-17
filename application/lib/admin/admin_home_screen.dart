@@ -24,6 +24,7 @@ import 'capture_screen.dart';
 import 'edit_anchor_point_screen.dart' show EditAnchorPointScreen;
 import 'edit_building_screen.dart';
 import 'edit_place_screen.dart';
+import 'map_edit_controller.dart';
 import 'map_home.dart';
 import 'sheets/details.dart';
 import 'sheets/filters.dart';
@@ -118,7 +119,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   List<Map<String, dynamic>> get _buildings => _data.buildings;
   List<Map<String, dynamic>> get _anchorPoints => _data.anchorPoints;
   List<Map<String, dynamic>> get _connections => _data.connections;
-  set _connections(List<Map<String, dynamic>> rows) => _data.connections = rows;
   bool get _loading => _data.loading;
   int? get _unsearchablePhotos => _data.unsearchablePhotos;
 
@@ -162,14 +162,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   Timer? _syncTimer;
   bool _wasCovered = false;
 
-  /// The point being moved on the map.
-  Map<String, dynamic>? _movingPoint;
+  /// Connect mode and moving a point, on the map (MapEditController).
+  late final _edit = MapEditController(
+    api: _mapApi,
+    data: _data,
+    userId: _userId,
+  )..addListener(_onEditChanged);
+  Map<String, dynamic>? get _movingPoint => _edit.movingPoint;
+  bool get _connecting => _edit.connecting;
+  String? get _connectFromId => _edit.connectFromId;
+  LatLng? get _moveTarget => _edit.moveTarget;
 
-  /// Connect mode on the map (C3): the first point of the next connection,
-  /// and the pairs (see [connectionPairKey]) still being saved.
-  bool _connecting = false;
-  String? _connectFromId;
-  final Set<String> _pendingPairs = {};
+  void _onEditChanged() {
+    if (mounted) setState(() {});
+  }
 
   /// The last "show this on the map" request (MapHome acts on each new one).
   MapFocus? _mapFocus;
@@ -177,7 +183,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// Connections tab: the university and building it's narrowed to.
   String? _connectionsPlaceId;
   String? _connectionsBuildingId;
-  LatLng? _moveTarget;
 
   @override
   void initState() {
@@ -190,10 +195,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           _lastTabIndex = index;
           _navigatingBack = false;
           // A move belongs to the map it started on, and so does connecting.
-          _clearMove();
           if (index != _kMap) {
-            _connecting = false;
-            _connectFromId = null;
+            _edit.leaveMap();
             // Done with; a map built again later mustn't act on it again.
             _mapFocus = null;
           }
@@ -223,6 +226,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   @override
   void dispose() {
     _syncTimer?.cancel();
+    _edit.dispose();
     _data.dispose();
     _users.dispose();
     _tabController.dispose();
@@ -345,11 +349,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       drillDown: drillDown,
     )) {
       case AdminBack.cancelMove:
-        setState(_clearMove);
+        _edit.clearMove();
       case AdminBack.releaseSelection:
-        setState(() => _connectFromId = null);
+        _edit.releaseSelection();
       case AdminBack.leaveConnect:
-        setState(() => _connecting = false);
+        _edit.setConnecting(false);
       case AdminBack.clearPointFilters:
         setState(() => _anchorFilters = AnchorFilters.none);
       case AdminBack.levelUp:
@@ -444,20 +448,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   /// Connect mode on the map, with [point] as the first of the pair: the
   /// next point tapped connects to it (a point row's tap, the sheet's
   /// Connect).
-  /// Ends a move on the map: no point being moved, no new spot.
-  void _clearMove() {
-    _movingPoint = null;
-    _moveTarget = null;
-  }
-
   void _connectFromAnchorPoint(Map<String, dynamic> point) {
     if (_tabController.index != _kMap) _tabController.animateTo(_kMap);
-    setState(() {
-      _clearMove();
-      _connecting = true;
-      _connectFromId = point['id'] as String?;
-      _mapFocus = MapFocus(PointHit(point), open: false);
-    });
+    _edit.connectFrom(point);
+    setState(() => _mapFocus = MapFocus(PointHit(point), open: false));
   }
 
   /// Shows [item] on the map: a notice's point or connection, a row's
@@ -483,26 +477,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       );
   }
 
-  /// A point tapped in connect mode (see [connectTap]). Connecting is
-  /// optimistic: the line shows (dotted grey) and the selection moves on at
-  /// once, so the next tap works while this one saves; only the same pair
-  /// waits.
+  /// A point tapped in connect mode ([MapEditController.tap]): said, and
+  /// a pair saved ([MapEditController.save]).
   Future<void> _onConnectTap(Map<String, dynamic> point) async {
     final l10n = AppLocalizations.of(context)!;
     HapticFeedback.selectionClick();
-    final step = connectTap(
-      selectedId: _connectFromId,
-      tapped: point,
-      connections: _connections,
-      pointsById: {for (final p in _anchorPoints) p['id'] as String: p},
-    );
+    final step = _edit.tap(point);
     switch (step) {
-      case ConnectSelect(:final id):
-        setState(() => _connectFromId = id);
-      case ConnectDeselect():
-        setState(() => _connectFromId = null);
-      case ConnectMoveOn(:final id):
-        setState(() => _connectFromId = id);
+      case ConnectSelect() || ConnectDeselect():
+        break;
+      case ConnectMoveOn():
         _snack(l10n.connectErrorAlreadyConnected, seconds: 2);
       case ConnectRefused(
         :final fromId,
@@ -531,74 +515,37 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   Future<void> _saveConnection(ConnectPair pair) async {
     final l10n = AppLocalizations.of(context)!;
-    final userId = _userId();
-    if (userId == null) {
-      _snack(l10n.commonNotSignedIn);
-      return;
-    }
-    final key = connectionPairKey(pair.fromId, pair.toId);
-    if (_pendingPairs.contains(key)) return;
-    final pending = <String, dynamic>{
-      'id': 'pending-$key',
-      'anchor_point_a_id': pair.fromId,
-      'anchor_point_b_id': pair.toId,
-      'pending': true,
-    };
-    setState(() {
-      _pendingPairs.add(key);
-      _connections = [..._connections, pending];
-      _connectFromId = pair.toId;
-    });
-    try {
-      final result = await _mapApi.post('/anchor-point-connections', {
-        'anchor_point_a_id': pair.fromId,
-        'anchor_point_b_id': pair.toId,
-        'created_by': userId,
-      });
-      if (!mounted) return;
-      final created = result is List && result.isNotEmpty
-          ? (result.first as Map).cast<String, dynamic>()
-          : null;
-      setState(() {
-        _connections = [
-          for (final c in _connections)
-            // The sync may have brought the saved row already.
-            if (!identical(c, pending) &&
-                (created == null || c['id'] != created['id']))
-              c,
-          created ?? {...pending, 'pending': false},
-        ];
-      });
-      final distance = pair.distance;
-      pair.long ? HapticFeedback.mediumImpact() : HapticFeedback.lightImpact();
-      _snack(
+    final result = await _edit.save(pair);
+    if (!mounted) return;
+    switch (result) {
+      case ConnectAlreadySaving():
+        break;
+      case ConnectNotSignedIn():
+        _snack(l10n.commonNotSignedIn);
+      case ConnectSaved(:final pair):
+        final distance = pair.distance;
         pair.long
-            ? l10n.connectSnackbarConnectedLong(distance!.toStringAsFixed(0))
-            : l10n.connectSnackbarConnected(
-                _describePoint(pair.fromId),
-                _describePoint(pair.toId),
-              ),
-        seconds: pair.long ? 4 : 2,
-      );
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _connections = [
-          for (final c in _connections)
-            if (!identical(c, pending)) c,
-        ];
-      });
-      _snack(
-        // Only a real duplicate; a 500 used to read as "already connected"
-        // too, hiding outages.
-        e.statusCode == 409
-            ? l10n.connectErrorAlreadyConnected
-            : l10n.connectErrorConnectFailed(
-                friendlyApiErrorMessage(context, e),
-              ),
-      );
-    } finally {
-      if (mounted) setState(() => _pendingPairs.remove(key));
+            ? HapticFeedback.mediumImpact()
+            : HapticFeedback.lightImpact();
+        _snack(
+          pair.long
+              ? l10n.connectSnackbarConnectedLong(distance!.toStringAsFixed(0))
+              : l10n.connectSnackbarConnected(
+                  _describePoint(pair.fromId),
+                  _describePoint(pair.toId),
+                ),
+          seconds: pair.long ? 4 : 2,
+        );
+      case ConnectFailed(:final error):
+        _snack(
+          // Only a real duplicate; a 500 used to read as "already
+          // connected" too, hiding outages.
+          error.statusCode == 409
+              ? l10n.connectErrorAlreadyConnected
+              : l10n.connectErrorConnectFailed(
+                  friendlyApiErrorMessage(context, error),
+                ),
+        );
     }
   }
 
@@ -753,10 +700,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         (
           icon: Icons.open_with,
           label: l10n.adminAnchorMoveAction,
-          onTap: () => setState(() {
-            _movingPoint = point;
-            _moveTarget = null;
-          }),
+          onTap: () => _edit.startMove(point),
         ),
         (
           icon: verified ? Icons.remove_done : Icons.verified_outlined,
@@ -856,15 +800,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         onScopeChanged: (scope) => setState(() => _mapScope = scope),
         movingPointId: _movingPoint?['id'] as String?,
         moveTarget: _moveTarget,
-        onMoveTargetTapped: (target) => setState(() => _moveTarget = target),
+        onMoveTargetTapped: _edit.pickMoveTarget,
         // Below the move or connect banner.
         controlsTop: _movingPoint == null && !_connecting ? 8 : 72,
         connecting: _connecting,
-        onConnectingChanged: (on) => setState(() {
-          _connecting = on;
-          _connectFromId = null;
-          _clearMove();
-        }),
+        onConnectingChanged: _edit.setConnecting,
         selectedPointId: _connectFromId,
         onConnectTap: _onConnectTap,
         pointFilter: _pointFilter(),
@@ -913,7 +853,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           SnackBar(content: Text(l10n.mapConflictKeptTheirs(name))),
         );
         if (!mounted) return;
-        setState(_clearMove);
+        _edit.clearMove();
         await _loadData();
         return;
       }
@@ -941,7 +881,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       return;
     }
     if (!mounted) return;
-    setState(_clearMove);
+    _edit.clearMove();
     await _loadData();
   }
 
@@ -975,7 +915,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       ),
                     ),
                     TextButton(
-                      onPressed: () => setState(_clearMove),
+                      onPressed: _edit.clearMove,
                       child: Text(l10n.commonCancel),
                     ),
                   ],
@@ -1311,9 +1251,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               } else if (_connectionsPlaceId != null) {
                 _mapScope = MapScope(placeId: _connectionsPlaceId);
               }
-              _connecting = true;
-              _connectFromId = null;
             });
+            _edit.setConnecting(true);
           },
           child: const Icon(Icons.timeline),
         );

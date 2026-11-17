@@ -1,3 +1,5 @@
+import 'package:eyes4u/admin/sheets/details.dart';
+import 'package:eyes4u/admin/admin_drawer.dart';
 import 'package:eyes4u/admin/admin_home_screen.dart';
 import 'package:eyes4u/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
@@ -150,6 +152,54 @@ void main() {
     tester.state<ScaffoldState>(find.byType(Scaffold).first).openDrawer();
     await t.settle(tester);
     expect(find.text(t.l10n.adminReindexUnsearchable(1)), findsOneWidget);
+    await t.close(tester);
+  });
+
+  testWidgets('laptop width: the menu stays open, details beside the map', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final t = _Admin();
+    await t.open(tester);
+
+    // The menu is part of the page: no need to open it.
+    expect(
+      tester.widget<AdminDrawer>(find.byType(AdminDrawer)).permanent,
+      isTrue,
+    );
+    await tester.tap(
+      find.widgetWithText(ListTile, t.l10n.adminSectionConnections),
+    );
+    await t.settle(tester);
+    expect(t.titleOf(tester), t.l10n.adminSectionConnections);
+    expect(find.byType(AdminDrawer), findsOneWidget, reason: 'still open');
+
+    // "Show on map": back on the map, its details in the side panel.
+    await tester.tap(find.byTooltip(t.l10n.adminMapShowOnMap));
+    await t.settle(tester);
+    expect(t.titleOf(tester), t.l10n.adminSectionMap);
+    expect(find.byType(ConnectionDetails), findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
+
+    // Narrower than 900 px: the phone layout, a menu that slides over.
+    tester.view.physicalSize = const Size(800, 900);
+    await t.settle(tester);
+    expect(find.byType(AdminDrawer), findsNothing);
+    await t.close(tester);
+  });
+
+  testWidgets('phone width: details of a connection in a bottom sheet', (
+    tester,
+  ) async {
+    final t = _Admin();
+    await t.open(tester);
+    await t.section(tester, t.l10n.adminSectionConnections);
+    await tester.tap(find.byTooltip(t.l10n.adminMapShowOnMap));
+    await t.settle(tester);
+    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(find.byType(ConnectionDetails), findsOneWidget);
     await t.close(tester);
   });
 
