@@ -84,11 +84,15 @@ String spokenLabel(String label) => label.replaceAll(' · ', ', ');
 /// What [heard] may mean, best first: one destination to confirm, several
 /// to choose from, or none. In order:
 /// 1. a place called exactly that (there may be a "Cafetería central" both
-///    as a place and as a building), nearest first;
+///    as a place and as a building), nearest first; unless all it says is a
+///    kind of place ("baño"), which any place of that kind answers;
 /// 2. a building the phrase names and only names: "Edificio C" means its
 ///    closest entrance, as a [wholeBuilding]. Saying more ("baño edificio
 ///    C") is a place in it, below;
 /// 3. the places it matches, nearest first, or the clear winner alone.
+///
+/// "El baño más cercano" ([asksForNearest]) keeps only the nearest of what
+/// it names (D13).
 List<Map<String, dynamic>> resolveSpokenDestination(
   String heard, {
   required List<Map<String, dynamic>> candidates,
@@ -96,7 +100,28 @@ List<Map<String, dynamic>> resolveSpokenDestination(
   required Map<String, String> buildingNames,
   required double Function(Map<String, dynamic> anchor) distance,
 }) {
-  final exact = exactPlaces(heard, candidates, buildingNames: buildingNames);
+  final found = _resolve(
+    heard,
+    candidates: candidates,
+    buildings: buildings,
+    buildingNames: buildingNames,
+    distance: distance,
+  );
+  if (found.length < 2 || !asksForNearest(heard)) return found;
+  return [found.reduce((a, b) => distance(b) < distance(a) ? b : a)];
+}
+
+List<Map<String, dynamic>> _resolve(
+  String heard, {
+  required List<Map<String, dynamic>> candidates,
+  required List<Map<String, dynamic>> buildings,
+  required Map<String, String> buildingNames,
+  required double Function(Map<String, dynamic> anchor) distance,
+}) {
+  // "Baño" is any restroom (D13), not only one called that.
+  final exact = namesOnlyAKind(heard)
+      ? const <Map<String, dynamic>>[]
+      : exactPlaces(heard, candidates, buildingNames: buildingNames);
   if (exact.isNotEmpty) {
     return nearestFirst([
       for (final place in exact) DestinationMatch(place, 1),
