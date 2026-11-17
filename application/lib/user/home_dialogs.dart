@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../services/destination_matcher.dart';
 import '../voice/notices.dart' show SpokenText;
 import '../voice/home_voice_controller.dart';
+import '../voice/skip_speech.dart';
 
 /// The home screen's questions (#268): which of several places, "Go to X?",
 /// and which floor. Each is shown and spoken through [HomeVoiceController],
@@ -148,15 +149,17 @@ Future<bool?> confirmDestination(
           onPressed: () => Navigator.of(dialogContext).pop(false),
           child: Text(l10n.homeChangeDestinationButton),
         ),
-        FilledButton.icon(
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(220, 64),
-            textStyle: Theme.of(dialogContext).textTheme.titleLarge,
+        QuietAction(
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(220, 64),
+              textStyle: Theme.of(dialogContext).textTheme.titleLarge,
+            ),
+            autofocus: true,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.directions_walk),
+            label: Text(l10n.homeStartRouteButton),
           ),
-          autofocus: true,
-          onPressed: () => Navigator.of(dialogContext).pop(true),
-          icon: const Icon(Icons.directions_walk),
-          label: Text(l10n.homeStartRouteButton),
         ),
       ],
     ),

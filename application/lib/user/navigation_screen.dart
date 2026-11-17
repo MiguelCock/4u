@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
@@ -20,6 +21,7 @@ import '../services/geo_utils.dart';
 import '../services/heading_tracker.dart';
 import '../services/location_service.dart';
 import '../voice/app_voice.dart';
+import '../voice/trip_announcer.dart';
 import '../voice/notices.dart';
 import '../services/buzz.dart';
 import '../services/route_points.dart';
@@ -36,18 +38,7 @@ import 'route_progress.dart';
 import 'trip_log.dart';
 import 'trip_sensors.dart';
 import '../services/api_error_messages.dart';
-
-/// Cues that are instructions: a short vibration comes first, so a user
-/// holding the phone in front (not at the ear) knows to listen.
-const Set<String> _kInstructionCues = {
-  'turn',
-  'leg',
-  'turn_ahead',
-  'hazard',
-  'away',
-  'slow_turn',
-  'floor',
-};
+import '../voice/skip_speech.dart';
 
 /// No barometer reading this long after opening: the phone hasn't got one.
 const Duration _kBarometerProbe = Duration(seconds: 3);
@@ -158,9 +149,9 @@ class _NavigationScreenState extends State<NavigationScreen>
       ? widget.userId!()
       : Supabase.instance.client.auth.currentUser?.id;
 
-  /// The trip's right to speak: claimed as the trip starts, so whatever the
-  /// home screen was still saying is dropped (#258).
-  late VoiceOwner _voice;
+  /// How the trip speaks, through its right to speak: claimed as the trip
+  /// starts, so whatever the home screen was still saying is dropped (#258).
+  late final TripAnnouncer _announcer;
   String? _sessionId;
   CameraController? _cameraController;
 
@@ -196,7 +187,6 @@ class _NavigationScreenState extends State<NavigationScreen>
   final _pathLoaded = Completer<void>();
   bool _guiding = false;
   bool _arrived = false;
-  DateTime? _lastSpokenAt;
   bool _stopped = false;
 
   /// Admin test walk: the checkpoints still to tap (see test_walk.dart),
@@ -218,12 +208,6 @@ class _NavigationScreenState extends State<NavigationScreen>
   final _where = PositionSource();
   List<LatLng> _plannedPath = [];
   List<Waypoint> get _waypoints => _route.waypoints;
-  String? _lastAnnouncement;
-
-  /// What kind of cue [_lastAnnouncement] was (turn, start_walking, leg,
-  /// meters_ahead, arrival, start...), for the diagnostics and the admin's
-  /// "wrong instruction" reports.
-  String? _lastCueType;
 
   /// Cues spoken and guidance events since the last log, sent with the next
   /// tick's `debug` so the session view can show what was said where.
@@ -288,7 +272,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   @override
   void initState() {
     super.initState();
-    _voice = _appVoice.claim();
+    _announcer = TripAnnouncer(owner: _appVoice.claim(), logCue: _log.cue);
     _startSession();
     _initCamera();
     _loadPlannedPath();
@@ -349,7 +333,10 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// Until the first real announcement: "Preparing the route", then "One
   /// moment" every [_kLoadingRepeat].
   void _sayStillLoading() {
-    if (_stopped || !mounted || _lastAnnouncement != null || _error != null) {
+    if (_stopped ||
+        !mounted ||
+        _announcer.lastAnnouncement != null ||
+        _error != null) {
       return;
     }
     final l10n = AppLocalizations.of(context)!;
@@ -367,50 +354,24 @@ class _NavigationScreenState extends State<NavigationScreen>
     _log.event('sensor_error', fields: {'error': error.toString()});
   }
 
-  /// Speaks [text] if the user has voice guidance on (#39/#40/#85) -
-  /// voiceGuidanceNotifier is the same app_preferences.dart pattern
-  /// high_contrast/font_scale already use, just read directly here rather
-  /// than via a ValueListenableBuilder, since this screen doesn't need to
-  /// rebuild when it changes, only to check it at the moment of an
-  /// announcement.
-  ///
-  /// [assertive] mirrors Android's own accessibility live-region model
-  /// (a "polite" update waits for the current speech to finish; an
-  /// "assertive" one interrupts it) - routine announcements (route start,
-  /// periodic distance, approaching/arrived, session end) stay polite and
-  /// just queue; safety-relevant ones (a blocked camera) are assertive,
-  /// stopping whatever's queued first so they're not buried behind it.
+  /// Speaks [text] through [_announcer] (see TripAnnouncer.speak).
   Future<void> _speak(
     String text, {
     bool assertive = false,
     String cueType = 'info',
     bool repeatable = true,
-  }) async {
-    // Notices (the camera, "loading") aren't what "repeat" should replay.
-    if (repeatable) {
-      _lastAnnouncement = text;
-      _lastCueType = cueType;
-    }
-    _lastSpokenAt = clock.now();
-    if (_kInstructionCues.contains(cueType)) {
-      buzz(Buzz.short);
-    } else if (cueType == 'start_walking') {
-      // The "I'll vibrate when you face the right way" of SlowTurnCue.
-      buzz(Buzz.long);
-    }
-    _log.cue(cueType, text);
-    if (!voiceGuidanceNotifier.value) return;
-    await _voice.say(text, interrupt: assertive);
-  }
+  }) => _announcer.speak(
+    text,
+    assertive: assertive,
+    cueType: cueType,
+    repeatable: repeatable,
+  );
 
-  /// Re-speaks the most recent announcement on demand (a tap on the map) -
-  /// assertive, since the user is explicitly asking to hear it right now.
-  /// Also shown as a SnackBar, for anyone with voice guidance or sound off.
+  /// Re-speaks the most recent instruction on demand (the Repeat button, a
+  /// tap on the map), and shows it for anyone with the voice or sound off.
   void _repeatLastAnnouncement() {
-    final text = _lastAnnouncement;
-    if (text == null) return;
-    _speak(text, assertive: true, cueType: _lastCueType ?? 'info');
-    showSpokenNotice(context, text, replace: true);
+    final text = _announcer.repeat();
+    if (text != null) showSpokenNotice(context, text, replace: true);
   }
 
   /// Resolves the route's anchor ids (already in hand from find_or_create,
@@ -912,7 +873,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     if (!_guiding || _stopped || _arrived || !mounted) return;
     if (!_guidance.walking || _route.next >= _waypoints.length) return;
     if (_route.waitingForFloor) return;
-    final lastSpoken = _lastSpokenAt;
+    final lastSpoken = _announcer.lastSpokenAt;
     if (lastSpoken != null &&
         clock.now().difference(lastSpoken) < _kQuietBeforePeriodic) {
       return;
@@ -926,7 +887,7 @@ class _NavigationScreenState extends State<NavigationScreen>
       case LegUpdate.keepWalking:
         // Not getting closer: "N steps to go" as if it were progress doesn't
         // help, but neither did the silence (Icesi, 2026-11-05).
-        final spoken = _lastSpokenAt;
+        final spoken = _announcer.lastSpokenAt;
         if (spoken == null ||
             clock.now().difference(spoken) >= _kQuietBeforeKeepWalking) {
           _sayKeepWalking(distance);
@@ -1160,12 +1121,12 @@ class _NavigationScreenState extends State<NavigationScreen>
     final messenger = ScaffoldMessenger.of(context);
     buzz(Buzz.short);
     final position = _locationService.lastPosition;
-    final instruction = _lastAnnouncement;
+    final instruction = _announcer.lastAnnouncement;
     try {
       await _navigationApi.post('/guidance-reports', {
         'session_id': sessionId,
         'instruction_text': instruction,
-        'cue_type': _lastCueType,
+        'cue_type': _announcer.lastCueType,
         'waypoint_index': _route.next,
         if (position != null) ...{
           'gps_lat': position.latitude,
@@ -1278,7 +1239,7 @@ class _NavigationScreenState extends State<NavigationScreen>
     _accelSub?.cancel();
     _positionSub?.cancel();
     _cameraController?.dispose();
-    _voice.release();
+    _announcer.release();
     super.dispose();
   }
 
@@ -1366,6 +1327,11 @@ class _NavigationScreenState extends State<NavigationScreen>
                             button: true,
                             label: l10n.navTapToRepeatHint,
                             onTap: _repeatLastAnnouncement,
+                            customSemanticsActions: {
+                              CustomSemanticsAction(
+                                label: l10n.voiceQuietAction,
+                              ): _appVoice.skip,
+                            },
                             child: ExcludeSemantics(
                               child: SimpleMapWidget(
                                 onTap: _repeatLastAnnouncement,
@@ -1390,16 +1356,18 @@ class _NavigationScreenState extends State<NavigationScreen>
                         const Spacer(),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size.fromHeight(160),
-                              textStyle: Theme.of(
-                                context,
-                              ).textTheme.headlineSmall,
+                          child: QuietAction(
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size.fromHeight(160),
+                                textStyle: Theme.of(
+                                  context,
+                                ).textTheme.headlineSmall,
+                              ),
+                              onPressed: _repeatLastAnnouncement,
+                              icon: const Icon(Icons.replay, size: 40),
+                              label: Text(l10n.navRepeatButton),
                             ),
-                            onPressed: _repeatLastAnnouncement,
-                            icon: const Icon(Icons.replay, size: 40),
-                            label: Text(l10n.navRepeatButton),
                           ),
                         ),
                         const Spacer(),
