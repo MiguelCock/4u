@@ -14,7 +14,113 @@ const Set<String> _stopWords = {
   'al', 'el', 'la', 'los', 'las', 'de', 'del', 'en', 'un', 'una', 'ir',
   'quiero', 'llevame', 'lleva', 'por', 'favor', 'donde', 'esta',
   'buscar', 'ruta', 'hacia', 'hasta', 'voy',
+  // How people really ask (D13, #261): "necesito encontrar la biblioteca",
+  // "me puedes llevar donde la enfermería", "can you take me to…".
+  'need', 'would', 'like', 'could', 'can', 'you', 'show', 'looking',
+  'for', 'how', 'do', 'there', 'bring', 'lead', 'guide', 'search', 'hi',
+  'hello', 'my', 'some',
+  'necesito', 'necesitaria', 'quisiera', 'gustaria', 'puedes', 'podrias',
+  'puede', 'podria', 'llevar', 'llevarme', 'llevas', 'guiar', 'guiame',
+  'guiarme', 'busco', 'buscando', 'encontrar', 'encuentro', 'queda',
+  'hay', 'que', 'como', 'llego', 'llegar', 'dirigirme', 'vamos', 'oye',
+  'hola', 'porfa', 'ayudame', 'ayuda', 'mi', 'te', 'tu', 'usted',
+  'algun', 'alguna', 'algo', 'ahora', 'ya',
+  // "El más cercano" says which one, not what: see [asksForNearest].
+  ..._nearestWords,
 };
+
+/// Words that ask for the nearest of what's named: "el baño más cercano".
+const Set<String> _nearestWords = {
+  'mas',
+  'cercano',
+  'cercana',
+  'cerca',
+  'proximo',
+  'proxima',
+  'nearest',
+  'closest',
+  'near',
+  'nearby',
+};
+
+/// Whether [spoken] asks for the nearest one ("el baño más cercano", "the
+/// nearest restroom"): then only the nearest match is offered.
+bool asksForNearest(String spoken) {
+  final words = normalizeForMatch(spoken).split(' ');
+  return words.any(
+    (w) => const {
+      'cercano',
+      'cercana',
+      'cerca',
+      'proximo',
+      'proxima',
+      'nearest',
+      'closest',
+      'near',
+      'nearby',
+    }.contains(w),
+  );
+}
+
+/// Words for a kind of place, by `location_type` id (D13): "baño" finds a
+/// restroom called "Sanitarios bloque 2", and "comer" a cafeteria. Singular,
+/// normalized; plurals are found by [_typeOfWord].
+const Map<String, int> _typeWords = {
+  // restroom
+  'bano': 7, 'sanitario': 7, 'servicio': 7, 'wc': 7, 'bathroom': 7,
+  'restroom': 7, 'toilet': 7, 'lavabo': 7,
+  // cafeteria
+  'cafeteria': 8, 'comer': 8, 'comida': 8, 'almorzar': 8, 'almuerzo': 8,
+  'desayunar': 8, 'cafe': 8, 'restaurante': 8, 'food': 8, 'eat': 8,
+  'coffee': 8, 'lunch': 8,
+  // library
+  'biblioteca': 23, 'library': 23, 'libro': 23,
+  // infirmary
+  'enfermeria': 27, 'medico': 27, 'doctor': 27, 'salud': 27, 'nurse': 27,
+  'clinic': 27, 'infirmary': 27,
+  // atm
+  'cajero': 22, 'atm': 22, 'plata': 22, 'dinero': 22,
+  // parking
+  'parqueadero': 13, 'estacionamiento': 13, 'parking': 13,
+  // entrance / exit
+  'entrada': 1, 'entrance': 1, 'salida': 30, 'exit': 30,
+  // academic
+  'salon': 5, 'aula': 5, 'clase': 5, 'classroom': 5,
+  'laboratorio': 24, 'lab': 24, 'laboratory': 24,
+  'computo': 25, 'computador': 25, 'sistemas': 25,
+  'estudiar': 26, 'study': 26,
+  'auditorio': 15, 'auditorium': 15,
+  'oficina': 6, 'office': 6,
+  // services
+  'papeleria': 19, 'fotocopia': 20, 'copia': 20, 'fotocopiadora': 20,
+  'tienda': 21, 'store': 21, 'shop': 21,
+  'bebedero': 33, 'agua': 33,
+  // wellbeing and getting around
+  'capilla': 29, 'chapel': 29,
+  'deporte': 28, 'gimnasio': 28, 'gym': 28, 'cancha': 28, 'coliseo': 28,
+  'paradero': 18, 'bus': 18,
+  'bicicleta': 31, 'cicloparqueadero': 31,
+  'recepcion': 14, 'lobby': 14,
+};
+
+/// Whether everything [spoken] says is a kind of place ("baño", "un
+/// cajero"): then any place of that kind will do, not only one called so.
+bool namesOnlyAKind(String spoken) {
+  final words = _spokenTokens(spoken);
+  return words.isNotEmpty && words.every((w) => _typeOfWord(w) != null);
+}
+
+/// The `location_type` id a spoken word names, singular or plural.
+int? _typeOfWord(String word) {
+  final direct = _typeWords[word];
+  if (direct != null) return direct;
+  if (word.endsWith('es')) {
+    final type = _typeWords[word.substring(0, word.length - 2)];
+    if (type != null) return type;
+  }
+  if (word.endsWith('s')) return _typeWords[word.substring(0, word.length - 1)];
+  return null;
+}
 
 const Map<String, String> _accents = {
   'á': 'a',
@@ -139,7 +245,7 @@ bool _tokenMatches(String spoken, String place) {
 class DestinationMatch {
   final Map<String, dynamic> anchor;
 
-  /// 0-1: the share of the spoken words that named this place.
+  /// 0-1: how well the phrase named this place (see [matchDestinations]).
   final double score;
 
   const DestinationMatch(this.anchor, this.score);
@@ -148,26 +254,53 @@ class DestinationMatch {
 /// Ranks [destinations] (anchor rows with `location_description`) by how
 /// well [spoken] names them, best first, dropping weak matches. Words in
 /// the place's building name ([buildingNames], by building id) count too,
-/// so "cafetería bloque 13" can pick the right one of two cafeterias.
+/// so "cafetería bloque 13" can pick the right one of two cafeterias. A
+/// word for the place's kind ("baño" for a restroom, see [_typeWords])
+/// names it whatever it's called.
+///
+/// The score is the share of the spoken words that named the place, out of
+/// those that name anything here (D13): a word no place, building or kind
+/// of place answers to ("rápido", "ahorita") doesn't sink a match.
 List<DestinationMatch> matchDestinations(
   String spoken,
   List<Map<String, dynamic>> destinations, {
   Map<String, String> buildingNames = const {},
   double minScore = 0.5,
 }) {
-  final query = _spokenTokens(spoken);
+  final said = _spokenTokens(spoken);
+  if (said.isEmpty) return const [];
+  final vocabulary = <String>{};
+  final types = <int>{};
+  for (final anchor in destinations) {
+    vocabulary
+      ..addAll(_tokens(anchor['location_description'] as String? ?? ''))
+      ..addAll(_tokens(buildingNames[anchor['building_id']] ?? ''));
+    if (anchor['location_type_id'] case final int type) types.add(type);
+  }
+  final query = [
+    for (final word in said)
+      // A number always counts: "salón 303" isn't room 301.
+      if (RegExp(r'^\d+$').hasMatch(word) ||
+          vocabulary.any((v) => _tokenMatches(word, v)) ||
+          types.contains(_typeOfWord(word)))
+        word,
+  ];
   if (query.isEmpty) return const [];
   final matches = <DestinationMatch>[];
   for (final anchor in destinations) {
     final place = _tokens(anchor['location_description'] as String? ?? '');
     if (place.isEmpty) continue;
     final building = _tokens(buildingNames[anchor['building_id']] ?? '');
+    final type = anchor['location_type_id'] as int?;
     var hits = 0.0;
     var namedThePlace = false;
     for (final word in query) {
       if (place.any((p) => _tokenMatches(word, p))) {
         hits += 1;
         namedThePlace = namedThePlace || !_isGeneric(word);
+      } else if (type != null && _typeOfWord(word) == type) {
+        hits += 1;
+        namedThePlace = true;
       } else if (building.any((b) => _tokenMatches(word, b))) {
         hits += 1;
       }
