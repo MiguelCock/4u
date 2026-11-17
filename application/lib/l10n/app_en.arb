@@ -712,7 +712,7 @@
   "homeChangeDestinationButton": "Change destination",
   "homeFindingRoute": "Finding the route…",
   "homeLoadingDestinations": "Loading the destinations…",
-  "homeTutorialPage1": "This app guides you on foot around the campus. When it opens, it asks where you want to go: say the place. If it didn't hear you, tap the big button in the middle of the screen and say it again.",
+  "homeTutorialPage1": "This app guides you on foot around the campus. When it opens, it asks where you want to go: say the place. If it didn't hear you, tap the big button in the middle of the screen and say it again. To quiet me, tap the screen three times quickly.",
   "homeTutorialPage2": "When it asks whether to go there, say yes to start the route, or no to choose another place. During the trip, hold the phone upright in front of your chest, with the back camera facing forward, and use an earphone to hear it better. The phone vibrates before each instruction.",
   "homeTutorialPage3": "I'll tell you when to turn and how many steps to walk, and warn you of the stairs and obstacles the campus has marked. I can't see other obstacles, so keep using your cane. During a route, tap the Repeat instruction button to hear it again, and the End navigation button to stop.",
   "homeTutorialNext": "Next",
@@ -833,5 +833,6 @@
   "adminLegendFloorChange": "Dashed: changes floor",
   "adminLegendPlaces": "Named places, by category",
   "adminLegendPlacesHint": "The dot on the corner is the review status. Points without a name stay plain dots.",
-  "adminLegendStatus": "Review status"
+  "adminLegendStatus": "Review status",
+  "voiceQuietAction": "Quiet the app"
 }

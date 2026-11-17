@@ -11,6 +11,7 @@ import 'services/app_preferences.dart';
 import 'services/app_version.dart';
 import 'services/location_service.dart';
 import 'widgets/app_update.dart';
+import 'voice/skip_speech.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -94,7 +95,8 @@ class MainApp extends StatelessWidget {
                           textScaler: TextScaler.linear(textScale),
                           boldText: bold ?? media.boldText,
                         ),
-                        child: child!,
+                        // Three quick taps quiet the app's voice (D12, R8).
+                        child: SkipSpeech(child: child!),
                       ),
                     );
                   },

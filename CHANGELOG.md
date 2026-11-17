@@ -6,6 +6,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+### Added
+
+- **Quiet the app:** tapping the screen three times quickly stops what the app is saying, and a question it was about to ask comes at once. With TalkBack, the same is the **Callar la app** action on the main buttons. The tutorial says how.
+
 ### Changed
 
 - **The tutorial goes on by itself (#259):** each of its three pages moves on once it has been read out, and the last one leads straight to "¿A dónde quieres ir?". Nothing has to be found on the screen. **Atrás**, **Repetir** and **Saltar tutorial** are still there, and **Siguiente** still works.

@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import '../voice/skip_speech.dart';
 
 /// The home screen's one big Speak button (D1).
 ///
@@ -36,30 +37,35 @@ class SpeakCircle extends StatelessWidget {
       if (!busy) onPressed();
     }
 
-    return Semantics(
-      button: true,
-      enabled: true,
-      label: label,
-      onTap: tap,
-      excludeSemantics: true,
-      child: SizedBox.square(
-        dimension: size,
-        child: FilledButton(
-          style: FilledButton.styleFrom(
-            shape: const CircleBorder(),
-            backgroundColor: listening ? scheme.error : scheme.primary,
-            foregroundColor: listening ? scheme.onError : scheme.onPrimary,
-            padding: const EdgeInsets.all(24),
-            textStyle: Theme.of(context).textTheme.headlineSmall,
-          ),
-          onPressed: busy ? null : onPressed,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(listening ? Icons.stop_rounded : Icons.mic, size: 96),
-              const SizedBox(height: 8),
-              Text(listening ? stopLabel : label, textAlign: TextAlign.center),
-            ],
+    return QuietAction(
+      child: Semantics(
+        button: true,
+        enabled: true,
+        label: label,
+        onTap: tap,
+        excludeSemantics: true,
+        child: SizedBox.square(
+          dimension: size,
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              shape: const CircleBorder(),
+              backgroundColor: listening ? scheme.error : scheme.primary,
+              foregroundColor: listening ? scheme.onError : scheme.onPrimary,
+              padding: const EdgeInsets.all(24),
+              textStyle: Theme.of(context).textTheme.headlineSmall,
+            ),
+            onPressed: busy ? null : onPressed,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(listening ? Icons.stop_rounded : Icons.mic, size: 96),
+                const SizedBox(height: 8),
+                Text(
+                  listening ? stopLabel : label,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
       ),

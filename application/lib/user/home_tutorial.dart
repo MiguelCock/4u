@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../l10n/app_localizations.dart';
 import '../voice/home_voice_controller.dart';
 import '../voice/notices.dart' show SpokenText;
+import '../voice/skip_speech.dart';
 
 /// The home screen's tutorial (#268): shown once on first launch, and from
 /// "How does it work?". Came out of `UserHomeScreen`.
@@ -95,11 +96,15 @@ Future<void> showHomeTutorial(
                 onPressed: () => choose(_Step.skip),
                 child: Text(l10n.homeTutorialSkip),
               ),
-            FilledButton(
-              style: FilledButton.styleFrom(minimumSize: const Size(160, 56)),
-              autofocus: true,
-              onPressed: () => choose(_Step.next),
-              child: Text(last ? l10n.homeTutorialDone : l10n.homeTutorialNext),
+            QuietAction(
+              child: FilledButton(
+                style: FilledButton.styleFrom(minimumSize: const Size(160, 56)),
+                autofocus: true,
+                onPressed: () => choose(_Step.next),
+                child: Text(
+                  last ? l10n.homeTutorialDone : l10n.homeTutorialNext,
+                ),
+              ),
             ),
           ],
         );
