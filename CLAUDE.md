@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-GPS positioning correction system for assisted navigation of visually impaired users on university campuses. It corrects raw GPS (5-20m error) down to <5m by matching a live phone photo against a database of pre-captured "anchor point" photos (visual embeddings), then fusing that visual correction with GPS via a Kalman filter (GPS + visual only today, not GPS + IMU + visual — see `backend-positioning/CLAUDE.md`). See `README.md` for the short project overview; see `docs/SETUP.md` for the full local setup and end-to-end testing walkthrough.
+GPS positioning correction system for assisted navigation of visually impaired users on university campuses. It corrects raw GPS (5-20m error) down to <5m by matching a live phone photo against a database of pre-captured "anchor point" photos (visual embeddings), then fusing that visual correction with GPS via a Kalman filter (GPS + visual only today, not GPS + IMU + visual — see `backend-positioning/CLAUDE.md`). See `docs/positioning-pipeline.md` for the correction pipeline end to end, `README.md` for the short project overview; see `docs/SETUP.md` for the full local setup and end-to-end testing walkthrough.
 
 This is a Python/Dart monorepo, not a single deployable app — each top-level directory is an independently versioned component with its own `pyproject.toml`/`pubspec.yaml`.
 
