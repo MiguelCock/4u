@@ -1,5 +1,7 @@
 # Tuning the GPS correction and turn guidance
 
+How the pipeline works, step by step: `docs/positioning-pipeline.md`. This file is how to measure and tune it, and what the walks found.
+
 A field test on a long path showed three problems: wrong "turn 30-45°" cues while walking straight, the position jumping forward and back, and the trip ending ~40 m early because the position snapped onto the destination. This page explains the knobs that control those behaviours and how to tune them from real walks.
 
 ## 1. Measure it: test walks along the route

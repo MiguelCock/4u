@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 See the repo root `CLAUDE.md` for overall project context.
 
+**Start with `docs/positioning-pipeline.md`**: the whole photo + GPS correction, one tick end to end.
+
 ## Commands
 
 ```bash
