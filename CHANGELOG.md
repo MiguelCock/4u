@@ -6,6 +6,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+### Added
+
+- **Indoors, planned (0.7.0):** a design for guiding from a building's entrance to a classroom seat, with scanned maps of each room and obstacle warnings. Nothing changes in the app yet. See [docs/decisions/i1-indoor-module.md](docs/decisions/i1-indoor-module.md).
+
 ## [0.6.1] - 2026-11-23
 
 ### Added
