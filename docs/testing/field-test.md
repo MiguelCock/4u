@@ -8,7 +8,7 @@ One walking round answers several stories at once:
 - **B6:** day and night;
 - **B5:** how usable it is (SUS).
 
-**Afterwards, send the time window** (start and end, with the date). One command (`loadtest/trip_report.py --since … --until …`) turns every trip into a report, and the conclusions go into each story. You don't need to write anything else down beyond the sheet below.
+**Afterwards, send the time window** (start and end, with the date). One command (`loadtest/round_report.py --since … --until …`, below) turns the round into a report, and the conclusions go into each story. You don't need to write anything else down beyond the sheet below.
 
 ## Before the round
 - **Every phone on the same app version** (Settings shows it). Note each phone's make and model on the sheet. From 0.6 the trip records it by itself.
@@ -64,6 +64,16 @@ Answer each from 1 (strongly disagree) to 5 (strongly agree).
 3. add them up and × 2.5, for a score from 0 to 100.
 
 Above 68 is about average.
+
+## The round's report
+One command turns the round into the report B5 asks for: per campus and app version, how many trips arrived, how long it took, how many photos matched, the median correction, and how many trips got lost (spinning or getting no closer); per phone, the device matrix (`docs/testing/device-matrix.md`); and the SUS score.
+
+```bash
+cd loadtest
+uv run python round_report.py --since 2026-11-13T14:00 --until 2026-11-13T17:00 --sus ../test_users_comments/sus.csv
+```
+
+`sus.csv` has one row per participant, columns `q1`…`q10` (1–5) and a code, never a name. It stays in `test_users_comments/`, outside the repo. A session marked `completed` only means the trip ended; "arrived" counts trips that logged an arrival.
 
 ## Before merging, and before a release (no walking)
 - **Merging:** the changed components' tests pass, and CI is green, e2e included.
@@ -137,3 +147,13 @@ Responde cada una de 1 (totalmente en desacuerdo) a 5 (totalmente de acuerdo).
 3. suma todo y multiplica por 2,5, para un puntaje de 0 a 100.
 
 Más de 68 es más o menos el promedio.
+
+## El informe de la ronda
+Un comando convierte la ronda en el informe que pide B5: por campus y versión de la app, cuántos recorridos llegaron, cuánto tardaron, cuántas fotos se reconocieron, la corrección mediana y cuántos se perdieron (girando en el sitio o sin acercarse); por teléfono, la matriz de dispositivos (`docs/testing/device-matrix.md`); y el puntaje SUS.
+
+```bash
+cd loadtest
+uv run python round_report.py --since 2026-11-13T14:00 --until 2026-11-13T17:00 --sus ../test_users_comments/sus.csv
+```
+
+`sus.csv` tiene una fila por participante, columnas `q1`…`q10` (1–5) y un código, nunca un nombre. Se queda en `test_users_comments/`, fuera del repositorio. Un recorrido `completed` solo significa que terminó; "llegó" cuenta los que registraron la llegada.

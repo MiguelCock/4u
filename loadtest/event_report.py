@@ -5,8 +5,8 @@ Read-only. Phones are numbered, never named, since these are real people's trips
 
 Each photo's time is split into the server's part and the rest, which is mostly
 the network: the phone's round trip (debug.timing_ms.correct) against
-positioning's own time (debug.correction.total_ms). The app version isn't logged
-per trip yet (story B2), so it isn't shown.
+positioning's own time (debug.correction.total_ms). Each trip's phone and app
+version (navigation_sessions.device_info) are in round_report.py.
 """
 
 import argparse
