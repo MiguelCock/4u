@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents when working with code in this repository.
 
 ## Project overview
 
@@ -49,7 +49,7 @@ Docker: each backend service's `Dockerfile` `COPY`s both its own directory and t
 docker build -f backend-data-collection/Dockerfile -t fastapi-app .   # from repo root
 docker run -p 8000:80 --env-file backend-data-collection/.env fastapi-app
 ```
-Or run all 5 backend services together (see `docker-compose.yml` at the repo root):
+Or run all 7 backend services together (see `docker-compose.yml` at the repo root):
 ```bash
 docker compose up --build
 ```
@@ -104,6 +104,18 @@ Work is tracked in GitHub issues: the next patch release's milestone, or `Backlo
 - **`CHANGELOG.md`** updated, and the docs of whatever changed, including the relevant `CLAUDE.md`.
 - **Screenshots retaken** when an admin screen changes (`docs/admin-guide/tools/`), with the numbered tables still matching.
 - **No personal or health details** from tests in the repo or issues. Test notes stay in the local `test_users_comments/`.
+
+## Working with agents
+
+Rules for every AI agent working here (Claude Code, OpenCode, or anything else), and for a human working beside one:
+
+- **Branch from `develop`.** Each change is a branch off `develop` and a PR back into it, named `feat/…`, `fix/…`, `docs/…` or `refactor/…`. `main` only moves through the release PR (see Releases). Never commit directly to `develop` or `main`.
+- **One worktree per task in flight.** Two agents in one checkout overwrite each other's generated files (`application/lib/l10n/`, `.dart_tool/`, lockfiles) and each other's diffs. `git worktree add ../4u-<task>` per task.
+- **Some things have one writer at a time:** `deployment/deploy.sh` (the live server), anything under `loadtest/` (production), `scripts/e2e.sh` (one Docker Compose project and one Supabase stack), and `db_schema/migrations/` (run by hand in Supabase). Agree who holds one before starting.
+- **`CHANGELOG.md`'s `[Unreleased]` section is the one shared file.** Append your lines; never reorder or rewrite someone else's.
+- **Run the checks before calling it done.** `scripts/verify.sh` runs what CI runs for the components that changed; `scripts/verify.sh all` runs everything that works locally. The e2e suite is separate (`scripts/e2e.sh`) and needs the Supabase CLI.
+- **Say what you did not run.** Every PR or handoff states what changed, what was run, what was not run, and what is still open.
+- **The live environment is one `.env` away.** `application/.env` points `API_GATEWAY_URL` at the deployed server, and `packages/.env` holds real Supabase/Qdrant credentials whose tests create and delete real collections. Don't run the app or `packages`' tests casually, and never copy those values into a test, a log, an issue or a PR.
 
 ## CI
 

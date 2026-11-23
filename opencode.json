@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "formatter": {
+    "ruff": { "disabled": true },
+    "uv": { "disabled": true },
+    "python-project": {
+      "command": ["bash", "scripts/format-file.sh", "$FILE"],
+      "extensions": [".py"]
+    }
+  },
+  "permissions": [
+    { "action": "shell", "resource": "*deploy.sh*", "effect": "ask" },
+    { "action": "shell", "resource": "*scripts/e2e.sh*", "effect": "ask" },
+    { "action": "shell", "resource": "*docker compose*up*", "effect": "ask" },
+    { "action": "shell", "resource": "*docker compose*down*", "effect": "ask" },
+    { "action": "shell", "resource": "*docker compose*build*", "effect": "ask" },
+    { "action": "shell", "resource": "*loadtest*", "effect": "ask" },
+    { "action": "shell", "resource": "python3 scripts/bump_version.py *", "effect": "ask" },
+    { "action": "shell", "resource": "gh release *", "effect": "ask" },
+    { "action": "shell", "resource": "gh pr merge *", "effect": "ask" },
+    { "action": "shell", "resource": "rm -rf *", "effect": "ask" },
+    { "action": "shell", "resource": "sudo *", "effect": "deny" }
+  ]
+}
