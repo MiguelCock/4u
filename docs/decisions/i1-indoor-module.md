@@ -201,7 +201,7 @@ The PDF is a snapshot (18 November 2026). The issues and this record are the sou
 | Pilot | #319 (Indoor pilot milestone) |
 | Backlog | P3: #246, #245, #187, #247, #86 · P4: #94, #93, #160 · #17 (p3, not scheduled in the PDF) · WiFi/FTM #334 |
 
-Priority labels `priority: p0`–`p4` carry the plan's P0–P4, so the milestone is readable without the PDF.
+Priority labels `priority: p0`–`p4` carry the plan's P0–P4 (plus #310 and #17, which the plan predates or leaves out), so the milestone is readable without the PDF.
 
 ## Out of scope for 0.7.0
 
