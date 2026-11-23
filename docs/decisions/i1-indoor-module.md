@@ -2,7 +2,11 @@
 
 Inside a building GPS is off by more than a corridor is wide, sees no obstacles, and can't tell one row of seats from the next. 4u gets the user to a building. The indoor module takes them from the building's entrance to a seat. It was proposed by a professor at EAFIT in November 2026, and this record is how it fits 4u.
 
-**4u comes first.** Integration (I4 onwards) starts after **0.6.4**, once P0 and P1 are released and measured. P2 (0.6.5) keeps running in parallel; no indoor PR changes a 4u screen or a running service until P2 ships. I2 adds nullable columns and new tables to the database — additive, but it does touch the running schema — and I3 is a separate tool, so both can start earlier, but they merge into `develop` only when 0.7.0 opens, so they never ride along in a 0.6.x patch. Milestone: **0.7.0**; the field pilot is its own milestone, **Indoor pilot**.
+**4u comes first.** Every release squashes all of `develop` into `main`, so the merge rule follows what ships:
+- **Any time:** `tools/space-builder/` (I3, I12, I13) and docs. They never reach a user.
+- **After v0.6.5 is tagged:** the schema (I2), the service, the gateway and the app (I4 onwards). None of it rides along in a 0.6.x patch.
+
+Work on those can start earlier on its branch; only the merge waits. Milestone: **0.7.0**; the field pilot is its own milestone, **Indoor pilot**.
 
 ## Rules
 
@@ -24,15 +28,17 @@ These are the decisions every indoor story builds against. Change one here first
 |---|---|---|
 | Phone | ARCore pose, depth, the 4×4 m local grid, the obstacle reflex, beacon and haptics, the cache of `occupancy`/`floor`/`semantics`/`graph`/`meta` | Run relocalization or the global A* in 0.7.0 |
 | Laptop (`backend-indoor-positioning`) | Relocalization, global A*, the WebSocket session, indoor logs | Keep raw frames after the answer |
-| Supabase / Qdrant / Storage | `spaces`/`packages`/`targets`, `indoor_keyframes`, signed package URLs, sessions/logs | Serve a public package |
+| Supabase / Storage | `spaces`/`packages`/`targets`, signed package URLs, sessions/logs | Serve a public package |
 
-`loc_db` stays with the laptop; it never goes to the phone in the own-pipeline path. The phone download is the derived maps (target: under 10 MB), not the keyframe database. If Niantic is enabled, the phone holds Niantic's map and reports its own pose through the same contract; the laptop then skips relocalization.
+`loc_db` stays with the laptop; it never goes to the phone in the own-pipeline path. The laptop keeps its own keyframe index, rebuilt from `loc_db` when a package is loaded: one room is a few hundred keyframes, so an in-process index is enough. The shared Qdrant runs inside the EC2 Compose network and isn't exposed, so it isn't used. The phone download is the derived maps (target: under 10 MB), not the keyframe database. If Niantic is enabled, the phone holds Niantic's map and reports its own pose through the same contract; the laptop then skips relocalization.
 
 Poses go at 10 Hz. Images go only on relocalization/keyframes (2 Hz maximum unless a measurement shows a need); ten images a second costs bandwidth, battery and privacy while ARCore already tracks.
 
 ### 2. Network path
 
 The gateway is on the EC2 server; the indoor service runs on a GPU laptop. The path is a tunnel (WireGuard, Tailscale or Cloudflare Tunnel) to the gateway with WSS, with the same bearer auth, version guard and a per-user connection limit as every other service. A direct phone → laptop path exists only as a test mode on a private hotspot, never for the pilot. I22 owns the tunnel, the health check and the runbook.
+
+The stream goes phone → EC2 gateway → tunnel → campus laptop and back. I22 measures that round trip (p95) against the 200 ms replan. Only the reflex, which runs on the phone, carries the < 150 ms target.
 
 ### 3. Privacy and data flow
 
@@ -64,8 +70,10 @@ The 5 m rule alone is inside the outdoor GPS error (`arrivalRadius` is 5–15 m)
 ### 8. WebSocket contract
 
 The stream is versioned JSON over WSS:
-- client → server: `hello` (app version, space, target, session, lang, verbosity, device), `frame` (JPEG, intrinsics, ARCore pose, timestamp), `bye`;
-- server → client: `pose`, `path`, `obstacle`, `status` (including "ubicación incierta"), `error`.
+- client → server: `hello` (app version, space, target, session, lang, verbosity, device), `frame` (JPEG, intrinsics, ARCore pose, timestamp), `obstacles` (the phone's 4×4 m local grid: occupied cells by height band, with pose and timestamp, at 10 Hz), `bye`;
+- server → client: `pose`, `path`, `obstacle` (map-known hazards only: glass, drops from `semantics`/`floor`), `status` (including "ubicación incierta"), `error`.
+
+The phone computes depth; the laptop's A* gets live obstacles only through `obstacles`.
 
 Auth is the bearer header at the handshake; one connection per user; max frame size; backpressure drops images before poses; reconnect resumes. The fixture lives with I16's tests.
 
@@ -145,12 +153,12 @@ The module knows only the space and the entry anchor, nothing of 4u's GPS or gra
 ### `Relocalizer`
 
 One interface, two backends, chosen by configuration:
-- **Own:** EigenPlaces retrieval (the model `backend-ai-training` already uses) on the collection `indoor_keyframes`, then SuperPoint + LightGlue and PnP-RANSAC. Runs in `backend-indoor-positioning`.
+- **Own:** EigenPlaces retrieval (the model `backend-ai-training` already uses) on the laptop's own keyframe index, then SuperPoint + LightGlue and PnP-RANSAC. Runs in `backend-indoor-positioning`.
 - **Niantic VPS 2.0:** runs on the phone (NSDK, Kotlin) and reports its pose through the same contract. It needs an API key and ethics approval, because classroom images go to Niantic. It's tried as a baseline in the same classroom. If it relocalizes as well or better, it's used for new spaces, and our own stays as the cloud-free fallback.
 
 ## Where it runs
 
-The lab refuses machines above `.large` and has no GPUs, so the service runs on a **team laptop or PC with a GPU** through the pilot, one user at a time. The phone and the laptop share a hotspot or a router of our own, because campus Wi-Fi may isolate devices. The laptop reaches the gateway through I22's tunnel with WSS; the phone never talks to it directly outside test mode, and the gateway's auth, version guard and per-user limits apply.
+The lab refuses machines above `.large` and has no GPUs, so the service runs on a **team laptop or PC with a GPU** through the pilot, one user at a time. The laptop reaches the gateway through I22's tunnel with WSS; the phone never talks to it directly outside test mode, and the gateway's auth, version guard and per-user limits apply.
 - The gateway gets an `/indoor/` route with the WebSocket upgrade. Its upstream goes through a variable and a `resolver`, so nginx still starts without the service. Today nginx resolves every upstream at start.
 - **The obstacle reflex runs on the phone**, so the < 150 ms warning never depends on the network.
 - Each phone with ARCore is recorded in the device matrix (#178). The app asks for ARCore as *optional*, so phones without it still install the app.
@@ -219,7 +227,7 @@ Priority labels `priority: p0`–`p4` carry the plan's P0–P4 (plus #310 and #1
 | The entry anchor is several metres from the door | The package includes the arrival corridor; Wi-Fi as confirmation |
 | The native camera clashes with 4u's camera plugin | One owner at a time (above) |
 | The laptop service doesn't scale | One user at a time until the pilot; then more perception on the phone (LiteRT) |
-| Campus Wi-Fi isolates devices | A hotspot or a router of our own |
+| Campus Wi-Fi isolates devices | The tunnel needs no shared network; a hotspot is only the test-mode path |
 | Ethics committee rejects classroom images | Processing on our own machine, nothing kept; Niantic only with approval |
 | The laptop is behind NAT | I22's tunnel, health check and runbook; no direct production path |
 | A 50 MB package stalls at the door | Prefetch when the destination is a space; the phone payload excludes `loc_db` |
