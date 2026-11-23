@@ -6,6 +6,8 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-23
+
 ### Added
 
 - **"¿Qué lugares hay?" (#248):** a user who doesn't know the campus can ask what's there, or what the app recommends. It reads the three nearest places, and "más" reads the next three. Pick one by its number or its name. Any list of several matches works the same way.
@@ -331,7 +333,8 @@ First release.
 - One HTTPS gateway in front of all backend services, and a signed Android release built by CI.
 - Bilingual (English/Spanish) admin guide.
 
-[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.6.0...develop
+[Unreleased]: https://github.com/MiguelCock/4u/compare/v0.6.1...develop
+[0.6.1]: https://github.com/MiguelCock/4u/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/MiguelCock/4u/compare/v0.6.0-pre...v0.6.0
 [0.6.0-pre]: https://github.com/MiguelCock/4u/compare/v0.5.6...v0.6.0-pre
 [0.5.6]: https://github.com/MiguelCock/4u/compare/v0.5.5...v0.5.6
