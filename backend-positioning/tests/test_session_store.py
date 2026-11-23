@@ -5,7 +5,7 @@ import pytest
 
 from app import session_store as session_store_module
 from app.matching import MatchConfig
-from app.session_store import SessionStore
+from app.session_store import SessionStore, stationary_reason
 
 
 def _match(anchor, lat, lng, score, heading=None, photo="p"):
@@ -290,6 +290,73 @@ async def test_standing_still_keeps_a_photo_match_from_yanking_the_position(
     pulled = (result.corrected_lat - 6.2) / _M
     # 8.8 m before (the field symptom), ~3 m now.
     assert pulled < 4.0
+
+
+@pytest.mark.parametrize(
+    ("speed", "gps_time", "last", "threshold", "expected"),
+    [
+        (1.2, "t0", "t0", 0.3, None),  # late fix while walking: not still
+        (0.1, "t1", "t0", 0.3, "speed"),  # new fix, standing: still
+        (0.3, "t1", "t0", 0.3, None),  # at the threshold: moving
+        (None, "t0", "t0", 0.3, "repeated_fix"),  # older app: the old rule
+        (None, "t1", "t0", 0.3, None),
+        (-1.0, "t0", "t0", 0.3, "repeated_fix"),  # iOS "unknown": the old rule
+        (0.1, "t1", "t0", 0.0, None),  # 0 turns the speed rule off
+        (1.2, "t0", "t0", 0.0, "repeated_fix"),
+    ],
+)
+def test_stationary_reason(speed, gps_time, last, threshold, expected):
+    assert stationary_reason(speed, gps_time, last, threshold) == expected
+
+
+@pytest.mark.asyncio
+async def test_walking_on_a_late_fix_is_not_told_it_stopped(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(session_store_module.time, "monotonic", lambda: clock[0])
+    store = SessionStore()
+    await _correct(store, "late", lat=6.2, lng=-75.6, accuracy=3.0, gps_time="t0")
+    clock[0] += 1.0
+    result = await _correct(
+        store, "late", lat=6.2, lng=-75.6, accuracy=3.0, gps_time="t0", gps_speed=1.2
+    )
+    assert result.debug["stationary"] is False
+    assert result.debug["stationary_reason"] is None
+    assert result.debug["gps_fused"] is False
+
+
+@pytest.mark.asyncio
+async def test_standing_with_a_new_fix_every_second_counts_as_still(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(session_store_module.time, "monotonic", lambda: clock[0])
+    store = SessionStore()
+    await _correct(store, "new", lat=6.2, lng=-75.6, accuracy=3.0, gps_time="t0")
+    for i in range(1, 5):
+        clock[0] += 3.5
+        result = await _correct(
+            store,
+            "new",
+            lat=6.2,
+            lng=-75.6,
+            accuracy=3.0,
+            gps_time=f"t{i}",
+            gps_speed=0.1,
+        )
+        assert result.debug["stationary_reason"] == "speed"
+        assert result.debug["gps_fused"] is True
+    clock[0] += 3.5
+    result = await _correct(
+        store,
+        "new",
+        lat=6.2,
+        lng=-75.6,
+        accuracy=3.0,
+        gps_time="t5",
+        gps_speed=0.1,
+        candidates=[_match("a", 6.2 + 9 * _M, -75.6, 0.8)],
+    )
+    assert result.anchor_match_id == "a"
+    # Same guard as the field test above, now with a new fix each tick.
+    assert (result.corrected_lat - 6.2) / _M < 4.0
 
 
 # --- GPS offset (bias) state ------------------------------------------------

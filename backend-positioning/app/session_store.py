@@ -64,6 +64,31 @@ class _SessionState:
     started: bool = False
 
 
+def stationary_reason(
+    gps_speed: float | None,
+    gps_time: str | None,
+    last_gps_time: str | None,
+    still_below_mps: float,
+) -> str | None:
+    """Why this tick counts as standing still, or None (#310).
+
+    With the phone's GPS speed (apps from 0.6.2), still means slower than
+    [still_below_mps], on a new fix or a repeated one. Ten real walks
+    showed the speed agrees with how far the fixes moved, and that the old
+    rule had stopped working: since the app asks for a fix every second, a
+    standing user gets a new fix each time, so 1078 of 1084 still ticks were
+    never marked, and 14 of 22 marked ones came while walking on a late fix.
+
+    Without a speed (older apps, or iOS's -1 for "unknown"), or with
+    [still_below_mps] at 0, the old rule: the same fix again meant the user
+    moved less than the app's former 1 m distance filter."""
+    if gps_speed is not None and gps_speed >= 0 and still_below_mps > 0:
+        return "speed" if gps_speed < still_below_mps else None
+    if gps_time is not None and gps_time == last_gps_time:
+        return "repeated_fix"
+    return None
+
+
 class SessionStore:
     def __init__(self) -> None:
         self._sessions: dict[str, _SessionState] = {}
@@ -135,6 +160,7 @@ class SessionStore:
         compass_heading: float | None = None,
         gps_time: str | None = None,
         config: matching.MatchConfig | None = None,
+        gps_speed: float | None = None,
     ) -> CorrectionResult:
         """Caller must already hold this session's lock (see get_lock).
 
@@ -148,6 +174,7 @@ class SessionStore:
         dt = now - state.last_call
         reinit = dt > MAX_DT_SECONDS
         stationary = False
+        reason = None
         if state.last_gps_time is None and not state.started:
             # First call: seed the filter at this fix, as uncertain as it is.
             state.ukf = self._new_filter(0.0, 0.0, accuracy, config)
@@ -161,11 +188,12 @@ class SessionStore:
             state.ukf = self._new_filter(x0, y0, accuracy, config)
             state.last_gps_time = None
         else:
-            if gps_time is not None and gps_time == state.last_gps_time:
-                # No new fix since the last call: the user moved less than
-                # the app's 1 m GPS distance filter over this interval, so
-                # say so before projecting the velocity forward through it
-                # (see kalman.stationary_update).
+            reason = stationary_reason(
+                gps_speed, gps_time, state.last_gps_time, config.stationary_speed_mps
+            )
+            if reason is not None:
+                # Say "not moving" before projecting the velocity forward
+                # through this interval (see kalman.stationary_update).
                 kalman.stationary_update(state.ukf)
                 stationary = True
             kalman.predict(state.ukf, dt)
@@ -255,6 +283,8 @@ class SessionStore:
                 "reinit": reinit,
                 "gps_fused": gps_fused,
                 "stationary": stationary,
+                "stationary_reason": reason,
+                "gps_speed": gps_speed,
                 "gps_accuracy_m": accuracy,
                 "compass": compass_heading,
                 "candidates": verdicts,

@@ -10,6 +10,10 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 - **Indoors, planned (0.7.0):** a design for guiding from a building's entrance to a classroom seat, with scanned maps of each room and obstacle warnings. Nothing changes in the app yet. See [docs/decisions/i1-indoor-module.md](docs/decisions/i1-indoor-module.md).
 
+### Fixed
+
+- **Standing still is recognised again:** when you stop, for example to turn and find your way, the position no longer drifts and then jumps when the camera next recognises a place. Walking with a late GPS reading is no longer taken for stopping either (#310).
+
 ## [0.6.1] - 2026-11-23
 
 ### Added

@@ -35,6 +35,9 @@ Future<Map<String, dynamic>> postCorrection(
             'heading': ?heading?.toString(),
             // Lets the backend skip re-fusing the same fix.
             'gps_time': fix.timestamp.toUtc().toIso8601String(),
+            // The same fix's speed, so the backend can tell standing still
+            // from a late fix while walking (#310).
+            'gps_speed': fix.speed.toString(),
             if (storeFrame) 'store_frame': 'true',
           },
         )

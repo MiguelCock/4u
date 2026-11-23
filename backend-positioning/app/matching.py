@@ -59,6 +59,10 @@ class MatchConfig:
     gps_bias_tau_s: float = 120.0
     # Scales the phone's reported accuracy into the GPS noise used.
     gps_sigma_factor: float = 1.0
+    # Below this GPS speed the phone counts as standing still (#310, see
+    # session_store.stationary_reason). 0 goes back to "a repeated fix
+    # means still".
+    stationary_speed_mps: float = 0.3
 
     @classmethod
     def from_env(cls) -> MatchConfig:
@@ -76,6 +80,9 @@ class MatchConfig:
             ),
             base_sigma_m=_env_float("POSITIONING_VISUAL_BASE_SIGMA_M", d.base_sigma_m),
             sigma_per_m=_env_float("POSITIONING_VISUAL_SIGMA_PER_M", d.sigma_per_m),
+            stationary_speed_mps=_env_float(
+                "POSITIONING_STATIONARY_SPEED_MPS", d.stationary_speed_mps
+            ),
             mahalanobis_gate=_env_float(
                 "POSITIONING_MAHALANOBIS_GATE", d.mahalanobis_gate
             ),

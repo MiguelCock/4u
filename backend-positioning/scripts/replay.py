@@ -189,6 +189,7 @@ async def replay(logs, anchors, config: MatchConfig):
                 compass_heading=correction.get("compass"),
                 gps_time=debug.get("gps_time"),
                 config=config,
+                gps_speed=debug.get("gps_speed"),
             )
         out[log["id"]] = (result.corrected_lat, result.corrected_long)
     return out

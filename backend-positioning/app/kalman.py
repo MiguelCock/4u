@@ -166,8 +166,8 @@ STATIONARY_SIGMA_MPS = 0.3
 def stationary_update(
     ukf: UnscentedKalmanFilter, sigma: float = STATIONARY_SIGMA_MPS
 ) -> None:
-    """Velocity ~ 0. The app's GPS stream has a 1 m distance filter, so no
-    new fix since the last call means the user moved less than that. A
+    """Velocity ~ 0, for a user standing still (when that holds is
+    session_store.stationary_reason). A
     field test skipped such repeated fixes instead: while the user stood
     orienting for ~12 s the velocity uncertainty (1 m/s) grew the position
     uncertainty to ~12 m, and the next photo match then pulled the
