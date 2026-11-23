@@ -53,6 +53,7 @@ A multipart `POST /positioning/correct_position` with these fields:
 | `latitude`, `longitude`, `accuracy` | the raw GPS fix (`geolocator`, best accuracy, one fix per second) |
 | `heading` | the direction the camera faces, **magnetic** degrees (see Heading); omitted when unknown |
 | `gps_time` | the fix's own timestamp (UTC ISO) |
+| `gps_speed` | the same fix's speed in m/s (apps from 0.6.2) |
 | `store_frame` | `true` only on an admin's test walk |
 
 The gateway (`gateway/nginx.conf`) limits `/positioning/` to 5 requests/s per user (burst 10) and 15 MB per upload, then proxies to `positioning:80`.
@@ -91,7 +92,7 @@ In this order:
    - **More than 30 s since the last call** (`MAX_DT_SECONDS`): a new filter at this fix, with no extrapolation through the gap.
    - Positions are metres east/north of the session's first fix (`latlng_to_local`).
 2. **Predict:** move the state forward by the time since the last call (`kalman.predict`).
-   - When `gps_time` equals the last one, the fix hasn't changed. Before predicting, it applies `stationary_update`, which says the velocity is ≈ 0 (σ 0.3 m/s).
+   - When the user is standing still, it applies `stationary_update` before predicting, which says the velocity is ≈ 0 (σ 0.3 m/s). "Still" means `gps_speed` under `POSITIONING_STATIONARY_SPEED_MPS` (0.3 m/s), on a new fix or a repeated one (`stationary_reason`). Without a speed (apps 0.6.1 and older, or iOS's −1), a repeated `gps_time` still means still, as before. `debug.stationary_reason` says which rule fired (`speed` or `repeated_fix`).
 3. **GPS update:** a new fix is fused with σ = its accuracy (`gps_update`). A repeated fix is not fused again.
 4. **Candidates:** `best_per_anchor` (`app/matching.py`) keeps each anchor's best photo, best score first. They're tried in order until one passes every gate:
 
@@ -115,7 +116,7 @@ In this order:
 | `confidence_score` | that match's score, 0–1, or null |
 | `raw_image_url` | the stored frame (admin test walks), else null |
 | `server_busy` | the photo went unsearched for lack of capacity |
-| `debug` | `dt_s`, `reinit`, `gps_fused`, `stationary`, `gps_accuracy_m`, `compass`, `velocity`, `gps_bias`, `correction_error_m`, `score_margin`, timings, and `candidates`: each with `anchor_id`, `photo_id`, `score`, `distance_m`, `photo_heading`, `heading_diff`, `sigma_m`, `innovation_m`, `mahalanobis2`, `verdict` |
+| `debug` | `dt_s`, `reinit`, `gps_fused`, `stationary`, `stationary_reason`, `gps_speed`, `gps_accuracy_m`, `compass`, `velocity`, `gps_bias`, `correction_error_m`, `score_margin`, timings, and `candidates`: each with `anchor_id`, `photo_id`, `score`, `distance_m`, `photo_heading`, `heading_diff`, `sigma_m`, `innovation_m`, `mahalanobis2`, `verdict` |
 
 The fields match `navigation_logs`' columns, so the app forwards them unchanged.
 
@@ -196,6 +197,7 @@ All are environment variables read at startup (`.env` of each service).
 | `POSITIONING_GPS_BIAS_SIGMA_M` | 4 | GPS offset size (0 turns it off) |
 | `POSITIONING_GPS_BIAS_TAU_S` | 120 | how slowly the offset changes |
 | `POSITIONING_GPS_SIGMA_FACTOR` | 1 | × reported GPS accuracy |
+| `POSITIONING_STATIONARY_SPEED_MPS` | 0.3 | below this GPS speed the user counts as still (0: the old repeated-fix rule) |
 | `AI_TRAINING_URL` | `http://ai-training:80` | this server's model |
 | `AI_TRAINING_URLS` | unset | extra model machines, comma-separated |
 
@@ -220,4 +222,4 @@ Fixed in code: search timeout 2 s per try, 2.5 s in total (`app/main.py`); `MAX_
 - **Filters live in memory:** one positioning container only, and a restart loses every trip's filter.
 - **Latency:** the embedding takes ~0.3–0.5 s of CPU per photo, and a tick's answer arrives seconds after its photo (#122). `PositionSource`'s offset is how the app copes.
 - **The model is pretrained only,** not fine-tuned on campus photos (#17).
-- **"Same fix means standing still" needs a check:** `stationary_update` assumes that a repeated `gps_time` means the user moved less than a 1 m GPS distance filter. The app now asks for a fix every second with `distanceFilter: 0` (`lib/services/location_service.dart`), so a repeated fix more likely means GPS didn't deliver a new one in time. While walking, that would wrongly tell the filter the user stopped. Counting `debug.correction.stationary` ticks against the speed in a walk's logs would show whether it happens.
+- **Far photo matches while walking (from #310):** replaying ten real walks (5 and 13 November 2026, 1343 ticks) with the speed rule, the largest jump while moving rose on two walks (18 → 22 m, 7 → 12 m). Each was a match 9–24 m away applied while walking. The old rule's false stops had happened to damp those pulls. The match distance gate (`max(20 m, 2.5 × accuracy)`) is the place to look.

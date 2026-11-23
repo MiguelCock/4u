@@ -212,6 +212,9 @@ async def correct_position(
     # The GPS fix's own timestamp, so the same fix sent again isn't fused
     # twice.
     gps_time: Annotated[str | None, Form()] = None,
+    # The same fix's speed in m/s (apps from 0.6.2): below
+    # POSITIONING_STATIONARY_SPEED_MPS the user counts as standing still.
+    gps_speed: Annotated[float | None, Form()] = None,
     # Admin test walks only: keep this frame (see FRAMES_BUCKET).
     store_frame: Annotated[bool, Form()] = False,
     photo: UploadFile = File(...),
@@ -266,6 +269,7 @@ async def correct_position(
             compass_heading=heading,
             gps_time=gps_time,
             config=_config,
+            gps_speed=gps_speed,
         )
     server_busy = search_timing.pop("busy", False)
     result.debug["server_busy"] = server_busy

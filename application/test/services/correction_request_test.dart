@@ -30,6 +30,7 @@ void main() {
         'accuracy': '5.0',
         'heading': '90.0',
         'gps_time': '2026-11-15T10:00:00.000Z',
+        'gps_speed': '0.0',
         'store_frame': 'true',
       });
     });

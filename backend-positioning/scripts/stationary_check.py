@@ -5,9 +5,10 @@ the app.
     uv run python scripts/stationary_check.py session.json [more.json ...]
 
 Each session.json comes from scripts/export_session.py. Every log's
-`debug` holds the phone's `gps_speed` and the trip's `guidance`
-(walking/orienting), and `debug.correction.stationary` is what the server
-decided for that tick.
+`debug` holds the phone's `gps_speed`, and `debug.correction.stationary`
+is what the server decided for that tick. Movement is judged by the speed
+alone: `debug.guidance` said "walking" on every tick of ten real walks,
+standing or not.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-# At or above this the phone was walking, whatever the guidance said.
+# At or above this the phone was walking.
 WALKING_SPEED_MPS = 0.5
 # Below this the phone was still.
 STILL_SPEED_MPS = 0.3
@@ -48,9 +49,7 @@ def count(logs) -> Counts:
         counts.ticks += 1
         speed = debug.get("gps_speed")
         stationary = bool(correction["stationary"])
-        walking = debug.get("guidance") == "walking" or (
-            speed is not None and speed >= WALKING_SPEED_MPS
-        )
+        walking = speed is not None and speed >= WALKING_SPEED_MPS
         counts.stationary += stationary
         counts.walking += walking
         if speed is None:
@@ -59,12 +58,7 @@ def count(logs) -> Counts:
             counts.zero_speed_walking += 1
         if stationary and walking:
             counts.false_stops += 1
-        if (
-            not stationary
-            and speed is not None
-            and speed < STILL_SPEED_MPS
-            and not walking
-        ):
+        if not stationary and speed is not None and speed < STILL_SPEED_MPS:
             counts.missed_stops += 1
     return counts
 
