@@ -7,11 +7,12 @@ import 'package:latlong2/latlong.dart';
 import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/floor_view.dart';
-import '../services/geo_utils.dart' show routeCorners;
+import '../services/geo_utils.dart' show anchorPosition, routeCorners;
 import '../services/location_types.dart' show anchorLabel;
 import '../services/map_tap.dart';
 import '../services/map_tile_config.dart';
 import '../services/route_error.dart';
+import '../services/route_points.dart';
 import '../widgets/floor_selector.dart';
 import '../theme/admin_palette.dart';
 
@@ -74,16 +75,12 @@ class _SessionTrackingScreenState extends State<SessionTrackingScreen> {
     try {
       final route =
           await _routeApi.get('/routes/$routeId') as Map<String, dynamic>;
-      final anchorIds = [
-        route['start_anchor_id'] as String,
-        ...(route['waypoint_anchor_ids'] as List? ?? const []).cast<String>(),
-        route['end_anchor_id'] as String,
-      ];
+      // One request when the server has it, else all at once: one after
+      // another took ~90 s on campus mobile data.
+      final fetched = await fetchRoutePoints(_mapApi, routeAnchorIds(route));
       final points = <LatLng>[];
       final floors = <int>[];
-      for (final id in anchorIds) {
-        final anchor =
-            await _mapApi.get('/anchor-points/$id') as Map<String, dynamic>;
+      for (final anchor in fetched.anchors.nonNulls) {
         final position = anchorPosition(anchor);
         if (position != null) {
           points.add(position);

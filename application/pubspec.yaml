@@ -1,13 +1,14 @@
 name: eyes4u
 description: "GPS positioning correction app for assisted navigation of visually impaired users on university campuses."
 publish_to: 'none'
-version: 0.6.0+600
+version: 0.6.1+601
 
 environment:
   sdk: ^3.12.2
 
 dependencies:
   camera: ^0.12.0+2
+  clock: ^1.1.2
   device_info_plus: ^13.3.0
   flutter:
     sdk: flutter

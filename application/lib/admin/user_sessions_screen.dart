@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../widgets/admin_dialogs.dart';
 import '../services/api_service.dart';
 import 'session_tracking_screen.dart';
-import '../services/api_error_messages.dart';
 import '../widgets/scrollable_message.dart';
 
 /// `navigation_sessions.status`'s stable storage values - this maps one to
@@ -78,14 +78,10 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
       setState(() => _sessions = _sortedNewestFirst(sessions));
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLocalizations.of(
-              context,
-            )!.sessionsErrorLoadFailed(friendlyApiErrorMessage(context, e)),
-          ),
-        ),
+      showApiError(
+        context,
+        e,
+        AppLocalizations.of(context)!.sessionsErrorLoadFailed,
       );
     }
     await Future.wait([_loadRoutes(), _loadFeedback()]);
@@ -169,30 +165,13 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
     );
   }
 
-  Future<bool> _confirmDelete() async {
-    final l10n = AppLocalizations.of(context)!;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.userSessionsDeleteTitle),
-        content: Text(l10n.userSessionsDeleteContent),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(l10n.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(l10n.commonDelete),
-          ),
-        ],
-      ),
-    );
-    return confirmed == true;
-  }
-
   Future<void> _deleteSession(Map<String, dynamic> session) async {
-    final confirmed = await _confirmDelete();
+    final l10n = AppLocalizations.of(context)!;
+    final confirmed = await confirmAction(
+      context,
+      title: l10n.userSessionsDeleteTitle,
+      content: l10n.userSessionsDeleteContent,
+    );
     if (!confirmed) return;
     try {
       await _navigationApi.delete('/sessions/${session['id']}');
@@ -200,14 +179,10 @@ class _UserSessionsScreenState extends State<UserSessionsScreen> {
       setState(() => _sessions.removeWhere((s) => s['id'] == session['id']));
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLocalizations.of(
-              context,
-            )!.commonErrorDeleteFailed(friendlyApiErrorMessage(context, e)),
-          ),
-        ),
+      showApiError(
+        context,
+        e,
+        AppLocalizations.of(context)!.commonErrorDeleteFailed,
       );
     }
   }

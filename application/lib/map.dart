@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'services/location_service.dart';
 import 'services/map_tile_config.dart';
+import 'services/geo_utils.dart';
 
 /// A map pin whose *tip* sits exactly on [point]. A plain centred
 /// `Icons.location_pin` marker puts the glyph's middle on the point, which
@@ -78,9 +79,7 @@ class _SimpleMapWidgetState extends State<SimpleMapWidget> {
         : const LatLng(0, 0);
 
     _subscription = _service.positionStream.listen(
-      (pos) => mounted
-          ? setState(() => _position = LatLng(pos.latitude, pos.longitude))
-          : null,
+      (pos) => mounted ? setState(() => _position = pos.latLng) : null,
     );
   }
 

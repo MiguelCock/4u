@@ -105,6 +105,19 @@ class AppVoice {
 
   void _interrupt() => _queue.cancel();
 
+  /// The user asked for quiet (D12 rule R8, [SkipSpeech]): what's being
+  /// said and what's waiting is dropped, whoever owns the voice. Each
+  /// dropped `say` returns, so a screen waiting to listen does so at once.
+  /// Nothing else changes: no question is answered and no trip ends.
+  void skip() {
+    _interrupt();
+    skipped.value++;
+  }
+
+  /// Counts [skip]s, for a screen that wants to react to one (the tutorial
+  /// moving on sooner happens by itself: its sentence ends).
+  final ValueNotifier<int> skipped = ValueNotifier(0);
+
   Future<void> _say(VoiceOwner owner, String text, bool interrupt) async {
     if (!identical(owner, _owner)) return;
     // The listening screen speaking has closed its own microphone: a listen

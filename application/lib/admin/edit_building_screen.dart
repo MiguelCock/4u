@@ -5,6 +5,7 @@ import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import 'location_picker_screen.dart';
 import '../services/api_error_messages.dart';
+import '../services/initial_choice.dart';
 
 /// Admin form to edit an existing `buildings` row (`PATCH /buildings/{id}`) -
 /// mirrors `AddBuildingScreen` but pre-filled, plus a university picker so
@@ -62,9 +63,8 @@ class _EditBuildingScreenState extends State<EditBuildingScreen> {
       if (!mounted) return;
       setState(() {
         _places = (result as List? ?? []).cast<Map<String, dynamic>>();
-        if (_selectedPlaceId == null && _places.isNotEmpty) {
-          _selectedPlaceId = _places.first['id'] as String?;
-        }
+        // The saved one stays, even if it's gone from the list.
+        _selectedPlaceId ??= initialChoice(_places, null);
       });
     } on ApiException {
       // The university picker degrades to "unchanged" if this fails - not

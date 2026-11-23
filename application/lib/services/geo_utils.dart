@@ -1,6 +1,20 @@
 import 'dart:math';
 
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+
+/// A row's position (an `anchor_points`, `buildings` or `places` row, with
+/// `latitude`/`longitude`), or null when it has none.
+LatLng? anchorPosition(Map<String, dynamic> row) {
+  final lat = (row['latitude'] as num?)?.toDouble();
+  final lng = (row['longitude'] as num?)?.toDouble();
+  return lat == null || lng == null ? null : LatLng(lat, lng);
+}
+
+/// A GPS fix as a map position.
+extension PositionLatLng on Position {
+  LatLng get latLng => LatLng(latitude, longitude);
+}
 
 const double _earthRadiusMeters = 6371000;
 
@@ -176,10 +190,9 @@ List<int> floorsNear(
 }) {
   final floors = <int>{};
   for (final anchor in anchors) {
-    final lat = (anchor['latitude'] as num?)?.toDouble();
-    final lng = (anchor['longitude'] as num?)?.toDouble();
-    if (lat == null || lng == null) continue;
-    if (haversineMeters(from, LatLng(lat, lng)) <= meters) {
+    final position = anchorPosition(anchor);
+    if (position == null) continue;
+    if (haversineMeters(from, position) <= meters) {
       floors.add((anchor['floor'] as int?) ?? 0);
     }
   }

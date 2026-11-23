@@ -29,13 +29,6 @@ T? nearestOnScreen<T>({
   return nearest;
 }
 
-/// An `anchor_points` row's position, or null when it has none.
-LatLng? anchorPosition(Map<String, dynamic> point) {
-  final lat = (point['latitude'] as num?)?.toDouble();
-  final lng = (point['longitude'] as num?)?.toDouble();
-  return lat == null || lng == null ? null : LatLng(lat, lng);
-}
-
 /// How far [p] is from the segment [a]–[b], in the same units.
 double distanceToSegment(Offset p, Offset a, Offset b) {
   final ab = b - a;
