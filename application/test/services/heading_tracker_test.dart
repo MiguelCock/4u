@@ -191,6 +191,34 @@ void main() {
     });
   });
 
+  group('without a compass (B2)', () {
+    test('a steady walk sets the heading and the gyroscope keeps it', () {
+      final t = HeadingTracker();
+      t.accelerometer(0, 9.81, 0);
+      t.gyro(0, 0, 0, _at(0));
+      t.gyro(0, 0, 0, _at(0.02));
+      expect(t.value, isNull); // nothing to start from yet
+      for (var s = 1; s <= 4; s++) {
+        t.gyro(0, 0, 0, _at(s.toDouble()));
+        t.gpsCourse(90, 1.2, _at(s.toDouble()));
+      }
+      expect(t.value, closeTo(90, 1e-9));
+      _turn(t, 90, start: 4.02);
+      expect(signedTurn(t.value!, 180).abs(), lessThan(2));
+    });
+
+    test('no gyroscope either: only the walking course, never invented', () {
+      final t = HeadingTracker();
+      expect(t.value, isNull);
+      expect(t.reliable(_at(0)), isFalse);
+      for (var s = 0; s <= 3; s++) {
+        t.gpsCourse(45, 1.1, _at(s.toDouble()));
+      }
+      expect(t.value, closeTo(45, 1e-9));
+      expect(t.source, 'gps');
+    });
+  });
+
   test('with a gyroscope, reliable once walking anchored it', () {
     final t = HeadingTracker();
     t.accelerometer(0, 9.81, 0);

@@ -67,6 +67,14 @@ For running an event alone: see `docs/event/checklist.md` and `docs/event/runboo
 | `event_accounts.py` | Attendee accounts through the admin API, with no sign-up emails. The list, with passwords, goes to `.data/event-accounts.csv`, readable only by you. `--delete --yes` also deletes their trips. |
 | `event_report.py` | After an event: phone by phone, photos matched, failed ticks, and how much of each photo's time was the network. Phones are numbered, never named. |
 
+## Round report (B5, B2)
+
+A whole test round, read-only: per campus and app version (arrived, time to arrive, photos matched, correction, got lost), per phone (the device matrix: sensors, GPS accuracy, photo capture time) and the SUS score from a local CSV. See `docs/testing/field-test.md` and `docs/testing/device-matrix.md`.
+
+```bash
+uv run python round_report.py --since 2026-11-13 --until 2026-11-14 [--sus ../test_users_comments/sus.csv]
+```
+
 ## Trip report (B3)
 
 What happened on a test walk, in one command, read-only:

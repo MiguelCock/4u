@@ -76,6 +76,15 @@ class TripSummary:
     floor_events: list[tuple[float, str]] = field(default_factory=list)
     reports: list[tuple[float, str]] = field(default_factory=list)
     problems: list[Problem] = field(default_factory=list)
+    # For the round report and the device matrix (B5, B2). None: not logged.
+    arrival_s: float | None = None
+    os_version: str | None = None
+    building_id: str | None = None
+    campus: str = "not logged"
+    has_gyroscope: bool | None = None
+    has_barometer: bool | None = None
+    gps_accuracy_m: float | None = None
+    capture_s: float | None = None
 
 
 def _phone(device: dict) -> tuple[str, str]:
@@ -135,7 +144,8 @@ def summarize(session: dict, logs: list[dict], reports: list[dict] = ()) -> Trip
         return (_time(value) - start).total_seconds()
 
     end = session.get("end_time") or (logs[-1]["timestamp"] if logs else None)
-    phone, version = _phone(session.get("device_info") or {})
+    device = session.get("device_info") or {}
+    phone, version = _phone(device)
     summary = TripSummary(
         id=session["id"],
         phone=phone,
@@ -145,7 +155,10 @@ def summarize(session: dict, logs: list[dict], reports: list[dict] = ()) -> Trip
         duration_s=since(end) if end else 0,
         arrived=False,
         ticks=len(logs),
+        os_version=device.get("os_version"),
+        building_id=session.get("building_id"),
     )
+    gyroscope, pressure, accuracy, capture = [], [], [], []
 
     cues, events, positions, progress = [], [], [], []
     scores, corrections, trusted, compass_off = [], [], [], []
@@ -177,6 +190,14 @@ def summarize(session: dict, logs: list[dict], reports: list[dict] = ()) -> Trip
             summary.heading_sources[debug["heading_source"]] += 1
         if debug.get("failure"):
             summary.failures[debug["failure"]] += 1
+        if "gyroscope" in debug:
+            gyroscope.append(bool(debug["gyroscope"]))
+        if "pressure_hpa" in debug:
+            pressure.append(debug["pressure_hpa"] is not None)
+        if log.get("gps_accuracy") is not None:
+            accuracy.append(log["gps_accuracy"])
+        if (debug.get("timing_ms") or {}).get("capture") is not None:
+            capture.append(debug["timing_ms"]["capture"] / 1000)
         if debug.get("correction") is not None or (debug.get("timing_ms") or {}).get(
             "correct"
         ):
@@ -199,6 +220,10 @@ def summarize(session: dict, logs: list[dict], reports: list[dict] = ()) -> Trip
         statistics.median(corrections) if corrections else None
     )
     summary.trusted_share = sum(trusted) / len(trusted) if trusted else None
+    summary.has_gyroscope = any(gyroscope) if gyroscope else None
+    summary.has_barometer = any(pressure) if pressure else None
+    summary.gps_accuracy_m = statistics.median(accuracy) if accuracy else None
+    summary.capture_s = statistics.median(capture) if capture else None
     summary.compass_off_share = (
         sum(compass_off) / len(compass_off) if compass_off else None
     )
@@ -322,6 +347,7 @@ def summarize(session: dict, logs: list[dict], reports: list[dict] = ()) -> Trip
             )
         )
 
+    summary.arrival_s = arrived_at if summary.arrived else None
     if not summary.arrived:
         problems.append(
             Problem(summary.duration_s, "not arrived", f"ended {summary.status}")
