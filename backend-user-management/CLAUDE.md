@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this directory.
+This file provides guidance to AI coding agents when working with code in this directory.
 
 See the repo root `CLAUDE.md` for overall project context.
 

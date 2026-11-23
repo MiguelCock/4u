@@ -1,1 +1,8 @@
 **/.env
+
+# Local-only notes and test material (see "Definition of done" in CLAUDE.md).
+notes.md
+test_users_comments/
+
+# Claude Code's personal permissions, never shared.
+.claude/settings.local.json
