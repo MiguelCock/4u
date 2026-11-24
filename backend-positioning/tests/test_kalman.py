@@ -102,3 +102,22 @@ def test_innovation_reports_distance_and_mahalanobis():
     assert distance == pytest.approx(12.0)
     # 12 m against sqrt(9 + 9) of combined sigma: (12^2) / 18 = 8.
     assert d2 == pytest.approx(8.0, rel=0.05)
+
+
+# --- One match's step (#338) -------------------------------------------------
+
+
+def test_sigma_for_step_caps_how_far_one_match_moves_the_estimate():
+    ukf = kalman.make_filter(0.0, 0.0)  # uncertain, so a match pulls hard
+    assert kalman.expected_move(ukf, 16.0, 0.0, 3.0) > 5
+    sigma = kalman.sigma_for_step(ukf, 16.0, 0.0, 3.0, 1.5)
+    assert sigma > 3.0
+    assert kalman.expected_move(ukf, 16.0, 0.0, sigma) == pytest.approx(1.5, abs=0.01)
+    kalman.visual_update(ukf, 16.0, 0.0, 0.9, sigma=sigma, min_score=0.0)
+    assert math.hypot(ukf.x[0], ukf.x[1]) == pytest.approx(1.5, abs=0.05)
+
+
+def test_sigma_for_step_leaves_small_pulls_and_zero_alone():
+    ukf = kalman.make_filter(0.0, 0.0)
+    assert kalman.sigma_for_step(ukf, 0.5, 0.0, 3.0, 1.5) == 3.0
+    assert kalman.sigma_for_step(ukf, 16.0, 0.0, 3.0, 0.0) == 3.0
