@@ -216,6 +216,9 @@ async def correct_position(
     # The same fix's speed in m/s (apps from 0.6.2): below
     # POSITIONING_STATIONARY_SPEED_MPS the user counts as standing still.
     gps_speed: Annotated[float | None, Form()] = None,
+    # The gyroscope-tracked heading in true degrees, sent only while the app
+    # trusts it (apps from 0.6.3): with gps_speed, the walking direction.
+    walk_heading: Annotated[float | None, Form()] = None,
     # Admin test walks only: keep this frame (see FRAMES_BUCKET).
     store_frame: Annotated[bool, Form()] = False,
     photo: UploadFile = File(...),
@@ -271,6 +274,7 @@ async def correct_position(
             gps_time=gps_time,
             config=_config,
             gps_speed=gps_speed,
+            walk_heading=walk_heading,
         )
     server_busy = search_timing.pop("busy", False)
     result.debug["server_busy"] = server_busy

@@ -10,6 +10,8 @@ import 'api_service.dart';
 /// [sessionId] keys the backend's in-memory filter, so photos under one key
 /// refine each other. [heading] is the direction the camera faces
 /// (magnetic, like the anchor photos'): none skips the heading gate.
+/// [walkHeading] is the trusted walking direction (true north, from the
+/// gyroscope), with which the filter learns which way the user moves (#120).
 /// [storeFrame] keeps the frame, for test walks. Throws [ApiException].
 Future<Map<String, dynamic>> postCorrection(
   PositioningApi api, {
@@ -18,6 +20,7 @@ Future<Map<String, dynamic>> postCorrection(
   required String sessionId,
   required Position fix,
   double? heading,
+  double? walkHeading,
   bool storeFrame = false,
   Duration? timeout,
 }) async =>
@@ -38,6 +41,7 @@ Future<Map<String, dynamic>> postCorrection(
             // The same fix's speed, so the backend can tell standing still
             // from a late fix while walking (#310).
             'gps_speed': fix.speed.toString(),
+            'walk_heading': ?walkHeading?.toString(),
             if (storeFrame) 'store_frame': 'true',
           },
         )

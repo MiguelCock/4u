@@ -41,8 +41,10 @@ class _Camera implements TripCamera {
 }
 
 class _Setup {
-  _Setup({this.camera, Map<String, dynamic>? answer})
+  _Setup({this.camera, Map<String, dynamic>? answer, this.walking})
     : positioning = FakePositioningApi(answer: answer);
+
+  final double? walking;
 
   final _Camera? camera;
   final FakePositioningApi positioning;
@@ -62,6 +64,7 @@ class _Setup {
       'failure': ?failure,
     },
     heading: () => 90,
+    walkHeading: () => walking,
     onCorrected: (result, fix) => corrected.add(result),
     onCameraBlocked: () => blocked++,
     onNewMatch: () => matches++,
@@ -87,6 +90,17 @@ void main() {
       expect(s.positioning.sent, isEmpty);
       async.elapse(const Duration(seconds: 5));
       expect(s.failures, hasLength(4)); // stopped means stopped
+    });
+  });
+
+  test('the trusted walking direction goes with the photo (#120)', () {
+    fakeAsync((async) {
+      final s = _Setup(camera: _Camera(), walking: 97.5);
+      s.loop.start();
+      async.elapse(const Duration(milliseconds: 500));
+      s.loop.stop();
+      expect(s.positioning.sent.first['walk_heading'], '97.5');
+      expect(s.positioning.sent.first['heading'], '90.0');
     });
   });
 

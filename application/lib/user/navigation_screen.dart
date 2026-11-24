@@ -223,6 +223,8 @@ class _NavigationScreenState extends State<NavigationScreen>
     },
     debug: _debugSnapshot,
     heading: _sentHeading,
+    // True north and trusted only: the filter's walking direction (#120).
+    walkHeading: _guide.reliableHeading,
     onCorrected: _applyCorrection,
     onCameraBlocked: _sayCameraBlocked,
     onNewMatch: HapticFeedback.selectionClick,

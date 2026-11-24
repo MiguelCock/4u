@@ -12,6 +12,7 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ### Fixed
 
+- **The position follows the way you walk:** while walking, the direction the phone tracks with its gyroscope now helps place you, so the position stays closer to the path (#120).
 - **No more sudden jumps when the camera recognises a place far away:** the position now moves towards it over a few seconds instead of all at once, so the guidance doesn't suddenly say you're somewhere else (#338).
 - **Standing still is recognised again:** when you stop, for example to turn and find your way, the position no longer drifts and then jumps when the camera next recognises a place. Walking with a late GPS reading is no longer taken for stopping either (#310).
 

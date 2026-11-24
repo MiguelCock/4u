@@ -192,6 +192,11 @@ async def replay(logs, anchors, config: MatchConfig):
                 gps_time=debug.get("gps_time"),
                 config=config,
                 gps_speed=debug.get("gps_speed"),
+                # The logged tracked heading is true north; the app sends it
+                # only while trusted.
+                walk_heading=debug.get("heading")
+                if debug.get("heading_reliable")
+                else None,
             )
         out[log["id"]] = (result.corrected_lat, result.corrected_long)
     return out

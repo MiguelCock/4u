@@ -18,6 +18,7 @@ void main() {
         sessionId: 's1',
         fix: fix(6.2, -75.58),
         heading: 90,
+        walkHeading: 97.5,
         storeFrame: true,
       );
       expect(answer, {'corrected_lat': 6.2});
@@ -31,6 +32,7 @@ void main() {
         'heading': '90.0',
         'gps_time': '2026-11-15T10:00:00.000Z',
         'gps_speed': '0.0',
+        'walk_heading': '97.5',
         'store_frame': 'true',
       });
     });
@@ -47,5 +49,6 @@ void main() {
     );
     expect(api.sent.single.keys, isNot(contains('heading')));
     expect(api.sent.single.keys, isNot(contains('store_frame')));
+    expect(api.sent.single.keys, isNot(contains('walk_heading')));
   });
 }
