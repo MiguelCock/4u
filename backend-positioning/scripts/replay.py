@@ -11,6 +11,8 @@ catches forward/backward jumps too.
     uv run python scripts/replay.py session.json --set gps_bias_sigma_m=4
     uv run python scripts/replay.py session.json \\
         --grid gps_bias_sigma_m=0,1.5,2.5,4 gps_bias_tau_s=60,120,300
+    uv run python scripts/replay.py walks/*.json --compare \\
+        --grid stationary_speed_mps=0,0.3
 
 session.json comes from scripts/export_session.py (see docs/TUNING.md).
 """
@@ -255,6 +257,73 @@ def checkpoint_errors(logs, plane, route):
     return sorted(rows, key=lambda row: row[0])
 
 
+# A tick counts as still / walking by the phone's GPS speed (#310).
+STILL_BELOW_MPS = 0.3
+WALKING_FROM_MPS = 0.5
+
+
+def _pctl(values, q: float) -> float:
+    v = sorted(values)
+    return v[int(q * (len(v) - 1))] if v else 0.0
+
+
+def walk_scores(logs, plane, route, positions) -> dict:
+    """One walk's numbers for --compare (#338, #120): mean distance from
+    the route, and the corrected position's largest move from one tick to
+    the next (worst and 99th percentile), overall, on still ticks and on
+    walking ticks. A jump is the symptom: a far photo match pulling the
+    estimate, or drift while standing. While walking part of a jump is the
+    walk itself, so "walking_excess" is the jump beyond what the phone's
+    speed explains over the time between the two photos."""
+    off, jumps = [], {"all": [], "still": [], "walking": [], "walking_excess": []}
+    prev = prev_t = None
+    for log in logs:
+        if log["id"] not in positions:
+            continue
+        xy = plane.xy(*positions[log["id"]])
+        off.append(route.cross_track(xy))
+        if prev is not None:
+            jump = math.dist(xy, prev)
+            jumps["all"].append(jump)
+            speed = (log.get("debug") or {}).get("gps_speed")
+            if speed is not None and speed < STILL_BELOW_MPS:
+                jumps["still"].append(jump)
+            elif speed is not None and speed >= WALKING_FROM_MPS:
+                jumps["walking"].append(jump)
+                walked = speed * max(0.0, photo_time(log) - prev_t)
+                jumps["walking_excess"].append(max(0.0, jump - walked))
+        prev, prev_t = xy, photo_time(log)
+    out = {"off_route": statistics.mean(off) if off else 0.0}
+    for kind, values in jumps.items():
+        out[f"{kind}_max"] = max(values, default=0.0)
+        out[f"{kind}_p99"] = _pctl(values, 0.99)
+    return out
+
+
+COMPARE_COLUMNS = (
+    ("off_route", "off route"),
+    ("all_max", "jump max"),
+    ("all_p99", "jump p99"),
+    ("walking_max", "walking max"),
+    ("walking_excess_max", "walk excess"),
+    ("still_max", "still max"),
+    ("still_p99", "still p99"),
+)
+
+
+def compare_table(rows: list[tuple[str, list[dict]]]) -> str:
+    """One line per setting: each column is the mean over the walks."""
+    head = f"{'setting':32} " + " ".join(f"{name:>11}" for _, name in COMPARE_COLUMNS)
+    lines = [head]
+    for label, walks in rows:
+        cells = " ".join(
+            f"{statistics.mean(w[key] for w in walks):11.2f}"
+            for key, _ in COMPARE_COLUMNS
+        )
+        lines.append(f"{label[:32]:32} {cells}")
+    return "\n".join(lines)
+
+
 def _parse(pairs):
     out = {}
     for pair in pairs or []:
@@ -276,10 +345,37 @@ def _config(overrides: dict) -> MatchConfig:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("session")
+    parser.add_argument("session", nargs="+")
     parser.add_argument("--set", nargs="*", default=[], help="setting=value")
     parser.add_argument("--grid", nargs="*", default=[], help="setting=v1,v2,...")
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="one line per setting, the mean over every session given",
+    )
     args = parser.parse_args()
+    fixed = _parse(args.set)
+    grid = {k: v.split(",") for k, v in _parse(args.grid).items()}
+    combos = [
+        dict(zip(grid, values)) for values in itertools.product(*grid.values())
+    ] or [{}]
+    if args.compare:
+        walks = [load(path) for path in args.session]
+        rows = []
+        for combo in combos:
+            config = _config({**fixed, **combo})
+            scores = []
+            for _data, anchors, plane, route, logs in walks:
+                positions = asyncio.run(replay(logs, anchors, config))
+                scores.append(walk_scores(logs, plane, route, positions))
+            label = " ".join(f"{k}={v}" for k, v in {**fixed, **combo}.items())
+            rows.append((label or "defaults", scores))
+        print(f"{len(walks)} walks, means over walks (m)")
+        print(compare_table(rows))
+        return
+    if len(args.session) > 1:
+        raise SystemExit("several sessions need --compare")
+    args.session = args.session[0]
 
     data, anchors, plane, route, logs = load(args.session)
     taps = checkpoint_truth(logs, route)
@@ -290,11 +386,6 @@ def main() -> None:
         line = "  ".join(f"{k} {v:5.1f} m" for k, v in errors.items())
         aged = f"  (correction {age:.1f} s old)" if age is not None else ""
         print(f"checkpoint {index}: {line}{aged}")
-    fixed = _parse(args.set)
-    grid = {k: v.split(",") for k, v in _parse(args.grid).items()}
-    combos = [
-        dict(zip(grid, values)) for values in itertools.product(*grid.values())
-    ] or [{}]
     first = True
     for combo in combos:
         config = _config({**fixed, **combo})

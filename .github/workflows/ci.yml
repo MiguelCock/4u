@@ -2,9 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, 'next/**' ]
   pull_request:
-    branches: [ main, develop ]
+    # next/X.Y.Z: a patch prepared while the previous one waits for its
+    # field test (root CLAUDE.md, Releases).
+    branches: [ main, develop, 'next/**' ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
