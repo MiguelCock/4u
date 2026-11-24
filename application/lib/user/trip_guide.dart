@@ -222,6 +222,8 @@ class TripGuide {
       _nextPlace++;
       return;
     }
+    // A place stacked above or below the route is not "beside" the user.
+    if (place.floor != _route.floor) return;
     final now = clock.now();
     final spoken = _announcer.lastSpokenAt;
     if (spoken != null && now.difference(spoken) < _kQuietBeforeDrift) return;

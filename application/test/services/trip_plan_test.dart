@@ -119,12 +119,14 @@ void main() {
       double lat,
       double lng, {
       int type = 8,
+      int floor = 0,
     }) => {
       'id': id,
       'location_type_id': type,
       'location_description': name,
       'latitude': lat,
       'longitude': lng,
+      'floor': floor,
     };
 
     test('beside a straight: kept, with how far along it is', () {
@@ -136,6 +138,21 @@ void main() {
       );
       expect(found.map((p) => p.name), ['Cafetería']);
       expect(found.single.along, closeTo(16.7, 1));
+    });
+
+    test('a stacked place on another floor is not beside the route', () {
+      final found = placesBeside(
+        route,
+        [
+          place('f0', 'Planta baja', 6.20015, -75.58003),
+          place('f1', 'Planta alta', 6.20015, -75.58003, floor: 1),
+        ],
+        onRoute: const {'a1', 'a2', 'a3'},
+        stops: const [start, corner, end],
+        floors: const [0, 0, 0],
+      );
+      expect(found.map((p) => p.name), ['Planta baja']);
+      expect(found.single.floor, 0);
     });
 
     test('not on the route, near a stop, far off, unnamed or a hallway', () {
