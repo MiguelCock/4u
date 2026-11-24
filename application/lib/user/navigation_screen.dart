@@ -621,6 +621,10 @@ class _NavigationScreenState extends State<NavigationScreen>
       'floor': _route.floor,
       'waiting_floor': _route.floorChange?.floor,
       'gyroscope': _tracker.hasGyroscope,
+      // How the phone is held and how much the body sways it (#263).
+      'pitch': _tracker.pitchDeg,
+      'roll': _tracker.rollDeg,
+      'heading_sway': _tracker.swayDeg(clock.now()),
       // How far the compass (true) is from the tracked heading: magnetic
       // disturbance shows up here.
       'compass_vs_heading': _tracker.value == null || _heading.value == null
