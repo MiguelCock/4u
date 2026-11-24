@@ -54,6 +54,7 @@ A multipart `POST /positioning/correct_position` with these fields:
 | `heading` | the direction the camera faces, **magnetic** degrees (see Heading); omitted when unknown |
 | `gps_time` | the fix's own timestamp (UTC ISO) |
 | `gps_speed` | the same fix's speed in m/s (apps from 0.6.2) |
+| `walk_heading` | the gyroscope-tracked heading in true degrees, only while the app trusts it (apps from 0.6.3) |
 | `store_frame` | `true` only on an admin's test walk |
 
 The gateway (`gateway/nginx.conf`) limits `/positioning/` to 5 requests/s per user (burst 10) and 15 MB per upload, then proxies to `positioning:80`.
@@ -93,6 +94,7 @@ In this order:
    - Positions are metres east/north of the session's first fix (`latlng_to_local`).
 2. **Predict:** move the state forward by the time since the last call (`kalman.predict`).
    - When the user is standing still, it applies `stationary_update` before predicting, which says the velocity is ≈ 0 (σ 0.3 m/s). "Still" means `gps_speed` under `POSITIONING_STATIONARY_SPEED_MPS` (0.3 m/s), on a new fix or a repeated one (`stationary_reason`). Without a speed (apps 0.6.1 and older, or iOS's −1), a repeated `gps_time` still means still, as before. `debug.stationary_reason` says which rule fired (`speed` or `repeated_fix`).
+   - When the user is walking (`gps_speed` ≥ 0.5 m/s) with a trusted `walk_heading`, it applies `velocity_update` instead: the velocity is `speed · (sin h, cos h)`, with σ 0.3 m/s along the walk and `speed × 15°` across it (#120). `debug.velocity_update` says it did.
 3. **GPS update:** a new fix is fused with σ = its accuracy (`gps_update`). A repeated fix is not fused again.
 4. **Candidates:** `best_per_anchor` (`app/matching.py`) keeps each anchor's best photo, best score first. They're tried in order until one passes every gate:
 
@@ -145,7 +147,7 @@ The fields match `navigation_logs`' columns, so the app forwards them unchanged.
 | Start | at the first fix, position σ = its accuracy, velocity σ 2 m/s, offset σ 4 m |
 
 - **Why the GPS offset is part of the state:** walking a known path, the GPS stayed 3–5 m to one side for a whole straight. Treated as random noise, every fix pulled the estimate back to that side right after a match had fixed it. As a state, a match corrects the offset, and that correction persists.
-- **Why a UKF, though every model is linear:** it gives the same result as a plain Kalman filter today. It was chosen so a nonlinear IMU update can be added later.
+- **Why a UKF:** the walking-direction update (#120) is nonlinear in speed and heading. Its covariance is carried through the Jacobian, while every other model is linear.
 - **The score never sets the noise:** cosine similarity isn't calibrated (it can even be negative), so it only gates. How hard a match pulls comes from its distance.
 - **Sigma points are regenerated before every update** (`_resync_sigma_points`), with no process noise added. Two updates in a row on old sigma points gave a broken covariance.
 
@@ -198,6 +200,9 @@ All are environment variables read at startup (`.env` of each service).
 | `POSITIONING_GPS_BIAS_TAU_S` | 120 | how slowly the offset changes |
 | `POSITIONING_GPS_SIGMA_FACTOR` | 1 | × reported GPS accuracy |
 | `POSITIONING_STATIONARY_SPEED_MPS` | 0.3 | below this GPS speed the user counts as still (0: the old repeated-fix rule) |
+| `POSITIONING_WALK_SPEED_SIGMA_MPS` | 0.3 | the walking direction's speed σ |
+| `POSITIONING_WALK_HEADING_SIGMA_DEG` | 15 | its heading σ (0 turns the walking direction off) |
+| `POSITIONING_WALK_FROM_MPS` | 0.5 | from this GPS speed a tick counts as walking |
 | `POSITIONING_MAX_MATCH_STEP_M` | 1.5 | the most one match may move the estimate in one tick (0: no cap) |
 | `AI_TRAINING_URL` | `http://ai-training:80` | this server's model |
 | `AI_TRAINING_URLS` | unset | extra model machines, comma-separated |

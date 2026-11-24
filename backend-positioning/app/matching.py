@@ -66,6 +66,12 @@ class MatchConfig:
     # The most one photo match may move the estimate in one tick (#338):
     # a farther pull is applied with a larger sigma. 0 turns it off.
     max_match_step_m: float = 1.5
+    # Walking with a reliable gyroscope heading tells the filter its
+    # velocity (#120, kalman.velocity_update): 1-sigma of the GPS speed and
+    # of the heading. A heading sigma of 0 turns it off.
+    walk_speed_sigma_mps: float = 0.3
+    walk_heading_sigma_deg: float = 15.0
+    walk_from_mps: float = 0.5
 
     @classmethod
     def from_env(cls) -> MatchConfig:
@@ -83,6 +89,13 @@ class MatchConfig:
             ),
             base_sigma_m=_env_float("POSITIONING_VISUAL_BASE_SIGMA_M", d.base_sigma_m),
             sigma_per_m=_env_float("POSITIONING_VISUAL_SIGMA_PER_M", d.sigma_per_m),
+            walk_speed_sigma_mps=_env_float(
+                "POSITIONING_WALK_SPEED_SIGMA_MPS", d.walk_speed_sigma_mps
+            ),
+            walk_heading_sigma_deg=_env_float(
+                "POSITIONING_WALK_HEADING_SIGMA_DEG", d.walk_heading_sigma_deg
+            ),
+            walk_from_mps=_env_float("POSITIONING_WALK_FROM_MPS", d.walk_from_mps),
             max_match_step_m=_env_float(
                 "POSITIONING_MAX_MATCH_STEP_M", d.max_match_step_m
             ),

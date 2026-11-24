@@ -48,6 +48,7 @@ class CorrectionLoop {
     required this.camera,
     required this.debug,
     required this.heading,
+    this.walkHeading = _none,
     required this.onCorrected,
     required this.onCameraBlocked,
     required this.onNewMatch,
@@ -66,6 +67,11 @@ class CorrectionLoop {
   /// The direction the camera faces as a photo is taken (magnetic), or
   /// null to skip the backend's heading gate.
   final double? Function() heading;
+
+  /// The trusted walking direction (true north), or null (#120).
+  final double? Function() walkHeading;
+
+  static double? _none() => null;
 
   /// A correction came back, for [fix].
   final void Function(Map<String, dynamic> result, Position fix) onCorrected;
@@ -147,6 +153,7 @@ class CorrectionLoop {
       // The direction the camera faces as the photo is taken, not when the
       // answer comes back.
       final sentHeading = heading();
+      final sentWalkHeading = walkHeading();
       final photo = await lens.take();
       final captureMs = clock.now().difference(captureStarted).inMilliseconds;
 
@@ -170,6 +177,7 @@ class CorrectionLoop {
         sessionId: id,
         fix: fix,
         heading: sentHeading,
+        walkHeading: sentWalkHeading,
         storeFrame: storeFrame,
         timeout: timeout,
       );

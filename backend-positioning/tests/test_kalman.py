@@ -121,3 +121,22 @@ def test_sigma_for_step_leaves_small_pulls_and_zero_alone():
     ukf = kalman.make_filter(0.0, 0.0)
     assert kalman.sigma_for_step(ukf, 0.5, 0.0, 3.0, 1.5) == 3.0
     assert kalman.sigma_for_step(ukf, 16.0, 0.0, 3.0, 0.0) == 3.0
+
+
+# --- Walking direction (#120) ------------------------------------------------
+
+
+def test_velocity_update_sets_the_walking_direction():
+    ukf = kalman.make_filter(0.0, 0.0)
+    for _ in range(3):
+        kalman.velocity_update(ukf, 1.2, 90.0, 0.3, 15.0)  # due east
+    vx, vy = ukf.x[2], ukf.x[3]
+    assert vx == pytest.approx(1.2, abs=0.15)
+    assert vy == pytest.approx(0.0, abs=0.15)
+
+
+def test_velocity_update_is_surer_along_the_walk_than_across_it():
+    ukf = kalman.make_filter(0.0, 0.0)
+    kalman.velocity_update(ukf, 1.2, 0.0, 0.1, 30.0)  # due north
+    # Along (y) is the speed's 0.1 m/s; across (x) is 1.2 * 30 deg.
+    assert ukf.P[3, 3] < ukf.P[2, 2]

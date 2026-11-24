@@ -161,6 +161,7 @@ class SessionStore:
         gps_time: str | None = None,
         config: matching.MatchConfig | None = None,
         gps_speed: float | None = None,
+        walk_heading: float | None = None,
     ) -> CorrectionResult:
         """Caller must already hold this session's lock (see get_lock).
 
@@ -175,6 +176,7 @@ class SessionStore:
         reinit = dt > MAX_DT_SECONDS
         stationary = False
         reason = None
+        walking = False
         if state.last_gps_time is None and not state.started:
             # First call: seed the filter at this fix, as uncertain as it is.
             state.ukf = self._new_filter(0.0, 0.0, accuracy, config)
@@ -196,6 +198,21 @@ class SessionStore:
                 # through this interval (see kalman.stationary_update).
                 kalman.stationary_update(state.ukf)
                 stationary = True
+            elif (
+                walk_heading is not None
+                and gps_speed is not None
+                and gps_speed >= config.walk_from_mps
+                and config.walk_heading_sigma_deg > 0
+            ):
+                # Walking with a trusted heading: say which way (#120).
+                kalman.velocity_update(
+                    state.ukf,
+                    gps_speed,
+                    walk_heading,
+                    config.walk_speed_sigma_mps,
+                    config.walk_heading_sigma_deg,
+                )
+                walking = True
             kalman.predict(state.ukf, dt)
         state.last_call = now
 
@@ -291,6 +308,8 @@ class SessionStore:
                 "gps_fused": gps_fused,
                 "stationary": stationary,
                 "stationary_reason": reason,
+                "velocity_update": walking,
+                "walk_heading": walk_heading,
                 "gps_speed": gps_speed,
                 "gps_accuracy_m": accuracy,
                 "compass": compass_heading,

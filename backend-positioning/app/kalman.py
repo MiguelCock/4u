@@ -176,6 +176,29 @@ def stationary_update(
     ukf.update(np.zeros(2), R=np.diag([sigma**2, sigma**2]), hx=_hv)
 
 
+def velocity_update(
+    ukf: UnscentedKalmanFilter,
+    speed: float,
+    heading_deg: float,
+    sigma_speed: float,
+    sigma_heading_deg: float,
+) -> None:
+    """The user walks at [speed] m/s towards [heading_deg] (true north,
+    clockwise; x is east, y north), from the phone's gyroscope-tracked
+    heading and its GPS speed (#120). A measurement of the velocity,
+    (vx, vy) = speed * (sin h, cos h), whose covariance carries the speed
+    and heading uncertainty through the Jacobian: along the walk it's the
+    speed's, across it speed * the heading's."""
+    h = math.radians(heading_deg)
+    sh = math.radians(sigma_heading_deg)
+    j = np.array(
+        [[math.sin(h), speed * math.cos(h)], [math.cos(h), -speed * math.sin(h)]]
+    )
+    r = j @ np.diag([sigma_speed**2, sh**2]) @ j.T + np.eye(2) * 1e-6
+    _resync_sigma_points(ukf)
+    ukf.update(np.array([speed * math.sin(h), speed * math.cos(h)]), R=r, hx=_hv)
+
+
 def visual_update(
     ukf: UnscentedKalmanFilter,
     x: float,

@@ -401,6 +401,57 @@ async def test_the_step_cap_can_be_turned_off():
     assert (result.corrected_lat - 6.2) / _M > 5
 
 
+@pytest.mark.asyncio
+async def test_walking_with_a_trusted_heading_tells_the_filter_its_velocity(
+    monkeypatch,
+):
+    clock = [1000.0]
+    monkeypatch.setattr(session_store_module.time, "monotonic", lambda: clock[0])
+    store = SessionStore()
+    await _correct(store, "walk", lat=6.2, lng=-75.6, accuracy=3.0, gps_time="t0")
+    for i in range(1, 4):
+        clock[0] += 1.0
+        result = await _correct(
+            store,
+            "walk",
+            lat=6.2 + i * 1.2 * _M,
+            lng=-75.6,
+            accuracy=3.0,
+            gps_time=f"t{i}",
+            gps_speed=1.2,
+            walk_heading=0.0,
+        )
+        assert result.debug["velocity_update"] is True
+    vx, vy = result.debug["velocity"]
+    assert vy == pytest.approx(1.2, abs=0.3)
+    assert abs(vx) < 0.3
+
+
+@pytest.mark.asyncio
+async def test_no_velocity_update_without_a_heading_or_while_still(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(session_store_module.time, "monotonic", lambda: clock[0])
+    store = SessionStore()
+    await _correct(store, "v", lat=6.2, lng=-75.6, accuracy=3.0, gps_time="t0")
+    clock[0] += 1.0
+    old_app = await _correct(
+        store, "v", lat=6.2, lng=-75.6, accuracy=3.0, gps_time="t1", gps_speed=1.2
+    )
+    assert old_app.debug["velocity_update"] is False
+    clock[0] += 1.0
+    still = await _correct(
+        store,
+        "v",
+        lat=6.2,
+        lng=-75.6,
+        accuracy=3.0,
+        gps_time="t2",
+        gps_speed=0.1,
+        walk_heading=0.0,
+    )
+    assert (still.debug["velocity_update"], still.debug["stationary"]) == (False, True)
+
+
 # --- GPS offset (bias) state ------------------------------------------------
 
 # 1 m east in longitude degrees at latitude 6.2.
