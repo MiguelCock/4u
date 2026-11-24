@@ -540,7 +540,9 @@ class _NavigationScreenState extends State<NavigationScreen>
         at: now,
         fields: {'gap_s': now.difference(pausedAt).inSeconds},
       );
-      if (mounted && !_stopped) _repeatLastAnnouncement();
+      if (mounted && !_stopped && !_announcer.paused) {
+        _repeatLastAnnouncement();
+      }
     }
   }
 
