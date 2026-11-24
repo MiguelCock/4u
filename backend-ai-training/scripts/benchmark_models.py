@@ -10,6 +10,7 @@ answer is the nearest such anchor. Photos of one anchor are taken from
 one spot, so this is a proxy; real frames saved during test walks
 (navigation_logs.raw_image_url) are the next, stronger test.
 
+    uv run python scripts/benchmark_models.py --frames frames/ --models eigenplaces
     uv run python scripts/benchmark_models.py session.json photos_dir \\
         [--models effnet dinov2_s eigenplaces megaloc]
 
@@ -104,6 +105,23 @@ class EigenPlaces:
             return self.model(x)[0].numpy()
 
 
+class Production:
+    """The service's own EigenPlaces (app/embedding.py: pinned, checksummed
+    weights, no torch.hub code), at a chosen input size (#122)."""
+
+    def __init__(self, short=384):
+        self.short = short
+        self.name = f"prod_{short}"
+        self.model = embedding._get_model()
+
+    def embed(self, path: Path) -> np.ndarray:
+        x = embedding._to_tensor(
+            embedding.load_keep_aspect(path.read_bytes(), self.short)
+        )
+        with torch.no_grad():
+            return self.model(x)[0].numpy()
+
+
 class MegaLoc:
     name = "megaloc"
 
@@ -123,6 +141,11 @@ MODELS = {
     "effnet": Effnet,
     "dinov2_s": Dinov2Small,
     "eigenplaces": EigenPlaces,
+    # The service's model, and smaller inputs for #122: faster, if the
+    # frames' accuracy holds.
+    "prod": Production,
+    "prod_320": lambda: Production(short=320),
+    "prod_256": lambda: Production(short=256),
     "megaloc": MegaLoc,
     # Smaller input: about half the CPU time.
     "megaloc_224": lambda: MegaLoc(short=224),
@@ -216,12 +239,119 @@ def test_anchor_photos(model, anchors, photos, photos_dir: Path):
     }
 
 
+# The day/dusk split for --frames (local hour, Colombia).
+DUSK_FROM_HOUR = 17.0
+
+
+def score_frame(frame, pool_vectors, frame_vector, xy, truth_xy) -> dict | None:
+    """One live frame against the anchors a search could return: the best
+    photo per anchor, then the top anchor. Right if it's within 8 m of where
+    the user really was, or if it's the nearest candidate to that spot."""
+    best: dict = {}
+    for anchor, vector in pool_vectors:
+        s = float(frame_vector @ vector)
+        best[anchor] = max(best.get(anchor, -2.0), s)
+    if not best:
+        return None
+    top = max(best, key=best.get)
+    nearest = min(best, key=lambda a: math.dist(xy[a], truth_xy))
+    error = math.dist(xy[top], truth_xy)
+    return {"error_m": error, "within_8m": error < 8, "is_nearest": top == nearest}
+
+
+def test_frames(model, anchors, photos, photos_dir: Path, frames, frames_dir: Path):
+    """Test (b), on real frames from test walks (scripts/build_frame_set.py):
+    each frame queries the anchor photos within 60 m of its GPS fix that face
+    within 60 deg of the camera, as /search_similar would, and is scored
+    against the true position from the walk's checkpoints. Split by daylight
+    (#182)."""
+    lat0 = next(iter(anchors.values()))["latitude"]
+    xy = {a: _xy(v["latitude"], v["longitude"], lat0) for a, v in anchors.items()}
+    usable = [
+        p
+        for p in photos
+        if (photos_dir / f"{p['id']}.jpg").exists() and p["anchor_point_id"] in xy
+    ]
+    vectors, times = {}, []
+    for p in usable:
+        v = model.embed(photos_dir / f"{p['id']}.jpg")
+        vectors[p["id"]] = v / (np.linalg.norm(v) + 1e-12)
+    results = {"day": [], "dusk": []}
+    for f in frames:
+        path = frames_dir / f"{f['id']}.jpg"
+        if not path.exists():
+            continue
+        start = time.perf_counter()
+        v = model.embed(path)
+        times.append(time.perf_counter() - start)
+        v = v / (np.linalg.norm(v) + 1e-12)
+        fix = _xy(f["gps_lat"], f["gps_lng"], lat0)
+        pool = [
+            (p["anchor_point_id"], vectors[p["id"]])
+            for p in usable
+            if math.dist(xy[p["anchor_point_id"]], fix) <= 60
+            and (
+                f.get("heading") is None
+                or p.get("heading") is None
+                or _heading_diff(f["heading"], p["heading"]) <= 60
+            )
+        ]
+        r = score_frame(f, pool, v, xy, _xy(f["truth_lat"], f["truth_lng"], lat0))
+        if r is not None:
+            results["dusk" if f["local_hour"] >= DUSK_FROM_HOUR else "day"].append(r)
+    out = {"ms_per_image": 1000 * statistics.median(times) if times else float("nan")}
+    for bucket, rs in results.items():
+        out[bucket] = {
+            "n": len(rs),
+            "within_8m": sum(r["within_8m"] for r in rs) / len(rs)
+            if rs
+            else float("nan"),
+            "is_nearest": sum(r["is_nearest"] for r in rs) / len(rs)
+            if rs
+            else float("nan"),
+            "error_m_median": statistics.median(r["error_m"] for r in rs)
+            if rs
+            else float("nan"),
+        }
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("session")
-    parser.add_argument("photos_dir")
+    parser.add_argument("session", nargs="?")
+    parser.add_argument("photos_dir", nargs="?")
     parser.add_argument("--models", nargs="*", default=list(MODELS))
+    parser.add_argument(
+        "--frames",
+        help="frames dir from build_frame_set.py: run test (b) on its set.json",
+    )
     args = parser.parse_args()
+    if not args.frames and not (args.session and args.photos_dir):
+        parser.error("give session.json and photos_dir, or --frames")
+    if args.frames:
+        frames_root = Path(args.frames)
+        data = json.loads((frames_root / "set.json").read_text())
+        anchors = {a["id"]: a for a in data["anchors"]}
+        for name in args.models:
+            model = MODELS[name]()
+            r = test_frames(
+                model,
+                anchors,
+                data["photos"],
+                frames_root / "photos",
+                data["frames"],
+                frames_root / "frames",
+            )
+            for bucket in ("day", "dusk"):
+                b = r[bucket]
+                print(
+                    f"{name:12} {bucket:4} top1<8m {b['within_8m']:.2f}  "
+                    f"top1=nearest {b['is_nearest']:.2f}  "
+                    f"err median {b['error_m_median']:5.1f} m  (n={b['n']})",
+                    flush=True,
+                )
+            print(f"{name:12} {r['ms_per_image']:.0f} ms/img", flush=True)
+        return
     data = json.loads(Path(args.session).read_text())
     anchors = {a["id"]: a for a in data["anchors"]}
     photos = data["photos"]
