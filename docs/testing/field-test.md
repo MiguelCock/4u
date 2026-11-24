@@ -23,7 +23,7 @@ One walking round answers several stories at once:
   - one with points close together (4–5 m), one far apart (12 m or more);
   - **within the same route if it has both**, which is best.
 
-  Note the stretches on the sheet. The report compares them stretch by stretch. Don't move or unverify points to make a test: other people's routes use them. A same-route comparison done offline (thinning a copy of a logged walk and replaying it) is planned, and would back this up.
+  Note the stretches on the sheet. The report compares them stretch by stretch. Don't move or unverify points to make a test: other people's routes use them. The same-route comparison done offline backs this up (`backend-positioning/scripts/replay.py --compare --thin-m 0,8,15`, #177). On four EAFIT walks whose points are 6.6 m apart, thinning to 15 m cut the ticks with a photo match from 74 % to 58 %, doubled the longest stretch without one (18 → 36 s) and moved the position farther from the route (2.17 → 2.63 m). Icesi's routes, at 16–21 m, matched only 37 %, worse than EAFIT thinned to 15 m, so spacing explains part of Icesi, not all of it.
 
 ## Each walk
 1. **As an admin (a test walk):** use "Test as user", and tap **I'm at …** exactly on the start, each corner and the destination. This gives the true position. Long-press undoes a tap.
@@ -106,7 +106,7 @@ Una sola ronda de caminatas responde varias historias a la vez:
   - uno con los puntos cercanos (4–5 m) y otro con los puntos lejanos (12 m o más);
   - **mejor si están en la misma ruta.**
 
-  Anota los tramos en la hoja; el informe los compara tramo a tramo. No muevas ni desverifiques puntos para una prueba: las rutas de otras personas los usan. Está planeada una comparación en la misma ruta hecha sin caminar (quitar puntos de una copia de una caminata registrada y repetirla), que respaldaría esto.
+  Anota los tramos en la hoja; el informe los compara tramo a tramo. No muevas ni desverifiques puntos para una prueba: las rutas de otras personas los usan. La comparación en la misma ruta hecha sin caminar lo respalda (`backend-positioning/scripts/replay.py --compare --thin-m 0,8,15`, #177). En cuatro caminatas de EAFIT con puntos a 6,6 m, dejarlos a 15 m bajó los ticks con foto reconocida de 74 % a 58 %, duplicó el tramo más largo sin ninguna (18 → 36 s) y alejó la posición de la ruta (2,17 → 2,63 m). Las rutas de Icesi, con puntos a 16–21 m, reconocieron solo el 37 %, menos que EAFIT a 15 m: la separación explica parte de Icesi, no todo.
 
 ## Cada caminata
 1. **Como admin (caminata de prueba):** "Probar como usuario", y toca **Estoy en…** justo en el inicio, en cada esquina y en el destino. Esto da la posición real. Una pulsación larga deshace un toque.

@@ -102,6 +102,46 @@ def _ts(value: str) -> float:
     return datetime.fromisoformat(value).timestamp()
 
 
+def route_ids(data) -> list:
+    route = data["route"]
+    return [
+        route["start_anchor_id"],
+        *(route.get("waypoint_anchor_ids") or []),
+        route["end_anchor_id"],
+    ]
+
+
+# An anchor this close to the route counts as one of its points when
+# thinning: points beside the corridor would have been thinned too.
+THIN_CORRIDOR_M = 10.0
+
+
+def thinned_out(data, anchors, plane, route: Route, spacing_m: float) -> set:
+    """The anchors a capture [spacing_m] apart along the route would not
+    have (#177): of the route's own points, keep the start, the end and
+    each one at least [spacing_m] along the route from the last kept one;
+    drop the rest, and every other anchor within THIN_CORRIDOR_M of the
+    route. The logged data is never changed: their candidates are only
+    left out of the replay."""
+    if spacing_m <= 0:
+        return set()
+    ids = route_ids(data)
+    kept, last = {ids[0], ids[-1]}, 0.0
+    for anchor_id, along in zip(ids, route.cum):
+        if along - last >= spacing_m:
+            kept.add(anchor_id)
+            last = along
+    on_route = set(ids)
+    drop = {a for a in ids if a not in kept}
+    for anchor_id, anchor in anchors.items():
+        if anchor_id in on_route:
+            continue
+        xy = plane.xy(anchor["latitude"], anchor["longitude"])
+        if route.cross_track(xy) <= THIN_CORRIDOR_M:
+            drop.add(anchor_id)
+    return drop
+
+
 def load(path: str):
     data = json.loads(Path(path).read_text())
     anchors = {a["id"]: a for a in data["anchors"]}
@@ -154,7 +194,12 @@ def truth_at(t: float, taps, route: Route):
     return None
 
 
-async def replay(logs, anchors, config: MatchConfig):
+async def replay(
+    logs, anchors, config: MatchConfig, drop: set = frozenset(), matched=None
+):
+    """Replayed positions by log id. Candidates of [drop]'s anchors are left
+    out (#177's thinning); [matched], if given, gets each tick's applied
+    anchor (or None)."""
     clock = [0.0]
     session_store_module.time.monotonic = lambda: clock[0]
     store = SessionStore()
@@ -168,7 +213,7 @@ async def replay(logs, anchors, config: MatchConfig):
         candidates = []
         for c in correction.get("candidates") or []:
             anchor = anchors.get(c.get("anchor_id"))
-            if anchor is None:
+            if anchor is None or c.get("anchor_id") in drop:
                 continue
             candidates.append(
                 {
@@ -199,6 +244,8 @@ async def replay(logs, anchors, config: MatchConfig):
                 else None,
             )
         out[log["id"]] = (result.corrected_lat, result.corrected_long)
+        if matched is not None:
+            matched[log["id"]] = result.anchor_match_id
     return out
 
 
@@ -272,7 +319,7 @@ def _pctl(values, q: float) -> float:
     return v[int(q * (len(v) - 1))] if v else 0.0
 
 
-def walk_scores(logs, plane, route, positions) -> dict:
+def walk_scores(logs, plane, route, positions, matched=None) -> dict:
     """One walk's numbers for --compare (#338, #120): mean distance from
     the route, and the corrected position's largest move from one tick to
     the next (worst and 99th percentile), overall, on still ticks and on
@@ -299,10 +346,40 @@ def walk_scores(logs, plane, route, positions) -> dict:
                 jumps["walking_excess"].append(max(0.0, jump - walked))
         prev, prev_t = xy, photo_time(log)
     out = {"off_route": statistics.mean(off) if off else 0.0}
+    if matched is not None:
+        out.update(match_gaps(logs, plane, positions, matched))
     for kind, values in jumps.items():
         out[f"{kind}_max"] = max(values, default=0.0)
         out[f"{kind}_p99"] = _pctl(values, 0.99)
     return out
+
+
+def match_gaps(logs, plane, positions, matched) -> dict:
+    """How the photo matches covered the walk (#177): the share of ticks
+    with an applied match, and the longest stretch without one, in seconds
+    and in metres walked (along the replayed positions)."""
+    ticks = [log for log in logs if log["id"] in positions]
+    hits = [bool(matched.get(log["id"])) for log in ticks]
+    longest_s = longest_m = 0.0
+    start_t = None
+    run_m, prev = 0.0, None
+    for log, hit in zip(ticks, hits):
+        xy = plane.xy(*positions[log["id"]])
+        if hit:
+            start_t, run_m = None, 0.0
+        else:
+            if start_t is None:
+                start_t = photo_time(log)
+            elif prev is not None:
+                run_m += math.dist(xy, prev)
+            longest_s = max(longest_s, photo_time(log) - start_t)
+            longest_m = max(longest_m, run_m)
+        prev = xy
+    return {
+        "match_share": sum(hits) / len(hits) if hits else 0.0,
+        "gap_s": longest_s,
+        "gap_m": longest_m,
+    }
 
 
 COMPARE_COLUMNS = (
@@ -313,6 +390,9 @@ COMPARE_COLUMNS = (
     ("walking_excess_max", "walk excess"),
     ("still_max", "still max"),
     ("still_p99", "still p99"),
+    ("match_share", "matched"),
+    ("gap_s", "no match s"),
+    ("gap_m", "no match m"),
 )
 
 
@@ -323,6 +403,8 @@ def compare_table(rows: list[tuple[str, list[dict]]]) -> str:
     for label, walks in rows:
         cells = " ".join(
             f"{statistics.mean(w[key] for w in walks):11.2f}"
+            if all(key in w for w in walks)
+            else f"{'-':>11}"
             for key, _ in COMPARE_COLUMNS
         )
         lines.append(f"{label[:32]:32} {cells}")
@@ -354,6 +436,11 @@ def main() -> None:
     parser.add_argument("--set", nargs="*", default=[], help="setting=value")
     parser.add_argument("--grid", nargs="*", default=[], help="setting=v1,v2,...")
     parser.add_argument(
+        "--thin-m",
+        default="0",
+        help="with --compare: route point spacings to replay, e.g. 0,5,8,15 (#177)",
+    )
+    parser.add_argument(
         "--compare",
         action="store_true",
         help="one line per setting, the mean over every session given",
@@ -367,14 +454,23 @@ def main() -> None:
     if args.compare:
         walks = [load(path) for path in args.session]
         rows = []
-        for combo in combos:
-            config = _config({**fixed, **combo})
-            scores = []
-            for _data, anchors, plane, route, logs in walks:
-                positions = asyncio.run(replay(logs, anchors, config))
-                scores.append(walk_scores(logs, plane, route, positions))
-            label = " ".join(f"{k}={v}" for k, v in {**fixed, **combo}.items())
-            rows.append((label or "defaults", scores))
+        thins = [float(v) for v in args.thin_m.split(",")]
+        for thin in thins:
+            for combo in combos:
+                config = _config({**fixed, **combo})
+                scores = []
+                for data, anchors, plane, route, logs in walks:
+                    drop = thinned_out(data, anchors, plane, route, thin)
+                    matched: dict = {}
+                    positions = asyncio.run(
+                        replay(logs, anchors, config, drop=drop, matched=matched)
+                    )
+                    scores.append(walk_scores(logs, plane, route, positions, matched))
+                settings = {**fixed, **combo}
+                if thin:
+                    settings["thin_m"] = f"{thin:g}"
+                label = " ".join(f"{k}={v}" for k, v in settings.items())
+                rows.append((label or "defaults", scores))
         print(f"{len(walks)} walks, means over walks (m)")
         print(compare_table(rows))
         return

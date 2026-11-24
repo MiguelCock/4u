@@ -1,9 +1,20 @@
+import math
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from replay import COMPARE_COLUMNS, Route, _Plane, compare_table, walk_scores
+from replay import (
+    COMPARE_COLUMNS,
+    Route,
+    _Plane,
+    compare_table,
+    match_gaps,
+    thinned_out,
+    walk_scores,
+)
 
 LAT, LNG = 6.2, -75.6
 # 1 m north in latitude degrees.
@@ -65,3 +76,47 @@ def test_the_table_has_one_row_per_setting_with_means():
     assert len(lines) == 3
     assert lines[1].startswith("x=1") and "2.00" in lines[1]
     assert lines[2].startswith("x=2") and "3.00" in lines[2]
+
+
+def _route_data(n_points, spacing_m):
+    """A straight route north with a point every [spacing_m], plus one
+    anchor beside it (3 m east) and one far away (50 m east)."""
+    plane = _Plane(LAT, LNG)
+    anchors = {
+        f"p{i}": {"latitude": LAT + i * spacing_m * M, "longitude": LNG}
+        for i in range(n_points)
+    }
+    east = M / math.cos(math.radians(LAT))
+    anchors["beside"] = {"latitude": LAT + 5 * M, "longitude": LNG + 3 * east}
+    anchors["far"] = {"latitude": LAT + 5 * M, "longitude": LNG + 50 * east}
+    ids = [f"p{i}" for i in range(n_points)]
+    data = {
+        "route": {
+            "start_anchor_id": ids[0],
+            "waypoint_anchor_ids": ids[1:-1],
+            "end_anchor_id": ids[-1],
+        }
+    }
+    route = Route(
+        [plane.xy(a["latitude"], a["longitude"]) for a in (anchors[i] for i in ids)]
+    )
+    return data, anchors, plane, route
+
+
+def test_thinning_keeps_the_ends_and_one_point_per_spacing():
+    data, anchors, plane, route = _route_data(7, 4.1)  # 0, 4.1, ..., 24.6 m
+    drop = thinned_out(data, anchors, plane, route, 8.0)
+    kept = {f"p{i}" for i in range(7)} - drop
+    assert kept == {"p0", "p2", "p4", "p6"}
+    assert "beside" in drop  # in the corridor: thinned too
+    assert "far" not in drop
+    assert thinned_out(data, anchors, plane, route, 0) == set()
+
+
+def test_match_gaps_measure_the_longest_stretch_without_a_match():
+    logs, plane, _route, positions = _walk([0, 1, 2, 3, 4, 5], [1.0] * 6)
+    matched = {"t0": "a", "t1": None, "t2": None, "t3": None, "t4": "b", "t5": None}
+    g = match_gaps(logs, plane, positions, matched)
+    assert g["match_share"] == pytest.approx(2 / 6)
+    assert g["gap_s"] == pytest.approx(4.0)  # t1 at 2 s to t3 at 6 s
+    assert g["gap_m"] == pytest.approx(2.0, abs=1e-6)
