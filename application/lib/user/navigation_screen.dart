@@ -20,6 +20,7 @@ import '../services/app_preferences.dart';
 import '../services/geo_utils.dart';
 import '../services/heading_tracker.dart';
 import '../services/location_service.dart';
+import '../voice/voice_attempts.dart';
 import '../voice/app_voice.dart';
 import '../voice/trip_announcer.dart';
 import '../voice/notices.dart';
@@ -556,6 +557,11 @@ class _NavigationScreenState extends State<NavigationScreen>
         _sessionId = sessionData['id'] as String?;
         _starting = false;
       });
+      // What the home screen's recognizer heard before this trip (#262).
+      final attempts = VoiceAttempts.instance.drain();
+      if (attempts.isNotEmpty) {
+        _log.event('voice_attempts', fields: {'attempts': attempts});
+      }
       // The destination's own name (not the backend's English "A to B"
       // route name) needs the planned path, which loads in parallel.
       await _pathLoaded.future.timeout(

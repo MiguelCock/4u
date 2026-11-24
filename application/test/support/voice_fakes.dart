@@ -49,6 +49,7 @@ class FakeSpeech extends Fake implements SpeechToText {
     listens++;
     _on = true;
     _onResult = onResult;
+    _onSound = onSoundLevelChange;
     if (reportsListening) statusListener?.call('listening');
   }
 
@@ -59,6 +60,7 @@ class FakeSpeech extends Fake implements SpeechToText {
   }
 
   int cancels = 0;
+  SpeechSoundLevelChange? _onSound;
 
   /// False: a listen opens without reporting "listening" (see [reportStart]),
   /// like a recognizer that hasn't started yet.
@@ -67,6 +69,24 @@ class FakeSpeech extends Fake implements SpeechToText {
 
   /// A "done" from a listen that already ended, arriving late.
   void lateDone() => statusListener?.call('done');
+
+  /// The recognizer offered [alternates] (words and confidence, its best
+  /// guess first), with sound peaking at [soundPeak], and the listen ended.
+  void hearAlternates(
+    List<(String, double)> alternates, {
+    double soundPeak = 6,
+  }) {
+    expect(_on, isTrue, reason: 'heard with the microphone closed');
+    _on = false;
+    _onSound?.call(soundPeak);
+    _onResult?.call(
+      SpeechRecognitionResult([
+        for (final (words, confidence) in alternates)
+          SpeechRecognitionWords(words, null, confidence),
+      ], ResultType.finalResult.value),
+    );
+    statusListener?.call('done');
+  }
 
   /// The user said [words] ('' for silence), and the listen ended.
   void hear(String words) {

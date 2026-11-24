@@ -8,6 +8,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import '../services/buzz.dart';
 import '../services/speech_voice.dart';
 import 'app_voice.dart';
+import 'voice_attempts.dart';
 
 /// How a call to [HomeVoiceController.listen] went.
 enum ListenStart {
@@ -62,6 +63,11 @@ class HomeVoiceController {
 
   /// What the current listen has heard so far.
   String _heard = '';
+
+  /// The last listen's recognizer alternates, best first, and the loudest
+  /// sound during it (#262).
+  List<Heard> lastHeard = const [];
+  double? lastSoundPeak;
 
   /// Who gets the current listen's answer; null when nobody is listening.
   /// The recognizer is one object for the whole app, and keeps the callbacks
@@ -307,6 +313,8 @@ class HomeVoiceController {
     if (_speech.isListening) await _speech.cancel();
     if (_disposed || _covered) return false;
     _heard = '';
+    lastHeard = const [];
+    lastSoundPeak = null;
     _setListening(true);
     _onHeard = onHeard;
     _listenSawStart = false;
@@ -321,7 +329,15 @@ class HomeVoiceController {
         onResult: (result) {
           if (_disposed) return;
           _heard = result.recognizedWords;
+          lastHeard = [
+            for (final a in result.alternates)
+              (words: a.recognizedWords, confidence: a.confidence),
+          ];
           if (result.finalResult) _finish(result.recognizedWords);
+        },
+        onSoundLevelChange: (level) {
+          final peak = lastSoundPeak;
+          if (peak == null || level > peak) lastSoundPeak = level;
         },
         listenOptions: SpeechListenOptions(
           localeId: localeId,
