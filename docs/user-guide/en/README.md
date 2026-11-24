@@ -1,95 +1,67 @@
 # User guide
 
-Eyes4U guides you on foot across campus with spoken instructions. It uses the phone's camera to recognise where you are and correct the GPS, which on its own can be several meters off.
+Eyes4U guides you on foot across campus with spoken instructions. The phone's camera recognises where you are and corrects the GPS. It works with TalkBack.
 
-This guide is for the person using the app and whoever helps them install it the first time. It works with TalkBack.
+## 1. Installing
 
-## 1. Installing and keeping it up to date
+1. On the Android phone, open https://github.com/MiguelCock/4u/releases/latest and download **app-release.apk**.
+2. Open it and install it. If Android asks, allow installing from that source.
+3. When there's a new version, the app tells you. Tap **Download the update** and install it over the old one, without uninstalling.
 
-1. On the Android phone, open the project's releases page (https://github.com/MiguelCock/4u/releases/latest) and download **app-release.apk**.
-2. Open it and install it. If Android asks, allow installing apps from that source.
-3. When a new version is out, the app tells you:
-   - **New version available:** your version still works, but stops working when the next one comes out. Tap **Download the update** and install it over the current one, without uninstalling.
-   - **Update required:** your version no longer works. Tap **Download the update** and install it.
+The app asks for **location** (to guide you), **camera** (to recognise the place; photos only correct your position) and **microphone** (so you can say where to go).
 
-## 2. Permissions
+## 2. Signing in
 
-The app asks for:
-- **Location**, to know where you are and guide you.
-- **Camera**, to recognise places during the trip. Photos are only used to correct your position.
-- **Microphone**, to say where you want to go.
+In **Sign up**, enter your name, email and a password. If a confirmation email arrives, open it on the same phone. Then use **Log in**. The first time, the app explains out loud how it works; **?** repeats it.
 
-If you deny one, the app explains why and offers a button to open the settings.
+## 3. Choosing where to go
 
-## 3. Creating your account and signing in
+When it opens, the app asks **"Where do you want to go?"** and listens. Say the place the way you'd say it: "the library", "I need a restroom", "the nearest restroom", "Building C".
+- If several match, it reads them three at a time, numbered: say the number or the name, or "more".
+- **"What's there?"** reads the nearest places.
+- **"Settings"** reads the options one at a time (see 6).
+- If it doesn't hear you, tap the **big button in the middle** and say it again. After five tries it offers **manual search**: say "yes" and the start and destination appear, to choose from the list.
 
-In **Sign up**, enter your name, email and a password. If a confirmation email arrives, open it on the same phone: it takes you back to the app, signed in. Later, use **Log in**.
+Then it asks **"Go to …? Say yes to start"**. "Yes" starts the route, "no" chooses another place. If you're near several floors, it asks which one you're on.
 
-The first time you sign in, the app explains out loud how it works. To hear it again, tap **How does it work?** (the question-mark icon at the top).
+## 4. During the trip
 
-## 4. Choosing where to go
-
-Two ways:
-- **By voice:** tap **Say where you want to go**. The phone vibrates when it starts listening. Say the place, for example "library" or "cafeteria". It vibrates again when it's done.
-- **From a list:** tap **Choose a destination** and pick the university, the building and the place.
-
-- **A building:** say "Edificio C" and the app takes you to its closest entrance. Say "Restroom Edificio C" for a place inside it.
-
-If several places share a name, you can also say the building ("Entrada sur Bloque 20"). Otherwise it offers the nearest ones.
-
-Then **Go to …?** appears. Tap **Start route** to begin, or **Change destination** to choose another. The start point is the one nearest you by GPS.
-
-If you hear that there's no route to that destination yet, the path still has to be connected on the map; tell an administrator.
-
-**If you're near several floors**, the app asks "Which floor are you on?", because GPS can't tell floors apart. Destinations that aren't on the first floor show their floor ("Restroom · Floor 2").
-
-## 5. During the trip
-
-The phone keeps its screen on during the trip. If you aren't getting anywhere, or you're in an open space, the app tells you which way to go using the compass; if that doesn't match the path, tell whoever is with you or end the route.
-
-**How to hold the phone:** upright, in front of your chest, with the back camera facing forward. That's how the app recognises places. Don't cover the camera: if it's covered, the app tells you.
+**Hold the phone** upright, in front of your chest, with the back camera facing forward. Don't cover it: if it's covered, the app says so. Keep using your cane: the app can't see every obstacle.
 
 **What you'll hear:**
-- At the start, "Walk forward, about 40 steps. I'll tell you if you're going the wrong way." The app doesn't know yet which way you face; it learns once you start walking.
-- A few steps before a corner, "In about 10 steps, turn left."
-- At the corner, "Turn left and walk about 30 steps." Turn the usual amount for a corner (about a quarter turn).
-- If you drift, "Turn slightly right." If you're going the wrong way, "Turn around."
-- Now and then, how far there is to go: "Keep going straight, about 20 steps left."
+- At the start, "Walk forward about 40 steps". It learns which way you face as you walk.
+- Before a corner, "In about 10 steps, turn left", and at the corner, "Turn left and walk about 30 steps".
+- "You're on track, about 20 steps left" while you're on the path.
+- "You passed the cafeteria" as you walk past a place.
+- "You're drifting to the right, move a little to the left" if you leave the path.
+- Stairs and elevators: it says which floor to go to and waits until you're there.
 - At the end, "You have arrived at …". The trip ends by itself.
 
-Distances are approximate, in normal steps.
-
 **Buttons:**
-- **Repeat instruction** (the big one): says the last instruction again.
-- **End navigation**: ends the trip before arriving.
+- **Repeat instruction** (the big one): says it again, starting with "Repeating".
+- **Pause or resume guidance**: stops the instructions, for example to talk to someone, and resumes them. The arrival is still announced.
+- **Press and hold Repeat** and say "pause", "resume" or "repeat".
+- **End navigation**: ends before arriving.
+- **Tapping the screen three times** quiets what it's saying.
 
-Afterwards the app asks **How did it go?**. You can leave a comment or skip it; it helps improve the app.
+At the end it asks **How did it go?**; you can leave a comment or skip it. If you close the app half-way, next time it offers **Continue** or **Finish**.
 
-### Changing floors
+## 5. With TalkBack
 
-When you reach stairs, an elevator or a ramp, the app tells you where to go ("Take the elevator to floor 3. I'll tell you when you get there.") and stops giving directions while you go up or down. When the phone detects the new floor, it vibrates, says "You're on floor 3", and keeps guiding you. If it doesn't detect it within a few minutes, it tells you and continues from there. Some phones can't detect floors: the app says so and continues after a moment, so make sure you've arrived.
+The app speaks by itself, without repeating what TalkBack reads. During a trip, **Repeat instruction** fills most of the screen. Its TalkBack actions are **Quiet the app** and **Speak a command** (pause, resume, repeat).
 
-## 6. If you close the app half-way
+## 6. Settings
 
-Next time you open it, it asks about the **Unfinished trip**. **Continue** resumes guidance from where you are; **Finish it** closes it.
+In **Settings** (the gear), or by saying **"settings"**:
+- **Voice speed:** slow, normal or fast.
+- **Manual search:** shows the start and destination to choose from a list.
+- **Map during trips**, **bold text**, **voice guidance**.
+- On the screen only: **language**, **high contrast** and **text size**.
 
-## 7. Settings
+## 7. Common problems
 
-In **Settings** (the gear icon):
-- **Voice guidance:** turns the spoken instructions on or off.
-- **Language:** automatic (the phone's), Spanish or English.
-- **High contrast** and **Text size**, for low vision.
-
-## 8. With TalkBack
-
-- The app speaks its own announcements. While listening, you don't need to touch anything.
-- During a trip the screen has few buttons: **Repeat instruction** fills most of it, with **End navigation** below.
-- After saying a destination, the **Go to …?** dialog gets the focus; double-tap **Start route**.
-
-## 9. Common problems
-
-- **"I can't find your location yet":** wait a few seconds outdoors and try again. If **battery saver** is on, turn it off: it can limit the GPS.
-- **Location services are disabled:** turn on the phone's location; the app offers a button for it.
-- **"Camera appears to be blocked":** uncover the back camera (a finger, a case or a pocket).
-- **The instructions seem wrong:** keep the phone upright and walk a few steps in a straight line; the app corrects the direction once it sees which way you walk.
-- **You hear nothing:** check the volume, that **Voice guidance** is on, and that a voice for the app's language is installed (Android settings → Text-to-speech).
+- **"Still looking for your location":** wait a few seconds outdoors. Turn **battery saver** off: it limits the GPS.
+- **"The camera seems to be blocked":** uncover the back camera.
+- **The instructions seem wrong:** walk a few steps in a straight line; the app corrects the direction once it sees where you're going.
+- **You hear nothing:** check the volume, that **Voice guidance** is on, and that a voice for your language is installed (Android settings → Text-to-speech).
+- **"There's no route to that destination yet":** that path isn't connected on the map yet; tell an administrator.

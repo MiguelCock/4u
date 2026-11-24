@@ -30,6 +30,7 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ### Changed
 
+- **A shorter tutorial and user guide (#192):** the three spoken tutorial pages are shorter and now mention "ajustes", pausing and the places you pass. The user guide is about a third shorter and describes the app as it is: it asks where to go by itself, and has pause, spoken commands, manual search, voice speed and the drift and "vas bien" messages.
 - **Better hearing in noise (#262):** when a voice or noise nearby is what the phone hears best, the app now also checks its other guesses, so "la biblioteca" said under someone else's words is still found. Each attempt is recorded with the next trip, to measure how well it hears in noisy places.
 - **Drifting sideways is noticed sooner (#300):** when you face the right way but walk off to one side, the app can now tell from your movement and say which side before you're far from the path.
 - **Knowing you're on track (#180):** while walking well, the distance update now starts with "Vas bien". Drifting sideways for a few seconds is announced with its side: "Te estás desviando a la izquierda, ve un poco a la derecha".
