@@ -31,9 +31,12 @@ ssh ec2-user@<instance> 'cd ~/4u && sudo docker compose exec -T positioning \
 cd backend-positioning
 uv run python scripts/replay.py session.json
 uv run python scripts/replay.py session.json --grid gps_bias_sigma_m=0,2.5,4,6 gps_bias_tau_s=60,120,300
+uv run python scripts/replay.py ../test_users_comments/walks/*.json --compare --grid stationary_speed_mps=0,0.3
 ```
 
 It prints the error for raw GPS, for the logged correction, and for the replayed one: distance from the route, plus 2D error when checkpoints were tapped. Any `MatchConfig` field can be set with `--set name=value`. Pick values that improve the 2D error, not just the distance from the route. Sessions recorded before the switch to EigenPlaces have EfficientNet scores, so replay them with `--set min_score=0.75`.
+
+`--compare` replays several walks and prints one line per setting, each column the mean over the walks: distance from the route, and the corrected position's largest move from one tick to the next (worst and 99th percentile), overall, while walking (`gps_speed` ≥ 0.5 m/s) and while still (< 0.3 m/s). A jump is what a user feels: a far photo match pulling the position, or drift while standing. Ten real walks exported for #310 (5 and 13 November) are the reference set; they stay in `test_users_comments/walks/`, outside the repo. On them, today's settings give 3.10 m from the route, a worst jump of 7.57 m, 6.31 m while walking and 4.02 m while still.
 
 ### Comparing photo models
 

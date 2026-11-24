@@ -86,7 +86,7 @@ Every component is expected to carry its own test suite: the Flutter app is test
 - **Sync check:** `packages/tests/test_app_versions.py` fails if `latest` and the pubspec version disagree.
 - **Compatibility rule for every backend change:** the previous release's app must keep working. API changes are additive. A field or endpoint the previous app still uses is removed only in a release after `min_supported` has moved past every version that uses it.
 
-**Frequent, small releases** (since 0.6.0, after the presentation): each release is a patch (0.6.1, 0.6.2, …) with its own milestone of a few issues, shipped as soon as they're done. Everything else waits in the `Backlog` milestone; when a release ships, the next patch milestone is opened and filled from it. A minor version (0.7) is for a larger change of direction.
+**Frequent, small releases** (since 0.6.0, after the presentation): each release is a patch (0.6.1, 0.6.2, …) with its own milestone of a few issues, shipped as soon as they're done. Everything else waits in the `Backlog` milestone; when a release ships, the next patch milestone is opened and filled from it. A minor version (0.7) is for a larger change of direction. While a release waits for its field test, the next patch is prepared on `next/X.Y.Z` (PRs into it, `develop` merged in as it moves), and merged into `develop` once the waiting release is tagged, so it never rides along in it.
 
 **Release checklist** (with the flow above):
 - Every issue in the release's milestone meets the definition of done below, and `gh issue list --milestone <version>` shows what isn't in.
