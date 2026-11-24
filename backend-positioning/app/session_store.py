@@ -254,6 +254,13 @@ class SessionStore:
                 if not d2 <= config.mahalanobis_gate:
                     reason = "mahalanobis"
                 else:
+                    capped = kalman.sigma_for_step(
+                        state.ukf, cx, cy, sigma, config.max_match_step_m
+                    )
+                    if capped > sigma:
+                        # Too big a pull for one tick: applied, but softer.
+                        verdict["step_capped_sigma_m"] = round(capped, 2)
+                        sigma = capped
                     kalman.visual_update(
                         state.ukf,
                         cx,

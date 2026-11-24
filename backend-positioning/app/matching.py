@@ -63,6 +63,9 @@ class MatchConfig:
     # session_store.stationary_reason). 0 goes back to "a repeated fix
     # means still".
     stationary_speed_mps: float = 0.3
+    # The most one photo match may move the estimate in one tick (#338):
+    # a farther pull is applied with a larger sigma. 0 turns it off.
+    max_match_step_m: float = 0.0
 
     @classmethod
     def from_env(cls) -> MatchConfig:
@@ -80,6 +83,9 @@ class MatchConfig:
             ),
             base_sigma_m=_env_float("POSITIONING_VISUAL_BASE_SIGMA_M", d.base_sigma_m),
             sigma_per_m=_env_float("POSITIONING_VISUAL_SIGMA_PER_M", d.sigma_per_m),
+            max_match_step_m=_env_float(
+                "POSITIONING_MAX_MATCH_STEP_M", d.max_match_step_m
+            ),
             stationary_speed_mps=_env_float(
                 "POSITIONING_STATIONARY_SPEED_MPS", d.stationary_speed_mps
             ),

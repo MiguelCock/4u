@@ -272,9 +272,11 @@ def walk_scores(logs, plane, route, positions) -> dict:
     the route, and the corrected position's largest move from one tick to
     the next (worst and 99th percentile), overall, on still ticks and on
     walking ticks. A jump is the symptom: a far photo match pulling the
-    estimate, or drift while standing."""
-    off, jumps = [], {"all": [], "still": [], "walking": []}
-    prev = None
+    estimate, or drift while standing. While walking part of a jump is the
+    walk itself, so "walking_excess" is the jump beyond what the phone's
+    speed explains over the time between the two photos."""
+    off, jumps = [], {"all": [], "still": [], "walking": [], "walking_excess": []}
+    prev = prev_t = None
     for log in logs:
         if log["id"] not in positions:
             continue
@@ -288,7 +290,9 @@ def walk_scores(logs, plane, route, positions) -> dict:
                 jumps["still"].append(jump)
             elif speed is not None and speed >= WALKING_FROM_MPS:
                 jumps["walking"].append(jump)
-        prev = xy
+                walked = speed * max(0.0, photo_time(log) - prev_t)
+                jumps["walking_excess"].append(max(0.0, jump - walked))
+        prev, prev_t = xy, photo_time(log)
     out = {"off_route": statistics.mean(off) if off else 0.0}
     for kind, values in jumps.items():
         out[f"{kind}_max"] = max(values, default=0.0)
@@ -301,6 +305,7 @@ COMPARE_COLUMNS = (
     ("all_max", "jump max"),
     ("all_p99", "jump p99"),
     ("walking_max", "walking max"),
+    ("walking_excess_max", "walk excess"),
     ("still_max", "still max"),
     ("still_p99", "still p99"),
 )
