@@ -21,8 +21,16 @@ class _Trip {
       logCue: (type, text) => cues.add('$type:$text'),
       buzzer: (kind) async => buzzes.add(kind),
       voiceOn: this.voiceOn,
+      micOpen: mic,
+      closeMic: () {
+        closes++;
+        mic.value = false;
+      },
     );
   }
+
+  final mic = ValueNotifier(false);
+  var closes = 0;
 
   late final AppVoice voice;
   late final TripAnnouncer announcer;
@@ -97,5 +105,76 @@ void main() {
 
   test('nothing said yet: Repeat does nothing', () {
     expect(_Trip().announcer.repeat(), isNull);
+  });
+
+  group('pause and repeat (#228)', () {
+    test('a repeat says so, and Repeat still has the plain instruction', () {
+      fakeAsync((async) {
+        final trip = _Trip();
+        trip.announcer.speak('Gira a la derecha.', cueType: 'turn');
+        async.elapse(const Duration(seconds: 3));
+        expect(
+          trip.announcer.repeat(prefix: 'Repito: '),
+          'Repito: Gira a la derecha.',
+        );
+        async.elapse(const Duration(seconds: 3));
+        expect(trip.said.last, 'Repito: Gira a la derecha.');
+        expect(trip.announcer.lastAnnouncement, 'Gira a la derecha.');
+      });
+    });
+
+    test('paused: instructions are logged and kept, not said or buzzed', () {
+      fakeAsync((async) {
+        final trip = _Trip();
+        trip.announcer.pause('En pausa.');
+        async.elapse(const Duration(seconds: 3));
+        trip.buzzes.clear();
+        trip.announcer.speak('Gira a la izquierda.', cueType: 'turn');
+        async.elapse(const Duration(seconds: 3));
+        expect(trip.said, ['En pausa.']);
+        expect(trip.buzzes, isEmpty);
+        expect(trip.cues.last, 'turn:Gira a la izquierda.');
+        expect(trip.announcer.lastAnnouncement, 'Gira a la izquierda.');
+      });
+    });
+
+    test('paused: safety and endings are still said', () {
+      fakeAsync((async) {
+        final trip = _Trip();
+        trip.announcer.pause('En pausa.');
+        async.elapse(const Duration(seconds: 3));
+        trip.announcer.speak('La cámara está tapada.', assertive: true);
+        async.elapse(const Duration(seconds: 3));
+        expect(trip.said.last, 'La cámara está tapada.');
+      });
+    });
+
+    test('resuming says so, then the current instruction', () {
+      fakeAsync((async) {
+        final trip = _Trip();
+        trip.announcer.pause('En pausa.');
+        trip.announcer.speak('Sigue recto.', cueType: 'leg');
+        async.elapse(const Duration(seconds: 3));
+        trip.announcer.resume('Seguimos.');
+        async.elapse(const Duration(seconds: 3));
+        expect(trip.announcer.paused, isFalse);
+        expect(trip.said.last, 'Seguimos. Sigue recto.');
+      });
+    });
+
+    test('nothing is said into an open microphone; safety closes it', () {
+      fakeAsync((async) {
+        final trip = _Trip();
+        trip.mic.value = true;
+        trip.announcer.speak('Sigue recto.', cueType: 'leg');
+        async.elapse(const Duration(seconds: 3));
+        expect(trip.said, isEmpty);
+        expect(trip.announcer.lastAnnouncement, 'Sigue recto.');
+        trip.announcer.speak('La cámara está tapada.', assertive: true);
+        async.elapse(const Duration(seconds: 3));
+        expect(trip.closes, 1);
+        expect(trip.said, ['La cámara está tapada.']);
+      });
+    });
   });
 }
