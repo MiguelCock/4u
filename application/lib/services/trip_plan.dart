@@ -192,25 +192,31 @@ int resumeWaypointIndex(LatLng here, List<Waypoint> waypoints) {
 
 /// A named place beside the route (#227), said once the user passes it.
 class PlaceBeside {
-  const PlaceBeside(this.name, this.point, this.along);
+  const PlaceBeside(this.name, this.point, this.along, {this.floor = 0});
 
   final String name;
   final LatLng point;
 
   /// Metres along the route to where the place is beside it.
   final double along;
+
+  /// 0-based floor the place is on and the route passes it on.
+  final int floor;
 }
 
 /// Where [here] is along [route]: metres from its start to the nearest
-/// point on it, and how far off it [here] is.
-({double along, double off}) alongRoute(List<LatLng> route, LatLng here) {
-  var best = (along: 0.0, off: double.infinity);
+/// point on it, how far off it [here] is, and that segment's index.
+({double along, double off, int segment}) alongRoute(
+  List<LatLng> route,
+  LatLng here,
+) {
+  var best = (along: 0.0, off: double.infinity, segment: 0);
   var before = 0.0;
   for (var i = 0; i + 1 < route.length; i++) {
     final p = projectOntoSegment(here, route[i], route[i + 1]);
     final t = p.along.clamp(0.0, p.length);
     final off = sqrt(pow(p.along - t, 2) + pow(p.crossTrack, 2));
-    if (off < best.off) best = (along: before + t, off: off);
+    if (off < best.off) best = (along: before + t, off: off, segment: i);
     before += p.length;
   }
   return best;
@@ -219,12 +225,15 @@ class PlaceBeside {
 /// The named destinations within [within] metres of [route] that aren't on
 /// it ([onRoute] ids) and aren't within [awayFromStops] of a stop: those
 /// are said at the stop itself (#227). Nearest the start first; each name
-/// once.
+/// once. With [floors] (one per route point), a place is kept only when the
+/// route is on the place's floor there: a room stacked above or below the
+/// corridor is not "beside" it.
 List<PlaceBeside> placesBeside(
   List<LatLng> route,
   Iterable<Map<String, dynamic>> places, {
   required Set<Object?> onRoute,
   required List<LatLng> stops,
+  List<int> floors = const [],
   double within = 5,
   double awayFromStops = 8,
 }) {
@@ -238,9 +247,28 @@ List<PlaceBeside> placesBeside(
     if (point == null || name.isEmpty) continue;
     final at = alongRoute(route, point);
     if (at.off > within) continue;
+    final routeFloor = floors.length == route.length
+        ? floors[at.segment]
+        : null;
+    if (routeFloor != null) {
+      // A floor change under the place is ambiguous: skip it rather than
+      // guess which floor the user will be on when they pass.
+      if (at.segment + 1 < floors.length &&
+          floors[at.segment + 1] != routeFloor) {
+        continue;
+      }
+      if (pointFloor(place) != routeFloor) continue;
+    }
     if (stops.any((s) => haversineMeters(s, point) < awayFromStops)) continue;
     if (!names.add(name.toLowerCase())) continue;
-    found.add(PlaceBeside(name, point, at.along));
+    found.add(
+      PlaceBeside(
+        name,
+        point,
+        at.along,
+        floor: routeFloor ?? pointFloor(place),
+      ),
+    );
   }
   found.sort((a, b) => a.along.compareTo(b.along));
   return found;

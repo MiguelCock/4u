@@ -495,6 +495,7 @@ class _NavigationScreenState extends State<NavigationScreen>
               if (plan.startPoint != null) plan.startPoint!,
               for (final w in plan.waypoints) w.point,
             ],
+            floors: plan.floors,
           ),
         );
         _checkpoints = CheckpointSequence(plan.cornerCount);
