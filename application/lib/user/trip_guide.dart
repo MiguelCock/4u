@@ -42,6 +42,14 @@ const double _kDriftEndMeters = 6;
 /// A drift cue waits if anything was said this recently.
 const Duration _kQuietBeforeDrift = Duration(seconds: 4);
 
+/// A trusted heading this close to the leg's bearing faces the leg, for
+/// the movement-based drift (B8, #300).
+const double _kFacingLegDeg = 20;
+
+/// A GPS course counts for drift only with accuracy this good (metres),
+/// like HeadingTracker's.
+const double _kDriftCourseAccuracy = 12;
+
 /// Turn-by-turn guidance for one trip (#269): reaching corners, floor
 /// changes and arrival, face-then-walk cues, the stall check, stale GPS and
 /// the periodic distance update. Plain Dart: what it needs from the screen
@@ -137,11 +145,8 @@ class TripGuide {
     if (!_guidance.walking || _route.waitingForFloor) return;
     final from = _segmentStart();
     if (from == null) return;
-    final projection = projectOntoSegment(
-      here,
-      from,
-      _waypoints[_route.next].point,
-    );
+    final to = _waypoints[_route.next].point;
+    final projection = projectOntoSegment(here, from, to);
     if (projection.length < _kDriftEndMeters * 2 ||
         projection.along < _kDriftEndMeters ||
         projection.length - projection.along < _kDriftEndMeters) {
@@ -152,12 +157,31 @@ class TripGuide {
     final spoken = _announcer.lastSpokenAt;
     // Not now: the drift's start is kept, so it's said once this is over.
     if (spoken != null && now.difference(spoken) < _kQuietBeforeDrift) return;
-    final side = _drift.update(projection.crossTrack, now);
+    final leg = bearingDegrees(from, to);
+    final fix = _lastFix();
+    final course =
+        fix != null &&
+            fix.speed >= _kMinSpeedForGpsHeading &&
+            fix.accuracy <= _kDriftCourseAccuracy
+        ? fix.heading
+        : null;
+    final heading = reliableHeading();
+    final side = _drift.update(
+      projection.crossTrack,
+      now,
+      courseOff: course == null ? null : signedTurn(leg, course),
+      facingLeg:
+          heading != null && signedTurn(leg, heading).abs() <= _kFacingLegDeg,
+    );
     if (side == null) return;
     final l10n = _l10n();
     _log.event(
       'drift',
-      fields: {'side': side.name, 'cross_track_m': projection.crossTrack},
+      fields: {
+        'side': side.name,
+        'cross_track_m': projection.crossTrack,
+        'gps_course_off': course == null ? null : signedTurn(leg, course),
+      },
     );
     _speak(
       side == DriftSide.left ? l10n.navDriftLeft : l10n.navDriftRight,
