@@ -26,62 +26,60 @@ class _Result {
 
 void main() {
   final dir = Platform.environment['WALKS'];
-  test(
-    'replay drift cues over exported walks',
-    () {
-      final files =
-          Directory(dir!)
-              .listSync()
-              .whereType<File>()
-              .where((f) => f.path.endsWith('.json'))
-              .toList()
-            ..sort((a, b) => a.path.compareTo(b.path));
-      final totals = {'old': _Result(), 'new': _Result()};
-      for (final file in files) {
-        final data =
-            jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-        final anchors = {
-          for (final a in data['anchors'] as List)
-            a['id']: a as Map<String, dynamic>,
-        };
-        final route = data['route'] as Map<String, dynamic>;
-        final ids = [
-          route['start_anchor_id'],
-          ...(route['waypoint_anchor_ids'] as List? ?? []),
-          route['end_anchor_id'],
-        ];
-        final line = [
-          for (final id in ids)
-            LatLng(
-              (anchors[id]!['latitude'] as num).toDouble(),
-              (anchors[id]!['longitude'] as num).toDouble(),
-            ),
-        ];
-        final logs = (data['logs'] as List).cast<Map<String, dynamic>>()
-          ..sort(
-            (a, b) => (a['timestamp'] as String).compareTo(b['timestamp']),
-          );
-        final name = file.uri.pathSegments.last;
-        final line2 = <String>[];
-        for (final rule in ['old', 'new']) {
-          final r = _replay(line, logs, movement: rule == 'new');
-          final t = totals[rule]!;
-          t.cues += r.cues;
-          t.delays.addAll(r.delays);
-          t.stretches += r.stretches;
-          t.unsaid += r.unsaid;
-          line2.add('$rule: ${_fmt(r)}');
-        }
-        // ignore: avoid_print
-        print('$name  ${line2.join('   ')}');
-      }
-      // ignore: avoid_print
-      print(
-        'TOTAL  old: ${_fmt(totals['old']!)}   new: ${_fmt(totals['new']!)}',
+  final skip = dir == null ? 'set WALKS to a folder of exported walks' : null;
+  test('replay drift cues over exported walks', () => _run(dir!), skip: skip);
+}
+
+void _run(String dir) {
+  final files = Directory(dir)
+      .listSync()
+      .whereType<File>()
+      .where((f) => f.path.endsWith('.json'))
+      .toList();
+  files.sort((a, b) => a.path.compareTo(b.path));
+  final totals = {'old': _Result(), 'new': _Result()};
+  for (final file in files) {
+    final data = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+    final anchors = <dynamic, Map<String, dynamic>>{};
+    for (final a in data['anchors'] as List) {
+      anchors[a['id']] = a as Map<String, dynamic>;
+    }
+    final route = data['route'] as Map<String, dynamic>;
+    final ids = [
+      route['start_anchor_id'],
+      ...(route['waypoint_anchor_ids'] as List? ?? []),
+      route['end_anchor_id'],
+    ];
+    final line = <LatLng>[];
+    for (final id in ids) {
+      final a = anchors[id]!;
+      line.add(
+        LatLng(
+          (a['latitude'] as num).toDouble(),
+          (a['longitude'] as num).toDouble(),
+        ),
       );
-    },
-    skip: dir == null ? 'set WALKS to a folder of exported walks' : false,
-  );
+    }
+    final logs = (data['logs'] as List).cast<Map<String, dynamic>>();
+    logs.sort((a, b) => (a['timestamp'] as String).compareTo(b['timestamp']));
+    final name = file.uri.pathSegments.last;
+    final parts = <String>[];
+    for (final rule in ['old', 'new']) {
+      final r = _replay(line, logs, movement: rule == 'new');
+      final t = totals[rule]!;
+      t.cues += r.cues;
+      t.delays.addAll(r.delays);
+      t.stretches += r.stretches;
+      t.unsaid += r.unsaid;
+      parts.add('$rule: ${_fmt(r)}');
+    }
+    // ignore: avoid_print
+    print('$name  ${parts.join('   ')}');
+  }
+  final old = _fmt(totals['old']!);
+  final now = _fmt(totals['new']!);
+  // ignore: avoid_print
+  print('TOTAL  old: $old   new: $now');
 }
 
 String _fmt(_Result r) {
@@ -181,11 +179,10 @@ _Result _replay(
         stretchSaid = true;
       }
     }
-    if (stretchStart != null && stretchSaid == false && r.delays.isEmpty) {}
   }
   closeStretch();
-  // Count stretches: every time one opened.
-  return r..stretches = _countStretches(line, logs);
+  r.stretches = _countStretches(line, logs);
+  return r;
 }
 
 int _countStretches(List<LatLng> line, List<Map<String, dynamic>> logs) {
