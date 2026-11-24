@@ -621,6 +621,8 @@
   "@navWalkForward": {"placeholders": {"steps": {"type": "int"}}},
   "navLoadingRoute": "Loading the route…",
   "navRepeatButton": "Repeat instruction",
+  "navPassedPlace": "You passed {name}.",
+  "@navPassedPlace": {"placeholders": {"name": {"type": "String"}}},
   "navRepeatPrefix": "Repeating: ",
   "navPauseResumeButton": "Pause or resume guidance",
   "navPaused": "Guidance paused. Say resume, or tap Resume, to go on.",

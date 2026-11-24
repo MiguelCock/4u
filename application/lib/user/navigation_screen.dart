@@ -98,6 +98,10 @@ class NavigationScreen extends StatefulWidget {
   final AppVoice? voice;
   final TripSensors sensors;
 
+  /// The destinations the home screen knows (#227): those beside the route
+  /// are said as the user passes them.
+  final List<Map<String, dynamic>> placesNearby;
+
   /// The recognizer for spoken commands (#228); the app's own by default.
   final SpeechToText? speech;
 
@@ -117,6 +121,7 @@ class NavigationScreen extends StatefulWidget {
     this.voice,
     this.sensors = const TripSensors(),
     this.userId,
+    this.placesNearby = const [],
     this.speech,
   });
 
@@ -479,6 +484,18 @@ class _NavigationScreenState extends State<NavigationScreen>
         _plannedFloors = plan.floors;
         if (plan.floors.isNotEmpty) _startTypeId = plan.startTypeId;
         _route.load(plan);
+        _guide.setPlacesBeside(
+          plan.points,
+          placesBeside(
+            plan.points,
+            widget.placesNearby,
+            onRoute: anchorIds.toSet(),
+            stops: [
+              if (plan.startPoint != null) plan.startPoint!,
+              for (final w in plan.waypoints) w.point,
+            ],
+          ),
+        );
         _checkpoints = CheckpointSequence(plan.cornerCount);
       });
     }

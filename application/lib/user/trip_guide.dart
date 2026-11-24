@@ -50,6 +50,12 @@ const double _kFacingLegDeg = 20;
 /// like HeadingTracker's.
 const double _kDriftCourseAccuracy = 12;
 
+/// A place beside the route is no longer said this far past it (#227).
+const double _kPlaceDropMeters = 10;
+
+/// Nor this close to the next stop, whose own words come first.
+const double _kPlaceAwayFromStop = 8;
+
 /// Turn-by-turn guidance for one trip (#269): reaching corners, floor
 /// changes and arrival, face-then-walk cues, the stall check, stale GPS and
 /// the periodic distance update. Plain Dart: what it needs from the screen
@@ -189,6 +195,43 @@ class TripGuide {
     );
   }
 
+  /// Named places beside the route (#227), nearest the start first; set
+  /// once the path has loaded. Each is said once, or dropped once passed.
+  List<PlaceBeside> _places = const [];
+  List<LatLng> _path = const [];
+  int _nextPlace = 0;
+
+  /// The route's whole path and the places beside it (#227).
+  void setPlacesBeside(List<LatLng> path, List<PlaceBeside> places) {
+    _path = path;
+    _places = places;
+    _nextPlace = 0;
+  }
+
+  /// Says "Pasaste por X" once the user's position along the route is past
+  /// a place beside it, while walking (#227). Not over another sentence,
+  /// not near a stop, where the stop's own words come; a place left 10 m
+  /// behind before there was a moment is dropped.
+  void _checkPlacesPassed(LatLng here) {
+    if (!_guidance.walking || _nextPlace >= _places.length) return;
+    if (_path.length < 2) return;
+    final at = alongRoute(_path, here);
+    final place = _places[_nextPlace];
+    if (at.along < place.along) return;
+    if (at.along > place.along + _kPlaceDropMeters) {
+      _nextPlace++;
+      return;
+    }
+    final now = clock.now();
+    final spoken = _announcer.lastSpokenAt;
+    if (spoken != null && now.difference(spoken) < _kQuietBeforeDrift) return;
+    final next = _waypoints[_route.next].point;
+    if (haversineMeters(here, next) < _kPlaceAwayFromStop) return;
+    _nextPlace++;
+    _log.event('passed_place', fields: {'name': place.name});
+    _speak(_l10n().navPassedPlace(place.name), cueType: 'passed_place');
+  }
+
   /// Whether the user has turned and is walking the leg.
   bool get walking => _guidance.walking;
 
@@ -265,6 +308,7 @@ class TripGuide {
     if (_route.needsStartCue) _speakStartCue(here);
     _checkStall(here);
     _checkDrift(here);
+    _checkPlacesPassed(here);
 
     final heading = currentHeading();
     if (heading == null) return;
