@@ -89,9 +89,9 @@ Camilo's upload is the **tactile-audio model of the Luis Echavarría Villegas Li
 |---|---|
 | `02_Planos_y_Modelo_Base/Planos_Biblioteca/` (P1–P4 PDFs) | Official geometry, room labels and areas, floor levels |
 | 1:100 plates (P1 580×260 mm = 58×26 m; P2 route 612×404 mm) and the 1:150 model (218×195.3×63.9 mm; short axis 33.9 m) | Verified scale and frame calibration |
-| `M4U_EAFIT_P2_ruta_meta.json` | 28 zones, 8+8 route polylines, 18 labels, 10 audio discs: semantics/targets/graph fixture |
-| `P2_P3/rutas_p2_p3.json` | Route ground truth: solid = verified/forced, dashed = inferred |
-| `boxclass.json`, `upmap.json`, `flood_blocked.txt`, `flood_ext.txt` | A 196×438 occupancy/height grid and 1,566 boxes: A* fixture |
+| `M4U_EAFIT_P2_ruta_meta.json` | 28 zones, 8 `via` + 8 `sec` polylines drawn from the plan, 18 labels, audio discs for 10 zone types: semantics, targets, graph, and the A* check |
+| `P2_P3/rutas_p2_p3.json` | LingBot's camera track (tails cut): coverage evidence only, **not ground truth** and not a path to plan |
+| `boxclass.json`, `upmap.json`, `flood_blocked.txt`, `flood_ext.txt` | **Not used.** They record filling the 1:150 model solid for printing (`LEEME_impresion.md`: the interior voids were filled for the slicer's infill), not walkable space |
 | `build_p2_ruta_stl.py` | Plan-pixel → plate-mm → real-cm transform |
 | LingBot workflow + evaluation | Capture protocol; LingBot is not metric |
 | Tactile lexicon, WC/ASC tokens, U-01 rules | Target kinds, icons and wording |
@@ -104,7 +104,9 @@ Camilo's upload is the **tactile-audio model of the Luis Echavarría Villegas Li
 
 ### Rules
 
-- **Library first, as a plan-only package.** Floor 2 has a real plan, 28 zones, routes and a verified scale. It exercises I3/I13/I15/I20/I25 with no capture risk. The classroom remains the first splat package.
+- **Library first, as a plan-only package.** Floor 2 has a real plan, 28 zones, plan-drawn routes and a verified scale. It exercises I3/I13/I15/I20/I25 with no capture risk. It's a fixture, not a pilot space: it can't relocalize. The classroom remains the first splat package and the pilot's space.
+- **Occupancy comes from the plan.** Rasterise `Biblioteca Piso 2.pdf` at 220 dpi and map it with `build_p2_ruta_stl.py`'s piecewise transform (pixels → plate mm, 1 mm = 1 cm). Threshold the walls and resample to 5 cm. Check that every `via` point lies in free space, and that A* from the ENT zone to the ESC zone stays within about 15 % of the `via` length.
+- **A floor-1 space needs floor-1 entry anchors.** EAFIT's Biblioteca has 26 anchors in 4u, all on floor 0 (library P1 = floor 0, P2 = floor 1). A P2 space can be entered only once anchors exist at the stairs or elevator on both floors; 4u's floor-change guidance already does the climb.
 - **LingBot is not metric.** Its own evaluation found collapsing scale, double corridors, no loop closure, drift and selfie tails. Use it only for coverage/route evidence; COLMAP/gsplat and the official plans give metres and occupancy.
 - **No personal media.** `01_Investigacion/Entrevistas/` contains identifiable videos, audio and transcripts. Never copy them into 4u, tests, issues or the repo.
 - **Permission and credit.** The plans are EAFIT's and the model/STLs are Camilo's; check reuse and credit both.
