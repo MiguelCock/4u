@@ -208,38 +208,6 @@ def innovation(
     return float(np.hypot(*residual)), d2
 
 
-def expected_move(
-    ukf: UnscentedKalmanFilter, x: float, y: float, sigma: float
-) -> float:
-    """How far a position measurement at (x, y) with 1-sigma [sigma] would
-    move the estimate: |K r| with K = P (P + R)^-1, exact for this linear
-    read-out."""
-    residual = np.array([x, y]) - ukf.x[:2]
-    p = ukf.P[:2, :2]
-    s = p + np.diag([sigma**2, sigma**2])
-    return float(np.hypot(*(p @ np.linalg.solve(s, residual))))
-
-
-def sigma_for_step(
-    ukf: UnscentedKalmanFilter, x: float, y: float, sigma: float, max_step_m: float
-) -> float:
-    """[sigma], raised just enough that the measurement moves the estimate
-    at most [max_step_m] (#338). The move shrinks as sigma grows, so a
-    bisection finds it; 0 or a move already within the cap keeps [sigma]."""
-    if max_step_m <= 0 or expected_move(ukf, x, y, sigma) <= max_step_m:
-        return sigma
-    low, high = sigma, sigma
-    while expected_move(ukf, x, y, high) > max_step_m:
-        high *= 2
-    for _ in range(40):
-        mid = (low + high) / 2
-        if expected_move(ukf, x, y, mid) > max_step_m:
-            low = mid
-        else:
-            high = mid
-    return high
-
-
 def gps_bias(ukf: UnscentedKalmanFilter) -> tuple[float, float]:
     return float(ukf.x[4]), float(ukf.x[5])
 
