@@ -3,7 +3,7 @@
 Inside a building GPS is off by more than a corridor is wide, sees no obstacles, and can't tell one row of seats from the next. 4u gets the user to a building. The indoor module takes them from the building's entrance to a seat. It was proposed by a professor at EAFIT in November 2026, and this record is how it fits 4u.
 
 **4u comes first.** Every release squashes all of `develop` into `main`, so the merge rule follows what ships:
-- **Any time:** `tools/space-builder/` (I3, I12, I13) and docs. They never reach a user.
+- **Any time:** `tools/space-builder/` (I3, I12, I13, I25) and docs. They never reach a user.
 - **After v0.6.5 is tagged:** the schema (I2), the service, the gateway and the app (I4 onwards). None of it rides along in a 0.6.x patch.
 
 Work on those can start earlier on its branch; only the merge waits. Milestone: **0.7.0**; the field pilot is its own milestone, **Indoor pilot**.
@@ -55,6 +55,8 @@ The presentation's "images are processed on the device" is true only for the Nia
 
 The `space-packages` bucket is private. The admin app uploads directly to Storage with a signed URL (the gateway's 15 MB limit is not raised), and the phone downloads with a signed URL and caches by space and version. A package is at most 50 MB including `loc_db`; the phone payload excludes `loc_db`. The version is pinned per session, so an upload during a walk does not change the map under the user.
 
+**Plan-only packages.** A package can be built from a floor plan without `loc_db`. `meta.source` is `plan` or `splat`; `plan.png` is the image the admin edits on; `loc_db` is optional. A plan-only package supports layout, A*, targets and admin review, but cannot relocalize; I14 refuses it with a clear message. The library floor 2 is the first plan-only package (I25); the classroom is the first splat package.
+
 ### 5. Frames and transforms
 
 The package frame is metric, right-handed, +z up, origin at the entry anchor's floor point, +x along the entry anchor's heading. `space_packages.frame` stores origin lat/lng, floor, yaw and scale. `space_targets.position` and `navigation_logs.indoor_*` use that frame. The relocalizer returns the ARCore-world → package-frame transform; the app applies it. A space is one floor in 0.7.0; multi-floor is out of scope.
@@ -76,6 +78,36 @@ The stream is versioned JSON over WSS:
 The phone computes depth; the laptop's A* gets live obstacles only through `obstacles`.
 
 Auth is the bearer header at the handshake; one connection per user; max frame size; backpressure drops images before poses; reconnect resumes. The fixture lives with I16's tests.
+
+## The Maqueta 4U upload (2026-11-24)
+
+Camilo's upload is the **tactile-audio model of the Luis Echavarría Villegas Library**, not the Splat-Nav app code. It gives the first real indoor fixture, not the indoor product.
+
+### What 4u can take
+
+| Asset | Use |
+|---|---|
+| `02_Planos_y_Modelo_Base/Planos_Biblioteca/` (P1–P4 PDFs) | Official geometry, room labels and areas, floor levels |
+| 1:100 plates (P1 580×260 mm = 58×26 m; P2 route 612×404 mm) and the 1:150 model (218×195.3×63.9 mm; short axis 33.9 m) | Verified scale and frame calibration |
+| `M4U_EAFIT_P2_ruta_meta.json` | 28 zones, 8+8 route polylines, 18 labels, 10 audio discs: semantics/targets/graph fixture |
+| `P2_P3/rutas_p2_p3.json` | Route ground truth: solid = verified/forced, dashed = inferred |
+| `boxclass.json`, `upmap.json`, `flood_blocked.txt`, `flood_ext.txt` | A 196×438 occupancy/height grid and 1,566 boxes: A* fixture |
+| `build_p2_ruta_stl.py` | Plan-pixel → plate-mm → real-cm transform |
+| LingBot workflow + evaluation | Capture protocol; LingBot is not metric |
+| Tactile lexicon, WC/ASC tokens, U-01 rules | Target kinds, icons and wording |
+
+### What it does not provide
+
+- The Splat-Nav/ARMOR OF GOD code: `Splat_Navigation_Library_EAFIT` is empty, so I9 stays blocked.
+- Point clouds or `loc_db`, so no relocalization.
+- The classroom capture.
+
+### Rules
+
+- **Library first, as a plan-only package.** Floor 2 has a real plan, 28 zones, routes and a verified scale. It exercises I3/I13/I15/I20/I25 with no capture risk. The classroom remains the first splat package.
+- **LingBot is not metric.** Its own evaluation found collapsing scale, double corridors, no loop closure, drift and selfie tails. Use it only for coverage/route evidence; COLMAP/gsplat and the official plans give metres and occupancy.
+- **No personal media.** `01_Investigacion/Entrevistas/` contains identifiable videos, audio and transcripts. Never copy them into 4u, tests, issues or the repo.
+- **Permission and credit.** The plans are EAFIT's and the model/STLs are Camilo's; check reuse and credit both.
 
 ## Map once, navigate every time
 
@@ -204,7 +236,8 @@ The PDF is a snapshot (18 November 2026). The issues and this record are the sou
 | I6 handoff | #315 · targets/voice #329 |
 | I7 admin | #316 · upload/targets #330 |
 | I8 logs | #317 |
-| I9 prototype | #318 |
+| I9 prototype | #318 (blocked: code not uploaded) |
+| Maqueta 4U | I25 (#357) · library plan-only fixture |
 | Cross-cutting | Niantic #321 · ethics #331 · network #332 · metrics/replay #333 |
 | Pilot | #319 (Indoor pilot milestone) |
 | Backlog | P3: #246, #245, #187, #247, #86 · P4: #94, #93, #160 · #17 (p3, not scheduled in the PDF) · WiFi/FTM #334 |
@@ -233,4 +266,7 @@ Priority labels `priority: p0`–`p4` carry the plan's P0–P4 (plus #310 and #1
 | A 50 MB package stalls at the door | Prefetch when the destination is a space; the phone payload excludes `loc_db` |
 | A phone has ARCore but no Depth | I17 says so explicitly and keeps 4u's guidance; the matrix records it |
 | The prototype's license is incompatible | I9's license check before any code is copied |
+| LingBot-Map looks like a plan but is not metric | I12 uses it only for coverage; COLMAP/gsplat and the plans give metres |
+| The plans/model are not ours | I25 checks permission and credits EAFIT and Camilo |
+| The library's "Piso 1" is 4u floor 0 | Map P1 +0.49 m to floor 0 in I2/I13 |
 | The scanned map is wrong | The pilot's ground truth is taped, not the map (above) |
