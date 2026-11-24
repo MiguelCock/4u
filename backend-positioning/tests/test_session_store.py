@@ -3,6 +3,7 @@ import math
 
 import pytest
 
+from app import matching
 from app import session_store as session_store_module
 from app.matching import MatchConfig
 from app.session_store import SessionStore, stationary_reason
@@ -357,6 +358,47 @@ async def test_standing_with_a_new_fix_every_second_counts_as_still(monkeypatch)
     assert result.anchor_match_id == "a"
     # Same guard as the field test above, now with a new fix each tick.
     assert (result.corrected_lat - 6.2) / _M < 4.0
+
+
+@pytest.mark.asyncio
+async def test_a_far_match_while_walking_moves_the_estimate_at_most_the_cap():
+    # Walk 0cbb9080, tick 139: a match 9-16 m away pulled the estimate
+    # 22 m in one tick (#338). Now it still counts, but softly.
+    store = SessionStore()
+    await _correct(store, "far", lat=6.2, lng=-75.6, accuracy=14.0, gps_time="t0")
+    result = await _correct(
+        store,
+        "far",
+        lat=6.2,
+        lng=-75.6,
+        accuracy=14.0,
+        gps_time="t0",
+        candidates=[_match("a", 6.2 + 12 * _M, -75.6, 0.8)],
+    )
+    assert result.anchor_match_id == "a"
+    verdict = result.debug["candidates"][0]
+    assert verdict["step_capped_sigma_m"] > verdict["sigma_m"]
+    moved = (result.corrected_lat - 6.2) / _M
+    assert moved == pytest.approx(1.5, abs=0.3)
+
+
+@pytest.mark.asyncio
+async def test_the_step_cap_can_be_turned_off():
+    store = SessionStore()
+    config = matching.MatchConfig(max_match_step_m=0)
+    await _correct(store, "off", lat=6.2, lng=-75.6, accuracy=14.0, gps_time="t0")
+    result = await _correct(
+        store,
+        "off",
+        lat=6.2,
+        lng=-75.6,
+        accuracy=14.0,
+        gps_time="t0",
+        candidates=[_match("a", 6.2 + 12 * _M, -75.6, 0.8)],
+        config=config,
+    )
+    assert "step_capped_sigma_m" not in result.debug["candidates"][0]
+    assert (result.corrected_lat - 6.2) / _M > 5
 
 
 # --- GPS offset (bias) state ------------------------------------------------

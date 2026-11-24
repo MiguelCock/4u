@@ -103,7 +103,7 @@ In this order:
    | 3 | anchor photo's heading within 60° of the phone's (skipped if either is unknown) | `heading_mismatch` | 60° |
    | 4 | Mahalanobis² of the anchor against the current estimate (judged with the base σ 3 m) ≤ 9.21 (99%) | `mahalanobis` | 9.21 |
 
-5. **Visual update:** the first candidate that passes is fused as a measurement of the position at the anchor, with σ = 3 m + 0.3 × its distance from the fix (`visual_sigma`), so a far match pulls gently. The candidates after it are marked `not_needed`.
+5. **Visual update:** the first candidate that passes is fused as a measurement of the position at the anchor, with σ = 3 m + 0.3 × its distance from the fix (`visual_sigma`), so a far match pulls gently. If that would still move the estimate more than `POSITIONING_MAX_MATCH_STEP_M` (1.5 m) in this one tick, σ is raised until the move is exactly that (`sigma_for_step`, #338), and the verdict carries `step_capped_sigma_m`. A real correction then arrives over a few ticks instead of as one jump. `/correct_position_once` (a single photo) doesn't cap. The candidates after it are marked `not_needed`.
 6. **Answer:** the filter's position back in lat/lng, `correction_error` = √(σx² + σy²) of the position, the applied anchor's id and its score clamped to 0–1. If no candidate passed, the answer is the filter's GPS-only estimate.
 
 ### 6. The answer — `CorrectPositionResponse` (`backend-positioning/app/models.py`)
@@ -198,6 +198,7 @@ All are environment variables read at startup (`.env` of each service).
 | `POSITIONING_GPS_BIAS_TAU_S` | 120 | how slowly the offset changes |
 | `POSITIONING_GPS_SIGMA_FACTOR` | 1 | × reported GPS accuracy |
 | `POSITIONING_STATIONARY_SPEED_MPS` | 0.3 | below this GPS speed the user counts as still (0: the old repeated-fix rule) |
+| `POSITIONING_MAX_MATCH_STEP_M` | 1.5 | the most one match may move the estimate in one tick (0: no cap) |
 | `AI_TRAINING_URL` | `http://ai-training:80` | this server's model |
 | `AI_TRAINING_URLS` | unset | extra model machines, comma-separated |
 
@@ -222,4 +223,4 @@ Fixed in code: search timeout 2 s per try, 2.5 s in total (`app/main.py`); `MAX_
 - **Filters live in memory:** one positioning container only, and a restart loses every trip's filter.
 - **Latency:** the embedding takes ~0.3–0.5 s of CPU per photo, and a tick's answer arrives seconds after its photo (#122). `PositionSource`'s offset is how the app copes.
 - **The model is pretrained only,** not fine-tuned on campus photos (#17).
-- **Far photo matches while walking (#338, from #310):** replaying ten real walks (5 and 13 November 2026, 1343 ticks) with the speed rule, the largest jump while moving rose on two walks (18 → 22 m, 7 → 12 m). Each was a match 9–24 m away applied while walking. The old rule's false stops had happened to damp those pulls. The match distance gate (`max(20 m, 2.5 × accuracy)`) is the place to look.
+- **The start check and the step cap:** the start check's 6 photos go through the session endpoint, so each moves the start at most 1.5 m (#338), about 9 m in all. A start whose GPS is 20 m off takes longer to correct than before. Worth watching in the next phone test.

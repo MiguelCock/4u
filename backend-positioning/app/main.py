@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import io
 import logging
 import os
@@ -330,6 +331,8 @@ async def correct_position_once(
         accuracy=accuracy,
         candidates=candidates,
         compass_heading=heading,
-        config=_config,
+        # One photo, no next tick: the step cap guards against jumps between
+        # ticks (#338), so here it would only throw away a good correction.
+        config=dataclasses.replace(_config, max_match_step_m=0.0),
     )
     return _response(result, server_busy=search_timing.get("busy", False))
