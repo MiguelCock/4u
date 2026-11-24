@@ -293,6 +293,60 @@ void main() {
     await t.close(tester);
   });
 
+  for (final talkBack in [false, true]) {
+    testWidgets('paused, the walk goes quiet; arrival is still said '
+        '(#228, TalkBack ${talkBack ? 'on' : 'off'})', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue = talkBack
+          ? const FakeAccessibilityFeatures(accessibleNavigation: true)
+          : const FakeAccessibilityFeatures();
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      final t = _Trip();
+      await t.start(tester);
+      t.sensors.face(0);
+      await t.run(tester, seconds: 4);
+      final button = find.text(t.l10n.navPauseResumeButton);
+      expect(button, findsOneWidget);
+
+      await tester.tap(button);
+      await t.run(tester, seconds: 3);
+      expect(t.voice.said.last, t.l10n.navPaused);
+      final before = t.voice.said.length;
+      await t.walkTo(tester, 6.2003, -75.5800, heading: 0);
+      expect(
+        t.voice.said.length,
+        before,
+        reason: 'no corner cues while paused',
+      );
+      expect(t.events('guidance_paused'), hasLength(1));
+
+      await tester.tap(button);
+      await t.run(tester, seconds: 3);
+      expect(t.voice.said.last, startsWith(t.l10n.navResumed));
+      expect(t.voice.said.last.length, greaterThan(t.l10n.navResumed.length));
+
+      // Paused again: the destination is still announced.
+      await tester.tap(button);
+      await t.run(tester, seconds: 3);
+      await t.walkTo(tester, 6.2003, -75.5797, heading: 90);
+      await t.run(tester, seconds: 4);
+      expect(t.voice.said, contains(t.l10n.navArrivedFinished('Biblioteca')));
+      await t.close(tester);
+    });
+  }
+
+  testWidgets('a repeat starts with "Repito" (#228)', (tester) async {
+    final t = _Trip();
+    await t.start(tester);
+    t.sensors.face(0);
+    await t.run(tester, seconds: 4);
+    await tester.tap(find.text(t.l10n.navRepeatButton));
+    await t.run(tester, seconds: 3);
+    expect(t.voice.said.last, startsWith(t.l10n.navRepeatPrefix));
+    await t.close(tester);
+  });
+
   testWidgets('no new GPS fix for 25 s: said once, and a gps_stale event', (
     tester,
   ) async {
