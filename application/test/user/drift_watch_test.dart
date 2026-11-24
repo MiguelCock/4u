@@ -51,4 +51,57 @@ void main() {
     drift.reset();
     expect(drift.onPath, isFalse);
   });
+
+  group('from the movement (B8, #300)', () {
+    test('facing the leg but walking off it is said early, under 8 m', () {
+      final drift = DriftWatch();
+      for (var t = 0; t < 3; t++) {
+        expect(
+          drift.update(4.5 + t, _at(t), courseOff: 35, facingLeg: true),
+          isNull,
+        );
+      }
+      expect(
+        drift.update(7, _at(3), courseOff: 35, facingLeg: true),
+        DriftSide.right,
+      );
+    });
+
+    test('not without a trusted heading facing the leg', () {
+      final drift = DriftWatch();
+      for (var t = 0; t <= 4; t++) {
+        expect(drift.update(6, _at(t), courseOff: 35), isNull);
+      }
+    });
+
+    test('not when walking back towards the line', () {
+      final drift = DriftWatch();
+      for (var t = 0; t <= 4; t++) {
+        expect(
+          drift.update(6, _at(t), courseOff: -35, facingLeg: true),
+          isNull,
+          reason: 'right of the line, heading left: coming back',
+        );
+      }
+    });
+
+    test('not for a small course difference or close to the line', () {
+      final small = DriftWatch();
+      final close = DriftWatch();
+      for (var t = 0; t <= 4; t++) {
+        expect(small.update(6, _at(t), courseOff: 15, facingLeg: true), isNull);
+        expect(close.update(3, _at(t), courseOff: 40, facingLeg: true), isNull);
+      }
+    });
+
+    test('the cooldown holds across both triggers', () {
+      final drift = DriftWatch();
+      for (var t = 0; t <= 3; t++) {
+        drift.update(5, _at(t), courseOff: 35, facingLeg: true);
+      }
+      for (var t = 4; t <= 20; t++) {
+        expect(drift.update(12, _at(t)), isNull);
+      }
+    });
+  });
 }
