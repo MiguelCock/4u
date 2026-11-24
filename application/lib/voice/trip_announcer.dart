@@ -30,8 +30,22 @@ class TripAnnouncer {
     required this._logCue,
     Future<void> Function(Buzz kind)? buzzer,
     ValueListenable<bool>? voiceOn,
+    this.micOpen,
+    this.closeMic,
   }) : _buzz = buzzer ?? buzz,
        _voiceOn = voiceOn ?? voiceGuidanceNotifier;
+
+  /// Whether the trip's microphone is open (a spoken command, #228): then
+  /// nothing is said into it (R4). A safety message closes it first
+  /// ([closeMic]); anything else is logged and kept for Repeat, not said.
+  final ValueListenable<bool>? micOpen;
+  final void Function()? closeMic;
+
+  /// Guidance paused by the user (#228): cues are logged and kept, but
+  /// neither said nor buzzed, until [resume]. Safety and endings
+  /// (assertive) are still said.
+  bool get paused => _paused;
+  bool _paused = false;
 
   final VoiceOwner _owner;
   final void Function(String type, String text) _logCue;
@@ -65,6 +79,11 @@ class TripAnnouncer {
       lastAnnouncement = text;
       lastCueType = cueType;
     }
+    final quiet = _paused && !assertive;
+    if (quiet) {
+      _logCue(cueType, text);
+      return;
+    }
     lastSpokenAt = clock.now();
     if (kInstructionCues.contains(cueType)) {
       _buzz(Buzz.short);
@@ -74,16 +93,47 @@ class TripAnnouncer {
     }
     _logCue(cueType, text);
     if (!_voiceOn.value) return;
+    if (micOpen?.value ?? false) {
+      if (!assertive) return;
+      closeMic?.call();
+    }
     await _owner.say(text, interrupt: assertive);
   }
 
-  /// Says the last instruction again, at once (R7), and returns it; null
-  /// when nothing has been said yet.
-  String? repeat() {
+  /// Says the last instruction again, at once (R7), after [prefix]
+  /// ("Repito: ", #228) so it's never taken for a new one, and returns what
+  /// was said; null when nothing has been said yet.
+  String? repeat({String prefix = ''}) {
     final text = lastAnnouncement;
     if (text == null) return null;
-    speak(text, assertive: true, cueType: lastCueType ?? 'info');
-    return text;
+    final said = '$prefix$text';
+    speak(
+      said,
+      assertive: true,
+      cueType: lastCueType ?? 'info',
+      repeatable: false,
+    );
+    return said;
+  }
+
+  /// Stops the instructions until [resume] (#228). What's being said stops
+  /// too; [notice] says so.
+  Future<void> pause(String notice) async {
+    _paused = true;
+    _owner.stop();
+    _logCue('pause', notice);
+    if (_voiceOn.value) await _owner.say(notice);
+  }
+
+  /// Instructions again: [intro] ("Seguimos") then the current instruction.
+  Future<void> resume(String intro) async {
+    _paused = false;
+    final text = lastAnnouncement;
+    await speak(
+      text == null ? intro : '$intro $text',
+      cueType: 'resume',
+      repeatable: false,
+    );
   }
 
   /// The trip is over: what it was saying stops, and nothing more is heard.

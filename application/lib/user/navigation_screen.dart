@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import '../voice/home_voice_controller.dart';
+import '../services/trip_commands.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import 'package:camera/camera.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
@@ -99,6 +102,9 @@ class NavigationScreen extends StatefulWidget {
   /// are said as the user passes them.
   final List<Map<String, dynamic>> placesNearby;
 
+  /// The recognizer for spoken commands (#228); the app's own by default.
+  final SpeechToText? speech;
+
   /// The signed-in user's id; null when nobody is.
   final String? Function()? userId;
 
@@ -116,6 +122,7 @@ class NavigationScreen extends StatefulWidget {
     this.sensors = const TripSensors(),
     this.userId,
     this.placesNearby = const [],
+    this.speech,
   });
 
   @override
@@ -273,7 +280,13 @@ class _NavigationScreenState extends State<NavigationScreen>
   @override
   void initState() {
     super.initState();
-    _announcer = TripAnnouncer(owner: _appVoice.claim(), logCue: _log.cue);
+    _tripOwner = _appVoice.claim();
+    _announcer = TripAnnouncer(
+      owner: _tripOwner,
+      logCue: _log.cue,
+      micOpen: _micOpen,
+      closeMic: () => _commands?.stopListening(),
+    );
     _startSession();
     _initCamera();
     _loadPlannedPath();
@@ -375,8 +388,78 @@ class _NavigationScreenState extends State<NavigationScreen>
   /// Re-speaks the most recent instruction on demand (the Repeat button, a
   /// tap on the map), and shows it for anyone with the voice or sound off.
   void _repeatLastAnnouncement() {
-    final text = _announcer.repeat();
+    final text = _announcer.repeat(
+      prefix: AppLocalizations.of(context)!.navRepeatPrefix,
+    );
     if (text != null) showSpokenNotice(context, text, replace: true);
+  }
+
+  /// The trip's voice, shared by guidance and the spoken commands (#228).
+  late VoiceOwner _tripOwner;
+
+  /// Spoken commands during the trip (#228), made on first use so a trip
+  /// that never listens never touches the recognizer.
+  HomeVoiceController? _commands;
+
+  /// Whether a command listen has the microphone: guidance holds (R4).
+  final ValueNotifier<bool> _micOpen = ValueNotifier(false);
+
+  HomeVoiceController _ensureCommands() {
+    final existing = _commands;
+    if (existing != null) return existing;
+    final made = HomeVoiceController(
+      speech: widget.speech,
+      voice: _appVoice,
+      owner: _tripOwner,
+    );
+    made.listening.addListener(() => _micOpen.value = made.listening.value);
+    return _commands = made;
+  }
+
+  /// Pauses or resumes the instructions (#228). The trip, its photos and
+  /// logs go on; the voice says which it is now (R5: the button's label
+  /// never changes).
+  Future<void> _togglePause() async {
+    final l10n = AppLocalizations.of(context)!;
+    if (_announcer.paused) {
+      _log.event('guidance_resumed');
+      await _announcer.resume(l10n.navResumed);
+    } else {
+      _log.event('guidance_paused');
+      await _announcer.pause(l10n.navPaused);
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// Listens once for "pausa", "seguir" or "repetir" (#228): a long press
+  /// on Repeat, or TalkBack's "Decir una orden".
+  Future<void> _listenForCommand() async {
+    if (_stopped) return;
+    final l10n = AppLocalizations.of(context)!;
+    final language = Localizations.localeOf(context).languageCode;
+    await _ensureCommands().listen(
+      (heard) async {
+        if (!mounted || _stopped) return;
+        switch (tripCommand(heard)) {
+          case TripCommand.pause:
+            if (!_announcer.paused) await _togglePause();
+          case TripCommand.resume:
+            if (_announcer.paused) await _togglePause();
+          case TripCommand.repeat:
+            _repeatLastAnnouncement();
+          case null:
+            await _announcer.speak(
+              l10n.navCommandNotHeard,
+              assertive: true,
+              repeatable: false,
+            );
+        }
+      },
+      language: language,
+      prompt: l10n.navCommandPrompt,
+      listenFor: const Duration(seconds: 8),
+      pauseFor: const Duration(seconds: 3),
+    );
   }
 
   /// Resolves the route's anchor ids (already in hand from find_or_create,
@@ -821,6 +904,8 @@ class _NavigationScreenState extends State<NavigationScreen>
     WidgetsBinding.instance.removeObserver(this);
     widget.sensors.keepAwake(false);
     _loop.stop();
+    _commands?.dispose();
+    _micOpen.dispose();
     _periodicAnnouncementTimer?.cancel();
     _guidanceTimer?.cancel();
     _loadingTimer?.cancel();
@@ -949,16 +1034,45 @@ class _NavigationScreenState extends State<NavigationScreen>
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: QuietAction(
-                            child: FilledButton.icon(
-                              style: FilledButton.styleFrom(
-                                minimumSize: const Size.fromHeight(160),
+                            child: Semantics(
+                              customSemanticsActions: {
+                                CustomSemanticsAction(
+                                  label: l10n.navTalkAction,
+                                ): _listenForCommand,
+                              },
+                              child: FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(160),
+                                  textStyle: Theme.of(
+                                    context,
+                                  ).textTheme.headlineSmall,
+                                ),
+                                onPressed: _repeatLastAnnouncement,
+                                onLongPress: _listenForCommand,
+                                icon: const Icon(Icons.replay, size: 40),
+                                label: Text(l10n.navRepeatButton),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          child: QuietAction(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(72),
                                 textStyle: Theme.of(
                                   context,
-                                ).textTheme.headlineSmall,
+                                ).textTheme.titleLarge,
                               ),
-                              onPressed: _repeatLastAnnouncement,
-                              icon: const Icon(Icons.replay, size: 40),
-                              label: Text(l10n.navRepeatButton),
+                              onPressed: _togglePause,
+                              icon: Icon(
+                                _announcer.paused
+                                    ? Icons.play_arrow
+                                    : Icons.pause,
+                                size: 32,
+                              ),
+                              label: Text(l10n.navPauseResumeButton),
                             ),
                           ),
                         ),
