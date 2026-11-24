@@ -367,6 +367,28 @@ void main() {
     });
   }
 
+  testWidgets('paused, coming back from the background stays quiet (#228)', (
+    tester,
+  ) async {
+    final t = _Trip();
+    await t.start(tester);
+    t.sensors.face(0);
+    await t.run(tester, seconds: 4);
+
+    await tester.tap(find.text(t.l10n.navPauseResumeButton));
+    await t.run(tester, seconds: 3);
+    expect(t.voice.said.last, t.l10n.navPaused);
+    final before = t.voice.said.length;
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await t.run(tester, seconds: 3);
+
+    expect(t.voice.said.length, before, reason: 'still paused after resuming');
+    expect(t.events('guidance_paused'), hasLength(1));
+    await t.close(tester);
+  });
+
   testWidgets('a repeat starts with "Repito" (#228)', (tester) async {
     final t = _Trip();
     await t.start(tester);
