@@ -35,10 +35,13 @@ class HomeVoiceController {
     SpeechToText? speech,
     AppVoice? voice,
     Future<void> Function()? marks,
+    VoiceOwner? owner,
   }) : _speech = speech ?? SpeechToText(),
        _appVoice = voice ?? AppVoice.instance,
        _marks = marks ?? _buzzAndClick {
-    _owner = _appVoice.claim();
+    // The trip shares its announcer's owner, so listening there doesn't
+    // take the voice from guidance (#228).
+    _owner = owner ?? _appVoice.claim();
   }
 
   final SpeechToText _speech;
