@@ -61,6 +61,10 @@ class HeadingTracker {
   DateTime? _gpsAnchoredAt;
   final List<({double course, DateTime at})> _courses = [];
 
+  /// The gyro-tracked heading over the last [swayWindow], for [swayDeg].
+  final List<({double heading, DateTime at})> _recent = [];
+  static const swayWindow = Duration(seconds: 2);
+
   /// Without a gyroscope: the last compass reading (true north), and how
   /// far it was from the walking direction last time both were known.
   double? _lastCompass;
@@ -75,6 +79,30 @@ class HeadingTracker {
 
   /// Whether a gyroscope is feeding this tracker.
   bool get hasGyroscope => _hasGyro;
+
+  /// How far the phone leans forward (+) or back from upright, and to the
+  /// side, in degrees, from the gravity estimate; null before any reading.
+  /// Logged per tick so a leaning walk can be read back (#263).
+  double? get pitchDeg {
+    final g = _gravity;
+    return g == null ? null : atan2(-g[2], g[1]) * 180 / pi;
+  }
+
+  double? get rollDeg {
+    final g = _gravity;
+    return g == null ? null : atan2(g[0], g[1]) * 180 / pi;
+  }
+
+  /// How far the gyro-tracked heading swung over the last [swayWindow]
+  /// (max − min, degrees): the body's own sway with each step, which
+  /// guidance hears as turning (#263). Null without a gyroscope.
+  double? swayDeg(DateTime now) {
+    final recent = _recent.where((r) => now.difference(r.at) <= swayWindow);
+    if (recent.length < 2) return null;
+    final first = recent.first.heading;
+    final turns = [for (final r in recent) signedTurn(first, r.heading)];
+    return turns.reduce(max) - turns.reduce(min);
+  }
 
   /// Whether [value] can be trusted for turn feedback and the photo
   /// heading gate. The raw compass never is: on a phone without a
@@ -141,6 +169,8 @@ class HeadingTracker {
     if (dt <= 0) return;
     final up = (x * g[0] + y * g[1] + z * g[2]) / norm;
     _heading = heading - up * dt * 180 / pi;
+    _recent.add((heading: _heading!, at: at));
+    _recent.removeWhere((r) => at.difference(r.at) > swayWindow);
   }
 
   /// Smoothed compass, already corrected to true north.
