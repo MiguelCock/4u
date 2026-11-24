@@ -91,8 +91,13 @@ class HomeVoiceController {
   /// How many times in a row nothing usable was heard (see [missed]).
   int _misses = 0;
 
-  /// Retries after the first try, before giving up.
+  /// Retries after the first try, before giving up (the dialogs' yes/no
+  /// and number questions).
   static const retries = 2;
+
+  /// Retries when asking for a place: more, since after them manual search
+  /// is offered (#226).
+  static const placeRetries = 4;
 
   bool get isCovered => _covered;
   bool get isListening => listening.value;
@@ -121,7 +126,7 @@ class HomeVoiceController {
   /// the count starts over).
   bool missed() {
     _misses++;
-    if (_misses > retries) {
+    if (_misses > placeRetries) {
       _misses = 0;
       return false;
     }

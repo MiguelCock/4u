@@ -46,6 +46,23 @@ final ValueNotifier<bool> showMapNotifier = ValueNotifier<bool>(false);
 /// can be.
 final ValueNotifier<bool> showChoicesNotifier = ValueNotifier<bool>(false);
 
+/// The voice's speed (#226, #192): the engine's rate, 0.6 by default (a
+/// little faster than its 0.5; testers used to TalkBack found it slow).
+const Map<String, double> kSpeechRates = {
+  'slow': 0.5,
+  'normal': 0.6,
+  'fast': 0.75,
+};
+const double kDefaultSpeechRate = 0.6;
+final ValueNotifier<double> speechRateNotifier = ValueNotifier<double>(
+  kDefaultSpeechRate,
+);
+
+/// The [kSpeechRates] key nearest [rate].
+String speechRateName(double rate) => kSpeechRates.entries
+    .reduce((a, b) => (a.value - rate).abs() <= (b.value - rate).abs() ? a : b)
+    .key;
+
 /// Whether the home screen shows the Start and destination rows: when the
 /// user turned them on, or when this phone has no speech recognizer at all
 /// ([revealed]). Not after failed tries, and not for TalkBack: voice first
@@ -94,4 +111,6 @@ void applyPreferences(Map<String, dynamic>? preferences) {
   showMapNotifier.value = prefs['show_map'] as bool? ?? false;
   showChoicesNotifier.value = prefs['show_choices'] as bool? ?? false;
   boldTextNotifier.value = prefs['bold_text'] as bool? ?? kDefaultBoldText;
+  speechRateNotifier.value =
+      (prefs['speech_rate'] as num?)?.toDouble() ?? kDefaultSpeechRate;
 }
