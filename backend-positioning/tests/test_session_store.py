@@ -355,8 +355,32 @@ async def test_standing_with_a_new_fix_every_second_counts_as_still(monkeypatch)
         candidates=[_match("a", 6.2 + 9 * _M, -75.6, 0.8)],
     )
     assert result.anchor_match_id == "a"
+    # The candidate's verdict must not overwrite why this tick counted as still.
+    assert result.debug["stationary_reason"] == "speed"
     # Same guard as the field test above, now with a new fix each tick.
     assert (result.corrected_lat - 6.2) / _M < 4.0
+
+
+@pytest.mark.asyncio
+async def test_stationary_reason_survives_a_rejected_candidate(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(session_store_module.time, "monotonic", lambda: clock[0])
+    store = SessionStore()
+    await _correct(store, "still-far", lat=6.2, lng=-75.6, accuracy=5.0, gps_time="t0")
+    clock[0] += 3.5
+    result = await _correct(
+        store,
+        "still-far",
+        lat=6.2,
+        lng=-75.6,
+        accuracy=5.0,
+        gps_time="t1",
+        gps_speed=0.1,
+        candidates=[_match("far", 6.2 + 60 * _M, -75.6, 0.95)],
+    )
+    assert result.debug["stationary"] is True
+    assert result.debug["stationary_reason"] == "speed"
+    assert result.debug["candidates"][0]["verdict"] == "too_far"
 
 
 # --- GPS offset (bias) state ------------------------------------------------
