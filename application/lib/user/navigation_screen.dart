@@ -95,6 +95,10 @@ class NavigationScreen extends StatefulWidget {
   final AppVoice? voice;
   final TripSensors sensors;
 
+  /// The destinations the home screen knows (#227): those beside the route
+  /// are said as the user passes them.
+  final List<Map<String, dynamic>> placesNearby;
+
   /// The signed-in user's id; null when nobody is.
   final String? Function()? userId;
 
@@ -111,6 +115,7 @@ class NavigationScreen extends StatefulWidget {
     this.voice,
     this.sensors = const TripSensors(),
     this.userId,
+    this.placesNearby = const [],
   });
 
   @override
@@ -396,6 +401,18 @@ class _NavigationScreenState extends State<NavigationScreen>
         _plannedFloors = plan.floors;
         if (plan.floors.isNotEmpty) _startTypeId = plan.startTypeId;
         _route.load(plan);
+        _guide.setPlacesBeside(
+          plan.points,
+          placesBeside(
+            plan.points,
+            widget.placesNearby,
+            onRoute: anchorIds.toSet(),
+            stops: [
+              if (plan.startPoint != null) plan.startPoint!,
+              for (final w in plan.waypoints) w.point,
+            ],
+          ),
+        );
         _checkpoints = CheckpointSequence(plan.cornerCount);
       });
     }

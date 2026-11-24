@@ -88,6 +88,7 @@ class _Trip {
     this.route = _route,
     List<Map<String, dynamic>> anchors = const [_entrance, _corner, _library],
     this.hPa,
+    this.placesNearby = const [],
   }) : map = FakeMapApi(
          anchors: anchors,
          connections: _chain(routeAnchorIds(route)),
@@ -96,6 +97,7 @@ class _Trip {
   final bool signedIn;
   final String? resumeSessionId;
   final Map<String, dynamic> route;
+  final List<Map<String, dynamic>> placesNearby;
 
   /// The barometer's reading, sent every 100 ms; null: no barometer.
   double? hPa;
@@ -133,6 +135,7 @@ class _Trip {
                     voice: voice.voice,
                     sensors: sensors,
                     userId: () => signedIn ? 'u1' : null,
+                    placesNearby: placesNearby,
                   ),
                 ),
               ),
@@ -290,6 +293,34 @@ void main() {
     ]);
     expect(t.navigation.patches['/sessions/s1']?['status'], 'completed');
     expect(t.posted, contains('/logs'));
+    await t.close(tester);
+  });
+
+  testWidgets('a place beside the route is said once, as it is passed '
+      '(#227)', (tester) async {
+    final t = _Trip(
+      placesNearby: const [
+        {
+          'id': 'c1',
+          'building_id': 'b1',
+          'location_type_id': 8,
+          'location_description': 'Cafetería',
+          'floor': 0,
+          'latitude': 6.20015,
+          'longitude': -75.58003,
+        },
+      ],
+    );
+    await t.start(tester);
+    t.sensors.face(0);
+    await t.run(tester, seconds: 4);
+    await t.walkTo(tester, 6.2003, -75.5800, heading: 0, steps: 12);
+    await t.walkTo(tester, 6.2003, -75.5797, heading: 90);
+    await t.run(tester, seconds: 4);
+    final passed = t.l10n.navPassedPlace('Cafetería');
+    expect(t.voice.said.where((s) => s == passed), hasLength(1));
+    expect(t.events('passed_place'), hasLength(1));
+    expect(t.voice.said, contains(t.l10n.navArrivedFinished('Biblioteca')));
     await t.close(tester);
   });
 

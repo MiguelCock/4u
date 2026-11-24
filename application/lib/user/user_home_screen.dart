@@ -360,6 +360,7 @@ class _UserHomeScreenState extends State<UserHomeScreen>
               route: route,
               destinationName: _talk.spoken(end),
               adminPreview: widget.adminPreview,
+              placesNearby: _trip.anchors,
             ),
           ),
         );

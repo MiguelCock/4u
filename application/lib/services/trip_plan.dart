@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:latlong2/latlong.dart';
 
 import 'capture_checks.dart' show kVerticalLocationTypes;
@@ -186,4 +188,60 @@ int resumeWaypointIndex(LatLng here, List<Waypoint> waypoints) {
     nearest++;
   }
   return nearest;
+}
+
+/// A named place beside the route (#227), said once the user passes it.
+class PlaceBeside {
+  const PlaceBeside(this.name, this.point, this.along);
+
+  final String name;
+  final LatLng point;
+
+  /// Metres along the route to where the place is beside it.
+  final double along;
+}
+
+/// Where [here] is along [route]: metres from its start to the nearest
+/// point on it, and how far off it [here] is.
+({double along, double off}) alongRoute(List<LatLng> route, LatLng here) {
+  var best = (along: 0.0, off: double.infinity);
+  var before = 0.0;
+  for (var i = 0; i + 1 < route.length; i++) {
+    final p = projectOntoSegment(here, route[i], route[i + 1]);
+    final t = p.along.clamp(0.0, p.length);
+    final off = sqrt(pow(p.along - t, 2) + pow(p.crossTrack, 2));
+    if (off < best.off) best = (along: before + t, off: off);
+    before += p.length;
+  }
+  return best;
+}
+
+/// The named destinations within [within] metres of [route] that aren't on
+/// it ([onRoute] ids) and aren't within [awayFromStops] of a stop: those
+/// are said at the stop itself (#227). Nearest the start first; each name
+/// once.
+List<PlaceBeside> placesBeside(
+  List<LatLng> route,
+  Iterable<Map<String, dynamic>> places, {
+  required Set<Object?> onRoute,
+  required List<LatLng> stops,
+  double within = 5,
+  double awayFromStops = 8,
+}) {
+  if (route.length < 2) return const [];
+  final found = <PlaceBeside>[];
+  final names = <String>{};
+  for (final place in places) {
+    if (onRoute.contains(place['id']) || !isDestinationAnchor(place)) continue;
+    final point = anchorPosition(place);
+    final name = (place['location_description'] as String? ?? '').trim();
+    if (point == null || name.isEmpty) continue;
+    final at = alongRoute(route, point);
+    if (at.off > within) continue;
+    if (stops.any((s) => haversineMeters(s, point) < awayFromStops)) continue;
+    if (!names.add(name.toLowerCase())) continue;
+    found.add(PlaceBeside(name, point, at.along));
+  }
+  found.sort((a, b) => a.along.compareTo(b.along));
+  return found;
 }

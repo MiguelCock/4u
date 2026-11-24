@@ -8,6 +8,7 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ### Added
 
+- **Hear the places you pass (#227):** while walking, a named place right beside the route (a cafeteria, the restrooms) is said once as you pass it: "Pasaste por la cafetería". It's never said over another instruction or near a turn.
 - **Indoors, planned (0.7.0):** a design for guiding from a building's entrance to a classroom seat, with scanned maps of each room and obstacle warnings. Nothing changes in the app yet. See [docs/decisions/i1-indoor-module.md](docs/decisions/i1-indoor-module.md).
 
 ### Fixed

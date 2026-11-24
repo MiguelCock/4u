@@ -621,6 +621,8 @@
   "@navWalkForward": {"placeholders": {"steps": {"type": "int"}}},
   "navLoadingRoute": "Loading the route…",
   "navRepeatButton": "Repeat instruction",
+  "navPassedPlace": "You passed {name}.",
+  "@navPassedPlace": {"placeholders": {"name": {"type": "String"}}},
   "homeGoToTitle": "Go to {name}?",
   "@homeGoToTitle": {"placeholders": {"name": {"type": "String"}}},
   "homeStartRouteButton": "Start route",

@@ -492,6 +492,8 @@
   "navWalkForward": "Camina hacia adelante unos {steps} pasos. Te avisaré si vas en otra dirección.",
   "navLoadingRoute": "Cargando la ruta…",
   "navRepeatButton": "Repetir instrucción",
+  "navPassedPlace": "Pasaste por {name}.",
+  "@navPassedPlace": {"placeholders": {"name": {"type": "String"}}},
   "homeGoToTitle": "¿Ir a {name}?",
   "homeStartRouteButton": "Iniciar ruta",
   "homeSearchingLocation": "Buscando tu ubicación…",
