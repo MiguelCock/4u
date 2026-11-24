@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
+import '../services/app_preferences.dart' show speechRateNotifier;
 import '../services/speech_queue.dart';
 import '../services/speech_voice.dart';
 
@@ -45,6 +46,12 @@ class AppVoice {
         return ready;
       },
     );
+    // A new speed applies at once (#226).
+    speechRateNotifier.addListener(() async {
+      try {
+        await tts.setSpeechRate(speechRateNotifier.value);
+      } catch (_) {}
+    });
     tts
       ..setStartHandler(voice.onStarted)
       ..setCompletionHandler(voice.onEnded)

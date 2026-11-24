@@ -260,7 +260,9 @@ class FakeUserApi extends UserManagementApi with RecordsWrites {
   Future<dynamic> get(String path) async => switch (path) {
     '/profiles' => profiles,
     '/profiles/orphaned' => orphaned,
-    _ => throw ApiException(404, path),
+    _ =>
+      profiles.where((p) => '/profiles/${p['id']}' == path).firstOrNull ??
+          (throw ApiException(404, path)),
   };
 }
 

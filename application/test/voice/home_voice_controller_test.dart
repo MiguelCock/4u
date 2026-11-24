@@ -177,14 +177,19 @@ void main() {
     });
   });
 
-  test('misses: two retries, then give up, then the count starts over', () {
+  test('misses: four retries for a place, then give up, then the count '
+      'starts over (#226)', () {
     final ctl = _Setup().ctl;
-    expect([ctl.missed(), ctl.missed(), ctl.missed()], [true, true, false]);
+    const tries = HomeVoiceController.placeRetries + 1;
+    expect(
+      [for (var i = 0; i < tries; i++) ctl.missed()],
+      [for (var i = 0; i < tries; i++) i < tries - 1],
+    );
     expect(ctl.missed(), isTrue);
-    ctl
-      ..resetMisses()
-      ..missed()
-      ..missed();
+    ctl.resetMisses();
+    for (var i = 0; i < tries - 1; i++) {
+      ctl.missed();
+    }
     expect(ctl.missed(), isFalse);
   });
 

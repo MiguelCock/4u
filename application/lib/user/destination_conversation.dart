@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../voice/voice_attempts.dart';
 import '../l10n/app_localizations.dart';
+import '../services/voice_settings_menu.dart';
+import '../services/destination_matcher.dart' show SpokenAnswer, spokenAnswer;
 import '../services/app_preferences.dart';
 import '../services/buzz.dart';
 import '../services/geo_utils.dart';
@@ -25,6 +27,9 @@ abstract interface class ConversationHost {
 
   /// The user said yes to "Go to X?": find the route.
   Future<void> startTrip();
+
+  /// Saves preference changes to the profile and applies them (#226).
+  Future<void> savePreferences(Map<String, dynamic> changes);
 }
 
 /// Choosing where to go, by voice first (D1), or by hand (#268): asking,
@@ -156,6 +161,11 @@ class DestinationConversation {
       return;
     }
     voice.resetMisses();
+    if (asksForSettings(heard)) {
+      logAttempt('settings');
+      await _settingsMenu();
+      return;
+    }
     final buildings = _buildings;
     if (asksWhatPlaces(heard)) {
       logAttempt('what_places');
@@ -201,12 +211,140 @@ class DestinationConversation {
   Future<void> _missed(String why) async {
     final l10n = _l10n;
     if (!voice.missed()) {
+      if (!showsChoices) {
+        await voice.say(why);
+        await _offerManualSearch();
+        return;
+      }
       await voice.say('$why ${l10n.homeVoiceGiveUp}');
       return;
     }
     await voice.say(why);
     // A destination chosen earlier doesn't stop it: the user is asking again.
     if (host.mounted && _onTop) await _listen(prompt: l10n.homeListenPrompt);
+  }
+
+  /// After the last miss (#226): "¿Quieres activar la búsqueda manual?".
+  /// "Sí" turns on the start and destination rows, saved like Settings.
+  Future<void> _offerManualSearch() async {
+    final l10n = _l10n;
+    if (!host.mounted) return;
+    await voice.say(l10n.homeOfferManualSearch);
+    await voice.askUntil<SpokenAnswer>(
+      spokenAnswer,
+      onAnswer: (answer) async {
+        if (answer == SpokenAnswer.change) {
+          await voice.say(l10n.homeVoiceGiveUp);
+          return;
+        }
+        if (await _save({VoiceSetting.manualSearch.key: true})) {
+          host.conversationChanged();
+          await voice.say(l10n.homeManualSearchOn);
+        }
+      },
+      language: _language,
+      notUnderstood: l10n.homeManualSearchSayYesOrNo,
+      giveUp: l10n.homeVoiceGiveUp,
+      retries: 1,
+      stillOpen: () => host.mounted && _onTop,
+    );
+  }
+
+  /// Saves [changes], and says so if it couldn't.
+  Future<bool> _save(Map<String, dynamic> changes) async {
+    try {
+      await host.savePreferences(changes);
+      return true;
+    } catch (_) {
+      await voice.say(_l10n.voiceSettingsSaveFailed);
+      return false;
+    }
+  }
+
+  /// "Ajustes" (#226): the settings read one at a time, each with its
+  /// value; "sí", "no", "lenta/normal/rápida", "siguiente" or "salir".
+  Future<void> _settingsMenu() async {
+    final menu = VoiceSettingsMenu.current();
+    await voice.say(_l10n.voiceSettingsIntro);
+    await _menuStep(menu);
+  }
+
+  Future<void> _menuStep(VoiceSettingsMenu menu) async {
+    final l10n = _l10n;
+    if (!host.mounted || !_onTop) return;
+    await voice.say(_menuPrompt(menu));
+    Future<void> next() async {
+      if (menu.advance()) {
+        await _menuStep(menu);
+      } else {
+        await _closeMenu();
+      }
+    }
+
+    await voice.askUntil<MenuReply>(
+      menu.answer,
+      onAnswer: (reply) async {
+        switch (reply) {
+          case MenuSet():
+            if (await _save({reply.setting.key: reply.value})) {
+              menu.set(reply);
+              host.conversationChanged();
+              await voice.say(
+                l10n.voiceSettingsChanged(
+                  _settingName(reply.setting),
+                  _valueName(reply.setting, reply.value),
+                ),
+              );
+            }
+            await next();
+          case MenuNext():
+            await next();
+          case MenuExit():
+            await _closeMenu();
+        }
+      },
+      language: _language,
+      notUnderstood: l10n.voiceSettingsNotUnderstood,
+      giveUp: l10n.voiceSettingsClosed,
+      stillOpen: () => host.mounted && _onTop,
+    );
+  }
+
+  Future<void> _closeMenu() async {
+    await voice.say(_l10n.voiceSettingsClosed);
+    if (host.mounted && _onTop) await _listen(prompt: _l10n.homeListenPrompt);
+  }
+
+  String _menuPrompt(VoiceSettingsMenu menu) {
+    final l10n = _l10n;
+    final setting = menu.current;
+    final value = _valueName(setting, menu.values[setting]!);
+    return setting == VoiceSetting.speed
+        ? l10n.voiceSettingsSpeedPrompt(value)
+        : l10n.voiceSettingsTogglePrompt(_settingName(setting), value);
+  }
+
+  String _settingName(VoiceSetting setting) {
+    final l10n = _l10n;
+    return switch (setting) {
+      VoiceSetting.speed => l10n.voiceSettingSpeed,
+      VoiceSetting.manualSearch => l10n.voiceSettingManualSearch,
+      VoiceSetting.map => l10n.voiceSettingMap,
+      VoiceSetting.boldText => l10n.voiceSettingBoldText,
+      VoiceSetting.voiceGuidance => l10n.voiceSettingVoiceGuidance,
+    };
+  }
+
+  String _valueName(VoiceSetting setting, Object value) {
+    final l10n = _l10n;
+    if (setting == VoiceSetting.speed) {
+      return switch (speechRateName(value as double)) {
+        'slow' => l10n.voiceSpeedSlow,
+        'fast' => l10n.voiceSpeedFast,
+        _ => l10n.voiceSpeedNormal,
+      };
+    }
+    return value == true ? l10n.voiceSettingOn : l10n.voiceSettingOff;
   }
 
   /// "¿Qué lugares hay?" (D9): the nearest places, a few at a time.

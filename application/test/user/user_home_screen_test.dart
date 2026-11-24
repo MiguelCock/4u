@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:eyes4u/voice/voice_attempts.dart';
+import 'package:eyes4u/voice/home_voice_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -90,6 +91,19 @@ class _Harness {
   final List<Map<String, dynamic>> connections;
   final speech = FakeSpeech();
   final voice = FakeVoice();
+  final users = FakeUserApi(
+    profiles: [
+      {
+        'id': 'u1',
+        'preferences': {'verbosity': 'high', 'language': 'es'},
+      },
+    ],
+  );
+
+  /// The preferences saved by voice, merged (#226).
+  Map<String, dynamic>? get saved => users.writes.isEmpty
+      ? null
+      : (users.writes.last.$3!['preferences'] as Map).cast<String, dynamic>();
 
   late AppLocalizations l10n;
 
@@ -113,6 +127,8 @@ class _Harness {
           locationService: LocationService.forTesting(NoLocation()),
           speech: speech,
           voice: voice.voice,
+          userApi: users,
+          userId: () => 'u1',
         ),
       ),
     );
@@ -184,6 +200,75 @@ void main() {
     expect(attempts.single['used'], 'la biblioteca');
     expect(attempts.single['sound_peak'], 9);
     expect(attempts.single['alternates'], hasLength(2));
+  });
+
+  group('by voice alone (#226)', () {
+    setUp(() {
+      showChoicesNotifier.value = false;
+      speechRateNotifier.value = kDefaultSpeechRate;
+    });
+
+    testWidgets('five misses offer manual search; "sí" turns it on and saves '
+        'it with the rest', (tester) async {
+      final h = _Harness();
+      await h.pump(tester);
+      await h.run(tester);
+      for (var i = 0; i < 5; i++) {
+        h.speech.hear('');
+        await h.run(tester);
+      }
+      expect(h.voice.said.last, h.l10n.homeOfferManualSearch);
+      h.speech.hear('sí');
+      await h.run(tester);
+      expect(h.voice.said.last, h.l10n.homeManualSearchOn);
+      expect(h.saved, {
+        'verbosity': 'high',
+        'language': 'es',
+        'show_choices': true,
+      });
+      expect(showChoicesNotifier.value, isTrue);
+    });
+
+    for (final talkBack in [false, true]) {
+      testWidgets('"ajustes" reads one option at a time and changes it '
+          '(TalkBack ${talkBack ? 'on' : 'off'})', (tester) async {
+        tester.platformDispatcher.accessibilityFeaturesTestValue = talkBack
+            ? const FakeAccessibilityFeatures(accessibleNavigation: true)
+            : const FakeAccessibilityFeatures();
+        addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+        final h = _Harness();
+        await h.pump(tester);
+        await h.run(tester, seconds: talkBack ? 5 : 3);
+        h.speech.hear('ajustes');
+        await h.run(tester);
+        expect(
+          h.voice.said.last,
+          h.l10n.voiceSettingsSpeedPrompt(h.l10n.voiceSpeedNormal),
+        );
+        h.speech.hear('más rápida');
+        await h.run(tester);
+        expect(speechRateNotifier.value, kSpeechRates['fast']);
+        expect(h.saved?['speech_rate'], kSpeechRates['fast']);
+        // Next option: manual search, off.
+        expect(
+          h.voice.said.last,
+          h.l10n.voiceSettingsTogglePrompt(
+            h.l10n.voiceSettingManualSearch,
+            h.l10n.voiceSettingOff,
+          ),
+        );
+        h.speech.hear('salir');
+        await h.run(tester);
+        expect(h.voice.said, contains(h.l10n.voiceSettingsClosed));
+        expect(
+          h.speech.isListening,
+          isTrue,
+          reason: 'back to asking for a place',
+        );
+      });
+    }
   });
 
   testWidgets('a place heard asks "¿Ir a X?", says "di sí" and listens', (
@@ -276,12 +361,14 @@ void main() {
     await h.close(tester);
   });
 
-  testWidgets('silence is retried twice, then it gives up', (tester) async {
+  testWidgets('silence is retried four times, then manual search is '
+      'offered; "no" gives up (#226)', (tester) async {
+    showChoicesNotifier.value = false;
     final h = _Harness();
     await h.pump(tester);
     await h.run(tester);
 
-    for (var retry = 1; retry <= 2; retry++) {
+    for (var retry = 1; retry <= HomeVoiceController.placeRetries; retry++) {
       h.speech.hear('');
       await h.run(tester);
       expect(h.speech.listens, 1 + retry);
@@ -293,11 +380,34 @@ void main() {
 
     h.speech.hear('');
     await h.run(tester);
+    expect(h.voice.said.sublist(h.voice.said.length - 2), [
+      h.l10n.homeVoiceNothingHeard,
+      h.l10n.homeOfferManualSearch,
+    ]);
+    h.speech.hear('no');
+    await h.run(tester);
+    expect(h.voice.said.last, h.l10n.homeVoiceGiveUp);
+    expect(h.speech.isListening, isFalse);
+    expect(h.users.writes, isEmpty);
+    await h.close(tester);
+  });
+
+  testWidgets('with manual search already on, the last miss just gives up', (
+    tester,
+  ) async {
+    showChoicesNotifier.value = true;
+    addTearDown(() => showChoicesNotifier.value = false);
+    final h = _Harness();
+    await h.pump(tester);
+    await h.run(tester);
+    for (var i = 0; i <= HomeVoiceController.placeRetries; i++) {
+      h.speech.hear('');
+      await h.run(tester);
+    }
     expect(
       h.voice.said.last,
       '${h.l10n.homeVoiceNothingHeard} ${h.l10n.homeVoiceGiveUp}',
     );
-    expect(h.speech.listens, 3);
     expect(h.speech.isListening, isFalse);
     await h.close(tester);
   });

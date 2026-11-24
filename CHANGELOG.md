@@ -8,6 +8,9 @@ Each release's section becomes its GitHub release description (`.github/workflow
 
 ### Added
 
+- **Settings by voice (#226):** saying "ajustes" when the app asks where to go reads the settings one at a time (voice speed, manual search, the map, bold text, voice guidance), each with its value. Answer "sí" to change it, "lenta", "normal" or "rápida" for the speed, "siguiente" or "salir".
+- **Manual search offered (#226):** after five tries without finding a place, the app asks "¿Quieres activar la búsqueda manual?", and "sí" shows the start and destination rows to choose from the list. It used to stop after three.
+- **Voice speed (#226, #192):** slow, normal or fast, in Settings or by voice.
 - **Hear the places you pass (#227):** while walking, a named place right beside the route (a cafeteria, the restrooms) is said once as you pass it: "Pasaste por la cafetería". It's never said over another instruction or near a turn.
 - **Pause the guidance (#228):** a **Pausar o seguir la guía** button on the trip, or saying "pausa" and "seguir" after a long press on **Repetir instrucción** (with TalkBack, its "Decir una orden" action), stops and resumes the instructions while the trip goes on. The arrival is still announced. A repeated instruction now starts with "Repito:", so it's never taken for a new one.
 - **Indoors, planned (0.7.0):** a design for guiding from a building's entrance to a classroom seat, with scanned maps of each room and obstacle warnings. Nothing changes in the app yet. See [docs/decisions/i1-indoor-module.md](docs/decisions/i1-indoor-module.md).

@@ -7,6 +7,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/preference_store.dart';
 import '../services/api_service.dart';
 import '../services/geo_utils.dart';
 import '../services/location_service.dart';
@@ -48,6 +49,10 @@ class UserHomeScreen extends StatefulWidget {
   final SpeechToText? speech;
   final AppVoice? voice;
 
+  /// Where preference changes made by voice are saved (#226), and whose.
+  final ApiService? userApi;
+  final String? Function()? userId;
+
   const UserHomeScreen({
     super.key,
     this.adminPreview = false,
@@ -58,6 +63,8 @@ class UserHomeScreen extends StatefulWidget {
     this.locationService,
     this.speech,
     this.voice,
+    this.userApi,
+    this.userId,
   });
 
   @override
@@ -188,6 +195,19 @@ class _UserHomeScreenState extends State<UserHomeScreen>
 
   @override
   Future<void> startTrip() => _findRoute();
+
+  @override
+  Future<void> savePreferences(Map<String, dynamic> changes) async {
+    final id =
+        widget.userId?.call() ?? Supabase.instance.client.auth.currentUser?.id;
+    if (id == null) throw StateError('not signed in');
+    await savePreferenceChanges(
+      widget.userApi ?? UserManagementApi(),
+      id,
+      changes,
+    );
+    if (mounted) setState(() {});
+  }
 
   /// Best-effort early load (see [TripStarter.loadQuietly]).
   Future<void> _loadAnchors() => _trip.loadQuietly();

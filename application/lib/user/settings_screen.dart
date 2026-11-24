@@ -44,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _showMap = false;
   bool _showChoices = false;
   bool _boldText = kDefaultBoldText;
+  double _speechRate = kDefaultSpeechRate;
 
   @override
   void initState() {
@@ -80,6 +81,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _showMap = prefs['show_map'] as bool? ?? false;
         _showChoices = prefs['show_choices'] as bool? ?? false;
         _boldText = prefs['bold_text'] as bool? ?? kDefaultBoldText;
+        _speechRate =
+            kSpeechRates[speechRateName(
+              (prefs['speech_rate'] as num?)?.toDouble() ?? kDefaultSpeechRate,
+            )]!;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -112,6 +117,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'show_map': _showMap,
           'show_choices': _showChoices,
           'bold_text': _boldText,
+          'speech_rate': _speechRate,
         },
       });
       applyPreferences({
@@ -123,6 +129,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'show_map': _showMap,
         'show_choices': _showChoices,
         'bold_text': _boldText,
+        'speech_rate': _speechRate,
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -240,6 +247,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       selected: {_fontScale},
                       onSelectionChanged: (selection) =>
                           setState(() => _fontScale = selection.first),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      l10n.voiceSettingSpeed,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    SegmentedButton<double>(
+                      segments: [
+                        ButtonSegment(
+                          value: kSpeechRates['slow']!,
+                          label: Text(l10n.settingsSpeedSlow),
+                        ),
+                        ButtonSegment(
+                          value: kSpeechRates['normal']!,
+                          label: Text(l10n.settingsSpeedNormal),
+                        ),
+                        ButtonSegment(
+                          value: kSpeechRates['fast']!,
+                          label: Text(l10n.settingsSpeedFast),
+                        ),
+                      ],
+                      selected: {_speechRate},
+                      onSelectionChanged: (selection) =>
+                          setState(() => _speechRate = selection.first),
                     ),
                     const SizedBox(height: 8),
                     SwitchListTile(
