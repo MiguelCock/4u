@@ -54,6 +54,18 @@ Results on the 236 campus anchor photos (2 CPU threads):
 
 EigenPlaces is the best within the ~0.5 s budget on the server. MegaLoc is a little better again, but 2–4× slower; the frames from test walks will show whether that's worth it. To switch model, set `EMBEDDING_MODEL` in `backend-ai-training/.env`, restart, run **Re-index verified points** in the admin menu, and set `POSITIONING_MIN_MATCH_SCORE` for its scale.
 
+
+**On real frames (#122, #182).** `scripts/build_frame_set.py out/` (read-only, with `packages/.env`'s Supabase values) takes every admin test walk with at least two checkpoint taps. It gives each kept frame the position the user really had (a steady pace between taps, as `replay.py` does), its GPS fix and its compass heading, and downloads the frames and the photos of every anchor within 60 m. `scripts/benchmark_models.py --frames out/ --models prod prod_320` then queries each frame against those photos, through the same 60 m and 60° gates as `/search_similar`. A frame counts as right when its top anchor is within 8 m of the true position, and it's scored separately for daylight and dusk (from 17:00 local). `prod` is the service's own EigenPlaces (`app/embedding.py`), with `prod_320` / `prod_256` at smaller inputs. Keep `out/` in `test_users_comments/`: the frames are real walks.
+
+First run (2026-11-24): 270 frames from 3 walks, 126 by day (12–14 h) and 144 at dusk (17–18 h), 393 anchor photos; times on a laptop CPU with 2 threads.
+
+| model | day: top within 8 m | dusk | median error | per photo |
+|---|---:|---:|---:|---:|
+| `prod` (384) | 85 % | 74 % | 3.4 / 3.3 m | 401 ms |
+| `prod_320` | 84 % | 74 % | 3.2 / 3.5 m | 275 ms |
+| `prod_256` | 82 % | 75 % | 3.2 / 3.5 m | 293 ms |
+
+320 keeps the accuracy and cut the time by about a third. Changing it needs every photo re-indexed, so it's decided on the server's own timing (#122). Dusk is 11 points worse than daylight; night isn't measured yet (#182).
 ## 2. Collect data
 
 1. Walk the route with **Test as user** (admin drawer). Tap **✗ Wrong instruction** every time the app says something wrong.
