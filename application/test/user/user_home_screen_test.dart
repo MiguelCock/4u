@@ -6,6 +6,7 @@ import 'package:eyes4u/voice/app_voice.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:eyes4u/voice/voice_attempts.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -158,6 +159,31 @@ void main() {
     expect(h.speech.listens, 1);
     expect(h.speech.isListening, isTrue);
     await h.close(tester);
+  });
+
+  testWidgets('noise on top, the place second: the place is used, and the '
+      'attempt kept for the next trip (#262)', (tester) async {
+    VoiceAttempts.instance.drain();
+    final h = _Harness();
+    await h.pump(tester);
+    await h.run(tester);
+
+    h.speech.hearAlternates([
+      ('vamos ya pedro', 0.8),
+      ('la biblioteca', 0.55),
+    ], soundPeak: 9);
+    await h.run(tester);
+
+    expect(
+      find.text(h.l10n.homeGoToTitle('Biblioteca · Edificio C')),
+      findsOneWidget,
+    );
+    final attempts = VoiceAttempts.instance.drain();
+    expect(attempts, hasLength(1));
+    expect(attempts.single['outcome'], 'one');
+    expect(attempts.single['used'], 'la biblioteca');
+    expect(attempts.single['sound_peak'], 9);
+    expect(attempts.single['alternates'], hasLength(2));
   });
 
   testWidgets('a place heard asks "¿Ir a X?", says "di sí" and listens', (

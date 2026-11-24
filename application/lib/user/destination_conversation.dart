@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../voice/voice_attempts.dart';
 import '../l10n/app_localizations.dart';
 import '../services/app_preferences.dart';
 import '../services/buzz.dart';
@@ -138,26 +139,49 @@ class DestinationConversation {
     final l10n = _l10n;
     // Felt: listening has stopped.
     buzz(Buzz.short);
+    // Every alternate the recognizer offered, best first (#262).
+    final alternates = voice.lastHeard.isNotEmpty
+        ? voice.lastHeard
+        : [(words: heard, confidence: -1.0)];
+    void logAttempt(String outcome, {String? used}) =>
+        VoiceAttempts.instance.add(
+          heard: alternates,
+          soundPeak: voice.lastSoundPeak,
+          outcome: outcome,
+          used: used,
+        );
     if (heard.trim().isEmpty) {
+      logAttempt('nothing');
       await _missed(l10n.homeVoiceNothingHeard);
       return;
     }
     voice.resetMisses();
     final buildings = _buildings;
     if (asksWhatPlaces(heard)) {
+      logAttempt('what_places');
       await _suggest(buildings);
       return;
     }
-    final found = resolveSpokenDestination(
-      heard,
-      candidates: destinationCandidates(
-        trip.anchors,
-        buildings: buildings,
-        startId: trip.start?['id'],
-      ),
+    final candidates = destinationCandidates(
+      trip.anchors,
       buildings: buildings,
-      buildingNames: trip.buildingNames,
-      distance: _distanceFromUser,
+      startId: trip.start?['id'],
+    );
+    // The top guess first; if it names nothing, the alternates (#262).
+    final best = bestHeard(alternates, (words) {
+      final found = resolveSpokenDestination(
+        words,
+        candidates: candidates,
+        buildings: buildings,
+        buildingNames: trip.buildingNames,
+        distance: _distanceFromUser,
+      );
+      return found.isEmpty ? null : found;
+    });
+    final found = best?.result ?? const <Map<String, dynamic>>[];
+    logAttempt(
+      found.isEmpty ? 'no_match' : (found.length == 1 ? 'one' : 'several'),
+      used: best != null && best.words != heard ? best.words : null,
     );
     if (found.isEmpty) {
       // Only mention a list when there's one on screen.
