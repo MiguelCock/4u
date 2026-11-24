@@ -39,6 +39,10 @@ One walking round answers several stories at once:
 | B2 phones | each phone available walks the standard route once, cheap ones included |
 | B6 night | the standard route once at dusk, or after dark, with one phone already used by day |
 | B5 / SUS | each participant answers the 10 questions below right after their walk |
+| B7 leaning | one walk of the standard route leaning the body and the phone on purpose, swaying a little with each step; each tick logs `pitch`, `roll` and `heading_sway` (#263) |
+| B8 drifting | on one long straight, face the right way and slide sideways off the path on purpose, once to each side; note when the app said it (#300) |
+
+**The 0.6.4 evening round** fits B1, B6, B7 and B8 in one session on the library's four stretches, starting about 30 minutes before sunset: a normal test walk at dusk (B6), the same leaning on purpose (B7), drifting on purpose on one straight (B8), and the two B1 stretches. Afterwards `backend-ai-training/scripts/build_frame_set.py` and `benchmark_models.py --frames` score the dusk and night frames (B6). `replay.py --compare --thin-m` (B1) and `application/test/tools/replay_drift_test.dart` (B8) replay the walks.
 
 ## The sheet (one row per walk)
 
@@ -122,6 +126,10 @@ Una sola ronda de caminatas responde varias historias a la vez:
 | B2 teléfonos | cada teléfono disponible camina la ruta estándar una vez, también los económicos |
 | B6 noche | la ruta estándar una vez al atardecer, o de noche, con un teléfono ya usado de día |
 | B5 / SUS | cada participante responde las 10 preguntas de abajo justo después de caminar |
+| B7 inclinarse | una caminata de la ruta estándar inclinando el cuerpo y el teléfono a propósito, balanceándose un poco con cada paso; cada tick guarda `pitch`, `roll` y `heading_sway` (#263) |
+| B8 desviarse | en una recta larga, mirando hacia donde se debe, salirse del camino de lado a propósito, una vez a cada lado; anotar cuándo lo dijo la app (#300) |
+
+**La ronda de la tarde de la 0.6.4** junta B1, B6, B7 y B8 en una sola sesión en los cuatro tramos de la biblioteca, empezando unos 30 minutos antes de que oscurezca: una caminata de prueba normal al atardecer (B6), la misma inclinándose a propósito (B7), desviarse a propósito en una recta (B8) y los dos tramos de B1. Después, `backend-ai-training/scripts/build_frame_set.py` y `benchmark_models.py --frames` califican las fotos del atardecer y la noche (B6). `replay.py --compare --thin-m` (B1) y `application/test/tools/replay_drift_test.dart` (B8) repiten las caminatas.
 
 ## La hoja (una fila por caminata)
 
