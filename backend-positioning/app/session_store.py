@@ -174,6 +174,7 @@ class SessionStore:
         dt = now - state.last_call
         reinit = dt > MAX_DT_SECONDS
         stationary = False
+        stationary_reason_value = None
         reason = None
         if state.last_gps_time is None and not state.started:
             # First call: seed the filter at this fix, as uncertain as it is.
@@ -188,10 +189,10 @@ class SessionStore:
             state.ukf = self._new_filter(x0, y0, accuracy, config)
             state.last_gps_time = None
         else:
-            reason = stationary_reason(
+            stationary_reason_value = stationary_reason(
                 gps_speed, gps_time, state.last_gps_time, config.stationary_speed_mps
             )
-            if reason is not None:
+            if stationary_reason_value is not None:
                 # Say "not moving" before projecting the velocity forward
                 # through this interval (see kalman.stationary_update).
                 kalman.stationary_update(state.ukf)
@@ -283,7 +284,7 @@ class SessionStore:
                 "reinit": reinit,
                 "gps_fused": gps_fused,
                 "stationary": stationary,
-                "stationary_reason": reason,
+                "stationary_reason": stationary_reason_value,
                 "gps_speed": gps_speed,
                 "gps_accuracy_m": accuracy,
                 "compass": compass_heading,
