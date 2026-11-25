@@ -39,6 +39,12 @@ The original target was 500 ms. The server's part is now 0.50 s p50 and 0.85 s p
 - **The old trip start runs out the gateway's per-user allowance when repeated quickly** (44 requests, against 30/s with bursts of 60). One trip start doesn't, so users never saw it. `measure.py` waits 2 s between them.
 - **The server's `~/4u/.env` had a stray line** holding only the instance id, with no newline after it. It's now `QDRANT_BIND`; the old file is kept as `.env.bak-e2`.
 
-## Rolling back Qdrant
+## Back on Qdrant Cloud (2026-11-25)
 
-ai-training's previous `.env` is kept on the server as `backend-ai-training/.env.bak-cloud-qdrant`. To go back to the cloud: copy it over `.env`, then run `sudo docker compose up -d --force-recreate ai-training`. Point the model machines back with `deploy.sh`. The cloud cluster is untouched, but anything indexed after 2026-11-08 05:55 UTC is only in the local Qdrant.
+The local Qdrant was moved off the main machine to leave the lab server's memory and disk to the services, accepting the ~0.3 s per photo it had saved. Everything indexed locally was copied up first with `scripts/qdrant_copy.py`, and the admin "Re-index verified points" then dropped what was stale. The container, its volume and its image were removed. The service stays in `docker-compose.yml` behind the `local-qdrant` profile, and ai-training's local settings are kept on the server as `backend-ai-training/.env.bak-local-qdrant`.
+
+To run it locally again:
+1. `sudo docker compose --profile local-qdrant up -d qdrant` (it starts empty);
+2. copy the cloud's collections into it with `scripts/qdrant_copy.py` (source the cloud, destination `http://qdrant:6333`);
+3. copy `.env.bak-local-qdrant` over ai-training's `.env`, then `sudo docker compose up -d --force-recreate ai-training gateway`;
+4. point the model machines at it with `deployment/model-machines/deploy.sh`.

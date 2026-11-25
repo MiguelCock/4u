@@ -52,12 +52,15 @@ services:
     memswap_limit: 1800m
     restart: unless-stopped
 
-  # Photo search's vectors, next to ai-training (E2). Qdrant Cloud was in
-  # Sao Paulo while this machine is in Virginia: 344 ms of every photo's 873 ms
-  # (docs/loadtest/e2-results.md). ai-training uses it when its QDRANT_URL is
-  # http://qdrant:6333. Everything in it can be rebuilt from the database with
-  # the admin "Re-index verified points".
+  # Photo search's vectors on this machine (E2): off since 2026-11-25, to leave
+  # the lab server's memory and disk to the services. ai-training uses Qdrant
+  # Cloud again, about 0.3 s slower per photo (Sao Paulo, this machine is in
+  # Virginia; docs/loadtest/e2-results.md). To bring it back: start it with
+  # `--profile local-qdrant`, copy the cloud's collections into it with
+  # scripts/qdrant_copy.py, and set ai-training's QDRANT_URL to
+  # http://qdrant:6333.
   qdrant:
+    profiles: ["local-qdrant"]
     image: qdrant/qdrant:v1.13.6
     env_file:
       - qdrant/.env

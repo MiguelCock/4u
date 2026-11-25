@@ -52,7 +52,7 @@ To remove them, terminate the machines tagged `4u-model-*`, delete the security 
 ## How it stays safe
 
 - **Nothing is public.** `/search_similar` has no authentication, so port 80 only accepts the main machine's security group. Access for you goes through SSM, like the main machine.
-- **Only Qdrant's key is on them,** fetched from the main machine by `deploy.sh`. There's no Supabase key: searching doesn't use it, and the admin endpoints can't work there. Verifying always goes to the main machine.
+- **Only Qdrant's URL and key are on them,** copied from the main machine's ai-training `.env` by `deploy.sh` (Qdrant Cloud since 2026-11-25; the main machine's own Qdrant only with its `local-qdrant` profile). There's no Supabase key: searching doesn't use it, and the admin endpoints can't work there. Verifying always goes to the main machine.
 - **A machine that's off costs little.** Positioning waits up to 0.3 s to connect, then skips it for 30 s (`backend-positioning/app/model_machines.py`).
 
 ## Capacity

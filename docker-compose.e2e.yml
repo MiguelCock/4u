@@ -64,6 +64,8 @@ services:
       - "127.0.0.1:${E2E_GATEWAY_PORT:-18000}:80"
 
   qdrant:
+    # Production runs without it (the local-qdrant profile); e2e always does.
+    profiles: !reset []
     env_file: !reset []
     environment:
       QDRANT__SERVICE__API_KEY: e2e

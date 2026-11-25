@@ -32,8 +32,10 @@ for id in $MODEL_IDS; do
   ssh -n "$host" 'mkdir -p ~/4u/deployment/model-machines'
   rsync -az "${RSYNC_EXCLUDES[@]}" "$REPO/packages" "$REPO/backend-ai-training" "$host:4u/"
   rsync -az "$REPO/deployment/model-machines/compose.yml" "$host:4u/deployment/model-machines/"
-  # Qdrant on the main machine is "qdrant" only inside its Compose network;
-  # from here it's the main machine's private address.
+  # The main machine's ai-training Qdrant settings: Qdrant Cloud's pass
+  # through. A Qdrant on the main machine (the local-qdrant profile) is
+  # "qdrant" only inside its Compose network; from here it's the main
+  # machine's private address.
   # shellcheck disable=SC2029
   ssh -n "ec2-user@$MAIN_ID" "grep -E '^QDRANT_(URL|KEY)=' 4u/backend-ai-training/.env" |
     sed "s|^QDRANT_URL=http://qdrant:6333|QDRANT_URL=http://$MAIN_PRIVATE_IP:6333|" |
