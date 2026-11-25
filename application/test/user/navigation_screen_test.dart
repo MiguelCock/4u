@@ -324,6 +324,38 @@ void main() {
     await t.close(tester);
   });
 
+  testWidgets('a place stacked above the route is not said (#227)', (
+    tester,
+  ) async {
+    // Same spot as the Cafetería above, one floor up; the route is floor 0.
+    final t = _Trip(
+      placesNearby: const [
+        {
+          'id': 'c2',
+          'building_id': 'b1',
+          'location_type_id': 8,
+          'location_description': 'Sala de estudio',
+          'floor': 1,
+          'latitude': 6.20015,
+          'longitude': -75.58003,
+        },
+      ],
+    );
+    await t.start(tester);
+    t.sensors.face(0);
+    await t.run(tester, seconds: 4);
+    await t.walkTo(tester, 6.2003, -75.5800, heading: 0, steps: 12);
+    await t.walkTo(tester, 6.2003, -75.5797, heading: 90);
+    await t.run(tester, seconds: 4);
+    expect(
+      t.voice.said,
+      isNot(contains(t.l10n.navPassedPlace('Sala de estudio'))),
+    );
+    expect(t.events('passed_place'), isEmpty);
+    expect(t.voice.said, contains(t.l10n.navArrivedFinished('Biblioteca')));
+    await t.close(tester);
+  });
+
   for (final talkBack in [false, true]) {
     testWidgets('paused, the walk goes quiet; arrival is still said '
         '(#228, TalkBack ${talkBack ? 'on' : 'off'})', (tester) async {
@@ -365,29 +397,38 @@ void main() {
       expect(t.voice.said, contains(t.l10n.navArrivedFinished('Biblioteca')));
       await t.close(tester);
     });
+
+    testWidgets('paused, coming back from the background stays quiet '
+        '(#228, TalkBack ${talkBack ? 'on' : 'off'})', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue = talkBack
+          ? const FakeAccessibilityFeatures(accessibleNavigation: true)
+          : const FakeAccessibilityFeatures();
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      final t = _Trip();
+      await t.start(tester);
+      t.sensors.face(0);
+      await t.run(tester, seconds: 4);
+
+      await tester.tap(find.text(t.l10n.navPauseResumeButton));
+      await t.run(tester, seconds: 3);
+      expect(t.voice.said.last, t.l10n.navPaused);
+      final before = t.voice.said.length;
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await t.run(tester, seconds: 3);
+
+      expect(
+        t.voice.said.length,
+        before,
+        reason: 'still paused after resuming',
+      );
+      expect(t.events('guidance_paused'), hasLength(1));
+      await t.close(tester);
+    });
   }
-
-  testWidgets('paused, coming back from the background stays quiet (#228)', (
-    tester,
-  ) async {
-    final t = _Trip();
-    await t.start(tester);
-    t.sensors.face(0);
-    await t.run(tester, seconds: 4);
-
-    await tester.tap(find.text(t.l10n.navPauseResumeButton));
-    await t.run(tester, seconds: 3);
-    expect(t.voice.said.last, t.l10n.navPaused);
-    final before = t.voice.said.length;
-
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await t.run(tester, seconds: 3);
-
-    expect(t.voice.said.length, before, reason: 'still paused after resuming');
-    expect(t.events('guidance_paused'), hasLength(1));
-    await t.close(tester);
-  });
 
   testWidgets('a repeat starts with "Repito" (#228)', (tester) async {
     final t = _Trip();
