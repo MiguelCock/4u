@@ -12,6 +12,8 @@ reaches both the cloud and the local "qdrant":
     sudo docker exec -i -e SRC_QDRANT_URL=... -e SRC_QDRANT_KEY=... \\
       -e DST_QDRANT_URL=http://qdrant:6333 -e DST_QDRANT_KEY=... \\
       4u-ai-training-1 /app/.venv/bin/python - < scripts/qdrant_copy.py
+
+The other way round (local to the cloud, 2026-11-25) swaps SRC and DST.
 """
 
 import os

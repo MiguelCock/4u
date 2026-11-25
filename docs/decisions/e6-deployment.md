@@ -34,7 +34,7 @@ The lab stops every machine when a session ends, and refuses anything above `.la
 | AWS: one c5.xlarge | everything, model included | ~$125 |
 | One VPS elsewhere with 4–8 vCPU and 8–16 GB (e.g. Hetzner) | everything, model included | ~$15–35 |
 
-Supabase stays as it is in every option. Photo search's Qdrant now runs on the main machine (E2), so there's no Qdrant Cloud cost.
+Supabase stays as it is in every option. Photo search's Qdrant is on Qdrant Cloud's free tier: it ran on the main machine from E2 until 2026-11-25, and was moved back to save the lab server's resources (`docs/loadtest/e2-results.md`).
 
 **Recommendation:**
 - **for the project's remaining months:** stay on the lab, with model machines only for events;

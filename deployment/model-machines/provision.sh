@@ -52,8 +52,9 @@ else
   echo "Reusing $SG_ID."
 fi
 
-# Photo search's Qdrant runs on the main machine (E2): the model machines, and
-# only they, may reach its port there. Safe to repeat.
+# When photo search's Qdrant runs on the main machine (E2, the local-qdrant
+# profile; Qdrant Cloud since 2026-11-25), the model machines, and only they,
+# may reach its port there. Harmless otherwise. Safe to repeat.
 if aws_ec2 authorize-security-group-ingress --group-id "$MAIN_SG" \
   --protocol tcp --port 6333 --source-group "$SG_ID" >/dev/null 2>&1; then
   echo "The model machines may now reach Qdrant on the main machine."
